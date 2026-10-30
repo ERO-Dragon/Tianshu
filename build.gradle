@@ -224,7 +224,11 @@ tasks.register('verifyFeatureOptionalDependencies') {
 def adapterProjects = project(':tianshu-adapter').subprojects as List
 // The shared adapter layer is not a Gradle project: one source tree is compiled into every loader adapter,
 // so it is scanned by path wherever a rule says "kernel code".
-def commonAdapterSources = file('tianshu-adapter/common/src/main/java')
+// Version dimension: one shared tree per Minecraft target, named `common-<target>`, and each adapter names the
+// tree it compiles in its adapter.properties. The glob picks up a new tree; nothing here is edited per version.
+def commonAdapterSources = fileTree('tianshu-adapter') {
+    include '*-common/src/main/java/**/*.java'
+}
 def hostProjectDependencyViolations = []
 gradle.projectsEvaluated {
     def kernelProjects = hostModules.findAll { it != 'tianshu-adapter' }.collect { project(":${it}") } + adapterProjects
@@ -249,7 +253,7 @@ tasks.register('verifyHostHasNoFeatureDependency') {
     def hostBuildFiles = plainHostModules.collect { file("${it}/build.gradle") } +
             adapterProjectDirs.collect { new File(it, 'build.gradle') }
     inputs.files(files(plainHostModules.collect { "${it}/src/main/java" }))
-    inputs.dir(commonAdapterSources)
+    inputs.files(commonAdapterSources)
     adapterProjectDirs.each { dir -> inputs.dir(new File(dir, 'src/main/java')) }
     inputs.files(hostBuildFiles)
     doLast { task ->
@@ -281,11 +285,13 @@ tasks.register('verifyCommonAdapterNeutral') {
     description = 'The shared adapter layer must talk to Minecraft without knowing which loader it runs on.'
     // A loader import here would compile in one adapter and fail in the other, so the layer is compiled into
     // both from one tree and the tree is kept loader-free. Comments are allowed to name a loader; code is not.
-    inputs.dir(commonAdapterSources)
+    inputs.files(commonAdapterSources)
     doLast { task ->
         def forbidden = ['net.neoforged', 'net.fabricmc', 'net.minecraftforge', 'cpw.mods']
         def violations = []
-        task.inputs.files.files.each { source ->
+        if (task.inputs.files.files.findAll { it.path.endsWith('.java') }.isEmpty()) {
+            throw new GradleException("No shared-layer sources matched common-*/src/main/java; this gate would pass vacuously")
+        }        task.inputs.files.files.each { source ->
             if (!source.path.endsWith('.java')) return
             int lineNumber = 0
             source.eachLine('UTF-8') { line ->
@@ -424,7 +430,7 @@ allprojects {
 tasks.register('runClient') {
     group = 'tianshu'
     description = 'Runs the development client with every feature module installed.'
-    dependsOn ':tianshu-adapter:neoforge-1.21.1:runClient'
+    dependsOn ':tianshu-adapter:1.21-1.21.1-neoforge:runClient'
 }
 
 subprojects {
@@ -433,7 +439,7 @@ subprojects {
             tasks.register('runClient') {
                 group = 'tianshu'
                 description = "Runs the development client with ${name} and the modules it requires."
-                dependsOn ':tianshu-adapter:neoforge-1.21.1:runClient'
+                dependsOn ':tianshu-adapter:1.21-1.21.1-neoforge:runClient'
             }
         }
     }

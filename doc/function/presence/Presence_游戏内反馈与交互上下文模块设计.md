@@ -588,13 +588,13 @@ tianshu-presence/src/main/java/.../function/presence/settings/
   PresenceSettingsRegistrySource
   PresenceSettingsAccess
 
-tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/ui/hud/
+tianshu-adapter/1.21-1.21.1-neoforge/src/main/java/.../neoforge/ui/hud/
   NeoForgeHudHost
   NeoForgeHudSurface
   HudShaderPrograms
   HudAnchorEditorScreen
 
-tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/adapter/
+tianshu-adapter/1.21-1.21.1-neoforge/src/main/java/.../neoforge/adapter/
   NeoForgeGameContextPort
   NeoForgeGameScreenClassifier
 
@@ -604,7 +604,7 @@ tianshu-echo/src/main/java/.../function/echo/bridge/
 tianshu-weaving/src/main/java/.../function/weaving/bridge/
   LlmPresenceActivityBridge
 
-tianshu-adapter/neoforge-1.21.1/src/main/java/.../neoforge/event/
+tianshu-adapter/1.21-1.21.1-neoforge/src/main/java/.../neoforge/event/
   NeoForgeWorldEventHooks
   NeoForgeAdvancementEventTracker
 

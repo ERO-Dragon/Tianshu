@@ -1,0 +1,135 @@
+plugins {
+    id 'java-library'
+    id 'net.fabricmc.fabric-loom-remap' version '1.15.5'
+}
+
+version = mod_version
+group = mod_group_id
+
+// Everything that pins this adapter to one Minecraft line lives in adapter.properties, exactly as the
+// NeoForge adapter does it: a new platform or a new version is a sibling directory, never an edit here.
+def adapterProperties = new Properties()
+file('adapter.properties').withInputStream { adapterProperties.load(it) }
+def mcVersion = adapterProperties.getProperty('minecraft_version')
+def loaderVersion = adapterProperties.getProperty('fabric_loader_version')
+def apiVersion = adapterProperties.getProperty('fabric_api_version')
+
+// Both adapters ship a jar with the same mod id, so the artifact name says which loader it belongs to.
+base {
+    archivesName = "${mod_id}-fabric-${mcVersion}"
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
+
+// ---------------------------------------------------------------- shared Minecraft layer
+// The same tree the NeoForge adapter compiles, from source: a Gradle project cannot be compiled once against
+// two loaders' Minecraft artifacts, so the tree is shared and each adapter supplies the classpath.
+// `verifyCommonAdapterNeutral` keeps loader imports out of it.
+sourceSets {
+    main {
+        java.srcDir '../1.21-1.21.1-common/src/main/java'
+        resources.srcDir '../1.21-1.21.1-common/src/main/resources'
+    }
+    test {
+        java.srcDir '../common/src/test/java'
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${mcVersion}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${loaderVersion}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${apiVersion}"
+
+    implementation project(':tianshu-client')
+    compileOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    runtimeOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// ---------------------------------------------------------------- build profile
+// The same numbers the NeoForge adapter writes: a release carries its own version and api epoch, and the
+// runtime probe reports facts instead of literals. Development runs default to the Debug channel.
+def devRunRequested = gradle.startParameter.taskNames.any { taskName ->
+    def name = taskName.tokenize(':').last()
+    name == 'runClient' || name == 'runServer'
+}
+def tianshuDebugBuild = providers.gradleProperty('tianshuDebugBuild')
+        .map { it.toBoolean() }
+        .orElse(devRunRequested)
+def tianshuBuildProfile = layout.buildDirectory.file('generated/resources/tianshu-build.properties')
+tasks.register('generateTianshuBuildProfile') {
+    def tianshuVersion = providers.gradleProperty('mod_version').orElse('0.0')
+    def tianshuApiVersion = tianshuVersion.map { value -> value.split('\\.')[0] }
+    inputs.property('debugBuild', tianshuDebugBuild)
+    inputs.property('version', tianshuVersion)
+    inputs.property('apiVersion', tianshuApiVersion)
+    outputs.file(tianshuBuildProfile)
+    doLast {
+        def output = tianshuBuildProfile.get().asFile
+        output.parentFile.mkdirs()
+        output.text = "debugBuild=${tianshuDebugBuild.get()}\n" +
+                "version=${tianshuVersion.get()}\n" +
+                "apiVersion=${tianshuApiVersion.get()}\n"
+    }
+}
+
+// ---------------------------------------------------------------- kernel assets
+// The kernel's translations are merged by tianshu-client (language files from every module land in one file),
+// and this jar ships them. A Fabric *development* run is the reason for the explicit wiring: there the kernel
+// arrives as a plain project dependency, which is not a mod resource pack, so nothing would read its `assets/`
+// tree — and every string in the product would render as a raw key.
+sourceSets.main.resources.srcDir(project(':tianshu-client').layout.buildDirectory.dir('generated/lang'))
+tasks.named('processResources') {
+    dependsOn project(':tianshu-client').tasks.named('mergeLang')
+}
+
+// ---------------------------------------------------------------- manifest expansion
+def manifestProperties = [
+        mod_id             : mod_id,
+        mod_name           : mod_name,
+        mod_version        : mod_version,
+        mod_license        : mod_license,
+        minecraft_version  : mcVersion,
+        loader_version     : loaderVersion,
+]
+processResources {
+    inputs.properties manifestProperties
+    filesMatching('fabric.mod.json') {
+        expand manifestProperties
+    }
+    from(tianshuBuildProfile.map { it.asFile.parentFile })
+}
+tasks.named('processResources') {
+    dependsOn tasks.named('generateTianshuBuildProfile')
+}
+
+// The kernel is one mod: the adapter plus every platform-neutral module that has no manifest of its own.
+jar {
+    // The kernel's translations are already this mod's own resources (see "kernel assets" above), so they are
+    // not copied a second time from the client module's output.
+    from(project(':tianshu-client').sourceSets.main.output) {
+        exclude 'assets/tianshu/lang/**'
+    }
+    from project(':tianshu-core').sourceSets.main.output
+    from project(':tianshu-api').sourceSets.main.output
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// A development run installs only this adapter: a feature module is discovered by its own manifest, so a
+// development run picks it up by its jar in `run/mods`, not by a classpath entry. That is why this task has no
+// module-set logic of its own here, unlike the NeoForge adapter, whose `mods {}` block resolves source sets.

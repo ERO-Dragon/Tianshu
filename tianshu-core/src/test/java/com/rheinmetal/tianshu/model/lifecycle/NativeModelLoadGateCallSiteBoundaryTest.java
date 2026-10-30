@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -51,8 +52,15 @@ class NativeModelLoadGateCallSiteBoundaryTest {
             }
         }
 
-        assertEquals(List.of("NeoForgeClientBootstrap.java"), sites,
-                "one shared gate: a second instance would let two lanes load native models at the same time");
+        // One gate per process. Every loader has its own composition root, so the rule is "the assembly owns
+        // the gate and nothing else does": a module or a lane constructing its own would let two lanes load
+        // native models at the same time, which is exactly what this gate exists to prevent.
+        assertEquals(sites.size(), new HashSet<>(sites).size(),
+                "one construction per composition root, never two in the same one: " + sites);
+        for (String site : sites) {
+            assertTrue(site.endsWith("ClientBootstrap.java"),
+                    site + " is not a composition root; the gate belongs to the assembly, not to a module");
+        }
     }
 
     @Test

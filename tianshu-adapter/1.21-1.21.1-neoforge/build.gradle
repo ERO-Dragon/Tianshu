@@ -1,0 +1,285 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.141'
+    id 'idea'
+}
+
+version = mod_version
+group = mod_group_id
+
+// Everything that pins this adapter to one Minecraft line lives in adapter.properties.
+// Adding a platform or a version means adding a sibling directory, not editing the core build.
+def adapterProperties = new Properties()
+file('adapter.properties').withInputStream { adapterProperties.load(it) }
+def neoVersion = adapterProperties.getProperty('neo_version')
+def parchmentMappingsVersion = adapterProperties.getProperty('parchment_mappings_version')
+def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecraft_version')
+
+// Running the NeoForge client from the Gradle panel is the development path,
+// so it defaults to the Debug channel. Artifact builds remain Release by
+// default. An explicit property always wins over the task-based default.
+// A server run is a development path too: it is how the optional server
+// component is exercised in the same debug channel.
+def devRunRequested = gradle.startParameter.taskNames.any { taskName ->
+    def name = taskName.tokenize(':').last()
+    name == 'runClient' || name == 'runServer'
+}
+def tianshuDebugBuild = providers.gradleProperty('tianshuDebugBuild')
+        .map { it.toBoolean() }
+        .orElse(devRunRequested)
+def tianshuBuildProfile = layout.buildDirectory.file('generated/resources/tianshu-build.properties')
+tasks.register('generateTianshuBuildProfile') {
+    // The build owns the numbers: a release carries its own mod version and the api epoch it was built against,
+    // so the runtime probe reports facts instead of literals. The epoch is the mod version's MAJOR, derived here
+    // rather than typed into a second property that could drift.
+    def tianshuVersion = providers.gradleProperty('mod_version').orElse('0.0')
+    def tianshuApiVersion = tianshuVersion.map { value -> value.split('\\.')[0] }
+    inputs.property('debugBuild', tianshuDebugBuild)
+    inputs.property('version', tianshuVersion)
+    inputs.property('apiVersion', tianshuApiVersion)
+    outputs.file(tianshuBuildProfile)
+    doLast {
+        def output = tianshuBuildProfile.get().asFile
+        output.parentFile.mkdirs()
+        output.text = "debugBuild=${tianshuDebugBuild.get()}\n" +
+                "version=${tianshuVersion.get()}\n" +
+                "apiVersion=${tianshuApiVersion.get()}\n"
+    }
+}
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
+
+// ---------------------------------------------------------------- shared Minecraft layer
+// Everything that talks to Minecraft but not to a loader lives in tianshu-adapter/common and is compiled here
+// from source. A Gradle project cannot be compiled once against two loaders' Minecraft artifacts, so the tree
+// is shared and each adapter supplies its own classpath; `verifyCommonAdapterNeutral` keeps loader imports out
+// of it, which is the whole contract. A sibling adapter (1.21-1.21.1-fabric) includes the same directory.
+sourceSets {
+    main {
+        java.srcDir '../1.21-1.21.1-common/src/main/java'
+        resources.srcDir '../1.21-1.21.1-common/src/main/resources'
+    }
+    test {
+        java.srcDir '../common/src/test/java'
+    }
+}
+
+repositories {
+}
+
+neoForge {
+    version = neoVersion
+
+    parchment {
+        mappingsVersion = parchmentMappingsVersion
+        minecraftVersion = parchmentMinecraftVersion
+    }
+
+    runs {
+        client {
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            // Optional headless verification: jump straight into a world so the module lifecycle
+            // actually runs. Pass -PquickPlayWorld=<save name>; absent by default.
+            def quickPlayWorld = providers.gradleProperty('quickPlayWorld').getOrNull()
+            if (quickPlayWorld != null && !quickPlayWorld.isBlank()) {
+                programArguments.addAll '--quickPlaySingleplayer', quickPlayWorld
+            }
+        }
+
+        server {
+            server()
+        }
+
+        data {
+            data()
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
+
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+    }
+
+    // Which mods a development run installs is decided by where the run is started from:
+    //   repository root  -> every feature (the full assembly)
+    //   this adapter     -> the kernel alone, which is what a third-party integration sees
+    //   a feature module -> that feature plus the modules it requires, never its optional partners
+    // so launching `runClient` from echo installs kernel+echo, and launching it from auxilium installs
+    // kernel+auxilium+intake+weaving (its hard dependencies) but not echo (an optional integration).
+    // `-PfeatureMods=` overrides the whole thing: `-PfeatureMods=` is the kernel alone.
+    def runFeatureNames = ['intake', 'echo', 'weaving', 'auxilium', 'presence']
+    def startedFrom = {
+        def startParameter = gradle.startParameter
+        def explicitFeature = startParameter.taskNames.findResult { name ->
+            def match = name =~ /^:?(tianshu-(intake|echo|weaving|auxilium|presence)):run(Client|Server)$/
+            match.find() ? match.group(2) : null
+        }
+        if (explicitFeature != null) {
+            return explicitFeature
+        }
+        if (startParameter.taskNames.any { name ->
+                    (name.endsWith('runClient') || name.endsWith('runServer')) && name.contains('tianshu-adapter')
+                }) {
+            return 'adapter'
+        }
+        // A bare `runClient` carries no path: the directory it was typed in decides.
+        def currentDir = startParameter.currentDir
+        def owner = ([project] + runFeatureNames.collect { rootProject.project(":tianshu-${it}") })
+                .find { it.projectDir == currentDir }
+        if (owner == null) {
+            return 'root'
+        }
+        return owner == project ? 'adapter' : (owner.name - 'tianshu-')
+    }()
+    def devFeatureMods = {
+        def explicit = findProperty('featureMods')
+        if (explicit != null) {
+            return explicit.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+        }
+        if (startedFrom == 'adapter') {
+            return []
+        }
+        if (startedFrom == 'root') {
+            return runFeatureNames
+        }
+        // A feature run boots its required partners too: without them it cannot assemble at all.
+        return ([startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])).unique()
+    }()
+    if (gradle.startParameter.taskNames.any { name ->
+                name.endsWith('runClient') || name.endsWith('runServer')
+            }) {
+        logger.lifecycle("tianshu dev run: started from '${startedFrom}', installing " +
+                (devFeatureMods.isEmpty() ? 'the kernel alone' : devFeatureMods.join(', ')))
+    }
+
+    mods {
+        // One entry per mod id. The kernel mod owns the adapter plus every platform-neutral module
+        // that carries no metadata of its own; each feature is a separate mod with its own manifest.
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+            sourceSet(project(':tianshu-client').sourceSets.main)
+            sourceSet(project(':tianshu-core').sourceSets.main)
+            sourceSet(project(':tianshu-api').sourceSets.main)
+        }
+        // A feature's entry source set is what makes it a mod at all. The @Mod class lives there, so a
+        // mod declared with only `main` is listed in game (its manifest is on the classpath) while no
+        // constructor ever runs — nothing registers, and its settings page never appears. Production jars
+        // carry the entry classes; the development run has to include that output explicitly.
+        if ('intake' in devFeatureMods) {
+            tianshu_intake {
+                sourceSet(project(':tianshu-intake').sourceSets.main)
+                sourceSet(project(':tianshu-intake').sourceSets.neoforgeEntry)
+            }
+        }
+        if ('echo' in devFeatureMods) {
+            tianshu_echo {
+                sourceSet(project(':tianshu-echo').sourceSets.main)
+                sourceSet(project(':tianshu-echo').sourceSets.neoforgeEntry)
+            }
+        }
+        if ('weaving' in devFeatureMods) {
+            tianshu_weaving {
+                sourceSet(project(':tianshu-weaving').sourceSets.main)
+                sourceSet(project(':tianshu-weaving').sourceSets.neoforgeEntry)
+            }
+        }
+        if ('auxilium' in devFeatureMods) {
+            tianshu_auxilium {
+                sourceSet(project(':tianshu-auxilium').sourceSets.main)
+                sourceSet(project(':tianshu-auxilium').sourceSets.neoforgeEntry)
+            }
+        }
+        if ('presence' in devFeatureMods) {
+            tianshu_presence {
+                sourceSet(project(':tianshu-presence').sourceSets.main)
+                sourceSet(project(':tianshu-presence').sourceSets.neoforgeEntry)
+            }
+        }
+    }
+}
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    implementation project(':tianshu-client')
+    compileOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    localRuntime fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+sourceSets.main.resources {
+    srcDir('src/generated/resources')
+    srcDir(tianshuBuildProfile.map { it.asFile.parentFile })
+    exclude("**/*.bbmodel")
+    exclude("src/generated/**/.cache")
+}
+jar {
+    from project(':tianshu-client').sourceSets.main.output
+    from project(':tianshu-core').sourceSets.main.output
+    from project(':tianshu-api').sourceSets.main.output
+    // Avoid signature metadata conflicts when aggregating module output.
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+}
+
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neoVersion,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            tianshu_libs_version_range: tianshu_libs_version_range,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
+}
+
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+// tasks.named('jarJar') {
+//     exclude 'ai/onnxruntime/native/win-x64/onnxruntime.dll'
+// }
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+tasks.named('processResources') {
+    dependsOn tasks.named('generateTianshuBuildProfile')
+}

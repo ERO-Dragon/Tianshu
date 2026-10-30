@@ -41,7 +41,7 @@ class CoreLifecycleHostBoundaryTest {
         Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java");
         // The world-session decisions live in the shared layer; the loader class only forwards.
         String events = Files.readString(
-                Path.of("../tianshu-adapter/common/src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java"),
+                Path.of("../tianshu-adapter/common-1.21.1/src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java"),
                 StandardCharsets.UTF_8
         );
         String runtime = Files.readString(
@@ -126,7 +126,7 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String reloadListener = Files.readString(
-                Path.of("../tianshu-adapter/common/src/main/java/com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
+                Path.of("../tianshu-adapter/common-1.21.1/src/main/java/com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
                 StandardCharsets.UTF_8
         );
 
