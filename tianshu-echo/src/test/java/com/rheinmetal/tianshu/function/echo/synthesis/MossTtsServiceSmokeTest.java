@@ -276,22 +276,30 @@ class MossTtsServiceSmokeTest {
     private static String smokeCadenceName() {
         String value = setting("tianshu.moss.cadence", "TIANSHU_MOSS_CADENCE");
         if (value.isBlank()) {
-            return "fixed4";
+            return "mixed";
         }
         return switch (value.toLowerCase(java.util.Locale.ROOT)) {
+            case "fixed4" -> "fixed4";
             case "fixed8" -> "fixed8";
-            case "mixed", "first4then16" -> "mixed";
+            case "mixed", "production" -> "mixed";
             case "upstream", "adaptive", "1-2-4-8" -> "upstream";
-            default -> "fixed4";
+            default -> "mixed";
         };
     }
 
     private static MossStreamingDecodeCadence smokeCadence() {
         return switch (smokeCadenceName()) {
+            case "fixed4" -> MossStreamingDecodeCadence.fixed(4);
             case "fixed8" -> MossStreamingDecodeCadence.fixed(8);
-            case "mixed" -> MossStreamingDecodeCadence.firstChunkThenBatched(4, 8);
+            case "mixed" -> MossStreamingDecodeCadence.firstTwoChunksThenBatched(
+                    MossTtsService.FIRST_CHUNK_FRAMES,
+                    MossTtsService.SECOND_CHUNK_FRAMES,
+                    MossTtsService.STEADY_CHUNK_FRAMES);
             case "upstream" -> MossStreamingDecodeCadence.upstreamAdaptive();
-            default -> MossStreamingDecodeCadence.fixed(4);
+            default -> MossStreamingDecodeCadence.firstTwoChunksThenBatched(
+                    MossTtsService.FIRST_CHUNK_FRAMES,
+                    MossTtsService.SECOND_CHUNK_FRAMES,
+                    MossTtsService.STEADY_CHUNK_FRAMES);
         };
     }
 

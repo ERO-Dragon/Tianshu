@@ -17,7 +17,7 @@ interface MossStreamingDecodeCadence {
 
     /**
      * Experimental cadence used by the opt-in MOSS benchmark: a short first batch keeps first-audio
-     * latency low, then the caller chooses a larger steady batch. Production uses {@link #fixed(int)}.
+     * latency low, then the caller chooses a larger steady batch.
      */
     static MossStreamingDecodeCadence firstChunkThenBatched(int firstChunkFrames, int steadyBatchFrames) {
         if (firstChunkFrames <= 0 || steadyBatchFrames <= 0) {
@@ -25,6 +25,30 @@ interface MossStreamingDecodeCadence {
         }
         return (emittedAudioSamples, sampleRate, firstAudioEmittedNanos, nowNanos) ->
                 emittedAudioSamples <= 0L ? firstChunkFrames : steadyBatchFrames;
+    }
+
+    /**
+     * Keeps the second decode batch as short as the first one, then grows to the steady size.
+     *
+     * <p>The first chunk only owns a few hundred milliseconds of audio; if the second chunk is
+     * decoded at the steady (large) size, the consumer can run dry before it arrives. Two short
+     * batches bridge that opening window without delaying the first audio.</p>
+     */
+    static MossStreamingDecodeCadence firstTwoChunksThenBatched(
+            int firstChunkFrames,
+            int secondChunkFrames,
+            int steadyBatchFrames
+    ) {
+        if (firstChunkFrames <= 0 || secondChunkFrames <= 0 || steadyBatchFrames <= 0) {
+            throw new IllegalArgumentException("frame counts must be positive");
+        }
+        return (emittedAudioSamples, sampleRate, firstAudioEmittedNanos, nowNanos) -> {
+            if (emittedAudioSamples <= 0L) {
+                return firstChunkFrames;
+            }
+            long firstChunkAudioSamples = Math.max(1, sampleRate) * (long) firstChunkFrames * 80L / 1000L;
+            return emittedAudioSamples <= firstChunkAudioSamples ? secondChunkFrames : steadyBatchFrames;
+        };
     }
 
     private static int upstreamFrameCount(

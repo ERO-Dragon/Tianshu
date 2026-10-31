@@ -17,14 +17,13 @@ import java.util.concurrent.ThreadLocalRandom;
 public class MossTtsService implements AutoCloseable {
     private static final int MAX_CONTEXT_TOKENS = 75;
     /**
-     * Frames decoded per codec invocation.
-     * <p>
-     * Hard ceiling: one MOSS frame is 80 ms of audio, so a batch must stay well below
-     * {@code TtsPreviewPlaybackPolicy.maxQueueMillis} (800 ms). A single chunk that alone exceeds the
-     * playback queue capacity can never be accepted - the queue blocks until timeout and then rejects
-     * it, silently dropping that audio. 4 frames = 320 ms leaves headroom in the 800 ms queue.
+     * The first two decode batches stay small because the first chunk alone determines first-audio
+     * latency and the second one has to cover the first chunk's playback window. 5 frames = 400 ms,
+     * 6 frames = 480 ms; the steady batch is 8 frames = 640 ms, still below the 800 ms preview queue.
      */
-    static final int DECODE_BATCH_FRAMES = 4;
+    static final int FIRST_CHUNK_FRAMES = 5;
+    static final int SECOND_CHUNK_FRAMES = 6;
+    static final int STEADY_CHUNK_FRAMES = 8;
     private static final LongSupplier RANDOM_SEED_SOURCE = () -> ThreadLocalRandom.current().nextLong();
     private final MossModelRuntime modelRuntime;
     private final MossFrameGenerator frameGenerator;
@@ -52,7 +51,11 @@ public class MossTtsService implements AutoCloseable {
                 modelRootDir,
                 resourcePolicy,
                 codecExecution,
-                MossStreamingDecodeCadence.fixed(DECODE_BATCH_FRAMES)
+                MossStreamingDecodeCadence.firstTwoChunksThenBatched(
+                        FIRST_CHUNK_FRAMES,
+                        SECOND_CHUNK_FRAMES,
+                        STEADY_CHUNK_FRAMES
+                )
         );
     }
 
