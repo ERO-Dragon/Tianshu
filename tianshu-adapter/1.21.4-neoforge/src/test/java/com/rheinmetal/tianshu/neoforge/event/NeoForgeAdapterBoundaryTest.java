@@ -45,7 +45,7 @@ final class NeoForgeAdapterBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String environment = Files.readString(
-                Path.of("../1.21-1.21.1-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
+                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -70,8 +70,10 @@ final class NeoForgeAdapterBoundaryTest {
     void shaderRegistrationFailureDoesNotMakeHudStartupFatal() throws Exception {
         String bootstrap = Files.readString(Path.of(BOOTSTRAP), StandardCharsets.UTF_8);
 
-        String registration = methodBody(bootstrap, "private void registerShader");
-        assertTrue(registration.contains("event.registerShader("));
+        // The registration API changed in 1.21.2; the rule did not: a declaration that cannot be used clears the
+        // handle so that layer draws nothing, and startup never fails because of a missing visual shader.
+        String registration = methodBody(bootstrap, "private void registerHudShaders");
+        assertTrue(registration.contains("HudShaderPrograms.register(declaration.getKey(), null)"));
         assertFalse(registration.contains("throw new IllegalStateException"));
     }
 

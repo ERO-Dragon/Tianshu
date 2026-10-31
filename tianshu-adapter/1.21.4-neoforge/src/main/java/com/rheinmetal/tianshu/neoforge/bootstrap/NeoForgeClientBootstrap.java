@@ -66,10 +66,9 @@ import com.rheinmetal.tianshu.mc.ui.settings.TianshuSettingsScreen;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.ClientHooks;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 
 import java.io.IOException;
@@ -330,8 +329,8 @@ public final class NeoForgeClientBootstrap {
         keyBindings.registerAll(event::register);
     }
 
-    public synchronized void registerReloadListeners(RegisterClientReloadListenersEvent event) {
-        event.registerReloadListener(new NamedObjectReloadListener(
+    public synchronized void registerReloadListeners(AddClientReloadListenersEvent event) {
+        event.addListener(ResourceLocation.parse("tianshu:named_objects"), new NamedObjectReloadListener(
                 this::onResourcesReloaded,
                 diagnosticRouter == null ? com.rheinmetal.tianshu.api.LogSink.NOOP : diagnosticRouter
         ));
@@ -347,38 +346,24 @@ public final class NeoForgeClientBootstrap {
     }
 
     /**
-     * Creates the HUD programs features declared.
+     * Registers one descriptor per declared HUD program.
      *
-     * <p>The platform owns the {@code ShaderInstance} lifecycle and the failure fallback; the features own the files,
-     * their uniforms, their binding and their look. Nothing here names a feature: an absent one declares nothing, its
-     * program simply has no shader, and that layer draws nothing.</p>
+     * <p>The renderer applies a program itself through {@code RenderSystem.setShader}, so the platform only states
+     * which asset stands for each id: the shader manager compiles it from the pack that just loaded, and a
+     * declaration that cannot be parsed is cleared so the layer simply draws nothing.</p>
      */
-    public void registerShaders(RegisterShadersEvent event) {
+    private void registerHudShaders() {
         for (java.util.Map.Entry<HudProgramId, String> declaration : HudShaderCatalog.declarations().entrySet()) {
-            registerShader(event, declaration.getKey(), declaration.getValue());
-        }
-    }
-
-    private void registerShader(RegisterShadersEvent event, HudProgramId program, String shaderId) {
-        ResourceLocation shaderLocation = ResourceLocation.tryParse(shaderId);
-        if (shaderLocation == null) {
-            HudShaderPrograms.register(program, null);
-            if (diagnosticRouter != null) {
-                diagnosticRouter.warn("neoforge.hud.shader_declaration_invalid id=" + shaderId);
+            ResourceLocation location = ResourceLocation.tryParse(declaration.getValue());
+            if (location == null) {
+                HudShaderPrograms.register(declaration.getKey(), null);
+                if (diagnosticRouter != null) {
+                    diagnosticRouter.warn("neoforge.hud.shader_declaration_invalid id=" + declaration.getValue());
+                }
+                continue;
             }
-            return;
-        }
-        try {
-            event.registerShader(
-                    new ShaderInstance(event.getResourceProvider(), shaderLocation, DefaultVertexFormat.POSITION_TEX),
-                    shader -> HudShaderPrograms.register(program, shader)
-            );
-        } catch (IOException | RuntimeException failure) {
-            // A visual shader is optional; clear this handle so the layer simply draws nothing for the program.
-            HudShaderPrograms.register(program, null);
-            if (diagnosticRouter != null) {
-                diagnosticRouter.error("neoforge.hud.shader_registration_failed name=" + shaderLocation, failure);
-            }
+            HudShaderPrograms.register(declaration.getKey(),
+                    new com.rheinmetal.tianshu.mc.compat.ShaderProgramHudShader(location));
         }
     }
 
