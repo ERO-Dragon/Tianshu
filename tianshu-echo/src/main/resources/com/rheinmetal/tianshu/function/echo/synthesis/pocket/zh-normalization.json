@@ -1,0 +1,8 @@
+{
+  "digits": "零一二三四五六七八九",
+  "serialPattern": "(订单(?:编)?号?|单号|编号|受理号|流水号|工单号|运单号|快递单号|航班(?:号)?|票号)([是为]?[:：]?\\s*)([A-Za-z]{0,4})([0-9][0-9]{3,})",
+  "flightPattern": "(?<![A-Za-z])([A-Za-z]{2})([0-9]{3,4})(?=\\s*航班)",
+  "punctuationFrom": ",!?;:",
+  "punctuationTo": "，！？；：",
+  "terminalPunctuation": "。！？…"
+}

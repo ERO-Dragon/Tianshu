@@ -22,6 +22,7 @@ public class TtsModelInfo {
     public static final String ENGINE_MATCHA = "matcha";
     public static final String ENGINE_MOSS = "moss";
     public static final String ENGINE_PIPER = "piper";
+    public static final String ENGINE_POCKET = "pocket";
     public static final String ENGINE_VITS = "vits";
     public static final String ENGINE_ZIPVOICE = "zipvoice";
     /** The archive this engine ships as renames the directory, so the alias belongs to the model layer. */
@@ -78,6 +79,7 @@ public class TtsModelInfo {
         if (lower.contains(ENGINE_KOKORO)) return ENGINE_KOKORO;
         if (lower.contains(ENGINE_MATCHA)) return ENGINE_MATCHA;
         if (lower.contains(ENGINE_MOSS)) return ENGINE_MOSS;
+        if (lower.contains(ENGINE_POCKET)) return ENGINE_POCKET;
         if (lower.contains(ENGINE_ZIPVOICE)) return ENGINE_ZIPVOICE;
         if (lower.contains(ENGINE_PIPER)) return ENGINE_PIPER;
         if (voicesFile != null && !voicesFile.isBlank()) return ENGINE_KOKORO;
@@ -207,6 +209,9 @@ public class TtsModelInfo {
                     && containsDeclaredOrDiscoveredFile(dir, info.modelFiles, "text_encoder", ".onnx")
                     && containsDeclaredOrDiscoveredFile(dir, info.modelFiles, "fm_decoder", ".onnx")
                     && (Files.isRegularFile(dir.resolve("vocos_24khz.onnx")) || containsFile(dir, "vocoder", ".onnx"));
+        }
+        if (ENGINE_POCKET.equals(engineType)) {
+            return filesPresent(dir, info.modelFiles);
         }
         if (info.modelFiles != null && !info.modelFiles.isEmpty()) {
             if (!containsAnyDeclaredFile(dir, info.modelFiles)) {
