@@ -218,7 +218,7 @@ public final class ServerActionHandler {
         }
         ServerLevel level = player.serverLevel();
         for (int index = 0; index < count; index++) {
-            Entity entity = type.create(level);
+            Entity entity = type.create(level, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
             if (entity == null) {
                 return ServerActionResult.of(ServerActionResult.Status.FAILED, "entity could not be created");
             }

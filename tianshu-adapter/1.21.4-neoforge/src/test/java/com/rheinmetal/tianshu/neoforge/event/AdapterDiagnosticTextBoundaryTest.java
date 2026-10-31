@@ -24,7 +24,7 @@ final class AdapterDiagnosticTextBoundaryTest {
     @Test
     void javaDiagnosticsUseStableCodesOutsideTheTomlDefinition() throws Exception {
         List<Path> roots = List.of(
-                Path.of("../1.21-1.21.1-common/src/main/java/com/rheinmetal/tianshu/mc"),
+                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc"),
                 Path.of("src/main/java/com/rheinmetal/tianshu/neoforge"));
         List<Path> sources = new ArrayList<>();
         for (Path root : roots) {

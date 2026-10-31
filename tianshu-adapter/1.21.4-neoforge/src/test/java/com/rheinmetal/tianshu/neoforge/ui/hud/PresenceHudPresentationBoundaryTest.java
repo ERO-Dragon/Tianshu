@@ -19,9 +19,9 @@ import com.rheinmetal.tianshu.mc.ui.hud.HudSurfaceRenderer;
  */
 final class PresenceHudPresentationBoundaryTest {
     private static final Path ANCHOR_SCREEN =
-            Path.of("../1.21-1.21.1-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudAnchorEditorScreen.java");
+            Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudAnchorEditorScreen.java");
     private static final Path SURFACE =
-            Path.of("../1.21-1.21.1-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudSurfaceRenderer.java");
+            Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudSurfaceRenderer.java");
     private static final Path PRESENCE_ICON =
             Path.of("../../tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/hud/PresenceIconElementRenderer.java");
 
@@ -73,7 +73,7 @@ final class PresenceHudPresentationBoundaryTest {
     void theSurfaceCallsTheFeatureBinderWithoutNamingUniforms() throws Exception {
         String surface = read(SURFACE);
 
-        assertTrue(surface.contains("program.bind(uniforms, params)"),
+        assertTrue(surface.contains("program.bind(shaderUniforms, params)"),
                 "the feature owns the uniform binding, not the platform");
         assertFalse(surface.contains("\"Intensity\""), "the platform must not hard-code a feature uniform");
         assertFalse(surface.contains("\"Morph\""), "the platform must not hard-code a feature uniform");
@@ -97,9 +97,9 @@ final class PresenceHudPresentationBoundaryTest {
 
         assertTrue(source.contains("HudShaderCatalog.declarations()"),
                 "the platform registers what features declared, instead of naming their files");
-        assertTrue(source.contains("ResourceLocation.tryParse(shaderId)"),
+        assertTrue(source.contains("ResourceLocation.tryParse(declaration.getValue())"),
                 "a declared id is a namespaced resource location, not a path under the kernel namespace");
-        assertTrue(source.contains("new ShaderInstance(event.getResourceProvider(), shaderLocation"));
+        assertTrue(source.contains("new com.rheinmetal.tianshu.mc.compat.ShaderProgramHudShader(location)"));
         assertFalse(source.contains("fromNamespaceAndPath"), "the kernel must not build a feature's asset path");
         assertFalse(source.contains("hud_loading"), "no shader file name is hard-coded in the platform");
     }

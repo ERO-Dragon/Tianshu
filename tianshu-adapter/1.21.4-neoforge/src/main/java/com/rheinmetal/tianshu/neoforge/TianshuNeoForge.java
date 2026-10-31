@@ -79,7 +79,6 @@ public final class TianshuNeoForge {
             modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC);
             modEventBus.addListener(clientBootstrap::registerKeyMappings);
             modEventBus.addListener(clientBootstrap::registerReloadListeners);
-            modEventBus.addListener(clientBootstrap::registerShaders);
             modEventBus.addListener(this::clientSetup);
             // A boss bar is the player's own signal that a fight started; the client is where it is visible.
             NeoForgeBossEventWatch.register(NeoForge.EVENT_BUS);
