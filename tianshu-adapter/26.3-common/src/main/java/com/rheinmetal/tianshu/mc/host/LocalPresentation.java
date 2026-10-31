@@ -1,0 +1,96 @@
+package com.rheinmetal.tianshu.mc.host;
+
+import com.rheinmetal.tianshu.client.api.text.UiText;
+import com.rheinmetal.tianshu.client.host.ClientPresentationPort;
+import com.rheinmetal.tianshu.mc.ui.settings.UiTexts;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvent;
+
+/**
+ * The client's local presentation primitives, implemented on vanilla overlays.
+ *
+ * <p>Everything here is local: a chat line is {@code displayClientMessage}, a toast is a vanilla
+ * {@link SystemToast}, a title is the vanilla title overlay. Nothing is sent to the server, so no other player
+ * sees or hears these effects.</p>
+ *
+ * <p>Each call is a hand-off to an overlay that already exists; there is no per-frame work and no allocation
+ * beyond the component itself. Callers that need continuous drawing use a HUD layer instead.</p>
+ */
+public final class LocalPresentation implements ClientPresentationPort {
+
+    @Override
+    public void chat(UiText text) {
+        message(text, false);
+    }
+
+    @Override
+    public void actionBar(UiText text) {
+        message(text, true);
+    }
+
+    @Override
+    public void toast(UiText title, UiText description) {
+        if (title == null) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.gui.toastManager() == null) {
+            return;
+        }
+        Component body = description == null ? Component.empty() : UiTexts.toComponent(description);
+        minecraft.gui.toastManager().addToast(new SystemToast(
+                SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                UiTexts.toComponent(title),
+                body
+        ));
+    }
+
+    @Override
+    public void title(UiText title, UiText subtitle, int fadeInTicks, int stayTicks, int fadeOutTicks) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.gui == null) {
+            return;
+        }
+        minecraft.gui.hud.setTimes(Math.max(0, fadeInTicks), Math.max(0, stayTicks), Math.max(0, fadeOutTicks));
+        minecraft.gui.hud.setTitle(title == null ? Component.empty() : UiTexts.toComponent(title));
+        minecraft.gui.hud.setSubtitle(subtitle == null ? Component.empty() : UiTexts.toComponent(subtitle));
+    }
+
+    @Override
+    public void playSound(String soundId, float volume, float pitch) {
+        if (soundId == null || soundId.isBlank()) {
+            return;
+        }
+        Identifier key = Identifier.tryParse(soundId.trim());
+        if (key == null) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getSoundManager() == null) {
+            return;
+        }
+        SoundEvent event = SoundEvent.createVariableRangeEvent(key);
+        minecraft.getSoundManager().play(SimpleSoundInstance.forUI(event, Math.max(0.0F, volume), pitch));
+    }
+
+    private void message(UiText text, boolean actionBar) {
+        if (text == null) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.player == null) {
+            return;
+        }
+        // 26.1 split displayClientMessage(Component, boolean) into one call per destination: the overlay line is
+        // sendOverlayMessage, the chat line is sendSystemMessage.
+        if (actionBar) {
+            minecraft.player.sendOverlayMessage(UiTexts.toComponent(text));
+        } else {
+            minecraft.player.sendSystemMessage(UiTexts.toComponent(text));
+        }
+    }
+}
