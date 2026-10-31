@@ -10,6 +10,8 @@
     "lexiconFiles": ["lexicon-gb-en.txt", "lexicon-us-en.txt", "lexicon-zh.txt"],
     "ruleFsts": ["date-zh.fst", "number-zh.fst", "phone-zh.fst"],
     "voicesFile": "voices.bin",
+    "defaultSpeakerId": 3,
+    "speakerIdByScript": { "LATIN": 0 },
     "synthesisQualityScore": 8,
     "performanceScore": 8,
     "recommendationScore": 9,
@@ -45,23 +47,6 @@
     "recommendationScore": 8,
     "size": 744857600,
     "downloadUri": null
-  },
-  {
-    "name": "ZipVoice-int8",
-    "displayName": "ZipVoice INT8",
-    "id": "csukuangfj/ZipVoice-int8",
-    "engine": "zipvoice",
-    "lang": ["zh", "en"],
-    "modelFiles": ["text_encoder_int8.onnx", "fm_decoder_int8.onnx", "vocos_24khz.onnx"],
-    "dataDir": "espeak-ng-data",
-    "lexiconFiles": ["pinyin.raw"],
-    "supportsVoiceClone": true,
-    "defaultVoiceSample": "prompt.wav",
-    "synthesisQualityScore": 8,
-    "performanceScore": 6,
-    "recommendationScore": 8,
-    "size": 314572800,
-    "downloadUri": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-zh-en-emilia.tar.bz2"
   },
   {
     "name": "PocketTTS-ZH-4L-ONNX",

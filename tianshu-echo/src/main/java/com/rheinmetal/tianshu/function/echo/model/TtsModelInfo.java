@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class TtsModelInfo {
     public static final String PERF_LOW = "low";
@@ -24,9 +25,6 @@ public class TtsModelInfo {
     public static final String ENGINE_PIPER = "piper";
     public static final String ENGINE_POCKET = "pocket";
     public static final String ENGINE_VITS = "vits";
-    public static final String ENGINE_ZIPVOICE = "zipvoice";
-    /** The archive this engine ships as renames the directory, so the alias belongs to the model layer. */
-    public static final String ZIPVOICE_DIRECTORY = "ZipVoice";
     private static final int DEFAULT_SCORE = 6;
 
     public String author;
@@ -68,6 +66,16 @@ public class TtsModelInfo {
     public String description;
     public Boolean supportsVoiceClone;
     public String defaultVoiceSample;
+    /**
+     * Voice a multi-speaker model speaks with until the player picks another index. The index that
+     * sounds right belongs to the model, so it is catalog data rather than a caller's assumption.
+     */
+    public Integer defaultSpeakerId;
+    /**
+     * Voice per Unicode script ({@code LATIN}, {@code HAN}, ...) for a model that speaks several
+     * scripts with different voices; text whose script is not listed keeps {@link #defaultSpeakerId}.
+     */
+    public Map<String, Integer> speakerIdByScript;
     public Integer synthesisQualityScore;
     public Integer performanceScore;
     public Integer recommendationScore;
@@ -80,14 +88,9 @@ public class TtsModelInfo {
         if (lower.contains(ENGINE_MATCHA)) return ENGINE_MATCHA;
         if (lower.contains(ENGINE_MOSS)) return ENGINE_MOSS;
         if (lower.contains(ENGINE_POCKET)) return ENGINE_POCKET;
-        if (lower.contains(ENGINE_ZIPVOICE)) return ENGINE_ZIPVOICE;
         if (lower.contains(ENGINE_PIPER)) return ENGINE_PIPER;
         if (voicesFile != null && !voicesFile.isBlank()) return ENGINE_KOKORO;
         return ENGINE_VITS;
-    }
-
-    public String modelDirectoryName() {
-        return ENGINE_ZIPVOICE.equals(getEngineType()) ? ZIPVOICE_DIRECTORY : name;
     }
 
     public String getDisplayName() {
@@ -130,7 +133,7 @@ public class TtsModelInfo {
         }
         return switch (getEngineType()) {
             case ENGINE_MOSS -> 4;
-            case ENGINE_MATCHA, ENGINE_ZIPVOICE -> 6;
+            case ENGINE_MATCHA -> 6;
             default -> 8;
         };
     }
@@ -153,11 +156,16 @@ public class TtsModelInfo {
     public boolean supportsVoiceClone() {
         if (supportsVoiceClone != null) return supportsVoiceClone;
         String engineType = getEngineType();
-        return ENGINE_MOSS.equals(engineType) || ENGINE_ZIPVOICE.equals(engineType);
+        return ENGINE_MOSS.equals(engineType) || ENGINE_POCKET.equals(engineType);
     }
 
     public boolean supportsSpeakerSelection() {
         return !supportsVoiceClone() && voicesFile != null && !voicesFile.isBlank();
+    }
+
+    /** Catalog-declared default voice, {@code 0} when the entry does not name one. */
+    public int getDefaultSpeakerId() {
+        return defaultSpeakerId == null ? 0 : Math.max(0, defaultSpeakerId);
     }
 
     /*
@@ -202,14 +210,6 @@ public class TtsModelInfo {
         if (ENGINE_MOSS.equals(engineType)) {
             return mossManifestComplete(dir);
         }
-        if (ENGINE_ZIPVOICE.equals(engineType)) {
-            return containsFile(dir, "tokens", ".txt")
-                    && directoryPresent(dir, info.dataDir)
-                    && filesPresent(dir, info.lexiconFiles)
-                    && containsDeclaredOrDiscoveredFile(dir, info.modelFiles, "text_encoder", ".onnx")
-                    && containsDeclaredOrDiscoveredFile(dir, info.modelFiles, "fm_decoder", ".onnx")
-                    && (Files.isRegularFile(dir.resolve("vocos_24khz.onnx")) || containsFile(dir, "vocoder", ".onnx"));
-        }
         if (ENGINE_POCKET.equals(engineType)) {
             return filesPresent(dir, info.modelFiles);
         }
@@ -233,21 +233,6 @@ public class TtsModelInfo {
         return files.stream()
                 .filter(f -> f != null && !f.isBlank())
                 .anyMatch(f -> Files.isRegularFile(dir.resolve(f)));
-    }
-
-    private static boolean containsDeclaredOrDiscoveredFile(Path dir, List<String> files, String keyword, String extension) {
-        if (files != null) {
-            for (String file : files) {
-                if (file == null || file.isBlank()) {
-                    continue;
-                }
-                String lower = file.toLowerCase();
-                if (lower.startsWith(keyword.toLowerCase()) && lower.endsWith(extension) && Files.isRegularFile(dir.resolve(file))) {
-                    return true;
-                }
-            }
-        }
-        return containsFile(dir, keyword, extension);
     }
 
     private static boolean filesPresent(Path dir, List<String> files) {

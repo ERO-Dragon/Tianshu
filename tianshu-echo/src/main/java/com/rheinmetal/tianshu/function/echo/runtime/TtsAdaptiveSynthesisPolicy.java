@@ -54,7 +54,7 @@ final class TtsAdaptiveSynthesisPolicy {
         if (maxSentenceCount == 0) {
             return new TtsSynthesisDecision(0, "", TtsSynthesisMode.FULL);
         }
-        if (!isMossAutoregressive(backend)) {
+        if (!isStreamingAutoregressive(backend)) {
             return decision(availableSentences, 1, TtsSynthesisMode.FULL);
         }
         if (!streamingSynthesisAllowed()) {
@@ -182,9 +182,9 @@ final class TtsAdaptiveSynthesisPolicy {
         return text.toString();
     }
 
-    private static boolean isMossAutoregressive(TtsBackendSnapshot backend) {
+    private static boolean isStreamingAutoregressive(TtsBackendSnapshot backend) {
         return backend != null
-                && backend.backendType() == TtsBackendType.MOSS
+                && (backend.backendType() == TtsBackendType.MOSS || backend.backendType() == TtsBackendType.POCKET)
                 && backend.autoregressive();
     }
 

@@ -46,6 +46,22 @@ class TtsAdaptiveSynthesisPolicyTest {
     }
 
     @Test
+    void pocketStreamingBackendUsesStreamingForFirstBatch() {
+        TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
+
+        TtsSynthesisDecision decision = policy.planPlayback(
+                snapshot(TtsBackendType.POCKET, true),
+                List.of("第一句。", "第二句。"),
+                2,
+                TtsPlaybackBufferEstimate.empty(),
+                true
+        );
+
+        assertEquals(1, decision.sentenceCount());
+        assertEquals(TtsSynthesisMode.STREAMING, decision.mode());
+    }
+
+    @Test
     void sufficientBufferSelectsLargestValidGroupInFullMode() {
         TtsAdaptiveSynthesisPolicy policy = new TtsAdaptiveSynthesisPolicy();
 

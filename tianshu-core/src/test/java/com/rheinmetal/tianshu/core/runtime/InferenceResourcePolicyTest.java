@@ -21,9 +21,9 @@ class InferenceResourcePolicyTest {
     void ttsBudgetsStayInSmallOnnxRange() {
         InferenceResourcePolicy policy = InferenceResourcePolicy.fixedProcessors(16);
 
-        assertEquals(4, policy.sherpaTtsThreads("vits", false));
-        assertEquals(3, policy.sherpaTtsThreads("zipvoice", true));
+        assertEquals(4, policy.sherpaTtsThreads("vits"));
         assertEquals(2, policy.mossTtsThreads());
+        assertEquals(2, policy.pocketTtsThreads());
     }
 
     @Test

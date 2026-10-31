@@ -14,12 +14,33 @@ class PocketTextNormalizerTest {
     }
 
     @Test
-    void widensHalfWidthPunctuationButKeepsDecimalPoint() {
+    void widensHalfWidthPunctuationAndReadsNumbers() {
         String normalized = PocketTextNormalizer.normalize("您好,退款368.5元,预计3个工作日到账");
 
         assertTrue(normalized.contains("您好，退款"), normalized);
-        assertTrue(normalized.contains("368.5元"), normalized);
+        assertTrue(normalized.contains("三百六十八点五元"), normalized);
+        assertTrue(normalized.contains("三个工作日"), normalized);
         assertTrue(normalized.contains("到账。"), normalized);
+    }
+
+    @Test
+    void readsDatesAndClockTimes() {
+        assertEquals("二零二六年九月十五日十六点十五分。",
+                PocketTextNormalizer.normalize("2026年9月15日16点15分"));
+        assertEquals("二零二六年九月十五日。",
+                PocketTextNormalizer.normalize("2026-09-15"));
+    }
+
+    @Test
+    void readsPhoneLikeNumbersDigitByDigit() {
+        assertEquals("尾号八六二一。", PocketTextNormalizer.normalize("尾号8621"));
+        assertEquals("验证码一零二四。", PocketTextNormalizer.normalize("验证码1024"));
+    }
+
+    @Test
+    void readsPercentagesAndKeepsEnglishLetterNumberTerms() {
+        assertEquals("百分之五十。", PocketTextNormalizer.normalize("50%"));
+        assertEquals("5G。", PocketTextNormalizer.normalize("5G"));
     }
 
     @Test

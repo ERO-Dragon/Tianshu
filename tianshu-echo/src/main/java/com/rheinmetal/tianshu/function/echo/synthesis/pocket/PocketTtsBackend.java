@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsVoiceProfile;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsAudioSink;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsBackend;
+import com.rheinmetal.tianshu.function.echo.synthesis.TtsCodecExecution;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsPcm16AudioConverter;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsResolvedModel;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMetrics;
@@ -14,11 +15,13 @@ import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMode;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
- * Pocket-TTS-ZH-4L backend. A synthesis request is a complete waveform for now; the same service
- * also exposes the pieces needed to stream later without rebuilding the model assembly.
+ * Pocket-TTS-ZH-4L backend. Complete-result delivery synthesizes one waveform; streaming delivery
+ * overlaps FlowLM generation with Mimi decode on the shared codec lane.
  */
 public final class PocketTtsBackend implements TtsBackend {
     private static final List<String> REQUIRED_FILES = List.of(
@@ -33,13 +36,17 @@ public final class PocketTtsBackend implements TtsBackend {
     );
 
     private final IGameEnvironment env;
+    private final TtsCodecExecution codecExecution;
     private PocketTtsService service;
     private boolean initialized;
     private volatile boolean interrupted;
     private int sampleRate;
+    private VoiceKey cachedVoiceKey;
+    private float[][] cachedVoiceConditioning;
 
-    public PocketTtsBackend(IGameEnvironment env) {
+    public PocketTtsBackend(IGameEnvironment env, TtsCodecExecution codecExecution) {
         this.env = env;
+        this.codecExecution = codecExecution;
     }
 
     @Override
@@ -52,7 +59,7 @@ public final class PocketTtsBackend implements TtsBackend {
                     throw new IllegalStateException("POCKET_TTS_MODEL_INCOMPLETE: " + modelDir.resolve(required));
                 }
             }
-            service = new PocketTtsService(env, modelDir, InferenceResourcePolicy.systemDefault());
+            service = new PocketTtsService(env, modelDir, InferenceResourcePolicy.systemDefault(), codecExecution);
             sampleRate = service.sampleRate();
             initialized = true;
             env.info("Pocket-TTS backend initialized, sampleRate=" + sampleRate + "Hz");
@@ -80,9 +87,14 @@ public final class PocketTtsBackend implements TtsBackend {
         if (!isInitialized() || voiceProfile == null) {
             return false;
         }
-        boolean hasPath = voiceProfile.voiceSample() != null && !voiceProfile.voiceSample().isBlank()
-                && Files.isRegularFile(Path.of(voiceProfile.voiceSample()));
-        return hasPath || voiceProfile.referenceAudio().length > 0;
+        try {
+            voiceConditioning(service, voiceProfile);
+            return true;
+        } catch (Throwable failure) {
+            TtsRuntimeFailurePolicy.rethrowFatal(failure);
+            env.error("Pocket-TTS voice preload failed", failure);
+            return false;
+        }
     }
 
     @Override
@@ -92,37 +104,105 @@ public final class PocketTtsBackend implements TtsBackend {
             throw new IllegalStateException("Pocket-TTS backend is not initialized");
         }
         interrupted = false;
-        long startedNanos = System.nanoTime();
         TtsVoiceProfile voice = request.voiceProfile();
         try {
-            float[][] audio;
-            if (voice.voiceSample() != null && !voice.voiceSample().isBlank()) {
-                audio = current.synthesizeToWaveform(request.text(), Path.of(voice.voiceSample()), this::isInterrupted);
-            } else if (voice.referenceAudio().length > 0) {
-                audio = current.synthesizeToWaveform(
-                        request.text(), voice.referenceAudio(), voice.referenceSampleRate(), this::isInterrupted);
+            if (sink.preferredSynthesisMode() == TtsSynthesisMode.STREAMING && codecExecution != null) {
+                synthesizeStreaming(current, request, voice, sink);
             } else {
-                throw new IllegalStateException("Pocket-TTS requires a reference voice sample");
+                synthesizeFull(current, request, voice, sink);
             }
-            if (interrupted) {
-                return;
-            }
-            byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
-            if (pcm.length > 0) {
-                sink.accept(pcm);
-            }
-            sink.reportSynthesisMetrics(new TtsSynthesisMetrics(
-                    TtsSynthesisMode.FULL,
-                    request.text().length(),
-                    pcmMillis(pcm),
-                    elapsedMillis(startedNanos),
-                    elapsedMillis(startedNanos)
-            ));
         } catch (Throwable failure) {
             TtsRuntimeFailurePolicy.rethrowFatal(failure);
             env.error("Pocket-TTS synthesis failed requestId=" + request.requestId(), failure);
             throw new IllegalStateException("Pocket-TTS synthesis failed", failure);
         }
+    }
+
+    private void synthesizeFull(
+            PocketTtsService current,
+            TtsRequest request,
+            TtsVoiceProfile voice,
+            TtsAudioSink sink
+    ) throws Exception {
+        long startedNanos = System.nanoTime();
+        float[][] audio = current.synthesizeToWaveform(
+                request.text(), voiceConditioning(current, voice), this::isInterrupted);
+        if (interrupted) {
+            return;
+        }
+        byte[] pcm = TtsPcm16AudioConverter.fromChannels(audio);
+        if (pcm.length > 0) {
+            sink.accept(pcm);
+        }
+        sink.reportSynthesisMetrics(new TtsSynthesisMetrics(
+                TtsSynthesisMode.FULL,
+                request.text().length(),
+                pcmMillis(pcm),
+                elapsedMillis(startedNanos),
+                elapsedMillis(startedNanos)
+        ));
+    }
+
+    private void synthesizeStreaming(
+            PocketTtsService current,
+            TtsRequest request,
+            TtsVoiceProfile voice,
+            TtsAudioSink sink
+    ) throws Exception {
+        long startedNanos = System.nanoTime();
+        long[] firstAudioMillis = {0L};
+        long[] audioMillis = {0L};
+        Consumer<float[]> chunkSink = chunk -> {
+            if (interrupted) {
+                return;
+            }
+            byte[] pcm = TtsPcm16AudioConverter.fromChannels(new float[][]{chunk});
+            if (pcm.length == 0) {
+                return;
+            }
+            if (firstAudioMillis[0] == 0L) {
+                firstAudioMillis[0] = elapsedMillis(startedNanos);
+            }
+            audioMillis[0] += pcmMillis(pcm);
+            sink.accept(pcm);
+        };
+        current.synthesizeStreaming(request.text(), voiceConditioning(current, voice), chunkSink, this::isInterrupted);
+        if (interrupted) {
+            return;
+        }
+        sink.reportSynthesisMetrics(new TtsSynthesisMetrics(
+                TtsSynthesisMode.STREAMING,
+                request.text().length(),
+                audioMillis[0],
+                elapsedMillis(startedNanos),
+                firstAudioMillis[0]
+        ));
+    }
+
+    private synchronized float[][] voiceConditioning(PocketTtsService current, TtsVoiceProfile voice) throws Exception {
+        if (voice.voiceSample() != null && !voice.voiceSample().isBlank()) {
+            Path path = Path.of(voice.voiceSample()).toAbsolutePath().normalize();
+            VoiceKey key = new VoiceKey(path.toString(), Files.size(path), Files.getLastModifiedTime(path).toMillis(), 0);
+            if (key.equals(cachedVoiceKey) && cachedVoiceConditioning != null) {
+                return cachedVoiceConditioning;
+            }
+            float[][] conditioning = current.prepareVoice(path);
+            cachedVoiceKey = key;
+            cachedVoiceConditioning = conditioning;
+            return conditioning;
+        }
+        if (voice.referenceAudio().length > 0) {
+            int hash = Arrays.hashCode(voice.referenceAudio()) * 31 + voice.referenceSampleRate();
+            VoiceKey key = new VoiceKey("", 0L, 0L, hash);
+            if (key.equals(cachedVoiceKey) && cachedVoiceConditioning != null) {
+                return cachedVoiceConditioning;
+            }
+            float[][] conditioning = current.prepareVoice(voice.referenceAudio(), voice.referenceSampleRate());
+            cachedVoiceKey = key;
+            cachedVoiceConditioning = conditioning;
+            return conditioning;
+        }
+        throw new IllegalStateException("Pocket-TTS requires a reference voice sample");
     }
 
     private long pcmMillis(byte[] pcm) {
@@ -152,8 +232,13 @@ public final class PocketTtsBackend implements TtsBackend {
         service = null;
         initialized = false;
         sampleRate = 0;
+        cachedVoiceKey = null;
+        cachedVoiceConditioning = null;
         if (current != null) {
             current.close();
         }
+    }
+
+    private record VoiceKey(String path, long size, long modified, int referenceHash) {
     }
 }

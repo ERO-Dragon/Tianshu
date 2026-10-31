@@ -5,12 +5,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.net.URI;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,26 +21,24 @@ class TtsModelInfoTest {
 
         assertFalse(catalog.isEmpty());
         assertNotNull(find(catalog, "MOSS-TTS-Nano-100M-ONNX"));
-        assertNotNull(find(catalog, "ZipVoice-int8"));
+        assertNotNull(find(catalog, "PocketTTS-ZH-4L-ONNX"));
         assertNotNull(find(catalog, "kokoro-multi-lang-v1_1"));
     }
 
     @Test
-    void catalogUsesDownloadUriWithoutLegacyDownloadUrlField() throws Exception {
-        TtsModelInfo zipVoice = find(TtsModelInfo.loadCatalog(), "ZipVoice-int8");
+    void catalogKeepsTheDownloadUriFieldWithoutTheLegacyDownloadUrlField() throws Exception {
+        TtsModelInfo info = find(TtsModelInfo.loadCatalog(), "vits-melo-tts-zh_en");
 
-        String value = (String) TtsModelInfo.class.getField("downloadUri").get(zipVoice);
-
-        assertTrue(URI.create(value).isAbsolute());
+        assertNull(TtsModelInfo.class.getField("downloadUri").get(info));
         assertThrows(NoSuchFieldException.class, () -> TtsModelInfo.class.getField("downloadUrl"));
     }
 
     @Test
-    void voiceCloneSupportIsLimitedToMossAndZipVoiceByDefault() {
+    void voiceCloneSupportIsLimitedToMossAndPocketByDefault() {
         List<TtsModelInfo> catalog = TtsModelInfo.loadCatalog();
 
         assertTrue(find(catalog, "MOSS-TTS-Nano-100M-ONNX").supportsVoiceClone());
-        assertTrue(find(catalog, "ZipVoice-int8").supportsVoiceClone());
+        assertTrue(find(catalog, "PocketTTS-ZH-4L-ONNX").supportsVoiceClone());
         assertFalse(find(catalog, "kokoro-multi-lang-v1_1").supportsVoiceClone());
         assertFalse(find(catalog, "vits-melo-tts-zh_en").supportsVoiceClone());
     }
@@ -75,18 +73,19 @@ class TtsModelInfoTest {
     }
 
     @Test
-    void zipVoiceDirectoryRequiresEncoderDecoderVocoderAndTokens(@TempDir Path tempDir) throws Exception {
-        TtsModelInfo info = find(TtsModelInfo.loadCatalog(), "ZipVoice-int8");
+    void pocketDirectoryRequiresEveryDeclaredGraph(@TempDir Path tempDir) throws Exception {
+        TtsModelInfo info = find(TtsModelInfo.loadCatalog(), "PocketTTS-ZH-4L-ONNX");
 
-        Files.createFile(tempDir.resolve("tokens.txt"));
-        Files.createFile(tempDir.resolve("text_encoder_int8.onnx"));
-        Files.createFile(tempDir.resolve("fm_decoder_int8.onnx"));
+        Files.createFile(tempDir.resolve("flowlm_step.onnx"));
 
         assertFalse(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
 
-        Files.createFile(tempDir.resolve("vocos_24khz.onnx"));
-        Files.createFile(tempDir.resolve("pinyin.raw"));
-        Files.createDirectory(tempDir.resolve("espeak-ng-data"));
+        for (String file : info.modelFiles) {
+            Path target = tempDir.resolve(file);
+            if (!Files.exists(target)) {
+                Files.createFile(target);
+            }
+        }
 
         assertTrue(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
     }
@@ -113,17 +112,19 @@ class TtsModelInfoTest {
     }
 
     @Test
-    void mossCatalogDeclaresItsSecondRepositoryAndItsDirectoryAlias() {
-        List<TtsModelInfo> catalog = TtsModelInfo.loadCatalog();
-        TtsModelInfo moss = find(catalog, "MOSS-TTS-Nano-100M-ONNX");
-        TtsModelInfo zipVoice = find(catalog, "ZipVoice-int8");
+    void mossCatalogDeclaresItsSecondRepository() {
+        TtsModelInfo moss = find(TtsModelInfo.loadCatalog(), "MOSS-TTS-Nano-100M-ONNX");
 
         assertEquals("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", moss.codecRepoId);
-        assertFalse(moss.modelDirectoryName().isBlank());
-        assertEquals(TtsModelInfo.ZIPVOICE_DIRECTORY, zipVoice.modelDirectoryName());
-        assertEquals(
-                Path.of("models", "model", TtsModelInfo.ZIPVOICE_DIRECTORY),
-                TtsModelLayout.modelDirectory(Path.of("models"), zipVoice));
+    }
+
+    @Test
+    void everyCatalogModelResolvesUnderTheModelRoot() {
+        for (TtsModelInfo info : TtsModelInfo.loadCatalog()) {
+            Path directory = TtsModelLayout.modelDirectory(Path.of("models"), info);
+
+            assertEquals(Path.of("models", "model").resolve(info.name), directory);
+        }
     }
 
     private static TtsModelInfo find(List<TtsModelInfo> catalog, String name) {

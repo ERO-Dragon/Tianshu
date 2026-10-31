@@ -203,26 +203,11 @@ final class PocketModelRuntime implements AutoCloseable {
     }
 
     float[] decode(List<float[]> latents, int batchSize) throws Exception {
-        MimiState mimi = new MimiState();
+        StreamingDecoder decoder = openStreamingDecoder();
         List<Float> samples = new ArrayList<>();
-        boolean first = true;
         for (int start = 0; start < latents.size(); start += batchSize) {
             int end = Math.min(latents.size(), start + batchSize);
-            int t = end - start;
-            float[] latent = new float[t * LATENT_DIM];
-            for (int i = 0; i < t; i++) {
-                for (int c = 0; c < LATENT_DIM; c++) {
-                    latent[i * LATENT_DIM + c] = latents.get(start + i)[c] * glue.latentStd[c] + glue.latentMean[c];
-                }
-            }
-            float[] chunk = mimi.decode(this, latent, t);
-            if (first) {
-                int fade = Math.min(120, chunk.length);
-                for (int i = 0; i < fade; i++) {
-                    chunk[i] *= i / (float) fade;
-                }
-                first = false;
-            }
+            float[] chunk = decoder.decode(latents.subList(start, end));
             for (float sample : chunk) {
                 samples.add(sample);
             }
@@ -232,6 +217,38 @@ final class PocketModelRuntime implements AutoCloseable {
             out[i] = samples.get(i);
         }
         return out;
+    }
+
+    StreamingDecoder openStreamingDecoder() {
+        return new StreamingDecoder();
+    }
+
+    /**
+     * Stateful Mimi decoder. One instance per synthesis request; the decoder thread owns it for the
+     * whole lifetime of that request.
+     */
+    final class StreamingDecoder {
+        private final MimiState mimi = new MimiState();
+        private boolean first = true;
+
+        float[] decode(List<float[]> latents) throws Exception {
+            int t = latents.size();
+            float[] latent = new float[t * LATENT_DIM];
+            for (int i = 0; i < t; i++) {
+                for (int c = 0; c < LATENT_DIM; c++) {
+                    latent[i * LATENT_DIM + c] = latents.get(i)[c] * glue.latentStd[c] + glue.latentMean[c];
+                }
+            }
+            float[] chunk = mimi.decode(PocketModelRuntime.this, latent, t);
+            if (first) {
+                int fade = Math.min(120, chunk.length);
+                for (int i = 0; i < fade; i++) {
+                    chunk[i] *= i / (float) fade;
+                }
+                first = false;
+            }
+            return chunk;
+        }
     }
 
     private OnnxTensor stateTensor(float[] state, int length) throws OrtException {

@@ -6,6 +6,6 @@ public enum TtsBackendType {
     POCKET;
 
     public boolean autoregressive() {
-        return this == MOSS;
+        return this == MOSS || this == POCKET;
     }
 }

@@ -5,7 +5,6 @@ import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsMatchaModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig;
-import com.k2fsa.sherpa.onnx.OfflineTtsZipVoiceModelConfig;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
@@ -48,14 +47,13 @@ public final class SherpaOnnxTtsConfigFactory {
         if (ttsConfig == null) {
             return Optional.empty();
         }
-        return Optional.of(new ResolvedConfig(ttsConfig, ttsConfig.getModel().getZipvoice() != null));
+        return Optional.of(new ResolvedConfig(ttsConfig));
     }
 
     private OfflineTtsConfig buildMetadataConfig(File modelDir, TtsModelInfo info, String engineType, String vocoderPath) {
         return switch (engineType) {
             case "kokoro" -> buildKokoroConfig(modelDir, info);
             case "matcha" -> buildMatchaConfig(modelDir, info, vocoderPath);
-            case "zipvoice" -> buildZipVoiceConfig(modelDir, info);
             default -> buildVitsMetadataConfig(modelDir, info);
         };
     }
@@ -81,7 +79,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setKokoro(kokoroBuilder.build())
-                .setNumThreads(threadsFor(info.getEngineType(), false))
+                .setNumThreads(threadsFor(info.getEngineType()))
                 .setDebug(false)
                 .build();
         return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
@@ -108,45 +106,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setMatcha(matchaBuilder.build())
-                .setNumThreads(threadsFor(info.getEngineType(), false))
-                .setDebug(false)
-                .build();
-        return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
-    }
-
-    private OfflineTtsConfig buildZipVoiceConfig(File modelDir, TtsModelInfo info) {
-        String tokensPath = findRequiredFile(modelDir, "tokens", ".txt");
-        String encoderPath = resolveZipVoiceFile(modelDir, info.modelFiles, "text_encoder");
-        String decoderPath = resolveZipVoiceFile(modelDir, info.modelFiles, "fm_decoder");
-        String vocoderPath = resolveZipVoiceVocoder(modelDir);
-        if (tokensPath == null || encoderPath == null || decoderPath == null || vocoderPath == null) {
-            env.error("ZipVoice model files are incomplete", null);
-            return null;
-        }
-        OfflineTtsZipVoiceModelConfig.Builder zipVoiceBuilder = OfflineTtsZipVoiceModelConfig.builder()
-                .setTokens(tokensPath)
-                .setEncoder(encoderPath)
-                .setDecoder(decoderPath)
-                .setVocoder(vocoderPath)
-                .setFeatScale(0.1f)
-                .setTShift(0.5f)
-                .setTargetRms(0.1f)
-                .setGuidanceScale(1.0f);
-        File dataDir = info.dataDir != null && !info.dataDir.isBlank()
-                ? new File(modelDir, info.dataDir)
-                : new File(modelDir, "espeak-ng-data");
-        if (dataDir.exists() && dataDir.isDirectory()) {
-            zipVoiceBuilder.setDataDir(dataDir.getAbsolutePath());
-        }
-        File pinyinRaw = new File(modelDir, "pinyin.raw");
-        if (pinyinRaw.exists() && pinyinRaw.isFile()) {
-            zipVoiceBuilder.setLexicon(pinyinRaw.getAbsolutePath());
-        } else if (info.lexiconFiles != null && !info.lexiconFiles.isEmpty()) {
-            zipVoiceBuilder.setLexicon(joinPaths(modelDir, info.lexiconFiles));
-        }
-        OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
-                .setZipvoice(zipVoiceBuilder.build())
-                .setNumThreads(threadsFor(info.getEngineType(), true))
+                .setNumThreads(threadsFor(info.getEngineType()))
                 .setDebug(false)
                 .build();
         return buildConfigWithRuleFsts(modelConfig, modelDir, info.ruleFsts);
@@ -179,7 +139,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setVits(vitsBuilder.build())
-                .setNumThreads(threadsFor(info.getEngineType(), false))
+                .setNumThreads(threadsFor(info.getEngineType()))
                 .setDebug(false)
                 .build();
         List<String> effectiveRuleFsts = info.ruleFsts;
@@ -213,7 +173,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setVits(vitsBuilder.build())
-                .setNumThreads(threadsFor("piper", false))
+                .setNumThreads(threadsFor("piper"))
                 .setDebug(false)
                 .build();
         return OfflineTtsConfig.builder()
@@ -241,7 +201,7 @@ public final class SherpaOnnxTtsConfigFactory {
         }
         OfflineTtsModelConfig modelConfig = OfflineTtsModelConfig.builder()
                 .setVits(vitsBuilder.build())
-                .setNumThreads(threadsFor("melo", false))
+                .setNumThreads(threadsFor("melo"))
                 .setDebug(false)
                 .build();
         StringBuilder ruleFsts = new StringBuilder();
@@ -325,30 +285,6 @@ public final class SherpaOnnxTtsConfigFactory {
         return null;
     }
 
-    private String resolveZipVoiceFile(File modelDir, List<String> modelFiles, String prefix) {
-        if (modelFiles != null) {
-            for (String candidate : modelFiles) {
-                if (candidate.toLowerCase().startsWith(prefix.toLowerCase())) {
-                    File file = new File(modelDir, candidate);
-                    if (file.exists()) {
-                        return file.getAbsolutePath();
-                    }
-                }
-            }
-        }
-        File fallback = findFile(modelDir, prefix, ".onnx");
-        return fallback != null ? fallback.getAbsolutePath() : null;
-    }
-
-    private String resolveZipVoiceVocoder(File modelDir) {
-        File vocoder = new File(modelDir, "vocos_24khz.onnx");
-        if (vocoder.exists()) {
-            return vocoder.getAbsolutePath();
-        }
-        File fallback = findFile(modelDir, "vocoder", ".onnx");
-        return fallback != null ? fallback.getAbsolutePath() : null;
-    }
-
     private String joinPaths(File baseDir, List<String> relativePaths) {
         StringBuilder result = new StringBuilder();
         for (int i = 0; i < relativePaths.size(); i++) {
@@ -360,8 +296,8 @@ public final class SherpaOnnxTtsConfigFactory {
         return result.toString();
     }
 
-    private int threadsFor(String engineType, boolean zipVoice) {
-        return resourcePolicy.sherpaTtsThreads(engineType, zipVoice);
+    private int threadsFor(String engineType) {
+        return resourcePolicy.sherpaTtsThreads(engineType);
     }
 
     private File findFile(File dir, String keyword, String extension) {
@@ -386,6 +322,6 @@ public final class SherpaOnnxTtsConfigFactory {
         return found != null ? found.getAbsolutePath() : null;
     }
 
-    public record ResolvedConfig(OfflineTtsConfig config, boolean zipVoice) {
+    public record ResolvedConfig(OfflineTtsConfig config) {
     }
 }
