@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.echo;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
-
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
 import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblyContext;
@@ -36,7 +34,7 @@ public final class EchoModuleProvider implements TianshuModuleProvider {
         ports.diagnosticChat().register("SYNTHESIS_COMPLETED", DiagnosticChatNotice.single(
                 "tianshu.chat.progress.tts.input", "text", "input", "output"));
         EchoConfig config = new EchoConfig(
-                ports.configStores().forModule(TtsProtocolAdapter.MODULE_ID),
+                ports.configStores().forModule(TtsModuleId.VALUE),
                 ports.configStores().moduleDirectory());
 
         registrar.addModule(new TtsModuleInstaller(

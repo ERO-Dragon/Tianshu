@@ -1,11 +1,9 @@
 package com.rheinmetal.tianshu.function.echo;
 
-import com.rheinmetal.tianshu.function.echo.runtime.TtsBackendSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsControlAction;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsControlResult;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsFailure;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
-import com.rheinmetal.tianshu.function.echo.runtime.TtsModelSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsOperationResult;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsPlaybackPolicy;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
@@ -41,39 +39,15 @@ public final class TtsModuleService {
         runtime.compareAndSet(ttsRuntime, null);
     }
 
-    public boolean ready() {
-        TtsRuntime current = runtime.get();
-        return current != null && current.isReady();
-    }
-
     public TtsRuntimeSnapshot snapshot() {
         TtsRuntime current = runtime.get();
         return current == null ? TtsRuntimeSnapshot.unbound() : current.snapshot();
     }
 
-    public TtsModelSnapshot modelSnapshot() {
-        TtsModelService current = modelService.get();
-        return current == null ? TtsModelSnapshot.unconfigured() : current.snapshot();
-    }
-
-    public TtsBackendSnapshot backendSnapshot() {
+    /** Whether a settings preview is still the active playback, so the stop button can disappear. */
+    public boolean previewActive() {
         TtsRuntime current = runtime.get();
-        return current == null ? TtsBackendSnapshot.unavailable() : current.backendSnapshot();
-    }
-
-    public TtsOperationResult preview(String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
-        TtsRuntime current = runtime.get();
-        if (current == null) {
-            TtsFailure failure = TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS runtime is not available");
-            notifyFailure(onFailure, failure);
-            return TtsOperationResult.rejected(failure);
-        }
-        if (text == null || text.isBlank()) {
-            TtsFailure failure = TtsFailure.of(TtsFailureCode.EMPTY_TEXT, "TTS preview text is empty");
-            notifyFailure(onFailure, failure);
-            return TtsOperationResult.rejected(failure);
-        }
-        return submitPreview(current, text, voiceProfile, onComplete, onFailure);
+        return current != null && current.snapshot().previewing();
     }
 
     public TtsOperationResult previewModel(String modelName, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
@@ -118,22 +92,6 @@ public final class TtsModuleService {
                 voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
         );
         return current.previewWithModel(previewModel.name, models.currentConfiguredModelName(), request, onComplete, onFailure);
-    }
-
-    private TtsOperationResult submitPreview(TtsRuntime current, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
-        String requestId = "tts-preview:" + UUID.randomUUID();
-        TtsRequest request = new TtsRequest(
-                requestId,
-                requestId,
-                requestId,
-                requestId,
-                text,
-                TtsRequestSource.PREVIEW,
-                TtsPlaybackPolicy.REPLACE_CURRENT,
-                Priority.NORMAL,
-                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
-        );
-        return current.submit(request, onComplete == null ? () -> {} : onComplete, onFailure == null ? ignored -> {} : onFailure);
     }
 
     public TtsControlResult stopPreview(String reason) {

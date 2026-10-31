@@ -85,11 +85,11 @@ public final class TtsModule implements TianshuManagedModule {
         this.loadQueueObserver = new NativeModelLoadQueue.Observer() {
             @Override
             public void onParked(String moduleId, String action, int ahead) {
-                if (!TtsProtocolAdapter.MODULE_ID.equals(moduleId)) {
+                if (!TtsModuleId.VALUE.equals(moduleId)) {
                     return;
                 }
                 publishModuleStatus(ModuleStatuses.waitingKeyed(
-                        TtsProtocolAdapter.MODULE_ID, "tianshu.runtime.module.tts.loading"));
+                        TtsModuleId.VALUE, "tianshu.runtime.module.tts.loading"));
             }
 
             @Override
@@ -104,7 +104,7 @@ public final class TtsModule implements TianshuManagedModule {
 
     @Override
     public String moduleId() {
-        return TtsProtocolAdapter.MODULE_ID;
+        return TtsModuleId.VALUE;
     }
 
     @Override

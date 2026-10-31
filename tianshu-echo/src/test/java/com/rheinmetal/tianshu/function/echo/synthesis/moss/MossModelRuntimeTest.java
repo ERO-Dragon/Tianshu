@@ -4,7 +4,6 @@ import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import ai.onnxruntime.OrtEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
-import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.sentencepiece.SentencePieceProcessor;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +32,6 @@ class MossModelRuntimeTest {
         FakeGameEnvironment env = new FakeGameEnvironment();
         MossModelRuntime runtime = new MossModelRuntime(
                 env,
-                new HuggingFaceDownloader(env),
                 Path.of("missing-model"),
                 InferenceResourcePolicy.fixedProcessors(1)
         );

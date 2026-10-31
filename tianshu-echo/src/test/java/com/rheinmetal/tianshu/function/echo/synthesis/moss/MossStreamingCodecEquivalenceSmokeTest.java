@@ -8,7 +8,6 @@ import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsCodecExecution;
 import com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader;
-import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -48,7 +47,7 @@ class MossStreamingCodecEquivalenceSmokeTest {
 
         FakeGameEnvironment env = new FakeGameEnvironment();
         InferenceResourcePolicy policy = InferenceResourcePolicy.fixedProcessors(smokeProcessors());
-        try (MossModelRuntime runtime = new MossModelRuntime(env, new HuggingFaceDownloader(env), modelDir, policy);
+        try (MossModelRuntime runtime = new MossModelRuntime(env, modelDir, policy);
              ThreadedCodecExecution execution = new ThreadedCodecExecution()) {
             runtime.initialize();
             MossFrameGenerator generator = new MossFrameGenerator(env, runtime);

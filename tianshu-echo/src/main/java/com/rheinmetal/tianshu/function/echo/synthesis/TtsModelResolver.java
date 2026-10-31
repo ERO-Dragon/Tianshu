@@ -17,10 +17,6 @@ public final class TtsModelResolver {
         this.modelService = modelService;
     }
 
-    public Optional<TtsResolvedModel> resolveCurrent() {
-        return resolve(modelService.currentConfiguredModelName());
-    }
-
     public Optional<TtsResolvedModel> resolve(String modelName) {
         Path modelDir = modelService.resolveModelDir(modelName);
         if (modelDir == null) {

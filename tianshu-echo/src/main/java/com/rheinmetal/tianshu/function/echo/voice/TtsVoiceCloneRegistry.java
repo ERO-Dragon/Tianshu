@@ -10,7 +10,6 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,7 +46,6 @@ public final class TtsVoiceCloneRegistry {
             return reject(TtsControlAction.LOAD_VOICE, "TTS voice sample is not available: " + normalize(sampleNameOrPath));
         }
         try {
-            BasicFileAttributes attributes = Files.readAttributes(samplePath, BasicFileAttributes.class);
             TtsReferenceAudio referenceAudio = referenceAudioLoader.loadMono(samplePath);
             if (referenceAudio.samples().length == 0) {
                 return TtsControlResult.rejected(
@@ -60,10 +58,7 @@ public final class TtsVoiceCloneRegistry {
                     owner,
                     samplePath,
                     referenceAudio,
-                    referenceText,
-                    attributes.lastModifiedTime().toMillis(),
-                    attributes.size(),
-                    System.currentTimeMillis()
+                    referenceText
             );
             profiles.put(normalizedVoiceId, profile);
             return TtsControlResult.accepted(TtsControlAction.LOAD_VOICE, 1);
@@ -166,10 +161,6 @@ public final class TtsVoiceCloneRegistry {
         return Optional.of(profile);
     }
 
-    public int size() {
-        return profiles.size();
-    }
-
     public static int maxImportedAudioBytes() {
         return MAX_IMPORTED_AUDIO_BYTES;
     }
@@ -231,23 +222,6 @@ public final class TtsVoiceCloneRegistry {
             }
         }
         return dir.resolve(System.currentTimeMillis() + "-" + fileName).normalize();
-    }
-
-    private static String safeAudioFileName(String value) {
-        String normalized = normalize(value);
-        if (normalized.isBlank()) {
-            return "";
-        }
-        Path fileName = Path.of(normalized).getFileName();
-        if (fileName == null) {
-            return "";
-        }
-        String safe = safePathSegment(fileName.toString());
-        String lower = safe.toLowerCase();
-        if (!(lower.endsWith(".wav") || lower.endsWith(".mp3") || lower.endsWith(".flac"))) {
-            return "";
-        }
-        return safe;
     }
 
     private static String audioExtension(byte[] audio) {

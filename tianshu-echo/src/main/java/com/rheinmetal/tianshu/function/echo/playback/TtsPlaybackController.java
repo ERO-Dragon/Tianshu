@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.playback;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsModuleId;
 
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
@@ -24,7 +24,7 @@ import java.util.Map;
 import java.time.Duration;
 
 public final class TtsPlaybackController {
-    private static final String MODULE_ID = TtsProtocolAdapter.MODULE_ID;
+    private static final String MODULE_ID = TtsModuleId.VALUE;
     private static final String PLAYBACK_CONCURRENCY_KEY = MODULE_ID + ":playback";
     private static final Priority PLAYBACK_COMMAND_PRIORITY = Priority.NORMAL;
 
@@ -278,6 +278,7 @@ public final class TtsPlaybackController {
                         command = PlaybackCommand.finish();
                     } else {
                         slot.underrunCount++;
+                        publishPreviewUnderrun(slot);
                         slot.pumpScheduled = false;
                         return;
                     }
@@ -321,10 +322,59 @@ public final class TtsPlaybackController {
                 synchronized (this) {
                     slot.startedAtMillis = System.currentTimeMillis();
                 }
+                publishPreviewStart(slot);
             }
             case FEED -> audioBridge.feedTtsAudio(slot.session.request().requestId(), command.audio);
             case FINISH -> audioBridge.finishTtsPlayback(slot.session.request().requestId());
         }
+    }
+
+    /**
+     * Records the buffer the preview actually started with. A start buffer close to one chunk means the
+     * next chunk has to arrive before the first one is consumed; that is the window where an opening
+     * stutter shows up.
+     */
+    private void publishPreviewStart(PlaybackSlot slot) {
+        if (slot == null || slot.previewQueue == null) {
+            return;
+        }
+        long bufferedMillis = slot.previewQueue.bufferedMillis();
+        env.diagnostics().publish(DiagnosticEvent.now(
+                MODULE_ID,
+                "TTS_PREVIEW_PLAYBACK_START",
+                DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "requestId", slot.session.request().requestId(),
+                        "sampleRate", Integer.toString(slot.sampleRate),
+                        "startBufferMillis", Long.toString(bufferedMillis),
+                        "firstChunkLatencyMillis", Long.toString(Math.max(0L,
+                                slot.firstChunkAtMillis - slot.session.createdAtMillis())),
+                        "playbackStartWaitMillis", Long.toString(Math.max(0L,
+                                slot.startedAtMillis - slot.firstChunkAtMillis))
+                )
+        ));
+    }
+
+    /** One entry per real underrun, so an opening gap can be told apart from a steady-state one. */
+    private void publishPreviewUnderrun(PlaybackSlot slot) {
+        if (slot == null || slot.previewQueue == null) {
+            return;
+        }
+        env.diagnostics().publish(DiagnosticEvent.now(
+                MODULE_ID,
+                "TTS_PREVIEW_UNDERRUN",
+                DiagnosticSeverity.WARN,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "requestId", slot.session.request().requestId(),
+                        "chunkCount", Integer.toString(slot.chunkCount),
+                        "generatedPcmMillis", Long.toString(slot.generatedPcmMillis),
+                        "bufferedMillis", Long.toString(slot.previewQueue.bufferedMillis()),
+                        "underrunCount", Integer.toString(slot.underrunCount),
+                        "finishRequested", Boolean.toString(slot.finishRequested)
+                )
+        ));
     }
 
     private void publishPreviewMetrics(PlaybackSlot slot) {

@@ -174,14 +174,20 @@ final class MossAudioCodec {
     }
 
     final class StreamingDecoder implements AutoCloseable {
-        private final Map<String, OnnxTensor> stateFeeds;
         private final Map<String, String> outputToInputName;
+        private final JsonArray stateOutputNames;
+        private Map<String, OnnxTensor> initialFeeds;
+        /** Kept open between calls: its state tensors are fed back as the next step's inputs. */
+        private OrtSession.Result stateResult;
         private boolean closed;
 
         private StreamingDecoder() throws OrtException {
             requireStreamingDecode();
-            this.stateFeeds = createStreamingDecodeState();
+            this.initialFeeds = createStreamingDecodeState();
             this.outputToInputName = buildStreamingOutputToInputMapping();
+            this.stateOutputNames = modelRuntime.codecMeta()
+                    .getAsJsonObject("onnx")
+                    .getAsJsonArray("decode_step_output_names");
         }
 
         MossTtsService.DecodeResult decodeFrames(List<List<Integer>> frames) throws Exception {
@@ -190,6 +196,7 @@ final class MossAudioCodec {
             }
             List<List<Integer>> frameChunk = new ArrayList<>(frames);
             int frameCount = frameChunk.size();
+            Map<String, OnnxTensor> stateInputs = currentStateInputs();
             try (OnnxTensor audioCodesTensor = OnnxTensor.createTensor(
                          modelRuntime.environment(), toAudioCodes(frameChunk)
                  );
@@ -201,17 +208,54 @@ final class MossAudioCodec {
                 Map<String, OnnxTensor> inputs = new HashMap<>();
                 inputs.put("audio_codes", audioCodesTensor);
                 inputs.put("audio_code_lengths", audioLengthsTensor);
-                inputs.putAll(stateFeeds);
-                try (OrtSession.Result result = modelRuntime.requireSession("codec_decode_step").run(inputs)) {
-                    float[][][] audio = (float[][][]) result.get("audio").orElseThrow().getValue();
-                    int audioLength = ((int[]) result.get("audio_lengths").orElseThrow().getValue())[0];
+                inputs.putAll(stateInputs);
+                OrtSession.Result next = modelRuntime.requireSession("codec_decode_step").run(inputs);
+                try {
+                    float[][][] audio = (float[][][]) next.get("audio").orElseThrow().getValue();
+                    int audioLength = ((int[]) next.get("audio_lengths").orElseThrow().getValue())[0];
                     MossTtsService.DecodeResult decoded = new MossTtsService.DecodeResult(
                             sliceChannelMajorAudio(audio, 0, audioLength),
                             audioLength
                     );
-                    replaceStreamingState(result, stateFeeds, outputToInputName);
+                    adoptState(next);
                     return decoded;
+                } catch (Exception failure) {
+                    next.close();
+                    throw failure;
                 }
+            }
+        }
+
+        /**
+         * The codec step output tensors are handed straight back as the next step's inputs. The previous
+         * result owns them, so it must stay open until the next run has consumed them; only then is it
+         * closed. This removes the native→Java→native copy that {@code cloneTensor} used to perform for
+         * every state tensor on every batch.
+         */
+        private Map<String, OnnxTensor> currentStateInputs() throws Exception {
+            if (stateResult == null) {
+                return initialFeeds;
+            }
+            Map<String, OnnxTensor> inputs = new HashMap<>();
+            for (int index = 2; index < stateOutputNames.size(); index++) {
+                String outputName = stateOutputNames.get(index).getAsString();
+                OnnxValue value = stateResult.get(outputName).orElseThrow();
+                if (!(value instanceof OnnxTensor tensor)) {
+                    throw new IllegalStateException("Unexpected MOSS codec state type: " + value.getClass());
+                }
+                inputs.put(outputToInputName.getOrDefault(outputName, outputName), tensor);
+            }
+            return inputs;
+        }
+
+        private void adoptState(OrtSession.Result next) {
+            OrtSession.Result previous = stateResult;
+            stateResult = next;
+            if (previous != null) {
+                previous.close();
+            } else {
+                closeTensors(initialFeeds);
+                initialFeeds = new HashMap<>();
             }
         }
 
@@ -221,7 +265,12 @@ final class MossAudioCodec {
                 return;
             }
             closed = true;
-            closeTensors(stateFeeds);
+            if (stateResult != null) {
+                stateResult.close();
+                stateResult = null;
+            }
+            closeTensors(initialFeeds);
+            initialFeeds = new HashMap<>();
         }
     }
 

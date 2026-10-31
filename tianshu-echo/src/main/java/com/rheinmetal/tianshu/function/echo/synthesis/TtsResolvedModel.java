@@ -24,6 +24,9 @@ public record TtsResolvedModel(Path modelDir, TtsModelInfo modelInfo, TtsBackend
         if (info != null && "moss".equals(info.getEngineType())) {
             return TtsBackendType.MOSS;
         }
+        if (info != null && "pocket".equals(info.getEngineType())) {
+            return TtsBackendType.POCKET;
+        }
         return TtsBackendType.SHERPA;
     }
 }

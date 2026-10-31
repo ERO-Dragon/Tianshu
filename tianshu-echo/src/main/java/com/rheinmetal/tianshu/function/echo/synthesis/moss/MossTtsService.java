@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsCodecExecution;
-import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -17,61 +16,57 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class MossTtsService implements AutoCloseable {
     private static final int MAX_CONTEXT_TOKENS = 75;
-    /** Small first batch keeps first-audio latency low. */
-    static final int FIRST_CHUNK_FRAMES = 4;
     /**
-     * Later batches are larger because the codec decode step pays a fixed cost per invocation.
-     * <p>
-     * Hard ceiling: one MOSS frame is 80 ms of audio, so this must stay well below
-     * {@code TtsPreviewPlaybackPolicy.maxQueueMillis} (800 ms). A single chunk that alone exceeds
-     * the playback queue capacity can never be accepted - the queue blocks until timeout and then
-     * rejects it, silently dropping that audio. 8 frames = 640 ms leaves headroom for the 320 ms
-     * first chunk to still be buffered.
+     * The first two decode batches stay small because the first chunk alone determines first-audio
+     * latency and the second one has to cover the first chunk's playback window. 5 frames = 400 ms,
+     * 6 frames = 480 ms; the steady batch is 8 frames = 640 ms, still below the 800 ms preview queue.
      */
+    static final int FIRST_CHUNK_FRAMES = 5;
+    static final int SECOND_CHUNK_FRAMES = 6;
     static final int STEADY_CHUNK_FRAMES = 8;
     private static final LongSupplier RANDOM_SEED_SOURCE = () -> ThreadLocalRandom.current().nextLong();
     private final MossModelRuntime modelRuntime;
     private final MossFrameGenerator frameGenerator;
     private final MossAudioCodec audioCodec;
     private final MossTextChunker textChunker;
-    private volatile LongSupplier synthesisSeedSource = RANDOM_SEED_SOURCE;
+    private final LongSupplier synthesisSeedSource = RANDOM_SEED_SOURCE;
     private final MossStreamingDecodePipeline streamingDecodePipeline;
 
     public MossTtsService(
             IGameEnvironment env,
-            HuggingFaceDownloader downloader,
             Path modelRootDir,
             TtsCodecExecution codecExecution
     ) {
-        this(env, downloader, modelRootDir, InferenceResourcePolicy.systemDefault(), codecExecution);
+        this(env, modelRootDir, InferenceResourcePolicy.systemDefault(), codecExecution);
     }
 
     public MossTtsService(
             IGameEnvironment env,
-            HuggingFaceDownloader downloader,
             Path modelRootDir,
             InferenceResourcePolicy resourcePolicy,
             TtsCodecExecution codecExecution
     ) {
         this(
                 env,
-                downloader,
                 modelRootDir,
                 resourcePolicy,
                 codecExecution,
-                MossStreamingDecodeCadence.firstChunkThenBatched(FIRST_CHUNK_FRAMES, STEADY_CHUNK_FRAMES)
+                MossStreamingDecodeCadence.firstTwoChunksThenBatched(
+                        FIRST_CHUNK_FRAMES,
+                        SECOND_CHUNK_FRAMES,
+                        STEADY_CHUNK_FRAMES
+                )
         );
     }
 
     MossTtsService(
             IGameEnvironment env,
-            HuggingFaceDownloader downloader,
             Path modelRootDir,
             InferenceResourcePolicy resourcePolicy,
             TtsCodecExecution codecExecution,
             MossStreamingDecodeCadence cadence
     ) {
-        this.modelRuntime = new MossModelRuntime(env, downloader, modelRootDir, resourcePolicy);
+        this.modelRuntime = new MossModelRuntime(env, modelRootDir, resourcePolicy);
         this.frameGenerator = new MossFrameGenerator(env, modelRuntime);
         this.audioCodec = new MossAudioCodec(env, modelRuntime);
         this.textChunker = new MossTextChunker(MAX_CONTEXT_TOKENS, text -> encodeText(text).length);
@@ -94,15 +89,6 @@ public class MossTtsService implements AutoCloseable {
 
     public void setGenerationSeed(long seed) {
         frameGenerator.setGenerationSeed(seed);
-    }
-
-    /**
-     * Overrides the per-attempt synthesis seed source. Production keeps the random default; a
-     * reproducible benchmark pins it so every run generates identical audio and RTF comparisons
-     * stop being dominated by randomly varying utterance length.
-     */
-    public void setSynthesisSeedSource(LongSupplier seedSource) {
-        this.synthesisSeedSource = seedSource == null ? RANDOM_SEED_SOURCE : seedSource;
     }
 
     public int contextualSentenceLimit(List<String> sentences) {

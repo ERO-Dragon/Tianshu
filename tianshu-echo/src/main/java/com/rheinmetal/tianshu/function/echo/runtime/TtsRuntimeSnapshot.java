@@ -30,4 +30,9 @@ public record TtsRuntimeSnapshot(
     public static TtsRuntimeSnapshot unbound() {
         return new TtsRuntimeSnapshot(false, false, false, false, false, TtsPlaybackState.IDLE, "", "", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", System.currentTimeMillis());
     }
+
+    /** Whether the active playback belongs to a settings preview rather than to a dialogue turn. */
+    public boolean previewing() {
+        return TtsRequestSource.PREVIEW.value().equals(activeSource);
+    }
 }

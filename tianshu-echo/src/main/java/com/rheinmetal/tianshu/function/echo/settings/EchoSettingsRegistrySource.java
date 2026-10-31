@@ -1,8 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.settings;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsModuleId;
 
-import com.rheinmetal.tianshu.function.echo.settings.EchoSettingsAccess;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.api.settings.SettingsButtonStyle;
@@ -26,9 +25,6 @@ import com.rheinmetal.tianshu.function.echo.TtsVoiceLibraryService;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsFailure;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsOperationResult;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsVoiceProfile;
-import com.rheinmetal.tianshu.function.echo.settings.TtsSettingsApplier;
-import com.rheinmetal.tianshu.function.echo.settings.TtsSettingsRuntimeActions;
-import com.rheinmetal.tianshu.function.echo.settings.TtsSettingsSnapshot;
 import com.rheinmetal.tianshu.function.echo.model.TtsModelSettings;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
@@ -49,7 +45,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class EchoSettingsRegistrySource implements TianshuSettingsRegistrySource {
-    private static final String MODULE_ID = TtsProtocolAdapter.MODULE_ID;
+    private static final String MODULE_ID = TtsModuleId.VALUE;
     private static final long DOWNLOAD_REFRESH_INTERVAL_MILLIS = 250L;
     private static final UiText TITLE = tts("title");
     private static final UiText DESCRIPTION = tts("description");
@@ -361,7 +357,7 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
         }
 
         private boolean previewRunning() {
-            return previewRunning.get() || "preview".equalsIgnoreCase(ttsModuleService().snapshot().activeSource());
+            return previewRunning.get() || ttsModuleService().previewActive();
         }
 
         private void startPreview(ModuleSettingsContext context) {

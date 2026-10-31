@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackPlacement;
 import com.rheinmetal.tianshu.protocol.Priority;
 
 import java.util.ArrayDeque;
@@ -9,7 +8,6 @@ import java.util.Set;
 
 final class TtsSpeechSession {
     final TtsSpeechSessionKey key;
-    final TtsPlaybackPlacement placement;
     final Priority priority;
     final long admissionSequence;
     final ArrayDeque<String> sentences = new ArrayDeque<>();
@@ -21,9 +19,8 @@ final class TtsSpeechSession {
     boolean cancelled;
     boolean firstWorkIssued;
 
-    TtsSpeechSession(TtsSpeechSessionKey key, TtsPlaybackPlacement placement, Priority priority, long admissionSequence) {
+    TtsSpeechSession(TtsSpeechSessionKey key, Priority priority, long admissionSequence) {
         this.key = key;
-        this.placement = placement;
         this.priority = priority == null ? Priority.NORMAL : priority;
         this.admissionSequence = admissionSequence;
     }

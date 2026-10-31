@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.settings;
 
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelLayout;
 
 import java.nio.file.Path;
 
@@ -21,12 +23,10 @@ public record TtsSettingsSnapshot(
         if (modelName.isEmpty()) {
             return null;
         }
-        Path modelRoot = config.getTtsBasePath().resolve("model").normalize();
-        Path modelPath = modelRoot.resolve(modelName).normalize();
-        if (!modelPath.startsWith(modelRoot)) {
-            throw new IllegalArgumentException("TTS model selection escapes the model root");
-        }
-        return modelPath;
+        TtsModelInfo info = TtsModelInfo.findByName(modelName);
+        return info != null
+                ? TtsModelLayout.modelDirectory(config.getTtsBasePath(), info)
+                : TtsModelLayout.modelDirectory(config.getTtsBasePath(), modelName);
     }
 
     private static String safe(String value) {

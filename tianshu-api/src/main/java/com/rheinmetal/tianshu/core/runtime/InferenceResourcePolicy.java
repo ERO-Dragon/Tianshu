@@ -54,6 +54,14 @@ public final class InferenceResourcePolicy {
         return MOSS_TTS_THREADS;
     }
 
+    /**
+     * Pocket 4L is a 100M model with a separate Mimi decoder; 4 threads was the x86 sweet spot in
+     * the model card, and the same small-model budget keeps it below the logical CPU count.
+     */
+    public int pocketTtsThreads() {
+        return smallModelThreadBudget(4);
+    }
+
     private int smallModelThreadBudget(int upperBound) {
         int threads;
         if (processors >= 12) {

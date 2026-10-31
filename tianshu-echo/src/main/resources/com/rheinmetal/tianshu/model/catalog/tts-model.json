@@ -35,6 +35,7 @@
     "name": "MOSS-TTS-Nano-100M-ONNX",
     "displayName": "MOSS-TTS Nano",
     "id": "OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX",
+    "codecRepoId": "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX",
     "engine": "moss",
     "lang": ["zh", "en"],
     "modelFiles": [],
@@ -61,5 +62,29 @@
     "recommendationScore": 8,
     "size": 314572800,
     "downloadUri": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-zh-en-emilia.tar.bz2"
+  },
+  {
+    "name": "PocketTTS-ZH-4L-ONNX",
+    "displayName": "PocketTTS ZH 4L",
+    "id": "hustfyb/pocket-tts-zh-4l-onnx",
+    "engine": "pocket",
+    "lang": ["zh"],
+    "modelFiles": [
+      "conditioner.onnx",
+      "flowlm_prefill.onnx",
+      "flowlm_step.onnx",
+      "flowlm_shared.data",
+      "mimi_encode.onnx",
+      "mimi_decode_int8.onnx",
+      "ort_glue.npz",
+      "tokenizer.model"
+    ],
+    "supportsVoiceClone": true,
+    "defaultVoiceSample": "kefu.wav",
+    "synthesisQualityScore": 7,
+    "performanceScore": 9,
+    "recommendationScore": 7,
+    "size": 178000000,
+    "downloadUri": null
   }
 ]

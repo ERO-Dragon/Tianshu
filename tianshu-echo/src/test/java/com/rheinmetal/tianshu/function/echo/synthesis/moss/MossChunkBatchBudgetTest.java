@@ -18,18 +18,26 @@ class MossChunkBatchBudgetTest {
     private static final int PREVIEW_SAMPLE_RATE = 48_000;
 
     @Test
-    void steadyChunkFitsInsidePreviewQueueCapacity() {
+    void everyCadenceBatchFitsInsidePreviewQueueCapacity() {
         TtsPreviewPlaybackPolicy policy = TtsPreviewPlaybackPolicy.defaults(PREVIEW_SAMPLE_RATE);
-        long steadyChunkMillis = (long) MossTtsService.STEADY_CHUNK_FRAMES * AUDIO_MILLIS_PER_FRAME;
 
-        assertTrue(steadyChunkMillis <= policy.maxQueueMillis(),
-                "A " + steadyChunkMillis + " ms MOSS chunk exceeds the preview queue capacity of "
-                        + policy.maxQueueMillis() + " ms; the queue would reject it and drop that audio");
+        assertFits(policy, "first", MossTtsService.FIRST_CHUNK_FRAMES);
+        assertFits(policy, "second", MossTtsService.SECOND_CHUNK_FRAMES);
+        assertFits(policy, "steady", MossTtsService.STEADY_CHUNK_FRAMES);
     }
 
     @Test
-    void firstChunkStaysAtOrBelowSteadyChunk() {
+    void firstAndSecondChunkStayAtOrBelowSteadyChunk() {
         assertTrue(MossTtsService.FIRST_CHUNK_FRAMES <= MossTtsService.STEADY_CHUNK_FRAMES,
                 "The first chunk must stay at or below the steady batch size to keep first-audio latency low");
+        assertTrue(MossTtsService.SECOND_CHUNK_FRAMES <= MossTtsService.STEADY_CHUNK_FRAMES,
+                "The second chunk must stay at or below the steady batch size to bridge the first one");
+    }
+
+    private static void assertFits(TtsPreviewPlaybackPolicy policy, String name, int frames) {
+        long chunkMillis = (long) frames * AUDIO_MILLIS_PER_FRAME;
+        assertTrue(chunkMillis <= policy.maxQueueMillis(),
+                "The " + name + " MOSS chunk of " + chunkMillis + " ms exceeds the preview queue capacity of "
+                        + policy.maxQueueMillis() + " ms; the queue would reject it and drop that audio");
     }
 }

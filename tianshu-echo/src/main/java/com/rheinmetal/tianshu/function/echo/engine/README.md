@@ -39,6 +39,8 @@ TTS catalog 的模型条目以 `TtsModelInfo` 为准，常用字段包括：
 
 所有远程文件路径都相对于 Hugging Face 仓库根目录。本地落盘前必须 normalize 并验证仍位于目标模型目录内。
 
+MOSS 条目额外声明 `codecRepoId`（音频 tokenizer 仓库），下载由 `TtsModelService` 按 catalog 执行；backend 只校验已下载的文件，不会自行发起下载。
+
 ## 3. 下载边界
 
 ### 3.1 来源候选
@@ -104,7 +106,7 @@ TTS catalog 的归档字段为 `downloadUri`。旧 `downloadUrl` 字段不再解
 - `voicesFile` 注入后端对应音色资源。
 - `needVocoder=true` 时通过 `downloadVocoder` 获取 Sherpa vocoder 仓库中的 ONNX 文件。
 
-下载完成不等于模型可用；resolver 和 backend 仍必须验证所有必需文件、后端类型和 native runtime。
+下载完成不等于模型可用；resolver 和 backend 仍必须验证所有必需文件、后端类型和 native runtime。backend 只验证，不下载；缺文件的模型在初始化时结构化失败，由模型服务负责补齐。
 
 ## 6. 验证要求
 

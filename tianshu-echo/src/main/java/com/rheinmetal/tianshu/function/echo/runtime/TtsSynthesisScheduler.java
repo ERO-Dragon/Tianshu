@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsModuleId;
 
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.protocol.Priority;
@@ -13,7 +13,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 public final class TtsSynthesisScheduler {
-    private static final String MODULE_ID = TtsProtocolAdapter.MODULE_ID;
+    private static final String MODULE_ID = TtsModuleId.VALUE;
     static final String BACKEND_CONCURRENCY_KEY = MODULE_ID + ":backend";
 
     private final ModuleExecutionAccess executorManager;
@@ -89,8 +89,7 @@ public final class TtsSynthesisScheduler {
         return switch (policy) {
             case CANCEL_SENTENCE_AND_PLAY,
                  CANCEL_SESSION_AND_PLAY,
-                 REPLACE_CURRENT,
-                 LATEST_ONLY -> base.atLeast(Priority.CRITICAL) ? base : Priority.CRITICAL;
+                 REPLACE_CURRENT -> base.atLeast(Priority.CRITICAL) ? base : Priority.CRITICAL;
             case INSERT_AFTER_SENTENCE,
                  INSERT_AFTER_SESSION -> base.atLeast(Priority.HIGH) ? base : Priority.HIGH;
             case QUEUE,
