@@ -25,7 +25,7 @@ import java.util.Map;
 
 /** Owns MOSS prompt encoding and full/streaming audio codec execution. */
 final class MossAudioCodec {
-    private static final int FALLBACK_DECODE_CHUNK_FRAMES = 8;
+    private static final int DECODE_CHUNK_FRAMES = 8;
 
     private final IGameEnvironment env;
     private final MossModelRuntime modelRuntime;
@@ -88,89 +88,38 @@ final class MossAudioCodec {
         }
     }
 
+    /**
+     * Decodes a whole frame list in fixed windows through the streaming decoder.
+     *
+     * <p>The one-shot {@code codec_decode} session materialises a tensor that grows with the
+     * utterance; on a runaway generation (hundreds of frames) it asked ONNX Runtime for gigabytes of
+     * contiguous memory and failed, so a long result could not be decoded at all. Windowed decoding
+     * keeps the footprint flat and is the same session the playback path already uses per batch.</p>
+     */
     MossTtsService.DecodeResult decodeFullAudio(List<List<Integer>> generatedFrames) throws Exception {
-        if (generatedFrames.isEmpty()) {
+        if (generatedFrames == null || generatedFrames.isEmpty()) {
             return emptyResult();
         }
-        int[][][] audioCodes = toAudioCodes(generatedFrames);
-        try (OnnxTensor audioCodesTensor = OnnxTensor.createTensor(modelRuntime.environment(), audioCodes);
-             OnnxTensor lengthsTensor = OnnxTensor.createTensor(
-                     modelRuntime.environment(),
-                     IntBuffer.wrap(new int[]{generatedFrames.size()}),
-                     new long[]{1}
-             )) {
-            Map<String, OnnxTensor> inputs = new HashMap<>();
-            inputs.put("audio_codes", audioCodesTensor);
-            inputs.put("audio_code_lengths", lengthsTensor);
-            try (OrtSession.Result result = modelRuntime.requireSession("codec_decode").run(inputs)) {
-                float[][][] audio = (float[][][]) result.get("audio").orElseThrow().getValue();
-                int audioLength = ((int[]) result.get("audio_lengths").orElseThrow().getValue())[0];
-                return new MossTtsService.DecodeResult(
-                        sliceChannelMajorAudio(audio, 0, audioLength),
-                        audioLength
-                );
-            }
-        }
-    }
-
-    MossTtsService.DecodeResult decodeFullAudioSafe(List<List<Integer>> generatedFrames) throws Exception {
-        if (generatedFrames.isEmpty()) {
-            return emptyResult();
-        }
-        try {
-            return decodeFullAudio(generatedFrames);
-        } catch (Exception failure) {
-            env.warn("MOSS full codec decode failed; using streaming fallback: " + failure.getMessage());
-            return decodeStreamingAudio(generatedFrames);
-        }
-    }
-
-    StreamingDecoder openStreamingDecoder() throws OrtException {
-        return new StreamingDecoder();
-    }
-
-    private MossTtsService.DecodeResult decodeStreamingAudio(List<List<Integer>> generatedFrames) throws Exception {
-        requireStreamingDecode();
-        Map<String, OnnxTensor> stateFeeds = createStreamingDecodeState();
-        Map<String, String> outputToInputName = buildStreamingOutputToInputMapping();
         List<float[][]> audioChunks = new ArrayList<>();
-        try {
-            for (int startIndex = 0; startIndex < generatedFrames.size(); startIndex += FALLBACK_DECODE_CHUNK_FRAMES) {
-                int endIndex = Math.min(
-                        startIndex + FALLBACK_DECODE_CHUNK_FRAMES,
-                        generatedFrames.size()
-                );
-                List<List<Integer>> frameChunk = generatedFrames.subList(startIndex, endIndex);
-                try (OnnxTensor audioCodesTensor = OnnxTensor.createTensor(
-                             modelRuntime.environment(), toAudioCodes(frameChunk)
-                     );
-                     OnnxTensor audioLengthsTensor = OnnxTensor.createTensor(
-                             modelRuntime.environment(),
-                             IntBuffer.wrap(new int[]{frameChunk.size()}),
-                             new long[]{1}
-                     )) {
-                    Map<String, OnnxTensor> inputs = new HashMap<>();
-                    inputs.put("audio_codes", audioCodesTensor);
-                    inputs.put("audio_code_lengths", audioLengthsTensor);
-                    inputs.putAll(stateFeeds);
-                    try (OrtSession.Result result = modelRuntime.requireSession("codec_decode_step").run(inputs)) {
-                        float[][][] audio = (float[][][]) result.get("audio").orElseThrow().getValue();
-                        int audioLength = ((int[]) result.get("audio_lengths").orElseThrow().getValue())[0];
-                        if (audioLength > 0) {
-                            audioChunks.add(sliceChannelMajorAudio(audio, 0, audioLength));
-                        }
-                        replaceStreamingState(result, stateFeeds, outputToInputName);
-                    }
+        try (StreamingDecoder decoder = openStreamingDecoder()) {
+            for (int startIndex = 0; startIndex < generatedFrames.size(); startIndex += DECODE_CHUNK_FRAMES) {
+                int endIndex = Math.min(startIndex + DECODE_CHUNK_FRAMES, generatedFrames.size());
+                MossTtsService.DecodeResult decoded = decoder.decodeFrames(
+                        generatedFrames.subList(startIndex, endIndex));
+                if (decoded.audioLength > 0) {
+                    audioChunks.add(decoded.channels);
                 }
             }
-        } finally {
-            closeTensors(stateFeeds);
         }
         float[][] channels = mergeChannelChunks(audioChunks);
         return new MossTtsService.DecodeResult(
                 channels,
                 channels.length == 0 ? 0 : channels[0].length
         );
+    }
+
+    StreamingDecoder openStreamingDecoder() throws OrtException {
+        return new StreamingDecoder();
     }
 
     final class StreamingDecoder implements AutoCloseable {
@@ -182,8 +131,7 @@ final class MossAudioCodec {
         private boolean closed;
 
         private StreamingDecoder() throws OrtException {
-            requireStreamingDecode();
-            this.initialFeeds = createStreamingDecodeState();
+                this.initialFeeds = createStreamingDecodeState();
             this.outputToInputName = buildStreamingOutputToInputMapping();
             this.stateOutputNames = modelRuntime.codecMeta()
                     .getAsJsonObject("onnx")
@@ -271,32 +219,6 @@ final class MossAudioCodec {
             }
             closeTensors(initialFeeds);
             initialFeeds = new HashMap<>();
-        }
-    }
-
-    private void requireStreamingDecode() {
-        if (!modelRuntime.hasSession("codec_decode_step")) {
-            throw new IllegalStateException("MOSS codec_decode_step session is unavailable");
-        }
-        if (!modelRuntime.codecMeta().has("streaming_decode")) {
-            throw new IllegalStateException("MOSS codec metadata has no streaming_decode section");
-        }
-    }
-
-    private void replaceStreamingState(
-            OrtSession.Result result,
-            Map<String, OnnxTensor> stateFeeds,
-            Map<String, String> outputToInputName
-    ) throws Exception {
-        JsonArray outputNames = modelRuntime.codecMeta()
-                .getAsJsonObject("onnx")
-                .getAsJsonArray("decode_step_output_names");
-        for (int index = 2; index < outputNames.size(); index++) {
-            String outputName = outputNames.get(index).getAsString();
-            Object value = result.get(outputName).orElseThrow().getValue();
-            String inputName = outputToInputName.getOrDefault(outputName, outputName);
-            OnnxTensor replacement = cloneTensor(value);
-            closeValue(stateFeeds.put(inputName, replacement));
         }
     }
 

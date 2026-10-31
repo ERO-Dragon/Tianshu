@@ -19,6 +19,8 @@ final class MossStreamingDecodePipeline {
     private static final int FRAMES_PER_BATCH = 4;
     private static final int DEFAULT_SAMPLE_RATE = 48_000;
     private static final long QUEUE_POLL_MILLIS = 10L;
+    /** Silence this long means the loop is only counting frames; speech pauses stay well below it. */
+    private static final int SILENCE_STOP_MILLIS = 2000;
 
     private final int queueCapacity;
     private final TtsCodecExecution codecExecution;
@@ -66,6 +68,7 @@ final class MossStreamingDecodePipeline {
         ArrayBlockingQueue<FrameBatch> queue = new ArrayBlockingQueue<>(queueCapacity);
         AtomicReference<Throwable> codecFailure = new AtomicReference<>();
         AtomicBoolean stopRequested = new AtomicBoolean();
+        AtomicBoolean silentTailStop = new AtomicBoolean();
         AtomicLong emittedAudioSamples = new AtomicLong();
         AtomicLong firstAudioEmittedNanos = new AtomicLong(-1L);
 
@@ -77,7 +80,9 @@ final class MossStreamingDecodePipeline {
                         stopRequested,
                         codecFailure,
                         emittedAudioSamples,
-                        firstAudioEmittedNanos
+                        firstAudioEmittedNanos,
+                        silentTailStop,
+                        sampleRate
                 )
         );
         if (!codecTask.accepted()) {
@@ -107,7 +112,11 @@ final class MossStreamingDecodePipeline {
             codecTask.cancel("TTS_MOSS_STREAMING_CANCELLED");
             awaitCancelled(codecTask);
             throwCodecFailure(codecFailure.get());
-            return MossFrameGenerationResult.cancelled(List.of(), 0);
+            // The audio already played; stopping because the loop kept generating silence is the end of
+            // the utterance, not a cancellation the caller has to report.
+            return silentTailStop.get()
+                    ? MossFrameGenerationResult.degenerateEnd(List.of(), 0)
+                    : MossFrameGenerationResult.cancelled(List.of(), 0);
         } catch (Throwable failure) {
             stopRequested.set(true);
             codecTask.cancel("TTS_MOSS_GENERATION_FAILED");
@@ -117,7 +126,7 @@ final class MossStreamingDecodePipeline {
         }
 
         throwCodecFailure(codecFailure.get());
-        if (!result.naturallyEnded()) {
+        if (!result.naturallyEnded() && !result.degenerateEnded()) {
             stopRequested.set(true);
             codecTask.cancel(result.cancelled()
                     ? "TTS_MOSS_GENERATION_CANCELLED"
@@ -153,9 +162,12 @@ final class MossStreamingDecodePipeline {
             AtomicBoolean stopRequested,
             AtomicReference<Throwable> codecFailure,
             AtomicLong emittedAudioSamples,
-            AtomicLong firstAudioEmittedNanos
+            AtomicLong firstAudioEmittedNanos,
+            AtomicBoolean silentTailStop,
+            IntSupplier sampleRate
     ) {
         try (Decoder decoder = decoderFactory.open()) {
+            long silentSamples = 0L;
             while (!stopRequested.get()) {
                 FrameBatch batch = queue.poll(QUEUE_POLL_MILLIS, TimeUnit.MILLISECONDS);
                 if (batch == null) {
@@ -166,6 +178,18 @@ final class MossStreamingDecodePipeline {
                         firstAudioEmittedNanos.compareAndSet(-1L, System.nanoTime());
                         emittedAudioSamples.addAndGet(audio[0].length);
                         audioConsumer.accept(audio);
+                        // The loop can keep generating frames that decode to silence long after the last
+                        // syllable; there is nothing left to play, so the utterance ends here.
+                        if (MossSilenceDetector.isSilent(audio)) {
+                            silentSamples += audio[0].length;
+                            long limit = (long) Math.max(1, sampleRate.getAsInt()) * SILENCE_STOP_MILLIS / 1000L;
+                            if (silentSamples >= limit) {
+                                silentTailStop.set(true);
+                                stopRequested.set(true);
+                            }
+                        } else {
+                            silentSamples = 0L;
+                        }
                     }
                 }
                 if (batch.finalBatch()) {

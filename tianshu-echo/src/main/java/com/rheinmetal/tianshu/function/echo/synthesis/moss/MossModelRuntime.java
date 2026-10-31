@@ -116,8 +116,9 @@ final class MossModelRuntime implements AutoCloseable {
         addOptionalSession("local_fixed_sampled_frame", ttsFiles, "local_fixed_sampled_frame");
         addOptionalSession("local_cached_step", ttsFiles, "local_cached_step");
         addSession("codec_encode", codecFiles, "encode");
-        addSession("codec_decode", codecFiles, "decode_full");
-        addOptionalSession("codec_decode_step", codecFiles, "decode_step");
+        // Decoding always runs in fixed windows through the step session: the one-shot `decode_full`
+        // session materialises a tensor that grows with the utterance and cannot decode a long result.
+        addSession("codec_decode_step", codecFiles, "decode_step");
     }
 
     private void addSession(String name, JsonObject files, String fileKey) throws OrtException {
