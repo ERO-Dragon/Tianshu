@@ -462,6 +462,6 @@ CoreManager 封版后，新功能优先通过以下方式扩展：
 
 ## 17. 模块配置接入
 
-模块不得从 CoreManager 或 `TianshuModuleAssemblyContext` 获取完整宿主配置。平台组合根负责把 `config/tianshu-client.toml` 的同一份 `ClientConfig` 映射为模块窄端口：ASR 使用 `AsrConfiguration`，LLM 使用 `LlmConfiguration`，TTS 使用 `TtsConfiguration`，AX 存储使用 `AXStorageConfiguration`。模块只能持有自己的端口，不能读取其他功能模块设置。
+模块不得从 CoreManager 或 `TianshuModuleAssemblyContext` 获取完整宿主配置。平台组合根负责把模块自己的配置存储映射为模块窄端口：ASR 使用 `IntakeConfiguration`，LLM 使用 `WeavingConfiguration`，TTS 使用 `EchoConfiguration`，AX 存储使用 `AuxiliumStorageConfiguration`。模块只能持有自己的端口，不能读取其他功能模块设置。
 
 配置端口是只读运行时视图，不提供 setter 或 `save()`。GUI 写入、校验和保存仍属于 NeoForge；模型 catalog 查询、GGUF 文件发现和目录扫描属于对应 model/function 域，不应写进配置接口默认方法。

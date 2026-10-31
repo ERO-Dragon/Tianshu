@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModuleAssemblyRuntimeBoundaryTest {
     private static final Path COMMON_SOURCES = Path.of("src/main/java");
     private static final Path FUNCTION_SOURCES = COMMON_SOURCES.resolve("com/rheinmetal/tianshu/function");
-    private static final Path NEOFORGE_SOURCES = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java");
+    private static final Path NEOFORGE_SOURCES = Path.of("../tianshu-adapter/1.21-1.21.1-neoforge/src/main/java");
 
     @Test
     void assemblyContextExposesBoundedModuleRuntimeInsteadOfProtocolRuntime() throws Exception {

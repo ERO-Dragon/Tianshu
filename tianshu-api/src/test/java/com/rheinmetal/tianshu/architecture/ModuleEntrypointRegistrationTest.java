@@ -152,7 +152,7 @@ class ModuleEntrypointRegistrationTest {
      */
     @Test
     void theDevelopmentRunDeclaresEveryEntrySourceSet() throws Exception {
-        String adapterBuild = read(REPOSITORY_ROOT.resolve("tianshu-adapter/neoforge-1.21.1/build.gradle"));
+        String adapterBuild = read(REPOSITORY_ROOT.resolve("tianshu-adapter/1.21-1.21.1-neoforge/build.gradle"));
 
         List<String> offenders = new ArrayList<>();
         for (Path module : featureModules()) {
