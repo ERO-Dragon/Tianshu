@@ -31,7 +31,7 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
             }
             tts = new OfflineTts(resolvedConfig.config());
             sampleRate = tts.getSampleRate();
-            TtsModelSettings settings = TtsModelSettings.load(model.modelDir());
+            TtsModelSettings settings = TtsModelSettings.load(model.modelDir(), model.modelInfo());
             defaultSpeed = (float) settings.speed;
             defaultSpeakerId = settings.speakerId;
             initialized = true;

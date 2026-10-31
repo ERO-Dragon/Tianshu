@@ -40,11 +40,15 @@ public record AXSpeechUtterance(
         QUEUE_AFTER_SESSION
     }
 
-    /** Voice parameters, all plain values so they survive the trip through the protocol. */
-    public record VoiceProfile(double speed, int speakerId, String voiceSample) {
+    /**
+     * Voice parameters, all plain values so they survive the trip through the protocol. A {@code null}
+     * speaker means "whatever voice the receiver's model is configured for"; index 0 is a real voice and
+     * must stay distinguishable from that.
+     */
+    public record VoiceProfile(double speed, Integer speakerId, String voiceSample) {
 
         public static VoiceProfile defaults() {
-            return new VoiceProfile(1.0, 0, "");
+            return new VoiceProfile(1.0, null, "");
         }
     }
 

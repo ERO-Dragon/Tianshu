@@ -32,4 +32,36 @@ class TtsModelSettingsTest {
         assertEquals("voice.wav", loaded.selectedVoiceSample);
         try (var files = Files.list(directory)) { assertEquals(1, files.count()); }
     }
+
+    @Test
+    void unconfiguredDirectorySpeaksWithTheCatalogVoice() {
+        var loaded = TtsModelSettings.load(directory, catalogVoice(7));
+        assertEquals(7, loaded.speakerId);
+    }
+
+    @Test
+    void savedSettingsOutrankTheCatalogVoice() {
+        var settings = new TtsModelSettings();
+        settings.speakerId = 0;
+        TtsModelSettings.save(directory, settings);
+        assertEquals(0, TtsModelSettings.load(directory, catalogVoice(7)).speakerId);
+    }
+
+    @Test
+    void malformedSettingsFallBackToTheCatalogVoice() throws Exception {
+        Files.writeString(directory.resolve("model-settings.json"), "{ not json");
+        assertEquals(7, TtsModelSettings.load(directory, catalogVoice(7)).speakerId);
+    }
+
+    @Test
+    void entriesWithoutADeclaredVoiceKeepSpeakingWithIndexZero() {
+        assertEquals(0, TtsModelSettings.load(directory, new TtsModelInfo()).speakerId);
+    }
+
+    private static TtsModelInfo catalogVoice(int speakerId) {
+        var info = new TtsModelInfo();
+        info.voicesFile = "voices.bin";
+        info.defaultSpeakerId = speakerId;
+        return info;
+    }
 }

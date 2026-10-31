@@ -28,20 +28,36 @@ public final class TtsModelSettings {
     public String selectedVoiceSample = "";
 
     public static TtsModelSettings load(Path modelDir) {
+        return load(modelDir, null);
+    }
+
+    /**
+     * Settings of a model directory where the catalog supplies the voice for a directory that has never
+     * been configured. A file the player saved always wins, including an explicit {@code speakerId} of 0.
+     */
+    public static TtsModelSettings load(Path modelDir, TtsModelInfo info) {
         if (modelDir == null) {
-            return new TtsModelSettings();
+            return defaults(info);
         }
         Path file = modelDir.resolve(SETTINGS_FILE);
         if (!Files.exists(file)) {
-            return new TtsModelSettings();
+            return defaults(info);
         }
         try {
             String json = Files.readString(file);
             TtsModelSettings result = GSON.fromJson(json, TtsModelSettings.class);
-            return result != null ? result : new TtsModelSettings();
+            return result != null ? result : defaults(info);
         } catch (Exception malformed) {
-            return new TtsModelSettings();
+            return defaults(info);
         }
+    }
+
+    private static TtsModelSettings defaults(TtsModelInfo info) {
+        TtsModelSettings settings = new TtsModelSettings();
+        if (info != null) {
+            settings.speakerId = info.getDefaultSpeakerId();
+        }
+        return settings;
     }
 
     public static void save(Path modelDir, TtsModelSettings settings) {

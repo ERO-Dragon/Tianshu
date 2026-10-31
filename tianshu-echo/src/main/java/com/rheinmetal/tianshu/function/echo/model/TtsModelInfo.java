@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class TtsModelInfo {
     public static final String PERF_LOW = "low";
@@ -65,6 +66,16 @@ public class TtsModelInfo {
     public String description;
     public Boolean supportsVoiceClone;
     public String defaultVoiceSample;
+    /**
+     * Voice a multi-speaker model speaks with until the player picks another index. The index that
+     * sounds right belongs to the model, so it is catalog data rather than a caller's assumption.
+     */
+    public Integer defaultSpeakerId;
+    /**
+     * Voice per Unicode script ({@code LATIN}, {@code HAN}, ...) for a model that speaks several
+     * scripts with different voices; text whose script is not listed keeps {@link #defaultSpeakerId}.
+     */
+    public Map<String, Integer> speakerIdByScript;
     public Integer synthesisQualityScore;
     public Integer performanceScore;
     public Integer recommendationScore;
@@ -150,6 +161,11 @@ public class TtsModelInfo {
 
     public boolean supportsSpeakerSelection() {
         return !supportsVoiceClone() && voicesFile != null && !voicesFile.isBlank();
+    }
+
+    /** Catalog-declared default voice, {@code 0} when the entry does not name one. */
+    public int getDefaultSpeakerId() {
+        return defaultSpeakerId == null ? 0 : Math.max(0, defaultSpeakerId);
     }
 
     /*

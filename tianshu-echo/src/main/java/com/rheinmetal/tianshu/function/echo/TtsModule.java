@@ -222,7 +222,7 @@ public final class TtsModule implements TianshuManagedModule {
                         return;
                     }
                     TtsOperationResult preparation = expectedRuntime.prepare(
-                            voiceProfile(TtsVoiceOptions.defaults()),
+                            voiceProfile(TtsVoiceOptions.defaults(), ""),
                             initialized -> {
                                 if (!destroyed && generation == lifecycleGeneration.get() && ttsRuntime == expectedRuntime) {
                                     completePreparation(context, initialized);
@@ -504,7 +504,7 @@ public final class TtsModule implements TianshuManagedModule {
                 TtsRequestSource.of(envelope.header().sourceId()),
                 policy,
                 priority,
-                voiceProfile(payload.voice())
+                voiceProfile(payload.voice(), payload.text())
         );
     }
 
@@ -519,7 +519,7 @@ public final class TtsModule implements TianshuManagedModule {
                 TtsRequestSource.of(envelope.header().sourceId()),
                 TtsPlaybackPolicy.QUEUE,
                 envelope.header().priority(),
-                voiceProfile(payload.voice())
+                voiceProfile(payload.voice(), payload.text())
         );
     }
 
@@ -539,7 +539,7 @@ public final class TtsModule implements TianshuManagedModule {
         return payload.sessionId() > 0 ? "speak:" + payload.sessionId() + ":" + payload.turnId() : "";
     }
 
-    private TtsVoiceProfile voiceProfile(TtsVoiceOptions voiceOptions) {
+    private TtsVoiceProfile voiceProfile(TtsVoiceOptions voiceOptions, String text) {
         TtsVoiceOptions options = voiceOptions == null ? TtsVoiceOptions.defaults() : voiceOptions;
         String voiceId = options.voiceId();
         if (modelService == null) {
@@ -549,7 +549,10 @@ public final class TtsModule implements TianshuManagedModule {
         com.rheinmetal.tianshu.function.echo.model.TtsModelInfo info = modelService.resolveCurrentModelInfo();
         com.rheinmetal.tianshu.function.echo.model.TtsModelSettings settings = modelService.loadSettings(info);
         float speed = options.speed() == null ? (float) settings.speed : options.speed();
-        int speakerId = options.speakerId() == null ? settings.speakerId : options.speakerId();
+        // An explicit override beats the model's own choice of voice for the text at hand.
+        int speakerId = options.speakerId() != null
+                ? options.speakerId()
+                : com.rheinmetal.tianshu.function.echo.model.TtsSpeakerSelection.select(info, text, settings.speakerId);
         String voiceSample = "";
         if (!voiceId.isBlank() && info != null && info.supportsVoiceClone()) {
             java.util.Optional<TtsVoiceCloneProfile> profile = voiceRegistry().resolve(voiceId);

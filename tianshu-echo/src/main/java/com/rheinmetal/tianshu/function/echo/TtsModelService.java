@@ -97,7 +97,7 @@ public class TtsModelService {
 
     public TtsModelSettings loadSettings(TtsModelInfo info) {
         Path modelDir = info == null ? resolveCurrentModelDir() : resolveModelDir(info);
-        return modelDir == null ? new TtsModelSettings() : TtsModelSettings.load(modelDir);
+        return modelDir == null ? new TtsModelSettings() : TtsModelSettings.load(modelDir, info);
     }
 
     public Path resolveVoiceSamplePath(TtsModelInfo info, String sampleNameOrPath) {

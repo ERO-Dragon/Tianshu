@@ -10,6 +10,8 @@
     "lexiconFiles": ["lexicon-gb-en.txt", "lexicon-us-en.txt", "lexicon-zh.txt"],
     "ruleFsts": ["date-zh.fst", "number-zh.fst", "phone-zh.fst"],
     "voicesFile": "voices.bin",
+    "defaultSpeakerId": 3,
+    "speakerIdByScript": { "LATIN": 0 },
     "synthesisQualityScore": 8,
     "performanceScore": 8,
     "recommendationScore": 9,
