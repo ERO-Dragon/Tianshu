@@ -32,6 +32,9 @@ public final class ShaderProgramHudShader implements HudShader {
     private final ShaderUniformSink uniforms = new ShaderUniformSink();
 
     public ShaderProgramHudShader(ResourceLocation declaredAsset) {
+        // A declaration may name the program bare (`ns:name`), while the shader manager indexes programs as
+        // `ns:core/name` — the same spelling vanilla's own descriptors use. Normalising here keeps the module's
+        // asset tree untouched and makes the program actually resolve.
         Objects.requireNonNull(declaredAsset, "declaredAsset");
         this.descriptor = new ShaderProgram(
                 ResourceLocation.fromNamespaceAndPath(
@@ -41,6 +44,15 @@ public final class ShaderProgramHudShader implements HudShader {
                 DefaultVertexFormat.POSITION_TEX,
                 ShaderDefines.EMPTY
         );
+    }
+
+    private static ResourceLocation coreFolderId(ResourceLocation declared) {
+        if (declared == null) {
+            return null;
+        }
+        return declared.getPath().contains("/")
+                ? declared
+                : ResourceLocation.fromNamespaceAndPath(declared.getNamespace(), "core/" + declared.getPath());
     }
 
     @Override
