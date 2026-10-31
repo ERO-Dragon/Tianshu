@@ -4,6 +4,7 @@ import java.util.Locale;
 
 public final class InferenceResourcePolicy {
     private static final int MOSS_TTS_THREADS = 2;
+    private static final int POCKET_TTS_THREADS = 2;
 
     private final int processors;
 
@@ -55,11 +56,12 @@ public final class InferenceResourcePolicy {
     }
 
     /**
-     * Pocket 4L is a 100M model with a separate Mimi decoder; 4 threads was the x86 sweet spot in
-     * the model card, and the same small-model budget keeps it below the logical CPU count.
+     * Pocket 4L keeps the same two-thread budget as MOSS: it leaves CPU for the game loop while
+     * still measuring below real time on the reference laptop. Four threads improve first audio and
+     * streaming RTF, but that is an explicit benchmark configuration, not the product default.
      */
     public int pocketTtsThreads() {
-        return smallModelThreadBudget(4);
+        return POCKET_TTS_THREADS;
     }
 
     private int smallModelThreadBudget(int upperBound) {

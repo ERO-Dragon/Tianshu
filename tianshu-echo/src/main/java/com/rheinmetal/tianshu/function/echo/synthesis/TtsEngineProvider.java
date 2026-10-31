@@ -84,7 +84,7 @@ public final class TtsEngineProvider {
     private TtsBackend createBackend(TtsBackendType backendType) {
         return switch (backendType) {
             case MOSS -> new MossTtsBackend(env, codecExecution);
-            case POCKET -> new com.rheinmetal.tianshu.function.echo.synthesis.pocket.PocketTtsBackend(env);
+            case POCKET -> new com.rheinmetal.tianshu.function.echo.synthesis.pocket.PocketTtsBackend(env, codecExecution);
             case SHERPA -> new SherpaOnnxTtsBackend(env);
         };
     }

@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.echo.synthesis.pocket;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
+import com.rheinmetal.tianshu.function.echo.synthesis.TtsCodecExecution;
 import com.sentencepiece.SentencePieceProcessor;
 
 import javax.sound.sampled.AudioFormat;
@@ -14,63 +15,78 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /**
  * Pocket-TTS-ZH-4L synthesis: text front-end, voice prompt encoding, FlowLM generation and Mimi
- * decode. The backend-facing surface deliberately returns one mono waveform; streaming is added on
- * top of the same runtime rather than duplicating the model assembly.
+ * decode. The full-result and streaming paths share the same model assembly; only the decode
+ * scheduling differs.
  */
 final class PocketTtsService implements AutoCloseable {
     private static final int MIN_FRAMES_BEFORE_EOS = 6;
     private static final int FRAMES_AFTER_EOS = 5;
     private static final int DECODE_BATCH_FRAMES = 4;
     private static final int SAMPLE_RATE = PocketModelRuntime.SAMPLE_RATE;
+    private static final float[] END_OF_STREAM = new float[0];
 
     private final PocketModelRuntime runtime;
     private final SentencePieceProcessor tokenizer;
+    private final TtsCodecExecution codecExecution;
 
     PocketTtsService(IGameEnvironment env, Path modelDir, InferenceResourcePolicy policy) throws Exception {
+        this(env, modelDir, policy, null);
+    }
+
+    PocketTtsService(
+            IGameEnvironment env,
+            Path modelDir,
+            InferenceResourcePolicy policy,
+            TtsCodecExecution codecExecution
+    ) throws Exception {
         this.runtime = new PocketModelRuntime(env, modelDir, policy);
         runtime.initialize();
         this.tokenizer = runtime.tokenizer();
+        this.codecExecution = codecExecution;
     }
 
     int sampleRate() {
         return SAMPLE_RATE;
     }
 
+    float[][] prepareVoice(Path voiceSamplePath) throws Exception {
+        return prepareVoiceFromPcm(readMono24k(voiceSamplePath));
+    }
+
+    float[][] prepareVoice(float[] referenceAudio, int referenceSampleRate) throws Exception {
+        return prepareVoiceFromPcm(prepareReference(referenceAudio, referenceSampleRate));
+    }
+
+    private float[][] prepareVoiceFromPcm(float[] voicePcm) throws Exception {
+        float[][] voiceLatents = runtime.encodeVoice(
+                padToMultiple(endOnPause(trimPrompt(voicePcm)), PocketModelRuntime.frameSize()));
+        return runtime.prependBos(runtime.projectVoice(voiceLatents));
+    }
+
     float[][] synthesizeToWaveform(String text, Path voiceSamplePath, BooleanSupplier cancelled) throws Exception {
-        float[] voicePcm = readMono24k(voiceSamplePath);
-        return synthesizeToWaveform(text, voicePcm, cancelled);
+        return synthesizeToWaveform(text, prepareVoice(voiceSamplePath), cancelled);
     }
 
     float[][] synthesizeToWaveform(String text, float[] referenceAudio, int referenceSampleRate, BooleanSupplier cancelled)
             throws Exception {
-        float[] voicePcm = prepareReference(referenceAudio, referenceSampleRate);
-        return synthesizeToWaveform(text, voicePcm, cancelled);
+        return synthesizeToWaveform(text, prepareVoice(referenceAudio, referenceSampleRate), cancelled);
     }
 
-    private float[][] synthesizeToWaveform(String text, float[] voicePcm, BooleanSupplier cancelled) throws Exception {
-        if (text == null || text.isBlank()) {
+    float[][] synthesizeToWaveform(String text, float[][] voiceConditioning, BooleanSupplier cancelled) throws Exception {
+        Prepared prepared = prepare(text, voiceConditioning);
+        if (prepared == null) {
             return new float[][]{new float[0]};
         }
-        String normalized = PocketTextNormalizer.normalize(text);
-        int[] textTokens = tokenizer.encode(normalized).stream().mapToInt(Integer::intValue).toArray();
-        if (textTokens.length == 0) {
-            return new float[][]{new float[0]};
-        }
-
-        float[][] voiceLatents = runtime.encodeVoice(padToMultiple(endOnPause(trimPrompt(voicePcm)), PocketModelRuntime.frameSize()));
-        float[][] voiceConditioning = runtime.prependBos(runtime.projectVoice(voiceLatents));
-        int capacity = voiceConditioning.length + textTokens.length + 512;
-        PocketModelRuntime.State state = runtime.newState(capacity);
-        runtime.prefill(voiceConditioning, state);
-        runtime.prefill(runtime.conditioner(textTokens), state);
-
-        int maxFrames = Math.max(32, (int) Math.ceil((textTokens.length / 3.0 + 2.0) * 12.5));
-        List<float[]> latents = generate(state, maxFrames, cancelled);
+        List<float[]> latents = generate(prepared.state(), prepared.maxFrames(), cancelled);
         if (cancelled.getAsBoolean() || latents.isEmpty()) {
             return new float[][]{new float[0]};
         }
@@ -78,8 +94,115 @@ final class PocketTtsService implements AutoCloseable {
         return new float[][]{audio};
     }
 
+    void synthesizeStreaming(String text, Path voiceSamplePath, Consumer<float[]> sink, BooleanSupplier cancelled)
+            throws Exception {
+        synthesizeStreaming(text, prepareVoice(voiceSamplePath), sink, cancelled);
+    }
+
+    void synthesizeStreaming(
+            String text,
+            float[] referenceAudio,
+            int referenceSampleRate,
+            Consumer<float[]> sink,
+            BooleanSupplier cancelled
+    ) throws Exception {
+        synthesizeStreaming(text, prepareVoice(referenceAudio, referenceSampleRate), sink, cancelled);
+    }
+
+    void synthesizeStreaming(
+            String text,
+            float[][] voiceConditioning,
+            Consumer<float[]> sink,
+            BooleanSupplier cancelled
+    ) throws Exception {
+        if (codecExecution == null) {
+            throw new IllegalStateException("Pocket-TTS streaming requires a codec execution lane");
+        }
+        Prepared prepared = prepare(text, voiceConditioning);
+        if (prepared == null) {
+            return;
+        }
+        BlockingQueue<float[]> queue = new LinkedBlockingQueue<>();
+        AtomicReference<Throwable> decoderFailure = new AtomicReference<>();
+        PocketModelRuntime.StreamingDecoder decoder = runtime.openStreamingDecoder();
+        TtsCodecExecution.Task task = codecExecution.submit(() -> {
+            try {
+                List<float[]> batch = new ArrayList<>();
+                while (true) {
+                    float[] first = queue.take();
+                    if (first == END_OF_STREAM) {
+                        return;
+                    }
+                    batch.add(first);
+                    while (batch.size() < DECODE_BATCH_FRAMES) {
+                        float[] next = queue.poll();
+                        if (next == null) {
+                            break;
+                        }
+                        if (next == END_OF_STREAM) {
+                            queue.put(END_OF_STREAM);
+                            break;
+                        }
+                        batch.add(next);
+                    }
+                    sink.accept(decoder.decode(batch));
+                    batch.clear();
+                }
+            } catch (Throwable failure) {
+                decoderFailure.set(failure);
+            }
+        });
+        if (!task.accepted()) {
+            throw new IllegalStateException("Pocket-TTS codec lane rejected the decode task");
+        }
+        try {
+            generate(prepared.state(), prepared.maxFrames(), cancelled, latent -> {
+                try {
+                    queue.put(latent);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+        } finally {
+            queue.put(END_OF_STREAM);
+        }
+        task.await(cancelled);
+        Throwable failure = decoderFailure.get();
+        if (failure != null) {
+            throw new IllegalStateException("Pocket-TTS Mimi decode failed", failure);
+        }
+    }
+
+    private Prepared prepare(String text, float[][] voiceConditioning) throws Exception {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String normalized = PocketTextNormalizer.normalize(text);
+        int[] textTokens = tokenizer.encode(normalized).stream().mapToInt(Integer::intValue).toArray();
+        if (textTokens.length == 0) {
+            return null;
+        }
+
+        int capacity = voiceConditioning.length + textTokens.length + 512;
+        PocketModelRuntime.State state = runtime.newState(capacity);
+        runtime.prefill(voiceConditioning, state);
+        runtime.prefill(runtime.conditioner(textTokens), state);
+        int maxFrames = Math.max(32, (int) Math.ceil((textTokens.length / 3.0 + 2.0) * 12.5));
+        return new Prepared(state, maxFrames);
+    }
+
     private List<float[]> generate(PocketModelRuntime.State state, int maxFrames, BooleanSupplier cancelled) throws Exception {
         List<float[]> latents = new ArrayList<>();
+        generate(state, maxFrames, cancelled, latents::add);
+        return latents;
+    }
+
+    private void generate(
+            PocketModelRuntime.State state,
+            int maxFrames,
+            BooleanSupplier cancelled,
+            Consumer<float[]> sink
+    ) throws Exception {
         Random random = new Random(ThreadLocalRandom.current().nextLong());
         float[] backbone = new float[PocketModelRuntime.LATENT_DIM];
         Arrays.fill(backbone, Float.NaN);
@@ -99,10 +222,9 @@ final class PocketTtsService implements AutoCloseable {
             if (eosStep >= 0 && step >= eosStep + FRAMES_AFTER_EOS) {
                 break;
             }
-            latents.add(output.latent());
+            sink.accept(output.latent());
             backbone = output.latent();
         }
-        return latents;
     }
 
     private float[] prepareReference(float[] audio, int sourceRate) {
@@ -289,5 +411,8 @@ final class PocketTtsService implements AutoCloseable {
     @Override
     public synchronized void close() {
         runtime.close();
+    }
+
+    private record Prepared(PocketModelRuntime.State state, int maxFrames) {
     }
 }
