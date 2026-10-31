@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "Tianshu AI for Fabric. The kernel, the feature modules and the console run on the client; the optional authoritative server component is NeoForge-only for now.",
+  "license": "${mod_license}",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.rheinmetal.tianshu.fabric.TianshuFabric"
+    ],
+    "client": [
+      "com.rheinmetal.tianshu.fabric.TianshuFabricClient"
+    ]
+  },
+  "mixins": [
+    "tianshu.mixins.json",
+    "tianshu-fabric.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=21",
+    "fabric-api": "*",
+    "tianshu_libs": ">=1.0.0"
+  }
+}
