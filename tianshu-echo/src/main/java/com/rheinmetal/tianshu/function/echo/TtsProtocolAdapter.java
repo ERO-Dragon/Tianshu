@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.echo;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
-
 import com.rheinmetal.tianshu.function.echo.protocol.TtsCapabilities;
 
 import com.rheinmetal.tianshu.function.echo.bridge.TtsPresenceActivityBridge;
@@ -31,8 +29,8 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import java.util.EnumSet;
 
 public final class TtsProtocolAdapter extends AbstractProtocolAdapter {
-    public static final String MODULE_ID = "module.tts";
-    public static final String SOURCE_ID = TtsProtocolAdapter.MODULE_ID;
+    public static final String MODULE_ID = TtsModuleId.VALUE;
+    public static final String SOURCE_ID = TtsModuleId.VALUE;
     private static final long MODEL_LOADING_TTL_MILLIS = 300_000L;
     private static final long REQUEST_ACTIVITY_TTL_MILLIS = 900_000L;
 

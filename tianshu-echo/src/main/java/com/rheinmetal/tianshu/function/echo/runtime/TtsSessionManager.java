@@ -25,10 +25,6 @@ public final class TtsSessionManager {
         return Optional.ofNullable(active);
     }
 
-    public synchronized Optional<TtsSession> find(String requestId) {
-        return Optional.ofNullable(sessions.get(requestId));
-    }
-
     public synchronized Optional<TtsSession> cancel(String requestId, String reason) {
         if (requestId == null || requestId.isBlank()) {
             return Optional.empty();
@@ -42,28 +38,6 @@ public final class TtsSessionManager {
             active = null;
         }
         return Optional.of(session);
-    }
-
-    public synchronized List<TtsSession> cancelRequestGroup(String requestIdOrGroup, String reason) {
-        if (requestIdOrGroup == null || requestIdOrGroup.isBlank()) {
-            return List.of();
-        }
-        String normalized = requestIdOrGroup.trim();
-        String groupPrefix = normalized.endsWith(":") ? normalized : normalized + ":";
-        List<TtsSession> cancelled = sessions.values().stream()
-                .filter(session -> !session.isTerminal())
-                .filter(session -> session.request().requestId().equals(normalized)
-                        || session.request().requestId().startsWith(groupPrefix)
-                        || session.request().groupId().equals(normalized)
-                        || session.request().groupId().startsWith(groupPrefix))
-                .toList();
-        for (TtsSession session : cancelled) {
-            session.cancel(reason);
-        }
-        if (active != null && active.isTerminal()) {
-            active = null;
-        }
-        return cancelled;
     }
 
     public synchronized List<TtsSession> cancelAll(String reason) {

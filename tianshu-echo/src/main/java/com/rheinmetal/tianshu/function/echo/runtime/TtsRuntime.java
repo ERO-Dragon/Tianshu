@@ -12,7 +12,7 @@ import com.rheinmetal.tianshu.function.echo.synthesis.TtsPlaybackBufferEstimate;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMode;
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsModuleId;
 import com.rheinmetal.tianshu.function.echo.text.TtsTextNormalizer;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.Priority;
@@ -22,7 +22,6 @@ import com.rheinmetal.tianshu.function.echo.contract.TtsPlaybackState;
 import com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatus;
 import com.rheinmetal.tianshu.function.echo.contract.TtsRequestStatusPayload;
 import com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode;
-import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
@@ -177,10 +176,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
         return running.get() && synthesisEngine.isInitialized();
     }
 
-    public ExecutionLane synthesisLane() {
-        return synthesisScheduler.lane();
-    }
-
     public int sampleRate() {
         return synthesisEngine.sampleRate();
     }
@@ -204,10 +199,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 failure == null ? "" : failure.message(),
                 System.currentTimeMillis()
         );
-    }
-
-    public TtsBackendSnapshot backendSnapshot() {
-        return synthesisEngine.backendSnapshot();
     }
 
     public TtsOperationResult submit(TtsRequest request, Runnable onComplete, Consumer<TtsFailure> onFailure) {
@@ -424,7 +415,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
         return TtsControlResult.accepted(TtsControlAction.STOP_ALL, speechSessions + synthesisTasks);
     }
 
-    public TtsControlResult interruptActive(String reason) {
+    private TtsControlResult interruptActive(String reason) {
         TtsSpeechSessionKey key = speechSessionCoordinator.activeKey().orElse(null);
         if (key == null) {
             publishPlaybackState();
@@ -491,26 +482,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
     public TtsOperationResult reloadModel(Consumer<TtsControlResult> completion) {
         TtsControlResult stopResult = stopAll("model reload");
         return modelLifecycleCoordinator.reload(result -> {
-            TtsControlResult completed = result.accepted()
-                    ? TtsControlResult.accepted(TtsControlAction.RELOAD_MODEL, stopResult.affectedSessions())
-                    : result;
-            if (completion != null) {
-                completion.accept(completed);
-            }
-        });
-    }
-
-    public TtsControlResult useModel(String modelName) {
-        TtsControlResult stopResult = stopAll("model switch");
-        TtsOperationResult submitted = modelLifecycleCoordinator.useModel(modelName, null);
-        return submitted.accepted()
-                ? TtsControlResult.accepted(TtsControlAction.RELOAD_MODEL, stopResult.affectedSessions())
-                : TtsControlResult.rejected(TtsControlAction.RELOAD_MODEL, submitted.failure());
-    }
-
-    public TtsOperationResult useModel(String modelName, Consumer<TtsControlResult> completion) {
-        TtsControlResult stopResult = stopAll("model switch");
-        return modelLifecycleCoordinator.useModel(modelName, result -> {
             TtsControlResult completed = result.accepted()
                     ? TtsControlResult.accepted(TtsControlAction.RELOAD_MODEL, stopResult.affectedSessions())
                     : result;
@@ -668,7 +639,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             publishPlaybackState();
             synthesisEngine.synthesize(session.request(), new RuntimeAudioSink(session, mode));
             env.diagnostics().publish(DiagnosticEvent.now(
-                    TtsProtocolAdapter.MODULE_ID,
+                    TtsModuleId.VALUE,
                     "SYNTHESIS_COMPLETED",
                     DiagnosticSeverity.INFO,
                     DiagnosticPrivacy.REDACTED,
@@ -682,7 +653,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             TtsFailure failure = TtsRuntimeFailurePolicy.classify(TtsFailureCode.SYNTHESIS_FAILED, t);
             failSpeechSession(session, work, context, failure);
             env.diagnostics().publish(DiagnosticEvent.now(
-                    TtsProtocolAdapter.MODULE_ID,
+                    TtsModuleId.VALUE,
                     "SYNTHESIS_FAILED",
                     DiagnosticSeverity.ERROR,
                     DiagnosticPrivacy.REDACTED,
@@ -963,7 +934,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             case INSERT_AFTER_SESSION -> TtsPlaybackPlacement.INSERT_AFTER_SESSION;
             case INSERT_AFTER_SENTENCE -> TtsPlaybackPlacement.INSERT_AFTER_SENTENCE;
             case CANCEL_SENTENCE_AND_PLAY -> TtsPlaybackPlacement.CANCEL_SENTENCE_AND_PLAY;
-            case CANCEL_SESSION_AND_PLAY, REPLACE_CURRENT, LATEST_ONLY -> TtsPlaybackPlacement.CANCEL_SESSION_AND_PLAY;
+            case CANCEL_SESSION_AND_PLAY, REPLACE_CURRENT -> TtsPlaybackPlacement.CANCEL_SESSION_AND_PLAY;
         };
     }
 
@@ -1113,7 +1084,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
         TtsTextNormalizer.Result result = normalizer.normalizeWithReport(rawText);
         if (result.unresolvedIdentifiers() > 0) {
             env.diagnostics().publish(DiagnosticEvent.now(
-                    TtsProtocolAdapter.MODULE_ID,
+                    TtsModuleId.VALUE,
                     "TTS_READABLE_IDENTIFIER_UNRESOLVED",
                     DiagnosticSeverity.WARN,
                     DiagnosticPrivacy.REDACTED,

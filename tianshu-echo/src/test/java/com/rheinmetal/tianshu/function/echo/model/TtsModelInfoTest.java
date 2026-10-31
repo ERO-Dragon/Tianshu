@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.net.URI;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -16,8 +17,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TtsModelInfoTest {
     @Test
     void catalogLoadsCurrentTtsModelResource() {
-        TtsModelInfo.invalidateCatalogCache();
-
         List<TtsModelInfo> catalog = TtsModelInfo.loadCatalog();
 
         assertFalse(catalog.isEmpty());
@@ -28,7 +27,6 @@ class TtsModelInfoTest {
 
     @Test
     void catalogUsesDownloadUriWithoutLegacyDownloadUrlField() throws Exception {
-        TtsModelInfo.invalidateCatalogCache();
         TtsModelInfo zipVoice = find(TtsModelInfo.loadCatalog(), "ZipVoice-int8");
 
         String value = (String) TtsModelInfo.class.getField("downloadUri").get(zipVoice);
@@ -39,7 +37,6 @@ class TtsModelInfoTest {
 
     @Test
     void voiceCloneSupportIsLimitedToMossAndZipVoiceByDefault() {
-        TtsModelInfo.invalidateCatalogCache();
         List<TtsModelInfo> catalog = TtsModelInfo.loadCatalog();
 
         assertTrue(find(catalog, "MOSS-TTS-Nano-100M-ONNX").supportsVoiceClone());
@@ -50,7 +47,6 @@ class TtsModelInfoTest {
 
     @Test
     void ttsCatalogUsesTenPointScores() {
-        TtsModelInfo.invalidateCatalogCache();
         List<TtsModelInfo> catalog = TtsModelInfo.loadCatalog();
 
         for (TtsModelInfo info : catalog) {
@@ -114,6 +110,20 @@ class TtsModelInfoTest {
         Files.writeString(tempDir.resolve("codec_meta.json"), "{}");
 
         assertTrue(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
+    }
+
+    @Test
+    void mossCatalogDeclaresItsSecondRepositoryAndItsDirectoryAlias() {
+        List<TtsModelInfo> catalog = TtsModelInfo.loadCatalog();
+        TtsModelInfo moss = find(catalog, "MOSS-TTS-Nano-100M-ONNX");
+        TtsModelInfo zipVoice = find(catalog, "ZipVoice-int8");
+
+        assertEquals("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", moss.codecRepoId);
+        assertFalse(moss.modelDirectoryName().isBlank());
+        assertEquals(TtsModelInfo.ZIPVOICE_DIRECTORY, zipVoice.modelDirectoryName());
+        assertEquals(
+                Path.of("models", "model", TtsModelInfo.ZIPVOICE_DIRECTORY),
+                TtsModelLayout.modelDirectory(Path.of("models"), zipVoice));
     }
 
     private static TtsModelInfo find(List<TtsModelInfo> catalog, String name) {

@@ -35,6 +35,7 @@
     "name": "MOSS-TTS-Nano-100M-ONNX",
     "displayName": "MOSS-TTS Nano",
     "id": "OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX",
+    "codecRepoId": "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX",
     "engine": "moss",
     "lang": ["zh", "en"],
     "modelFiles": [],

@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.synthesis;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsModuleId;
 
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
@@ -8,7 +8,6 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeFailurePolicy;
-import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.rheinmetal.tianshu.function.echo.synthesis.moss.MossTtsService;
 
 import java.nio.file.Files;
@@ -41,8 +40,7 @@ public final class MossTtsBackend implements TtsBackend {
             if (!Files.exists(modelRootDir)) {
                 Files.createDirectories(modelRootDir);
             }
-            HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
-            service = new MossTtsService(env, downloader, modelRootDir, codecExecution);
+            service = new MossTtsService(env, modelRootDir, codecExecution);
             service.init();
             sampleRate = service.getSampleRate();
             initialized = true;
@@ -157,7 +155,7 @@ public final class MossTtsBackend implements TtsBackend {
                     sink.accept(pcm);
                 }
                 env.diagnostics().publish(DiagnosticEvent.now(
-                        TtsProtocolAdapter.MODULE_ID,
+                        TtsModuleId.VALUE,
                         "MOSS_TTS_STREAM_CHUNK",
                         DiagnosticSeverity.DEBUG,
                         DiagnosticPrivacy.REDACTED,

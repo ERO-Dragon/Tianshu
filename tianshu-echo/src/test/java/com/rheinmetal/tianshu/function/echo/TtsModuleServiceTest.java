@@ -1,9 +1,7 @@
 package com.rheinmetal.tianshu.function.echo;
 
-import com.rheinmetal.tianshu.function.echo.runtime.TtsBackendSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsControlResult;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
-import com.rheinmetal.tianshu.function.echo.runtime.TtsModelSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsOperationResult;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsVoiceProfile;
@@ -14,10 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class TtsModuleServiceTest {
     @Test
-    void previewRejectsEmptyTextWithStructuredFailure() {
+    void previewModelRejectsWhenRuntimeIsNotBound() {
         TtsModuleService service = new TtsModuleService();
 
-        TtsOperationResult result = service.preview("   ", TtsVoiceProfile.defaults(), null, null);
+        TtsOperationResult result = service.previewModel("model", "text", TtsVoiceProfile.defaults(), null, null);
 
         assertFalse(result.accepted());
         assertEquals(TtsFailureCode.RUNTIME_NOT_RUNNING, result.failure().code());
@@ -32,18 +30,6 @@ class TtsModuleServiceTest {
         assertFalse(snapshot.bound());
         assertFalse(snapshot.ready());
         assertEquals(TtsFailureCode.UNKNOWN, snapshot.lastFailureCode());
-    }
-
-    @Test
-    void unboundModelAndBackendSnapshotsUseSafeDefaults() {
-        TtsModuleService service = new TtsModuleService();
-
-        TtsModelSnapshot modelSnapshot = service.modelSnapshot();
-        TtsBackendSnapshot backendSnapshot = service.backendSnapshot();
-
-        assertFalse(modelSnapshot.configured());
-        assertFalse(backendSnapshot.resolved());
-        assertFalse(backendSnapshot.initialized());
     }
 
     @Test

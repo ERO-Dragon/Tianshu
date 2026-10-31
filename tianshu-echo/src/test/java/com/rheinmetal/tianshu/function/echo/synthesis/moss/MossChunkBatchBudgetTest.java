@@ -18,18 +18,12 @@ class MossChunkBatchBudgetTest {
     private static final int PREVIEW_SAMPLE_RATE = 48_000;
 
     @Test
-    void steadyChunkFitsInsidePreviewQueueCapacity() {
+    void decodeBatchFitsInsidePreviewQueueCapacity() {
         TtsPreviewPlaybackPolicy policy = TtsPreviewPlaybackPolicy.defaults(PREVIEW_SAMPLE_RATE);
-        long steadyChunkMillis = (long) MossTtsService.STEADY_CHUNK_FRAMES * AUDIO_MILLIS_PER_FRAME;
+        long chunkMillis = (long) MossTtsService.DECODE_BATCH_FRAMES * AUDIO_MILLIS_PER_FRAME;
 
-        assertTrue(steadyChunkMillis <= policy.maxQueueMillis(),
-                "A " + steadyChunkMillis + " ms MOSS chunk exceeds the preview queue capacity of "
+        assertTrue(chunkMillis <= policy.maxQueueMillis(),
+                "A " + chunkMillis + " ms MOSS chunk exceeds the preview queue capacity of "
                         + policy.maxQueueMillis() + " ms; the queue would reject it and drop that audio");
-    }
-
-    @Test
-    void firstChunkStaysAtOrBelowSteadyChunk() {
-        assertTrue(MossTtsService.FIRST_CHUNK_FRAMES <= MossTtsService.STEADY_CHUNK_FRAMES,
-                "The first chunk must stay at or below the steady batch size to keep first-audio latency low");
     }
 }

@@ -7,7 +7,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
-import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import com.sentencepiece.SentencePieceProcessor;
 
 import java.io.IOException;
@@ -19,13 +18,9 @@ import java.util.List;
 import java.util.Map;
 
 final class MossModelRuntime implements AutoCloseable {
-    private static final String TTS_REPO_ID = "OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX";
-    private static final String CODEC_REPO_ID = "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX";
-    private static final String REVISION = "main";
     private static final Gson GSON = new Gson();
 
     private final IGameEnvironment env;
-    private final HuggingFaceDownloader downloader;
     private final Path modelRootDir;
     private final InferenceResourcePolicy resourcePolicy;
     private final Map<String, OrtSession> sessions = new HashMap<>();
@@ -35,10 +30,8 @@ final class MossModelRuntime implements AutoCloseable {
     private JsonObject ttsMeta;
     private JsonObject codecMeta;
 
-    MossModelRuntime(IGameEnvironment env, HuggingFaceDownloader downloader, Path modelRootDir,
-                     InferenceResourcePolicy resourcePolicy) {
+    MossModelRuntime(IGameEnvironment env, Path modelRootDir, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
-        this.downloader = downloader;
         this.modelRootDir = modelRootDir;
         this.resourcePolicy = resourcePolicy == null ? InferenceResourcePolicy.systemDefault() : resourcePolicy;
     }
@@ -47,8 +40,11 @@ final class MossModelRuntime implements AutoCloseable {
         if (!sessions.isEmpty()) {
             return;
         }
+        // The model service owns downloading, staging and progress. A backend that silently fetched here
+        // would be a second, unobserved door into the same files, so an incomplete directory is reported
+        // instead of repaired.
         if (findManifestPath() == null) {
-            downloadModels();
+            throw new IOException("TTS_MOSS_MODEL_NOT_INSTALLED: " + modelRootDir);
         }
         loadManifestAndMeta();
         environment = OrtEnvironment.getEnvironment();
@@ -92,13 +88,6 @@ final class MossModelRuntime implements AutoCloseable {
         return codecMeta != null && codecMeta.has("codec_config")
                 ? codecMeta.getAsJsonObject("codec_config").get("sample_rate").getAsInt()
                 : 48_000;
-    }
-
-    private void downloadModels() throws Exception {
-        env.info("moss.model.download.started");
-        downloader.downloadModelFiles(TTS_REPO_ID, modelRootDir, REVISION, true, 3);
-        downloader.downloadModelFiles(CODEC_REPO_ID, modelRootDir, REVISION, true, 3);
-        env.info("moss.model.download.completed");
     }
 
     private void loadManifestAndMeta() throws IOException {

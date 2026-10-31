@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
+import com.rheinmetal.tianshu.function.echo.TtsModuleId;
 
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class TtsModelLifecycleCoordinator {
-    private static final String MODULE_ID = TtsProtocolAdapter.MODULE_ID;
+    private static final String MODULE_ID = TtsModuleId.VALUE;
     private static final String CONCURRENCY_KEY = TtsSynthesisScheduler.BACKEND_CONCURRENCY_KEY;
     /** Queue action name; also what the gate reports to its observers while this load is parked. */
     private static final String LOAD_ACTION = "tts-model";
@@ -163,7 +163,7 @@ final class TtsModelLifecycleCoordinator {
                 && previewRequestId.equals(request.requestId());
     }
 
-    synchronized void shutdown() {
+    void shutdown() {
         List<Consumer<Boolean>> cancelledPrepares;
         List<Consumer<TtsControlResult>> cancelledSwitches;
         Consumer<TtsFailure> cancelledPreview;

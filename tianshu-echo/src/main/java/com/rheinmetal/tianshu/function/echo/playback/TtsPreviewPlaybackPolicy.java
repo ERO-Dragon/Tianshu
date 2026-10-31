@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.echo.playback;
 
-import com.rheinmetal.tianshu.function.echo.runtime.TtsRequestSource;
-
 public record TtsPreviewPlaybackPolicy(
         long prebufferTargetMillis,
         long maxQueueMillis,
@@ -15,10 +13,6 @@ public record TtsPreviewPlaybackPolicy(
 
     public static TtsPreviewPlaybackPolicy defaults(int sampleRate) {
         return new TtsPreviewPlaybackPolicy(120L, 800L, sampleRate);
-    }
-
-    public boolean appliesTo(TtsRequestSource source) {
-        return TtsRequestSource.PREVIEW.equals(source);
     }
 
     public boolean shouldStart(long bufferedMillis, boolean finished) {

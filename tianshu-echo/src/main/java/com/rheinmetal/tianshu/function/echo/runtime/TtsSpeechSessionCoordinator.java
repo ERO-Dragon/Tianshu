@@ -47,7 +47,7 @@ public final class TtsSpeechSessionCoordinator {
         if (pendingSessionCount() >= MAX_PENDING_SESSIONS) {
             return new Admission(AdmissionState.REJECTED, null);
         }
-        TtsSpeechSession incoming = new TtsSpeechSession(key, effectivePlacement, priority, ++admissionSequence);
+        TtsSpeechSession incoming = new TtsSpeechSession(key, priority, ++admissionSequence);
         sessions.put(key, incoming);
         if (active == null) {
             active = incoming;
@@ -197,10 +197,6 @@ public final class TtsSpeechSessionCoordinator {
 
     public synchronized Optional<TtsSpeechSessionKey> activeKey() {
         return Optional.ofNullable(active == null ? null : active.key);
-    }
-
-    public synchronized boolean contains(TtsSpeechSessionKey key) {
-        return key != null && sessions.containsKey(key);
     }
 
     public synchronized boolean cancel(TtsSpeechSessionKey key) {

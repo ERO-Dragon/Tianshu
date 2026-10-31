@@ -27,12 +27,6 @@ public record TtsRequest(
         voiceProfile = voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile;
     }
 
-    public boolean interruptive() {
-        return playbackPolicy == TtsPlaybackPolicy.REPLACE_CURRENT
-                || playbackPolicy == TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY
-                || playbackPolicy == TtsPlaybackPolicy.CANCEL_SESSION_AND_PLAY;
-    }
-
     private static String normalize(String value, String fallback) {
         String normalized = value == null ? "" : value.trim();
         return normalized.isEmpty() ? fallback : normalized;

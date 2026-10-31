@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TtsRuntimeSnapshotTest {
     @Test
@@ -30,5 +31,19 @@ class TtsRuntimeSnapshotTest {
         assertEquals(Priority.NORMAL, snapshot.activePriority());
         assertEquals(TtsFailureCode.UNKNOWN, snapshot.lastFailureCode());
         assertEquals("", snapshot.lastFailureMessage());
+    }
+
+    @Test
+    void previewingMatchesThePreviewRequestSourceRatherThanAnAbbreviation() {
+        TtsRuntimeSnapshot preview = new TtsRuntimeSnapshot(
+                true, true, true, true, false, TtsPlaybackState.SPEAKING,
+                "request", TtsRequestSource.PREVIEW.value(), Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
+        TtsRuntimeSnapshot dialogue = new TtsRuntimeSnapshot(
+                true, true, true, true, false, TtsPlaybackState.SPEAKING,
+                "request", "module.ax", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
+
+        assertTrue(preview.previewing());
+        assertFalse(dialogue.previewing());
+        assertFalse(TtsRuntimeSnapshot.unbound().previewing());
     }
 }

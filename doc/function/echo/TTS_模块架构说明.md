@@ -147,9 +147,9 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 
 | 工作 | Lane |
 |---|---|
-| 非自回归合成 | `TTS_FAST` |
-| 自回归合成 | `TTS_AUTOREGRESSIVE` |
-| MOSS 流式 codec 解码 | `TTS_FAST` |
+| 非自回归合成 | `AUDIO_SYNTH_FAST` |
+| 自回归合成 | `AUDIO_SYNTH_AR` |
+| MOSS 流式 codec 解码 | `AUDIO_SYNTH_FAST` |
 | 播放桥 IO | `AUDIO_IO` |
 | 模型初始化/切换/关闭 | `MODEL_LOAD` |
 | 延迟触发 | `SCHEDULED` |
@@ -161,8 +161,8 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 - `MossModelRuntime` 单一持有 ORT environment、session、tokenizer 和 manifest。
 - `MossTensorState` 直接接管 global KV past 的 `OnnxTensor` handle；不得把 global past 恢复成 `getValue()`、Java 数组复制和 tensor 重建。
 - local cached-step 因结果生命周期约束保留现有 clone，不与 global past 交接混为一谈。
-- 自回归生成在 `TTS_AUTOREGRESSIVE` 运行；流式 codec 通过 TTS 窄执行端口提交到协议托管的 `TTS_FAST`，backend 不持有私有线程或线程池。
-- streaming decoder 由单一消费者独占，固定累计四个生成 frame 解码一次；生成侧与 codec 侧通过有界批次队列并行，队列满时背压等待，不丢帧、不覆盖帧。
+- 自回归生成在 `AUDIO_SYNTH_AR` 运行；流式 codec 通过 TTS 窄执行端口提交到协议托管的 `AUDIO_SYNTH_FAST`，backend 不持有私有线程或线程池。
+- streaming decoder 由单一消费者独占，固定累计四个生成 frame 解码一次；生产固定四帧，实验性的首个短批/稳态大批只由 opt-in benchmark 使用；生成侧与 codec 侧通过有界批次队列并行，队列满时背压等待，不丢帧、不覆盖帧。
 - 帧生成明确返回 `NATURAL_END`、`CANCELLED` 或 `FRAME_LIMIT_REACHED`。只有自然结束才 flush 最后不足四帧的尾批；达到 `max_new_frames` 但没有自然结束时以 `GENERATION_LIMIT_REACHED` 失败，参数包含输入 token、已生成帧数和帧数上限。
 - MOSS 长文本按句子和子句边界组织，并使用真实 tokenizer 保证每个内部推理块不超过上下文上限；单个超长无标点文本也会按 token 安全边界继续拆分，不使用固定字符阈值。
 - `interrupt()` 的取消信号同时进入自回归帧循环和 codec 消费端；返回前等待 decoder 退出并释放状态，不能与下一请求或模型关闭重叠。
@@ -176,7 +176,7 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 
 TTS 复用 model 域下载能力，不重写 transport：
 
-- Hugging Face 仓库按 repo/revision 拼接特定文件，并支持 HF Mirror 降级。
+- Hugging Face 仓库按 repo/revision 拼接特定文件，并支持 HF Mirror 降级；仓库 id 由 catalog 声明（MOSS 的第二个仓库用 `codecRepoId`），backend 不硬编码也不自行下载。
 - GitHub archive 支持 proxy 到 direct URI 降级。
 - 下载使用 staging、完整性校验、暂停/继续/取消和原子提交，半成品目录不可被选为模型。
 
@@ -184,7 +184,7 @@ TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务。D
 
 ## 10. 配置和 GUI
 
-配置统一由宿主的 `config/tianshu-client.toml` 提供。common 只依赖只读 `TtsConfiguration`；client 设置页通过 `TtsModuleService`、`TtsModelService` 和快照工作，不穿透 backend。
+配置由宿主提供的模块配置存储 `config/Tianshu/module/module.tts.properties` 承载；common 只依赖只读 `EchoConfiguration`；client 设置页通过 `TtsModuleService`、`TtsModelService` 和快照工作，不穿透 backend。
 
 `TtsModelService.saveSettings` 必须向调用方传递模型参数写盘错误。模型参数先写同目录临时文件，再替换正式文件（文件系统支持时使用原子替换），避免直接截断原有配置。设置会话只在持久化成功后接受草稿并执行运行时更新；统一配置保存失败时，恢复先前已写入的模型参数和内存配置。
 

@@ -1,11 +1,10 @@
 package com.rheinmetal.tianshu.function.echo;
 
-import com.rheinmetal.tianshu.function.echo.TtsProtocolAdapter;
-
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.function.echo.download.TtsModelDownloadCoordinator;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsModelSnapshot;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelLayout;
 import com.rheinmetal.tianshu.function.echo.model.TtsModelSettings;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
@@ -44,6 +43,11 @@ import java.util.function.Consumer;
 
 public class TtsModelService {
 
+    /** Sibling directories of a model directory; both are staging artefacts, never a selectable model. */
+    private static final String STAGING_SUFFIX = "-staging";
+    private static final String EXTRACT_SUFFIX = "-extract";
+    private static final String TEMP_FILE_SUFFIX = ".tmp";
+
     public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelName, ModelDownloadProgress progress) {
         public static DownloadStatus idle() {
             return new DownloadStatus(false, false, false, "", ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, ""));
@@ -72,8 +76,8 @@ public class TtsModelService {
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new TtsModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
-                TtsProtocolAdapter.MODULE_ID, executorManager, env, this::buildAvailabilitySnapshot);
-        this.deletionRunner = new ModelDeletionRunner(TtsProtocolAdapter.MODULE_ID, executorManager, availabilityRefresher);
+                TtsModuleId.VALUE, executorManager, env, this::buildAvailabilitySnapshot);
+        this.deletionRunner = new ModelDeletionRunner(TtsModuleId.VALUE, executorManager, availabilityRefresher);
         scheduleStartupCleanup();
     }
 
@@ -83,15 +87,7 @@ public class TtsModelService {
     }
 
     public TtsModelInfo findModelByName(String name) {
-        if (name == null || name.isBlank()) {
-            return null;
-        }
-        for (TtsModelInfo info : catalog()) {
-            if (info != null && info.name != null && info.name.equalsIgnoreCase(name.trim())) {
-                return info;
-            }
-        }
-        return null;
+        return TtsModelInfo.findByName(name);
     }
 
     public String currentConfiguredModelName() {
@@ -163,11 +159,11 @@ public class TtsModelService {
             if (info.name.equalsIgnoreCase(dirName) || modelPath.endsWith(info.name)) {
                 return info;
             }
-            if ("zipvoice".equals(info.getEngineType())) {
+            if (TtsModelInfo.ENGINE_ZIPVOICE.equals(info.getEngineType())) {
                 matchedZipVoice.add(info);
             }
         }
-        if ("ZipVoice".equalsIgnoreCase(dirName)) {
+        if (TtsModelInfo.ZIPVOICE_DIRECTORY.equalsIgnoreCase(dirName)) {
             for (TtsModelInfo info : matchedZipVoice) {
                 if ("ZipVoice-int8".equalsIgnoreCase(info.name)) {
                     return info;
@@ -198,27 +194,21 @@ public class TtsModelService {
         if (info == null || info.name == null) {
             return null;
         }
-        String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
-        return config.getTtsBasePath().resolve("model").resolve(modelDirName);
+        return TtsModelLayout.modelDirectory(config.getTtsBasePath(), info);
     }
 
     private Path modelBasePath() {
-        return config.getTtsBasePath().resolve("model");
+        return TtsModelLayout.modelRoot(config.getTtsBasePath());
     }
 
     private Path resolveSelectedModelPath(String modelName) {
-        Path modelRoot = modelBasePath().normalize();
-        Path modelPath = modelRoot.resolve(modelName).normalize();
-        if (!modelPath.startsWith(modelRoot)) {
-            throw new IllegalArgumentException("TTS model selection escapes the model root");
-        }
-        return modelPath;
+        return TtsModelLayout.modelDirectory(config.getTtsBasePath(), modelName);
     }
 
     private void scheduleStartupCleanup() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(TtsProtocolAdapter.MODULE_ID)
+                        .moduleId(TtsModuleId.VALUE)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.tts:model.cleanup")
                         .maxConcurrency(1)
@@ -240,12 +230,12 @@ public class TtsModelService {
             List<Path> paths = walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList();
             for (Path path : paths) {
                 String name = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
-                if (Files.isRegularFile(path) && name.endsWith(".tmp")) {
+                if (Files.isRegularFile(path) && name.endsWith(TEMP_FILE_SUFFIX)) {
                     Files.deleteIfExists(path);
-                } else if (Files.isDirectory(path) && (name.endsWith("-extract") || name.endsWith("-staging"))) {
-                    if (name.endsWith("-extract")) {
-                        deleteRecursively(path);
-                    }
+                } else if (Files.isDirectory(path) && name.endsWith(EXTRACT_SUFFIX)) {
+                    // Extraction is a one-shot step; its directory is garbage. A staging directory is
+                    // resume state for an interrupted transfer, so startup deliberately keeps it.
+                    deleteRecursively(path);
                 }
             }
         } catch (IOException e) {
@@ -389,7 +379,7 @@ public class TtsModelService {
         publishWaiting("tianshu.runtime.module.tts.download_started");
         ProtocolTaskHandle handle = executorManager.submit(
                 ProtocolTaskSpec.builder()
-                        .moduleId(TtsProtocolAdapter.MODULE_ID)
+                        .moduleId(TtsModuleId.VALUE)
                         .lane(ExecutionLane.IO)
                         .concurrencyKey("module.tts:model.download")
                         .maxConcurrency(1)
@@ -480,7 +470,7 @@ public class TtsModelService {
 
             if (info.downloadUri != null && !info.downloadUri.isBlank()) {
                 downloadArchiveModel(task, info, stagingDir, proxyUrl, callback);
-            } else if ("moss".equals(info.getEngineType())) {
+            } else if (TtsModelInfo.ENGINE_MOSS.equals(info.getEngineType())) {
                 downloadMossModel(task, info, stagingDir, callback);
             } else {
                 downloadSherpaModel(task, info, stagingDir, callback);
@@ -518,10 +508,14 @@ public class TtsModelService {
     }
 
     private void downloadMossModel(DownloadTask task, TtsModelInfo info, Path modelDir, ModelDownloadCallback callback) throws Exception {
+        String codecRepoId = info.codecRepoId == null ? "" : info.codecRepoId.trim();
+        if (info.id == null || info.id.isBlank() || codecRepoId.isEmpty()) {
+            throw new IOException("tts.download.moss_repository_missing: " + info.name);
+        }
         task.session().awaitReady();
         emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 0, "model.files.download");
         ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
-        task.session().downloadModelFiles("OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX", modelDir, "main", true, 3,
+        task.session().downloadModelFiles(info.id, modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onOverallProgress(long downloadedBytes, long totalBytes) {
@@ -530,7 +524,7 @@ public class TtsModelService {
                 });
         task.session().awaitReady();
         aggregate.completeCurrentFileSet();
-        task.session().downloadModelFiles("OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX", modelDir, "main", true, 3,
+        task.session().downloadModelFiles(codecRepoId, modelDir, "main", true, 3,
                 new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
                     @Override
                     public void onOverallProgress(long downloadedBytes, long totalBytes) {
@@ -559,7 +553,7 @@ public class TtsModelService {
 
         task.session().awaitReady();
         emitProgress(task, callback, ModelDownloadStage.EXTRACTING, 0, "archive.extract");
-        Path tempDir = modelDir.resolveSibling(modelDir.getFileName().toString() + "-extract");
+        Path tempDir = modelDir.resolveSibling(modelDir.getFileName().toString() + EXTRACT_SUFFIX);
         deleteRecursivelyIfExists(tempDir);
         Files.createDirectories(tempDir);
         extractTarBz2(archivePath, tempDir);
@@ -736,7 +730,7 @@ public class TtsModelService {
     }
 
     private Path stagingDir(Path modelDir) {
-        return modelDir.resolveSibling(modelDir.getFileName().toString() + "-staging");
+        return modelDir.resolveSibling(modelDir.getFileName().toString() + STAGING_SUFFIX);
     }
 
     private void commitStagingDownload(Path stagingDir, Path modelDir) throws IOException {
@@ -798,11 +792,11 @@ public class TtsModelService {
     }
 
     private void publishWaiting(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(TtsProtocolAdapter.MODULE_ID, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(TtsModuleId.VALUE, messageKey));
     }
 
     private void publishFailed(String messageKey) {
-        moduleStatusSink.accept(ModuleStatuses.failedKeyed(TtsProtocolAdapter.MODULE_ID, messageKey));
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(TtsModuleId.VALUE, messageKey));
     }
 
     private void cleanupIncompleteDownload(DownloadTask task) {
@@ -812,7 +806,9 @@ public class TtsModelService {
         Path stagingDir = stagingDir(task.modelDir());
         try {
             deleteRecursivelyIfExists(stagingDir);
-            deleteRecursivelyIfExists(stagingDir.resolveSibling(stagingDir.getFileName().toString() + "-extract"));
+            // The extract directory is a sibling of the model, not of the staging directory.
+            deleteRecursivelyIfExists(
+                    task.modelDir().resolveSibling(task.modelDir().getFileName().toString() + EXTRACT_SUFFIX));
         } catch (IOException e) {
             env.warn("tts.download.cleanup_failed: " + e.getMessage());
         }

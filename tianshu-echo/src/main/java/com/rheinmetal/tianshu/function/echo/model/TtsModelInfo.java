@@ -15,11 +15,17 @@ import java.util.Collections;
 import java.util.List;
 
 public class TtsModelInfo {
-    public static final String TIER_STANDARD = "standard";
-    public static final String TIER_PREMIUM = "premium";
     public static final String PERF_LOW = "low";
     public static final String PERF_MEDIUM = "medium";
     public static final String PERF_HIGH = "high";
+    public static final String ENGINE_KOKORO = "kokoro";
+    public static final String ENGINE_MATCHA = "matcha";
+    public static final String ENGINE_MOSS = "moss";
+    public static final String ENGINE_PIPER = "piper";
+    public static final String ENGINE_VITS = "vits";
+    public static final String ENGINE_ZIPVOICE = "zipvoice";
+    /** The archive this engine ships as renames the directory, so the alias belongs to the model layer. */
+    public static final String ZIPVOICE_DIRECTORY = "ZipVoice";
     private static final int DEFAULT_SCORE = 6;
 
     public String author;
@@ -54,6 +60,8 @@ public class TtsModelInfo {
     public List<String> ruleFsts;
     public String voicesFile;
     public String downloadUri;
+    /** Second Hugging Face repository a MOSS model needs for its audio tokenizer; empty for other engines. */
+    public String codecRepoId;
     public String archiveSubDir;
     public String displayName;
     public String description;
@@ -65,21 +73,19 @@ public class TtsModelInfo {
 
     public String getEngineType() {
         if (engine != null && !engine.isBlank()) return engine;
-        if (name == null) return "vits";
+        if (name == null) return ENGINE_VITS;
         String lower = name.toLowerCase();
-        if (lower.contains("kokoro")) return "kokoro";
-        if (lower.contains("matcha")) return "matcha";
-        if (lower.contains("moss")) return "moss";
-        if (lower.contains("zipvoice")) return "zipvoice";
-        if (lower.contains("piper")) return "piper";
-        if (voicesFile != null && !voicesFile.isBlank()) return "kokoro";
-        return "vits";
+        if (lower.contains(ENGINE_KOKORO)) return ENGINE_KOKORO;
+        if (lower.contains(ENGINE_MATCHA)) return ENGINE_MATCHA;
+        if (lower.contains(ENGINE_MOSS)) return ENGINE_MOSS;
+        if (lower.contains(ENGINE_ZIPVOICE)) return ENGINE_ZIPVOICE;
+        if (lower.contains(ENGINE_PIPER)) return ENGINE_PIPER;
+        if (voicesFile != null && !voicesFile.isBlank()) return ENGINE_KOKORO;
+        return ENGINE_VITS;
     }
 
-    public String getTier() {
-        if (tier != null && !tier.isBlank()) return tier;
-        if ("moss".equals(getEngineType())) return TIER_PREMIUM;
-        return TIER_STANDARD;
+    public String modelDirectoryName() {
+        return ENGINE_ZIPVOICE.equals(getEngineType()) ? ZIPVOICE_DIRECTORY : name;
     }
 
     public String getDisplayName() {
@@ -93,30 +99,8 @@ public class TtsModelInfo {
         return "";
     }
 
-    public int getRating() {
-        if (rating > 0) return Math.min(5, Math.max(1, rating));
-        int quality = getSynthesisQualityScore();
-        if (quality >= 9) return 5;
-        if (quality >= 7) return 4;
-        if (quality >= 5) return 3;
-        if (quality >= 3) return 2;
-        return pinned ? 5 : 0;
-    }
-
-    public String getPerformance() {
-        if (performance != null && !performance.isBlank()) return performance;
-        int score = getPerformanceScore();
-        if (score >= 8) return PERF_LOW;
-        if (score <= 4) return PERF_HIGH;
-        return PERF_MEDIUM;
-    }
-
     public int getSynthesisQualityScore() {
         return clampScore(synthesisQualityScore, legacyQualityScore());
-    }
-
-    public int getQualityScore() {
-        return getSynthesisQualityScore();
     }
 
     public int getPerformanceScore() {
@@ -125,10 +109,6 @@ public class TtsModelInfo {
 
     public int getRecommendationScore() {
         return clampScore(recommendationScore, legacyRecommendationScore());
-    }
-
-    public int getValueScore() {
-        return getRecommendationScore() * 100 + getSynthesisQualityScore() * 10 + getPerformanceScore();
     }
 
     private int legacyQualityScore() {
@@ -147,8 +127,8 @@ public class TtsModelInfo {
             if (PERF_HIGH.equalsIgnoreCase(performance)) return 4;
         }
         return switch (getEngineType()) {
-            case "moss" -> 4;
-            case "matcha", "zipvoice" -> 6;
+            case ENGINE_MOSS -> 4;
+            case ENGINE_MATCHA, ENGINE_ZIPVOICE -> 6;
             default -> 8;
         };
     }
@@ -171,7 +151,7 @@ public class TtsModelInfo {
     public boolean supportsVoiceClone() {
         if (supportsVoiceClone != null) return supportsVoiceClone;
         String engineType = getEngineType();
-        return "moss".equals(engineType) || "zipvoice".equals(engineType);
+        return ENGINE_MOSS.equals(engineType) || ENGINE_ZIPVOICE.equals(engineType);
     }
 
     public boolean supportsSpeakerSelection() {
@@ -179,10 +159,8 @@ public class TtsModelInfo {
     }
 
     /*
-     * The catalog ships with the module that owns the models (tianshu-echo), not with this reader: the
-     * reader is shared by the owning module, the settings page and the platform configuration, so it stays
-     * in the kernel while the data follows its owner. The path mirrors this package, so the kernel never
-     * has to name a feature package.
+     * The catalog ships with the module that owns the models (tianshu-echo) and this reader lives beside
+     * it, so a reader and its data follow the same owner; nothing in the kernel names a TTS model.
      */
     private static final String CATALOG_RESOURCE = "/com/rheinmetal/tianshu/model/catalog/tts-model.json";
     private static final Gson GSON = new Gson();
@@ -202,24 +180,27 @@ public class TtsModelInfo {
         }
     }
 
-    public static synchronized void invalidateCatalogCache() {
-        cachedCatalog = null;
-    }
-
-    public static boolean isModelDownloaded(TtsModelInfo info, Path ttsBasePath) {
-        if (info == null || ttsBasePath == null) return false;
-        String modelDirName = "zipvoice".equals(info.getEngineType()) ? "ZipVoice" : info.name;
-        Path dir = ttsBasePath.resolve("model").resolve(modelDirName);
-        return isModelDirectoryComplete(info, dir);
+    /** Finds one catalog entry by name, the single lookup the model service and the settings page share. */
+    public static TtsModelInfo findByName(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String normalized = name.trim();
+        for (TtsModelInfo info : loadCatalog()) {
+            if (info != null && info.name != null && info.name.equalsIgnoreCase(normalized)) {
+                return info;
+            }
+        }
+        return null;
     }
 
     public static boolean isModelDirectoryComplete(TtsModelInfo info, Path dir) {
         if (info == null || !Files.isDirectory(dir)) return false;
         String engineType = info.getEngineType();
-        if ("moss".equals(engineType)) {
+        if (ENGINE_MOSS.equals(engineType)) {
             return mossManifestComplete(dir);
         }
-        if ("zipvoice".equals(engineType)) {
+        if (ENGINE_ZIPVOICE.equals(engineType)) {
             return containsFile(dir, "tokens", ".txt")
                     && directoryPresent(dir, info.dataDir)
                     && filesPresent(dir, info.lexiconFiles)

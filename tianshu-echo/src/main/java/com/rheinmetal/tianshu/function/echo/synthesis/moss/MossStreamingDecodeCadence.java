@@ -16,13 +16,8 @@ interface MossStreamingDecodeCadence {
     }
 
     /**
-     * Emits a short first batch so the first audio arrives quickly, then switches to large batches
-     * for the rest of the utterance.
-     * <p>
-     * The codec decode step costs a fixed ~80 ms per invocation regardless of how many frames it
-     * decodes, so per-chunk decoding at a small batch size spends most of its time on call
-     * overhead: a 39-frame utterance costs ten invocations instead of three. The first batch stays
-     * small because it alone determines first-audio latency.
+     * Experimental cadence used by the opt-in MOSS benchmark: a short first batch keeps first-audio
+     * latency low, then the caller chooses a larger steady batch. Production uses {@link #fixed(int)}.
      */
     static MossStreamingDecodeCadence firstChunkThenBatched(int firstChunkFrames, int steadyBatchFrames) {
         if (firstChunkFrames <= 0 || steadyBatchFrames <= 0) {

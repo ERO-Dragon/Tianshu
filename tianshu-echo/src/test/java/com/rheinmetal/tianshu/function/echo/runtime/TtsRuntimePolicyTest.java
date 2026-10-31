@@ -70,25 +70,6 @@ class TtsRuntimePolicyTest {
     }
 
     @Test
-    void latestOnlyCancelsPreviousNonTerminalSessions() throws Exception {
-        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
-        FakeAudioBridge audioBridge = new FakeAudioBridge();
-        List<TtsSession> statuses = Collections.synchronizedList(new ArrayList<>());
-        TtsRuntime runtime = runtime(engine, audioBridge, statuses);
-        prepareRuntime(runtime);
-
-        runtime.submit(request("first", TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
-        assertTrue(engine.awaitStarted());
-        runtime.submit(request("latest", TtsPlaybackPolicy.LATEST_ONLY, Priority.NORMAL), null, null);
-        TtsSession first = awaitSession(statuses, "first", TtsSessionState.CANCELLED);
-        engine.release();
-        assertTrue(engine.awaitInvocationCount(2));
-
-        assertEquals(TtsSessionState.CANCELLED, first.state());
-        assertTrue(statuses.stream().anyMatch(session -> session.request().requestId().equals("latest")));
-    }
-
-    @Test
     void cancelSentenceAndPlayCancelsActiveRegardlessOfPriority() throws Exception {
         BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
         FakeAudioBridge audioBridge = new FakeAudioBridge();

@@ -60,8 +60,4 @@ public final class TtsSession {
     public TtsFailure failure() {
         return failure;
     }
-
-    public String failureReason() {
-        return failure == null ? "" : failure.message();
-    }
 }

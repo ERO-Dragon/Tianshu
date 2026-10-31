@@ -5,7 +5,6 @@ import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsCodecExecution;
 import com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader;
-import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -41,7 +40,6 @@ class MossTtsServiceSmokeTest {
         Assumptions.assumeTrue(Files.isRegularFile(voiceSample), "MOSS reference voice sample is missing");
 
         FakeGameEnvironment env = new FakeGameEnvironment();
-        HuggingFaceDownloader downloader = new HuggingFaceDownloader(env);
 
         List<String> texts = smokeTexts();
         String cadenceName = smokeCadenceName();
@@ -53,7 +51,6 @@ class MossTtsServiceSmokeTest {
             try (SmokeCodecExecution codecExecution = new SmokeCodecExecution();
                  MossTtsService service = new MossTtsService(
                          env,
-                         downloader,
                          modelDir,
                          resourcePolicy,
                          codecExecution,
@@ -292,9 +289,7 @@ class MossTtsServiceSmokeTest {
     private static MossStreamingDecodeCadence smokeCadence() {
         return switch (smokeCadenceName()) {
             case "fixed8" -> MossStreamingDecodeCadence.fixed(8);
-            case "mixed" -> MossStreamingDecodeCadence.firstChunkThenBatched(
-                    MossTtsService.FIRST_CHUNK_FRAMES,
-                    MossTtsService.STEADY_CHUNK_FRAMES);
+            case "mixed" -> MossStreamingDecodeCadence.firstChunkThenBatched(4, 8);
             case "upstream" -> MossStreamingDecodeCadence.upstreamAdaptive();
             default -> MossStreamingDecodeCadence.fixed(4);
         };
