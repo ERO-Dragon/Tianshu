@@ -5,9 +5,9 @@ import java.nio.file.Path;
 /**
  * The one place that decides where a TTS model lives on disk.
  *
- * <p>The model directory name is not always the catalog name ({@code zipvoice} ships under
- * {@code ZipVoice}), so the settings snapshot, the model service and the completeness check used to
- * repeat both the root and that alias. Keeping the rule here is what lets the alias exist once.</p>
+ * <p>The settings snapshot, the model service and the completeness check must agree on both the
+ * root and the directory rule, so keeping the rule here is what stops each caller from repeating
+ * it.</p>
  */
 public final class TtsModelLayout {
 
@@ -16,7 +16,7 @@ public final class TtsModelLayout {
     }
 
     public static Path modelDirectory(Path ttsBasePath, TtsModelInfo info) {
-        return modelDirectory(ttsBasePath, info.modelDirectoryName());
+        return modelDirectory(ttsBasePath, info.name);
     }
 
     /**

@@ -44,10 +44,7 @@ public final class InferenceResourcePolicy {
         return smallModelThreadBudget(3);
     }
 
-    public int sherpaTtsThreads(String engineType, boolean zipVoice) {
-        if (zipVoice || matches(engineType, "zipvoice")) {
-            return smallModelThreadBudget(3);
-        }
+    public int sherpaTtsThreads(String engineType) {
         return smallModelThreadBudget(4);
     }
 

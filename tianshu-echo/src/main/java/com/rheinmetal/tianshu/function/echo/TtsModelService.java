@@ -151,7 +151,6 @@ public class TtsModelService {
         }
         Path modelPath = resolveSelectedModelPath(configured);
         String dirName = modelPath.getFileName().toString();
-        List<TtsModelInfo> matchedZipVoice = new ArrayList<>();
         for (TtsModelInfo info : catalog()) {
             if (info == null || info.name == null) {
                 continue;
@@ -159,17 +158,6 @@ public class TtsModelService {
             if (info.name.equalsIgnoreCase(dirName) || modelPath.endsWith(info.name)) {
                 return info;
             }
-            if (TtsModelInfo.ENGINE_ZIPVOICE.equals(info.getEngineType())) {
-                matchedZipVoice.add(info);
-            }
-        }
-        if (TtsModelInfo.ZIPVOICE_DIRECTORY.equalsIgnoreCase(dirName)) {
-            for (TtsModelInfo info : matchedZipVoice) {
-                if ("ZipVoice-int8".equalsIgnoreCase(info.name)) {
-                    return info;
-                }
-            }
-            return matchedZipVoice.isEmpty() ? null : matchedZipVoice.get(0);
         }
         return null;
     }
