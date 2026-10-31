@@ -1,5 +1,6 @@
 {
   "key.categories.tianshu": "天枢AI",
+  "key.category.tianshu.keys": "天枢AI",
   "key.tianshu.activate": "语音开关 (按住说话)",
   "key.tianshu.text_input": "文字对话 (打开输入条)",
   "tianshu.gui.text_input.title": "与助手对话",
