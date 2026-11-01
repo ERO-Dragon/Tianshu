@@ -25,7 +25,7 @@
 | `TtsRuntimeCapabilities.VOICE_LIBRARY` | 音色加载、导入、卸载可用。 |
 | `TtsRuntimeCapabilities.MODEL_MANAGEMENT` | 模型加载状态可用。 |
 
-TTS 禁用时四个能力都标记 failed；模型加载中标记 failed 并在加载完成后转为 ready；综合引擎初始化失败时 `SYNTHESIS` 与 `VOICE_LIBRARY` 为 failed，`PLAYBACK` 与 `MODEL_MANAGEMENT` 仍为 ready。
+TTS 禁用时四个能力都标记 failed；模型加载中标记 failed 并在加载完成后转为 ready；综合引擎初始化失败时 `SYNTHESIS` 与 `VOICE_LIBRARY` 为 failed，`PLAYBACK` 与 `MODEL_MANAGEMENT` 仍为 ready。模型预览/重载期间 `SYNTHESIS` 与 `PLAYBACK` 为 failed；模块停止后四个能力都保持 failed。
 
 外部模块的职责边界：
 
@@ -54,7 +54,7 @@ adapter.commandCapability(
 );
 ```
 
-如果没有业务 Session，`turnId=0`、`sessionId=0L` 即可。TTS 使用协议信封身份区分该文档请求。
+如果没有业务 Session，`turnId=0`、`sessionId=0L` 即可。TTS 使用协议信封身份区分该文档请求：`sessionId=0` 时每个信封都是一条独立请求，即使它们共享同一个 `traceId`。
 
 ## 3. 播放句子流
 
@@ -98,11 +98,11 @@ adapter.submitToCapability(
 );
 ```
 
-任意文本 chunk 使用 `RAW_TEXT_STREAM`，TTS 会跨包保留空格和未完成句子，并在 `STREAM_END` flush 尾部。
+任意文本 chunk 使用 `RAW_TEXT_STREAM`，TTS 会跨包保留空格和未完成句子，并在 `STREAM_END` flush 尾部。只有空字符串会被忽略；包含空白的 chunk（例如词间的一个空格）会进入缓冲，不会被丢弃。
 
-首包冻结 placement、协议优先级和音色选项。后续包不能改变这些值，也不会再次 admission。没有 `STREAM_END` 时，TTS 不猜测 Session 已结束。
+首包冻结 placement、协议优先级和音色选项。后续包不能改变这些值，也不会再次 admission。没有 `STREAM_END` 时，TTS 不猜测 Session 已结束；未结束的流会一直占着活动槽位，直到 `STREAM_END`、`TTS_CONTROL` 停止它，或下一次 TTS 请求触发空闲回收：超过 20 秒没有新包的流按结束处理，缓冲中的残句照常播出、会话以 `COMPLETED` 收尾、身份释放。回收是惰性的——没有新请求时 TTS 仍然继续等待。重复的 `STREAM_END` 是幂等的：在一个已经结束的流上再发结束包不会开启新 Session。
 
-流式 Session 被 placement 或控制取消后，迟到 chunk 会被忽略到该流的 `STREAM_END`；结束包解除屏障后，同一业务 Session 身份才可用于新流。内部 pending 容量已满时，首包以结构化队列满失败结束，紧急 placement 也不能绕过容量。
+流式 Session 被 placement 或控制取消后，迟到 chunk 会被忽略到该流的 `STREAM_END`；结束包解除屏障后，同一业务 Session 身份才可用于新流。`STOP`/`STOP_CURRENT`/`STOP_SOURCE` 取消一个未结束的流时同样会留下屏障。内部 pending 容量已满时，首包以结构化队列满失败结束，紧急 placement 也不能绕过容量；被拒绝或丢弃的流之后同样只接受到它的结束包。
 
 ## 4. 播放策略
 
@@ -135,7 +135,7 @@ TtsVoiceOptions voice = new TtsVoiceOptions(
 - `speed=null`：使用模型默认语速。
 - `speakerId=null`：使用模型默认 speaker。
 
-显式 `voiceId` 不存在时请求失败，不会回退成另一声音。
+显式 `voiceId` 不存在时请求失败，失败码为 `TTS_VOICE_CLONE_UNAVAILABLE`，不会回退成另一声音。
 
 ## 6. 纯合成
 
@@ -170,7 +170,9 @@ TTS 使用有界的完成交付队列，容量按完整请求计算。队列已�
 
 MOSS 单个内部推理块耗尽帧数上限时，若退化出可用语音，TTS 在最后一个长静音（≥1 秒）处截断后照常交付；只有整段都没有可用语音时才以 `GENERATION_LIMIT_REACHED` 失败。该上限只约束内部推理块，不改变调用方提交长段落和一次 ACK 的方式。
 
-同一时刻活跃的纯合成任务必须使用唯一 `requestId`；重复 id 会被拒绝，避免旧任务失去 STOP 身份。`ttlMillis` 同时覆盖排队和单个长句推理，到期会终止该纯合成任务，不会中断无关播放或其他纯合成。
+同一时刻活跃的纯合成任务必须使用唯一 `requestId`；重复 id 会以 `TTS_INVALID_REQUEST` 拒绝，避免旧任务失去 STOP 身份。`requestId` 为空时 TTS 使用该信封 id 作为请求 id，`TTS_AUDIO` 响应与后续 ACK 都使用它。
+
+`ttlMillis` 是提交到交付的时限：覆盖排队和单句推理。任务在被接受后、交付音频前到期，以 `TTS_EXPIRED` 失败并中断推理，不会中断无关播放或其他纯合成。音频交付后有固定的 15 秒接管窗口，从交付时刻起算，不受推理耗时挤压：窗口内 ACK 正常完成；窗口到期仍未 ACK 时，请求按已交付**完成**，只释放交付槽位，不再对同一请求补发失败，此后的 ACK 以 `TTS_REQUEST_NOT_FOUND` 拒绝。
 
 ## 7. capability 完成和播放状态
 
@@ -195,6 +197,8 @@ MOSS 纯合成任务遇到生成退化（连续相同音频码帧、连续全 pa
 payload 携带稳定的 `requestId/sourceId/sessionId/turnId/failureCode`。`TTS.PLAYBACK` 和 `TTS.REQUEST_STATUS` 服务播放控制、业务观察与诊断，不再由映迹转换为“正在回复”。
 
 `failureCode=GENERATION_LIMIT_REACHED` 表示 MOSS 在单个内部文本块内耗尽生成帧上限，并且整段没有留下可用的语音，本次纯合成没有可交付的结果；调用方按失败结束，不应自行拼接残缺音频。
+
+协议层的失败码只有一个词表：`TTS_` 加上 `TtsFailureCode`，例如 `TTS_QUEUE_FULL`、`TTS_EXPIRED`、`TTS_INVALID_REQUEST`、`TTS_REQUEST_NOT_FOUND`、`TTS_SYNTHESIS_ENGINE_UNAVAILABLE`、`TTS_EMPTY_TEXT`、`TTS_VOICE_CLONE_UNAVAILABLE`、`TTS_GENERATION_LIMIT_REACHED`。载荷类不匹配由协议中心在派发前拒绝，信封进入 `DEAD_LETTERED/PAYLOAD_CLASS_MISMATCH`，不会到达本模块。
 
 TTS 通过 `PRESENCE.ACTIVITY` 公开两类产品活动：
 
@@ -228,10 +232,12 @@ TtsControlPayload load = new TtsControlPayload(
 |---|---|
 | `STOP_CURRENT` | 停止当前播放 Session。 |
 | `STOP` | requestId 为空时停止全部；非空时停止对应播放或纯合成任务。 |
-| `STOP_SOURCE` | 停止真实 sourceId 对应的播放 Session。 |
-| `RELOAD_MODEL` | 异步重载模型。 |
+| `STOP_SOURCE` | 停止真实 sourceId 对应的播放 Session 和纯合成任务。 |
+| `RELOAD_MODEL` | 异步重载模型；被拒绝时不会停止任何播放。 |
 | `LOAD_VOICE` / `IMPORT_VOICE` | 注册音色。 |
-| `UNLOAD_VOICE` / `CLEAR_VOICE_CACHE` | 释放当前 owner 的音色。 |
+| `UNLOAD_VOICE` / `CLEAR_VOICE_CACHE` | 释放当前 owner 的音色并删除导入产生的音频文件；卸载从未注册的 id 以 `TTS_REQUEST_NOT_FOUND` 失败。 |
+
+模型预览和重载期间，`SYNTHESIS` 与 `PLAYBACK` 能力标记为 failed（此时外部请求会被拒绝），操作结束后恢复；模块停止后四个能力保持 failed，直到下一次 prepare。
 
 退出世界会停止本轮 Session、纯合成和播放。模块可以复用内部 runtime 与已加载模型以降低重进开销，但重新进入世界一定开启新的运行会话；调用方不能保存或复用旧世界的 envelope、回调或 Session 状态。
 

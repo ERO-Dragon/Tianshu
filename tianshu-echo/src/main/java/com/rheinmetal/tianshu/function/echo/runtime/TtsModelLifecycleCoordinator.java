@@ -428,7 +428,15 @@ final class TtsModelLifecycleCoordinator {
             return TtsOperationResult.accepted("tts-model:" + action);
         }
         if (state != LifecycleState.IDLE) {
-            return rejectBusy(null);
+            // Every caller gets exactly one answer: a request that cannot even start still has to end,
+            // otherwise the caller waits on a completion that the busy lane will never send.
+            TtsControlResult rejected = TtsControlResult.rejected(
+                    TtsControlAction.RELOAD_MODEL,
+                    TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS model lifecycle is busy"));
+            if (completion != null) {
+                completion.accept(rejected);
+            }
+            return TtsOperationResult.rejected(rejected.failure());
         }
         state = LifecycleState.OPERATION;
         operationKind = action;

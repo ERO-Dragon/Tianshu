@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class TtsSpeechInputAssembler {
     private final Map<TtsSpeechSessionKey, StreamState> streams = new HashMap<>();
@@ -62,6 +63,24 @@ public final class TtsSpeechInputAssembler {
 
     public synchronized boolean isOpen(TtsSpeechSessionKey key) {
         return key != null && streams.containsKey(key);
+    }
+
+    /** Every stream that has been opened but not ended yet, so a stop can leave a barrier for it. */
+    public synchronized java.util.Set<TtsSpeechSessionKey> openKeys() {
+        return java.util.Set.copyOf(streams.keySet());
+    }
+
+    /**
+     * Closes a stream the way its own end packet would, returning whatever text it still held. The caller
+     * uses this to reclaim a stream whose sender went silent.
+     */
+    public synchronized Batch endStream(TtsSpeechSessionKey key) {
+        StreamState state = streams.remove(key);
+        if (state == null) {
+            return new Batch(false, List.of(), true);
+        }
+        Optional<String> tail = state.buffer.flush();
+        return new Batch(false, tail.map(List::of).orElse(List.of()), true);
     }
 
     public synchronized void clear() {

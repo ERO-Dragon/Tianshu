@@ -23,6 +23,12 @@ import java.util.function.Consumer;
 final class TtsSynthesisTaskCoordinator {
     private static final int DEFAULT_HANDOFF_CAPACITY = 2;
     private static final int PENDING_HANDOFF_CAPACITY = 8;
+    /**
+     * How long a delivered request waits for its ACK. It is measured from delivery, not from submission,
+     * so a long inference cannot eat the caller's hand-over window; after it the request is already done
+     * and only the slot is released.
+     */
+    private static final Duration HANDOVER_WINDOW = Duration.ofSeconds(15);
 
     private final TtsSynthesisEngine synthesisEngine;
     private final TtsSynthesisScheduler scheduler;
@@ -267,6 +273,9 @@ final class TtsSynthesisTaskCoordinator {
             awaitingAcknowledgement.addLast(task);
         }
         task.deliverRetainedAudio();
+        // The delivery deadline is over; the caller now has a fixed hand-over window that cannot be
+        // shortened by a slow inference.
+        task.replaceTimeout(scheduler.scheduleTimeout(task.request, HANDOVER_WINDOW, () -> expireHandover(task)));
         scheduleNextAcknowledged();
     }
 
@@ -308,6 +317,23 @@ final class TtsSynthesisTaskCoordinator {
         return count;
     }
 
+    /** Cancels every pure-synthesis task of one source, so STOP_SOURCE covers delivery as well as playback. */
+    int stopSource(TtsRequestSource source, String reason) {
+        if (source == null) {
+            return 0;
+        }
+        int count = 0;
+        for (SynthesisTask task : List.copyOf(tasks.values())) {
+            if (!source.equals(task.request.source())) {
+                continue;
+            }
+            if (cancelTask(task, cancelReason(reason), true)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     int cancelAll(String reason) {
         List<SynthesisTask> currentTasks = List.copyOf(tasks.values());
         synchronized (handoffLock) {
@@ -327,11 +353,44 @@ final class TtsSynthesisTaskCoordinator {
     }
 
     private void expire(SynthesisTask task) {
-        if (task != null && task.expire()) {
+        if (task == null) {
+            return;
+        }
+        if (completeAwaitingAcknowledgement(task)) {
+            return;
+        }
+        if (task.expire()) {
             tasks.remove(task.request.requestId(), task);
             removeTaskState(task);
             scheduler.interrupt(task);
             scheduleNextAcknowledged();
+        }
+    }
+
+    /**
+     * The audio was already delivered, so the request did what it promised; the deadline only decides
+     * that the caller will not acknowledge it. Completing here keeps one request from being reported as
+     * delivered and failed at the same time, and still frees the hand-off slot.
+     */
+    private boolean completeAwaitingAcknowledgement(SynthesisTask task) {
+        synchronized (handoffLock) {
+            if (!awaitingAcknowledgement.remove(task)) {
+                return false;
+            }
+        }
+        tasks.remove(task.request.requestId(), task);
+        task.notifyCompletion();
+        scheduleNextAcknowledged();
+        return true;
+    }
+
+    /** The hand-over window is over: the caller kept the audio but never acknowledged it. */
+    private void expireHandover(SynthesisTask task) {
+        if (task == null) {
+            return;
+        }
+        if (!completeAwaitingAcknowledgement(task)) {
+            removeTaskState(task);
         }
     }
 
@@ -653,6 +712,19 @@ final class TtsSynthesisTaskCoordinator {
                 handle.cancel("TTS_SYNTHESIS_ALREADY_FINISHED");
                 timeoutHandle.compareAndSet(handle, null);
             }
+        }
+
+        /**
+         * Moves the task from its delivery deadline to its hand-over deadline. A timeout that could not be
+         * scheduled is not tracked at all rather than tracked as a dead handle, so the task simply waits
+         * for its ACK instead of being expired by a timer that will never fire.
+         */
+        private void replaceTimeout(ProtocolTaskHandle handle) {
+            cancelTimeout();
+            if (handle == null || handle.state() == ProtocolTaskState.REJECTED) {
+                return;
+            }
+            armTimeout(handle);
         }
 
         private void cancelTimeout() {

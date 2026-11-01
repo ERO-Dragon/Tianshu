@@ -8,6 +8,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SentenceSegmenterTest {
     @Test
+    void boundaryIndexAddressesTheCallersStringEvenWithLeadingWhitespace() {
+        SentenceSegmenter segmenter = SentenceSegmenter.spokenDialogue();
+        String text = "\n\n   Hello. World.";
+
+        SentenceSegmenter.SegmentBoundary boundary = segmenter.nextBoundary(text);
+
+        assertTrue(boundary.shouldFlush());
+        assertEquals("Hello.".length() + 5, boundary.endIndex(),
+                "the index must include the leading whitespace, because callers slice their own string");
+        assertEquals("Hello.", text.substring(0, boundary.endIndex()).trim());
+    }
+
+    @Test
     void flushesShortCompleteSentenceAtStrongBoundary() {
         SentenceSegmenter segmenter = SentenceSegmenter.spokenDialogue();
 

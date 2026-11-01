@@ -216,9 +216,7 @@ public final class TtsSpeechSessionCoordinator {
             cancelActiveSession();
             finishActive();
         } else {
-            promoteChildren(session);
-            sessions.remove(key, session);
-            terminations.addLast(new Termination(key, TerminationReason.CANCELLED));
+            retire(session, TerminationReason.CANCELLED);
         }
         return true;
     }
@@ -235,12 +233,30 @@ public final class TtsSpeechSessionCoordinator {
 
     private void suspendActiveAndActivate(TtsSpeechSession incoming) {
         TtsSpeechSession previous = active;
-        if (previous != null && previous != incoming && previous.resumable()) {
-            suspended.push(previous);
-        } else if (previous != null && previous != incoming) {
-            sessions.remove(previous.key, previous);
+        if (previous != null && previous != incoming) {
+            if (previous.resumable()) {
+                suspended.push(previous);
+            } else {
+                // Nothing is left to resume, so this session is over. It still has to say so: dropping it
+                // without a termination left the caller's request status on PLAYING forever.
+                retire(previous, previous.cancelled ? TerminationReason.CANCELLED : TerminationReason.COMPLETED);
+            }
         }
         active = incoming;
+    }
+
+    /**
+     * The single exit for a session that leaves without finishing normally: its children move on, the key
+     * is released, and exactly one termination is reported. Every other removal path goes through here too,
+     * because a session that disappears silently leaves its caller waiting on a status that never comes.
+     */
+    private void retire(TtsSpeechSession session, TerminationReason reason) {
+        if (session == null) {
+            return;
+        }
+        promoteChildren(session);
+        sessions.remove(session.key, session);
+        terminations.addLast(new Termination(session.key, reason));
     }
 
     private void cancelActiveSession() {
@@ -251,9 +267,7 @@ public final class TtsSpeechSessionCoordinator {
         cancelled.cancelled = true;
         cancelled.reservedWorks.clear();
         cancelled.readyWorks.clear();
-        promoteChildren(cancelled);
-        sessions.remove(cancelled.key, cancelled);
-        terminations.addLast(new Termination(cancelled.key, TerminationReason.CANCELLED));
+        retire(cancelled, TerminationReason.CANCELLED);
         active = null;
     }
 
@@ -281,7 +295,7 @@ public final class TtsSpeechSessionCoordinator {
                 active = resumed;
                 return;
             }
-            sessions.remove(resumed.key, resumed);
+            retire(resumed, resumed.cancelled ? TerminationReason.CANCELLED : TerminationReason.COMPLETED);
         }
         activatePending();
     }
