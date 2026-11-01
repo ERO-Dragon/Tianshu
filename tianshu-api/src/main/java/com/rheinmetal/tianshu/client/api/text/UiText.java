@@ -34,7 +34,8 @@ public record UiText(String value, List<Object> arguments, boolean translatable,
             return literal("");
         }
         if (normalized.size() == 1) {
-            return normalized.getFirst();
+            // get(0) rather than List.getFirst(): the kernel emits Java 17 bytecode so the 1.20.1 line can run it.
+            return normalized.get(0);
         }
         UiText delimiter = literal(separator);
         List<UiText> parts = new ArrayList<>(normalized.size() * 2 - 1);

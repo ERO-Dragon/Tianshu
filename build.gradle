@@ -25,6 +25,21 @@ tasks.withType(JavaCompile).configureEach {
 def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium', 'tianshu-presence']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
 
+// One jar per Minecraft line, and the oldest line the product ships for (1.20.1) runs Java 17: the platform-neutral
+// modules therefore emit 17-compatible bytecode. That is the common denominator — a 21/25 JVM runs 17 bytecode
+// unchanged, while a 17 adapter could not read classes compiled for 21. The adapters are deliberately not covered:
+// each compiles its own Minecraft artifacts, which are compiled for the level of their line. Only the shipped
+// `compileJava` is constrained: test sources never leave the build and may use the build JVM's newer library.
+subprojects {
+    if (name in neutralModules) {
+        tasks.withType(JavaCompile).configureEach { compileTask ->
+            if (compileTask.name == 'compileJava') {
+                options.release = 17
+            }
+        }
+    }
+}
+
 // A pair of feature modules is in exactly one of three states, and the difference is a product statement:
 //   required — the consumer is not functional without it: a hard dependency, classes always visible,
 //              no optionality code at all.

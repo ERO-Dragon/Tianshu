@@ -1,0 +1,49 @@
+package com.rheinmetal.tianshu.mc.host;
+
+import com.rheinmetal.tianshu.api.game.GameObjectId;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+final class ClientItemDictionaryBuilder {
+    private final ClientLanguageSnapshot languageSnapshot;
+
+    ClientItemDictionaryBuilder(ClientLanguageSnapshot languageSnapshot) {
+        this.languageSnapshot = languageSnapshot;
+    }
+
+    Map<String, List<String>> build() {
+        String languageCode = languageSnapshot.languageCode();
+        LinkedHashMap<String, List<String>> dictionary = new LinkedHashMap<>(BuiltInRegistries.ITEM.size());
+        for (Item item : BuiltInRegistries.ITEM) {
+            if (item == Items.AIR) continue;
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
+            if (key == null) continue;
+            
+            String realItemId = key.toString();
+            String localizedName = ClientLanguagePolicy.useChineseContent(languageCode)
+                    ? ClientLanguagePolicy.safeTranslatedName(net.minecraft.network.chat.Component.translatable(item.getDescriptionId()).getString())
+                    : "";
+            String registryAlias = ClientLanguagePolicy.englishName(key);
+            
+            List<String> aliases = new ArrayList<>();
+            if (localizedName != null && !localizedName.isEmpty()) {
+                aliases.add(localizedName);
+            }
+            if (registryAlias != null && !registryAlias.isEmpty() && !registryAlias.equalsIgnoreCase(localizedName)) {
+                aliases.add(registryAlias);
+            }
+            
+            if (!aliases.isEmpty()) {
+                dictionary.put(GameObjectId.item(realItemId), aliases);
+            }
+        }
+        return dictionary;
+    }
+}
