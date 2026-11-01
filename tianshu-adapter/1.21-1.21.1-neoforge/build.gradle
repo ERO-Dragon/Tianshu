@@ -13,6 +13,7 @@ group = mod_group_id
 def adapterProperties = new Properties()
 file('adapter.properties').withInputStream { adapterProperties.load(it) }
 def neoVersion = adapterProperties.getProperty('neo_version')
+def mcVersion = adapterProperties.getProperty('minecraft_version')
 def parchmentMappingsVersion = adapterProperties.getProperty('parchment_mappings_version')
 def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecraft_version')
 def sharedLayer = adapterProperties.getProperty('shared_layer')
@@ -239,7 +240,7 @@ jar {
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
     var replaceProperties = [
-            minecraft_version_range: minecraft_version_range,
+            minecraft_version_range: "[${mcVersion}]",
             neo_version            : neoVersion,
             loader_version_range   : loader_version_range,
             mod_id                 : mod_id,

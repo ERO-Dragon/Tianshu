@@ -3,10 +3,12 @@ package com.rheinmetal.tianshu.neoforge.server;
 import com.rheinmetal.tianshu.mc.network.GameFact;
 import com.rheinmetal.tianshu.mc.network.GameFactBatch;
 import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
+import com.rheinmetal.tianshu.neoforge.event.NeoForgeLineCompat;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -22,7 +24,6 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
 import net.neoforged.neoforge.event.entity.player.TradeWithVillagerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
-import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
@@ -63,7 +64,9 @@ public final class GameFactCollector {
         gameBus.addListener(this::onItemCrafted);
         gameBus.addListener(this::onItemFished);
         gameBus.addListener(this::onTamed);
-        gameBus.addListener(this::onBlockBreak);
+        // The break event's class was renamed inside the 26.1 line, so the listener is registered for whichever name
+        // this build carries (see NeoForgeLineCompat: one jar has to run on 26.1, 26.1.1 and 26.1.2).
+        NeoForgeLineCompat.registerBlockBreak(gameBus, this::onBlockBreak);
         gameBus.addListener(this::onBlockPlace);
         gameBus.addListener(this::onMount);
         gameBus.addListener(this::onEffectAdded);
@@ -77,11 +80,13 @@ public final class GameFactCollector {
     }
 
     public void onLivingDamage(LivingDamageEvent.Post event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || event.getInflictedDamage() <= 0.0F) {
+        // The accessor was renamed inside the 26.1 line; the bridge reads whichever name this build carries.
+        float damage = NeoForgeLineCompat.damageTaken(event);
+        if (!(event.getEntity() instanceof ServerPlayer player) || damage <= 0.0F) {
             return;
         }
         Map<String, String> values = new HashMap<>();
-        values.put(WorldEventTypes.VALUE_AMOUNT, Integer.toString(Math.round(event.getInflictedDamage())));
+        values.put(WorldEventTypes.VALUE_AMOUNT, Integer.toString(Math.round(damage)));
         send(player, WorldEventTypes.EVENT_DAMAGE_TAKEN, values);
     }
 
@@ -233,13 +238,13 @@ public final class GameFactCollector {
         send(player, WorldEventTypes.EVENT_TAMED, values);
     }
 
-    // 26.1 split the block events into their own package: a break is now BreakBlockEvent while the place event
-    // stayed on BlockEvent. The listener is registered by method reference, so only the payload type changed.
-    public void onBlockBreak(BreakBlockEvent event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player)) {
+    // The break event was renamed inside the 26.1 line; the compat bridge hands the player and state over in the
+    // shape both variants expose, so this method no longer names either event class.
+    private void onBlockBreak(Player player, BlockState state) {
+        if (!(player instanceof ServerPlayer serverPlayer)) {
             return;
         }
-        send(player, WorldEventTypes.EVENT_BLOCK_BROKEN, blockValues(event.getState()));
+        send(serverPlayer, WorldEventTypes.EVENT_BLOCK_BROKEN, blockValues(state));
     }
 
     public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {

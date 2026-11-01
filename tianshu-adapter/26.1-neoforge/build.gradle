@@ -8,11 +8,28 @@ plugins {
     id 'idea'
 }
 
-// The official NeoForged maven is unreachable from this network at times (the TLS handshake is reset), while
-// BMCLAPI mirrors the same coordinates. Declaring the mirror keeps this adapter buildable here; the primary
-// repository is still configured by the plugin, so a machine that can reach it keeps using it.
+// The official NeoForged maven is unreachable from this network at times (the TLS handshake is reset), so two
+// mirrors are declared: BMCLAPI carries the same coordinates as /releases, and Creeperhost additionally carries
+// net.neoforged:neoform — the NeoForm configuration the generation step cannot run without and BMCLAPI does not
+// serve. The mirror is sorted first (the same reordering the moddev plugin applies to its own repositories) because
+// Gradle aborts resolution on a connection error instead of trying the next repository; the primary stays configured,
+// so a machine that can reach it keeps using it.
 repositories {
     maven { url = 'https://bmclapi2.bangbang93.com/maven' }
+}
+def neoForgeMirror = repositories.maven { url = 'https://maven.creeperhost.net' }
+repositories.remove(neoForgeMirror)
+repositories.add(0, neoForgeMirror)
+// The 26.1 line's Minecraft library list is one artifact per patch (net.neoforged:minecraft-dependencies:26.1,
+// :26.1.1, :26.1.2), published only on the official maven's /mojang-meta host, which this network cannot reach. The
+// three lists are byte-identical (verified against the three version JSONs), so the older two are resolved to the
+// 26.1.2 metadata: same libraries, one artifact that is actually fetchable. A machine that can reach /mojang-meta gets
+// the same content, just under the original coordinate.
+configurations.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute module('net.neoforged:minecraft-dependencies:26.1') using module('net.neoforged:minecraft-dependencies:26.1.2') because 'identical library list for the whole 26.1 line'
+        substitute module('net.neoforged:minecraft-dependencies:26.1.1') using module('net.neoforged:minecraft-dependencies:26.1.2') because 'identical library list for the whole 26.1 line'
+    }
 }
 
 
@@ -24,6 +41,12 @@ group = mod_group_id
 def adapterProperties = new Properties()
 file('adapter.properties').withInputStream { adapterProperties.load(it) }
 def neoVersion = adapterProperties.getProperty('neo_version')
+def mcVersion = adapterProperties.getProperty('minecraft_version')
+// A package may cover several patch releases of one line (26.1, 26.1.1, 26.1.2). The compile target is the OLDEST of
+// them — that is what makes the claim honest — and these two ranges say what the jar accepts at runtime. They are
+// optional: an adapter that does not widen anything keeps declaring exactly the version it compiled against.
+def mcVersionRange = adapterProperties.getProperty('minecraft_version_range') ?: "[${mcVersion}]"
+def neoVersionRange = adapterProperties.getProperty('neo_version_range') ?: "[${neoVersion},)"
 def parchmentMappingsVersion = adapterProperties.getProperty('parchment_mappings_version')
 def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecraft_version')
 def sharedLayer = adapterProperties.getProperty('shared_layer')
@@ -257,7 +280,8 @@ jar {
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
     var replaceProperties = [
-            minecraft_version_range: minecraft_version_range,
+            minecraft_version_range: mcVersionRange,
+            neo_version_range      : neoVersionRange,
             neo_version            : neoVersion,
             loader_version_range   : loader_version_range,
             mod_id                 : mod_id,
