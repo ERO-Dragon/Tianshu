@@ -164,7 +164,7 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 - codec streaming decoder 在批次之间直接复用上一步输出的 state tensor；上一份 `OrtSession.Result` 保持到下一次 run 消费完再关闭，避免每批 native→Java→native 拷贝。
 - 自回归生成在 `AUDIO_SYNTH_AR` 运行；流式 codec 通过 TTS 窄执行端口提交到协议托管的 `AUDIO_SYNTH_FAST`，backend 不持有私有线程或线程池。
 - streaming decoder 由单一消费者独占：首个 5 帧、第二 6 帧、稳态 8 帧；首块 400 ms 保证首音，第二块 480 ms 覆盖首个解码窗口，稳态 640 ms 减少解码调用。生成侧与 codec 侧通过有界批次队列并行，队列满时背压等待，不丢帧、不覆盖帧。
-- 帧生成明确返回 `NATURAL_END`、`CANCELLED` 或 `FRAME_LIMIT_REACHED`。只有自然结束才 flush 最后不足四帧的尾批；达到 `max_new_frames` 但没有自然结束时以 `GENERATION_LIMIT_REACHED` 失败，参数包含输入 token、已生成帧数和帧数上限。
+- 帧生成明确返回 `NATURAL_END`、`DEGENERATE_END`、`CANCELLED` 或 `FRAME_LIMIT_REACHED`。只有自然结束才 flush 最后不足四帧的尾批；退化结束（连续相同帧、连续全 pad 帧或尾部持续静音超过 2 秒）表示语句已经说完但模型没给结束头，按块结束处理并交付已解码音频，流式不换 Seed 重试，完整合成换一次 Seed。达到 `max_new_frames` 时先按最后一个 ≥1 秒静音截断，截出可用语音就交付，否则以 `GENERATION_LIMIT_REACHED` 失败，参数包含输入 token、已生成帧数和帧数上限。
 - MOSS 长文本按句子和子句边界组织，并使用真实 tokenizer 保证每个内部推理块不超过上下文上限；单个超长无标点文本也会按 token 安全边界继续拆分，不使用固定字符阈值。
 - `interrupt()` 的取消信号同时进入自回归帧循环和 codec 消费端；返回前等待 decoder 退出并释放状态，不能与下一请求或模型关闭重叠。
 - backend shutdown 调用 `MossTtsService.close()`，并由 backend 资源键保证不与推理并发。
