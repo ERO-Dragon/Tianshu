@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * invisible: the product still builds, still starts, and one capability is simply dead on that loader. This test
  * turns the forwarding table into something the build checks.</p>
  *
- * <p>An entry point listed in {@link #DECLARED_GAPS} must also <em>not</em> be referenced 鈥?implementing one
+ * <p>An entry point listed in {@link #DECLARED_GAPS} must also <em>not</em> be referenced — implementing one
  * without updating the list is a failure, so the gap list cannot quietly go stale.</p>
  */
 final class DeliveryCoverageTest {

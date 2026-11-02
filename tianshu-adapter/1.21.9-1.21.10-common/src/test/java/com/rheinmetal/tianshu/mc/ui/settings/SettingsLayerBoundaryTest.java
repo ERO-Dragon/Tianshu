@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The layer window owns only what is above the page.
  *
  * <p>NeoForge's GUI layer stack draws the lower layers first and the current screen last, so a layer that
- * rendered the page underneath it would paint that page's text on top of its own panel 鈥?the defect this
+ * rendered the page underneath it would paint that page's text on top of its own panel — the defect this
  * test locks down. The page's dimming and the panel are drawn here; the page itself is not.
  */
 final class SettingsLayerBoundaryTest {
