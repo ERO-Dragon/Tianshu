@@ -54,8 +54,14 @@ public final class FabricGameFactCollector {
      */
     private final Map<ServerPlayer, List<GameFact>> pendingByPlayer = new LinkedHashMap<>();
 
+    /** Last experience level seen per player, so only real changes are published. */
+    private final Map<ServerPlayer, Integer> lastLevels = new LinkedHashMap<>();
+
     public void register() {
-        ServerTickEvents.END_SERVER_TICK.register(server -> flush());
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            publishLevelChanges(server);
+            flush();
+        });
         // This generation's Fabric API stops at the pre-application hook: AFTER_DAMAGE arrived with the 1.21.1 line
         // (fabric-entity-events 2.x), while 1.21 bundles 1.6.x with only ALLOW_DAMAGE. The fact is still produced, but
         // its amount is the incoming damage rather than the part that lands after armour and enchantments.
@@ -149,6 +155,20 @@ public final class FabricGameFactCollector {
     }
 
     /** Sends everything buffered so far and clears the buffer; the batch size cap is why a tick can cost two packets. */
+    /** Experience-level changes are not an event in this loader's API, so the level is compared once per tick. */
+    private void publishLevelChanges(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            int level = player.experienceLevel;
+            Integer previous = lastLevels.put(player, level);
+            if (previous == null || previous == level) {
+                continue;
+            }
+            Map<String, String> values = new HashMap<>();
+            values.put(WorldEventTypes.VALUE_LEVEL, Integer.toString(level));
+            send(player, WorldEventTypes.EVENT_EXP_LEVEL, values);
+        }
+    }
+
     private void flush() {
         if (pendingByPlayer.isEmpty()) {
             return;
