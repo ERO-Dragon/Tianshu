@@ -63,8 +63,12 @@ public final class FabricGameFactCollector {
     /** Pickups are sampled every fourth tick: a picked-up stack stays in the inventory, so latency costs nothing. */
     private int inventoryTick;
 
+    /** Last vehicle seen per player: mount and dismount are state changes, not events in this loader's API. */
+    private final Map<ServerPlayer, net.minecraft.world.entity.Entity> lastVehicles = new LinkedHashMap<>();
+
     public void register() {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            publishMountChanges(server);
             publishLevelChanges(server);
             if (++inventoryTick % 4 == 0) {
                 publishPickups(server);
@@ -179,6 +183,27 @@ public final class FabricGameFactCollector {
     }
 
     /** Inventory growth is not an event in this loader's API, so counts are diffed at one quarter of the tick rate. */
+    /** A vehicle reference compared once per tick: no allocation, and a fact only on a real change. */
+    private void publishMountChanges(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            net.minecraft.world.entity.Entity vehicle = player.getVehicle();
+            net.minecraft.world.entity.Entity previous = lastVehicles.put(player, vehicle);
+            if (previous == vehicle) {
+                continue;
+            }
+            if (vehicle != null) {
+                send(player, WorldEventTypes.EVENT_MOUNT, entityValues(vehicle));
+            } else if (previous != null) {
+                send(player, WorldEventTypes.EVENT_DISMOUNT, entityValues(previous));
+            }
+        }
+    }
+
+    private static Map<String, String> entityValues(net.minecraft.world.entity.Entity entity) {
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_ENTITY_NAME, entity.getName().getString());
+        return values;
+    }
     private void publishPickups(MinecraftServer server) {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             Map<String, Integer> current = new HashMap<>();

@@ -40,8 +40,6 @@ final class ServerFactCoverageTest {
             "EVENT_FISHING_CATCH",
             "EVENT_TAMED",
             "EVENT_BLOCK_PLACED",
-            "EVENT_MOUNT",
-            "EVENT_DISMOUNT",
             "EVENT_EFFECT_GAINED",
             "EVENT_EFFECT_EXPIRED",
             "EVENT_TRADE");
