@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -27,15 +27,24 @@ final class FabricClientFactWatch {
 
     static void register() {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> onScreenOpened(screen));
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, level) -> onLevelChange(level));
+        ClientTickEvents.END_CLIENT_TICK.register(FabricClientFactWatch::onClientTick);
     }
 
-    /** The login level is not a dimension change; only later level loads are published. */
-    private static boolean levelSeen;
+    /**
+     * The dimension the client is in, compared by reference once per tick.
+     *
+     * <p>fabric-api for this line has no client world-change event (lifecycle 2.2.x / 2.3.x below 2.5.1), so the
+     * level is compared by reference: one identity check per tick, no allocation, and a fact only on a real change.</p>
+     */
+    private static ClientLevel lastLevel;
 
-    private static void onLevelChange(ClientLevel level) {
-        if (!levelSeen) {
-            levelSeen = true;
+    private static void onClientTick(net.minecraft.client.Minecraft client) {
+        ClientLevel level = client.level;
+        if (level == lastLevel) {
+            return;
+        }
+        lastLevel = level;
+        if (level == null) {
             return;
         }
         var dimension = level.dimension().location();
