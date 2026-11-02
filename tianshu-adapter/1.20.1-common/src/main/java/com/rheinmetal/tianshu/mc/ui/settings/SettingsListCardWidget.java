@@ -80,7 +80,7 @@ final class SettingsListCardWidget extends AbstractWidget {
     }
 
     @Override
-    protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         int right = getX() + getWidth();
         int bottom = getY() + getHeight();
         guiGraphics.fill(getX(), getY(), right, bottom, isHoveredOrFocused() ? HOVER_BACKGROUND : BACKGROUND);

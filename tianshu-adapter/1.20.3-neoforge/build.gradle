@@ -1,0 +1,219 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    // NeoForge 20.2 is served by NeoGradle, the plugin line that predates ModDevGradle. ModDevGradle -- every
+    // published version, including the 1.0.x line -- refuses this generation because NeoForge only began publishing
+    // Gradle Module Metadata with 20.4, so the 'neoforge-moddev-bundle' variant it looks for does not exist here.
+    id 'net.neoforged.gradle.userdev' version '7.1.39'
+    id 'idea'
+}
+
+// NeoGradle derives its run and java-execution setup from the project toolchain, so it is declared before anything
+// else the plugin touches. This is the JDK that RUNS the pipeline; what the package ships is pinned to release 17
+// further down, because that is the level the 1.20.3 line runs on.
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+// Order matters: Gradle stops at the first repository that throws instead of trying the next one, and this network
+// resets TLS on several of these hosts intermittently. The vendored copy is first because it is the only source for
+// net.neoforged:minecraft-dependencies:1.20.3 (the official /mojang-meta host is unreachable here); then the mirrors,
+// then the hosts that serve only part of the graph.
+repositories {
+    maven {
+        url = uri('maven-fallback')
+        // Gradle 9's default metadata sources do not include Gradle Module Metadata; this copy is metadata only
+        // (the artifact has no jar), so the source has to be enabled explicitly.
+        metadataSources { gradleMetadata(); artifact() }
+    }
+    maven { url = 'https://maven.creeperhost.net' }
+    maven { url = 'https://bmclapi2.bangbang93.com/maven' }
+    maven { url = 'https://libraries.minecraft.net/' }
+    maven { url = 'https://maven.minecraftforge.net/' }
+    maven { url = 'https://maven.neoforged.net/releases' }
+    mavenCentral()
+}
+repositories.removeAll { it.name == 'Mojang Meta' }
+
+
+version = mod_version
+group = mod_group_id
+
+// Everything that pins this adapter to one Minecraft line lives in adapter.properties.
+// Adding a platform or a version means adding a sibling directory, not editing the core build.
+def adapterProperties = new Properties()
+file('adapter.properties').withInputStream { adapterProperties.load(it) }
+def neoVersion = adapterProperties.getProperty('neo_version')
+// The loader range is derived from the pinned version (e.g. 20.2.93 -> [20.2,)) instead of typed a second time.
+def neoVersionRange = "[" + neoVersion.substring(0, neoVersion.lastIndexOf('.')) + ",)"
+def mcVersion = adapterProperties.getProperty('minecraft_version')
+def parchmentMappingsVersion = adapterProperties.getProperty('parchment_mappings_version')
+def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecraft_version')
+def sharedLayer = adapterProperties.getProperty('shared_layer')
+def sharedLayerRoot = "../${sharedLayer}"
+
+
+// Running the NeoForge client from the Gradle panel is the development path,
+// so it defaults to the Debug channel. Artifact builds remain Release by
+// default. An explicit property always wins over the task-based default.
+// A server run is a development path too: it is how the optional server
+// component is exercised in the same debug channel.
+def devRunRequested = gradle.startParameter.taskNames.any { taskName ->
+    def name = taskName.tokenize(':').last()
+    name == 'runClient' || name == 'runServer'
+}
+def tianshuDebugBuild = providers.gradleProperty('tianshuDebugBuild')
+        .map { it.toBoolean() }
+        .orElse(devRunRequested)
+def tianshuBuildProfile = layout.buildDirectory.file('generated/resources/tianshu-build.properties')
+tasks.register('generateTianshuBuildProfile') {
+    // The build owns the numbers: a release carries its own mod version and the api epoch it was built against,
+    // so the runtime probe reports facts instead of literals. The epoch is the mod version's MAJOR, derived here
+    // rather than typed into a second property that could drift.
+    def tianshuVersion = providers.gradleProperty('mod_version').orElse('0.0')
+    def tianshuApiVersion = tianshuVersion.map { value -> value.split('\\.')[0] }
+    inputs.property('debugBuild', tianshuDebugBuild)
+    inputs.property('version', tianshuVersion)
+    inputs.property('apiVersion', tianshuApiVersion)
+    outputs.file(tianshuBuildProfile)
+    doLast {
+        def output = tianshuBuildProfile.get().asFile
+        output.parentFile.mkdirs()
+        output.text = "debugBuild=${tianshuDebugBuild.get()}\n" +
+                "version=${tianshuVersion.get()}\n" +
+                "apiVersion=${tianshuApiVersion.get()}\n"
+    }
+}
+
+base {
+    archivesName = mod_id
+}
+
+
+// ---------------------------------------------------------------- shared Minecraft layer
+// Everything that talks to Minecraft but not to a loader lives in tianshu-adapter/common and is compiled here
+// from source. A Gradle project cannot be compiled once against two loaders' Minecraft artifacts, so the tree
+// is shared and each adapter supplies its own classpath; `verifyCommonAdapterNeutral` keeps loader imports out
+// of it, which is the whole contract. A sibling adapter (1.21-1.21.1-fabric) includes the same directory.
+sourceSets {
+    main {
+        java.srcDir "${sharedLayerRoot}/src/main/java"
+        resources.srcDir "${sharedLayerRoot}/src/main/resources"
+    }
+    test {
+        java.srcDir "${sharedLayerRoot}/src/test/java"
+    }
+}
+
+repositories {
+}
+
+// ---------------------------------------------------------------- NeoGradle wiring
+// The toolchain that RUNS the pipeline has to load the tooling NeoGradle ships (its jst source transformer is Java 21
+// bytecode), while the code this package ships must stay Java 17 to match the Minecraft line. The two are separate
+// settings: the toolchain below is 21 (see java.toolchain) and every JavaCompile is pinned to release 17.
+runs {
+    client {
+        // A development run needs the kernel classes; the feature modules ship as their own universal jars.
+        modSource sourceSets.main
+        systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        def quickPlayWorld = providers.gradleProperty('quickPlayWorld').getOrNull()
+        if (quickPlayWorld != null && !quickPlayWorld.isBlank()) {
+            programArguments.addAll '--quickPlaySingleplayer', quickPlayWorld
+        }
+    }
+    server {
+        modSource sourceSets.main
+    }
+    // Data generation is part of the build story for every other adapter; keeping the same three runs here means
+    // this generation is not a special case to remember.
+    data {
+        modSource sourceSets.main
+        programArguments.addAll '--mod', project.mod_id, '--all',
+                '--output', file('src/generated/resources/').getAbsolutePath(),
+                '--existing', file('src/main/resources/').getAbsolutePath()
+    }
+}
+
+// The code a package ships targets the Java level of its own Minecraft line (17 through 1.20.4, 21 from 1.20.5 on),
+// while the JDK running the pipeline stays 21 because NeoGradle's own tooling is compiled at that level.
+tasks.withType(JavaCompile).configureEach {
+    options.release = (adapterProperties.getProperty('java_version') ?: '21') as int
+}
+// NeoGradle takes the game and loader through this coordinate; there is no separate plugin-managed version property.
+
+dependencies {
+    implementation "net.neoforged:neoforge:${neoVersion}"
+    implementation project(':tianshu-client')
+    compileOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    runtimeOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+sourceSets.main.resources {
+    srcDir('src/generated/resources')
+    srcDir(tianshuBuildProfile.map { it.asFile.parentFile })
+    exclude("**/*.bbmodel")
+    exclude("src/generated/**/.cache")
+}
+jar {
+    from project(':tianshu-client').sourceSets.main.output
+    from project(':tianshu-core').sourceSets.main.output
+    from project(':tianshu-api').sourceSets.main.output
+    // Avoid signature metadata conflicts when aggregating module output.
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+}
+
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [
+            minecraft_version_range: "[${mcVersion}]",
+            neo_version            : neoVersion,
+            neo_version_range      : neoVersionRange,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            tianshu_libs_version_range: tianshu_libs_version_range,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
+}
+
+sourceSets.main.resources.srcDir generateModMetadata
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+// tasks.named('jarJar') {
+//     exclude 'ai/onnxruntime/native/win-x64/onnxruntime.dll'
+// }
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+tasks.named('processResources') {
+    dependsOn tasks.named('generateTianshuBuildProfile')
+}

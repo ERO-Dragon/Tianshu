@@ -5,6 +5,10 @@ pluginManagement {
         maven { url = 'https://maven.fabricmc.net/' }
         gradlePluginPortal()
         maven { url = 'https://maven.neoforged.net/releases' }
+        // NeoGradle (the plugin line that serves NeoForge 20.2) has a classpath dependency that only the Forge
+        // maven and the Mojang libraries host publish.
+        maven { url = 'https://maven.minecraftforge.net/' }
+        maven { url = 'https://libraries.minecraft.net/' }
     }
 }
 
@@ -24,9 +28,22 @@ include 'tianshu-auxilium'
 include 'tianshu-presence'
 include 'tianshu-client'
 include 'tianshu-adapter:1.20.1-fabric'
+include 'tianshu-adapter:1.20-fabric'
 include 'tianshu-adapter:1.20.1-neoforge'
+include 'tianshu-adapter:1.20.2-fabric'
+include 'tianshu-adapter:1.20.3-fabric'
+include 'tianshu-adapter:1.20.3-neoforge'
+include 'tianshu-adapter:1.20.2-neoforge'
+include 'tianshu-adapter:1.20.4-fabric'
+include 'tianshu-adapter:1.20.5-fabric'
+include 'tianshu-adapter:1.20.6-fabric'
+include 'tianshu-adapter:1.20.4-neoforge'
+include 'tianshu-adapter:1.20.6-neoforge'
+include 'tianshu-adapter:1.20.5-neoforge'
 include 'tianshu-adapter:1.21-1.21.1-neoforge'
+include 'tianshu-adapter:1.21-neoforge'
 include 'tianshu-adapter:1.21-1.21.1-fabric'
+include 'tianshu-adapter:1.21-fabric'
 include 'tianshu-adapter:1.21.2-fabric'
 include 'tianshu-adapter:1.21.3-fabric'
 include 'tianshu-adapter:1.21.4-fabric'

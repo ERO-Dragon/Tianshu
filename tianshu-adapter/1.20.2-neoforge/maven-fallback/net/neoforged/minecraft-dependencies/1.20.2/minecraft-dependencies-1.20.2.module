@@ -1,0 +1,2442 @@
+{
+    "formatVersion":  "1.1",
+    "component":  {
+                      "group":  "net.neoforged",
+                      "module":  "minecraft-dependencies",
+                      "version":  "1.20.2"
+                  },
+    "variants":  [
+                     {
+                         "name":  "clientCompileDependencies",
+                         "attributes":  {
+                                            "org.gradle.category":  "library",
+                                            "org.gradle.usage":  "java-api",
+                                            "org.gradle.jvm.version":  17,
+                                            "net.neoforged.distribution":  "client"
+                                        },
+                         "dependencies":  [
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "ca.weblite",
+                                                  "module":  "java-objc-bridge",
+                                                  "version":  {
+                                                                  "strictly":  "1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.github.oshi",
+                                                  "module":  "oshi-core",
+                                                  "version":  {
+                                                                  "strictly":  "6.4.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.code.gson",
+                                                  "module":  "gson",
+                                                  "version":  {
+                                                                  "strictly":  "2.10.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "failureaccess",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "guava",
+                                                  "version":  {
+                                                                  "strictly":  "32.1.2-jre"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.ibm.icu",
+                                                  "module":  "icu4j",
+                                                  "version":  {
+                                                                  "strictly":  "73.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "authlib",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.47"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "blocklist",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "brigadier",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "datafixerupper",
+                                                  "version":  {
+                                                                  "strictly":  "6.0.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "patchy",
+                                                  "version":  {
+                                                                  "strictly":  "2.2.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "text2speech",
+                                                  "version":  {
+                                                                  "strictly":  "1.17.9"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-codec",
+                                                  "module":  "commons-codec",
+                                                  "version":  {
+                                                                  "strictly":  "1.16.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-io",
+                                                  "module":  "commons-io",
+                                                  "version":  {
+                                                                  "strictly":  "2.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-logging",
+                                                  "module":  "commons-logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-buffer",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-codec",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-handler",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-resolver",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-classes-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-unix-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "it.unimi.dsi",
+                                                  "module":  "fastutil",
+                                                  "version":  {
+                                                                  "strictly":  "8.5.12"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna-platform",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.sf.jopt-simple",
+                                                  "module":  "jopt-simple",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.4"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-compress",
+                                                  "version":  {
+                                                                  "strictly":  "1.22"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-lang3",
+                                                  "version":  {
+                                                                  "strictly":  "3.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpclient",
+                                                  "version":  {
+                                                                  "strictly":  "4.5.13"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpcore",
+                                                  "version":  {
+                                                                  "strictly":  "4.4.16"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-core",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-slf4j2-impl",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.joml",
+                                                  "module":  "joml",
+                                                  "version":  {
+                                                                  "strictly":  "1.10.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-glfw",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-jemalloc",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-openal",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-opengl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-stb",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-tinyfd",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.slf4j",
+                                                  "module":  "slf4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.0.7"
+                                                              }
+                                              }
+                                          ],
+                         "capabilities":  [
+                                              {
+                                                  "group":  "net.neoforged",
+                                                  "name":  "minecraft-dependencies",
+                                                  "version":  "1.20.2"
+                                              }
+                                          ]
+                     },
+                     {
+                         "name":  "clientRuntimeDependencies",
+                         "attributes":  {
+                                            "org.gradle.category":  "library",
+                                            "org.gradle.usage":  "java-runtime",
+                                            "org.gradle.jvm.version":  17,
+                                            "net.neoforged.distribution":  "client"
+                                        },
+                         "dependencies":  [
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "ca.weblite",
+                                                  "module":  "java-objc-bridge",
+                                                  "version":  {
+                                                                  "strictly":  "1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.github.oshi",
+                                                  "module":  "oshi-core",
+                                                  "version":  {
+                                                                  "strictly":  "6.4.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.code.gson",
+                                                  "module":  "gson",
+                                                  "version":  {
+                                                                  "strictly":  "2.10.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "failureaccess",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "guava",
+                                                  "version":  {
+                                                                  "strictly":  "32.1.2-jre"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.ibm.icu",
+                                                  "module":  "icu4j",
+                                                  "version":  {
+                                                                  "strictly":  "73.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "authlib",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.47"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "blocklist",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "brigadier",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "datafixerupper",
+                                                  "version":  {
+                                                                  "strictly":  "6.0.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "patchy",
+                                                  "version":  {
+                                                                  "strictly":  "2.2.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "text2speech",
+                                                  "version":  {
+                                                                  "strictly":  "1.17.9"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-codec",
+                                                  "module":  "commons-codec",
+                                                  "version":  {
+                                                                  "strictly":  "1.16.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-io",
+                                                  "module":  "commons-io",
+                                                  "version":  {
+                                                                  "strictly":  "2.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-logging",
+                                                  "module":  "commons-logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-buffer",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-codec",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-handler",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-resolver",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-classes-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-unix-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "it.unimi.dsi",
+                                                  "module":  "fastutil",
+                                                  "version":  {
+                                                                  "strictly":  "8.5.12"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna-platform",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.sf.jopt-simple",
+                                                  "module":  "jopt-simple",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.4"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-compress",
+                                                  "version":  {
+                                                                  "strictly":  "1.22"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-lang3",
+                                                  "version":  {
+                                                                  "strictly":  "3.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpclient",
+                                                  "version":  {
+                                                                  "strictly":  "4.5.13"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpcore",
+                                                  "version":  {
+                                                                  "strictly":  "4.4.16"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-core",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-slf4j2-impl",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.joml",
+                                                  "module":  "joml",
+                                                  "version":  {
+                                                                  "strictly":  "1.10.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-glfw",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-jemalloc",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-openal",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-opengl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-stb",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-tinyfd",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.slf4j",
+                                                  "module":  "slf4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.0.7"
+                                                              }
+                                              }
+                                          ],
+                         "capabilities":  [
+                                              {
+                                                  "group":  "net.neoforged",
+                                                  "name":  "minecraft-dependencies",
+                                                  "version":  "1.20.2"
+                                              }
+                                          ]
+                     },
+                     {
+                         "name":  "serverCompileDependencies",
+                         "attributes":  {
+                                            "org.gradle.category":  "library",
+                                            "org.gradle.usage":  "java-api",
+                                            "org.gradle.jvm.version":  17,
+                                            "net.neoforged.distribution":  "server"
+                                        },
+                         "dependencies":  [
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "ca.weblite",
+                                                  "module":  "java-objc-bridge",
+                                                  "version":  {
+                                                                  "strictly":  "1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.github.oshi",
+                                                  "module":  "oshi-core",
+                                                  "version":  {
+                                                                  "strictly":  "6.4.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.code.gson",
+                                                  "module":  "gson",
+                                                  "version":  {
+                                                                  "strictly":  "2.10.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "failureaccess",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "guava",
+                                                  "version":  {
+                                                                  "strictly":  "32.1.2-jre"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.ibm.icu",
+                                                  "module":  "icu4j",
+                                                  "version":  {
+                                                                  "strictly":  "73.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "authlib",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.47"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "blocklist",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "brigadier",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "datafixerupper",
+                                                  "version":  {
+                                                                  "strictly":  "6.0.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "patchy",
+                                                  "version":  {
+                                                                  "strictly":  "2.2.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "text2speech",
+                                                  "version":  {
+                                                                  "strictly":  "1.17.9"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-codec",
+                                                  "module":  "commons-codec",
+                                                  "version":  {
+                                                                  "strictly":  "1.16.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-io",
+                                                  "module":  "commons-io",
+                                                  "version":  {
+                                                                  "strictly":  "2.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-logging",
+                                                  "module":  "commons-logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-buffer",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-codec",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-handler",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-resolver",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-classes-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-unix-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "it.unimi.dsi",
+                                                  "module":  "fastutil",
+                                                  "version":  {
+                                                                  "strictly":  "8.5.12"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna-platform",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.sf.jopt-simple",
+                                                  "module":  "jopt-simple",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.4"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-compress",
+                                                  "version":  {
+                                                                  "strictly":  "1.22"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-lang3",
+                                                  "version":  {
+                                                                  "strictly":  "3.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpclient",
+                                                  "version":  {
+                                                                  "strictly":  "4.5.13"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpcore",
+                                                  "version":  {
+                                                                  "strictly":  "4.4.16"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-core",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-slf4j2-impl",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.joml",
+                                                  "module":  "joml",
+                                                  "version":  {
+                                                                  "strictly":  "1.10.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-glfw",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-jemalloc",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-openal",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-opengl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-stb",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-tinyfd",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.slf4j",
+                                                  "module":  "slf4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.0.7"
+                                                              }
+                                              }
+                                          ],
+                         "capabilities":  [
+                                              {
+                                                  "group":  "net.neoforged",
+                                                  "name":  "minecraft-dependencies",
+                                                  "version":  "1.20.2"
+                                              }
+                                          ]
+                     },
+                     {
+                         "name":  "serverRuntimeDependencies",
+                         "attributes":  {
+                                            "org.gradle.category":  "library",
+                                            "org.gradle.usage":  "java-runtime",
+                                            "org.gradle.jvm.version":  17,
+                                            "net.neoforged.distribution":  "server"
+                                        },
+                         "dependencies":  [
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "ca.weblite",
+                                                  "module":  "java-objc-bridge",
+                                                  "version":  {
+                                                                  "strictly":  "1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.github.oshi",
+                                                  "module":  "oshi-core",
+                                                  "version":  {
+                                                                  "strictly":  "6.4.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.code.gson",
+                                                  "module":  "gson",
+                                                  "version":  {
+                                                                  "strictly":  "2.10.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "failureaccess",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.google.guava",
+                                                  "module":  "guava",
+                                                  "version":  {
+                                                                  "strictly":  "32.1.2-jre"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.ibm.icu",
+                                                  "module":  "icu4j",
+                                                  "version":  {
+                                                                  "strictly":  "73.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "authlib",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.47"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "blocklist",
+                                                  "version":  {
+                                                                  "strictly":  "1.0.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "brigadier",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "datafixerupper",
+                                                  "version":  {
+                                                                  "strictly":  "6.0.8"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.1.1"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "patchy",
+                                                  "version":  {
+                                                                  "strictly":  "2.2.10"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "com.mojang",
+                                                  "module":  "text2speech",
+                                                  "version":  {
+                                                                  "strictly":  "1.17.9"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-codec",
+                                                  "module":  "commons-codec",
+                                                  "version":  {
+                                                                  "strictly":  "1.16.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-io",
+                                                  "module":  "commons-io",
+                                                  "version":  {
+                                                                  "strictly":  "2.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "commons-logging",
+                                                  "module":  "commons-logging",
+                                                  "version":  {
+                                                                  "strictly":  "1.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-buffer",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-codec",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-handler",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-resolver",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-classes-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-epoll",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport-native-unix-common",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "io.netty",
+                                                  "module":  "netty-transport",
+                                                  "version":  {
+                                                                  "strictly":  "4.1.97.Final"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "it.unimi.dsi",
+                                                  "module":  "fastutil",
+                                                  "version":  {
+                                                                  "strictly":  "8.5.12"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna-platform",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.java.dev.jna",
+                                                  "module":  "jna",
+                                                  "version":  {
+                                                                  "strictly":  "5.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "net.sf.jopt-simple",
+                                                  "module":  "jopt-simple",
+                                                  "version":  {
+                                                                  "strictly":  "5.0.4"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-compress",
+                                                  "version":  {
+                                                                  "strictly":  "1.22"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.commons",
+                                                  "module":  "commons-lang3",
+                                                  "version":  {
+                                                                  "strictly":  "3.13.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpclient",
+                                                  "version":  {
+                                                                  "strictly":  "4.5.13"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.httpcomponents",
+                                                  "module":  "httpcore",
+                                                  "version":  {
+                                                                  "strictly":  "4.4.16"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-core",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.apache.logging.log4j",
+                                                  "module":  "log4j-slf4j2-impl",
+                                                  "version":  {
+                                                                  "strictly":  "2.19.0"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.joml",
+                                                  "module":  "joml",
+                                                  "version":  {
+                                                                  "strictly":  "1.10.5"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-glfw",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-jemalloc",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-openal",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-opengl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-stb",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl-tinyfd",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.lwjgl",
+                                                  "module":  "lwjgl",
+                                                  "version":  {
+                                                                  "strictly":  "3.3.2"
+                                                              }
+                                              },
+                                              {
+                                                  "excludes":  [
+                                                                   {
+                                                                       "group":  "*",
+                                                                       "module":  "*"
+                                                                   }
+                                                               ],
+                                                  "group":  "org.slf4j",
+                                                  "module":  "slf4j-api",
+                                                  "version":  {
+                                                                  "strictly":  "2.0.7"
+                                                              }
+                                              }
+                                          ],
+                         "capabilities":  [
+                                              {
+                                                  "group":  "net.neoforged",
+                                                  "name":  "minecraft-dependencies",
+                                                  "version":  "1.20.2"
+                                              }
+                                          ]
+                     },
+                     {
+                         "name":  "platformDependencies",
+                         "attributes":  {
+                                            "org.gradle.usage":  "java-api",
+                                            "org.gradle.category":  "platform"
+                                        },
+                         "dependencies":  [
+
+                                          ]
+                     },
+                     {
+                         "name":  "platformRuntimeDependencies",
+                         "attributes":  {
+                                            "org.gradle.usage":  "java-runtime",
+                                            "org.gradle.category":  "platform"
+                                        },
+                         "dependencies":  [
+
+                                          ]
+                     }
+                 ]
+}

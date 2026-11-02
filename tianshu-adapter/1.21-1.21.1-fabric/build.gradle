@@ -33,7 +33,7 @@ sourceSets {
         resources.srcDir "${sharedLayerRoot}/src/main/resources"
     }
     test {
-        java.srcDir '../common/src/test/java'
+        java.srcDir "${sharedLayerRoot}/src/test/java"
     }
 }
 

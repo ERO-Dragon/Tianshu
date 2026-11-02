@@ -15,7 +15,7 @@ final class SettingsTextWidget extends AbstractWidget {
     }
 
     @Override
-    protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         int right = getX() + getWidth();
         int bottom = getY() + getHeight();
         guiGraphics.enableScissor(getX(), getY(), right, bottom);

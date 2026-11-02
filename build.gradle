@@ -406,6 +406,87 @@ tasks.register('verifyUniversalModuleJars') {
     }
 }
 
+// ---------------------------------------------------------------- adapter properties
+// Each adapter is pinned by its own adapter.properties, and the build reads those keys without validating them: a
+// missing 'minecraft_version' became the literal "[null]" in the shipped manifest while the whole build stayed green,
+// because the metadata task was up to date and never re-expanded the template again. This gate makes that file the
+// single, checked source of truth: the pinned version must be the newest member of the range its directory claims,
+// every key the build reads must exist, and the shared layer it names must be a real source tree.
+tasks.register('verifyAdapterProperties') {
+    group = 'verification'
+    description = 'Every adapter.properties must pin the version its directory claims and name an existing shared layer.'
+    def adapterDirs = (file('tianshu-adapter').listFiles() ?: [] as File[])
+            .findAll { it.isDirectory() && new File(it, 'adapter.properties').isFile() }
+            .sort { it.name }
+    inputs.files(adapterDirs.collect { new File(it, 'adapter.properties') })
+    doLast {
+        if (adapterDirs.isEmpty()) {
+            throw new GradleException("No tianshu-adapter/*/adapter.properties found; this gate would pass vacuously")
+        }
+        def javaLevels = ['17', '21', '25']
+        // The level a line runs on is decided by the game, not by the adapter: 1.20.1-1.20.4 are Java 17, everything
+        // from 1.20.5 to 1.21.11 is Java 21, and the 26.x line moved to Java 25.
+        def expectedJavaLevel = { String mc ->
+            if (mc == null) return null
+            if (mc.startsWith('26.')) return '25'
+            if (mc.startsWith('1.21')) return '21'
+            if (mc.startsWith('1.20.')) {
+                def patch = mc.tokenize('.')[2]?.toInteger()
+                return patch != null && patch >= 5 ? '21' : '17'
+            }
+            return null
+        }
+        def violations = []
+        adapterDirs.each { dir ->
+            def manifest = new File(dir, 'adapter.properties')
+            def props = new Properties()
+            manifest.withInputStream { props.load(it) }
+            def required = ['minecraft_version', 'shared_layer']
+            if (dir.name.endsWith('-fabric')) {
+                required += ['fabric_loader_version', 'fabric_api_version']
+            } else if (dir.name.endsWith('-neoforge')) {
+                // 1.20.1 ships net.neoforged:forge through the legacyforge line; every later generation ships NeoForge.
+                required += [props.getProperty('forge_version')?.trim() ? 'forge_version' : 'neo_version']
+            } else {
+                violations << "${manifest}: directory name ends in neither -fabric nor -neoforge".toString()
+            }
+            required.each { key ->
+                def value = props.getProperty(key)?.trim()
+                if (value == null || value.isEmpty()) {
+                    violations << "${manifest}: missing ${key}".toString()
+                }
+            }
+            def mcVersion = props.getProperty('minecraft_version')?.trim()
+            if (mcVersion) {
+                // A directory names the range it serves (1.21-1.21.1, 26.1, 1.20.6) and the pinned version is its
+                // newest member: one jar is built for that version and the range is widened only once both ends compile.
+                def newest = dir.name.replaceAll(/-(fabric|neoforge)$/, '').tokenize('-').last()
+                if (newest != mcVersion) {
+                    violations << "${manifest}: directory '${dir.name}' serves up to ${newest}, but pins ${mcVersion}".toString()
+                }
+            }
+            // Optional: each build script defaults it when absent. When a package does state it, it has to be the level
+            // its own line runs on, which is the one rule keeping a package from shipping bytecode the game cannot load.
+            def javaLevel = props.getProperty('java_version')?.trim()
+            if (javaLevel) {
+                def expected = expectedJavaLevel(mcVersion)
+                if (!javaLevels.contains(javaLevel)) {
+                    violations << "${manifest}: java_version '${javaLevel}' is not one of ${javaLevels}".toString()
+                } else if (expected != null && expected != javaLevel) {
+                    violations << "${manifest}: Java ${javaLevel} does not match the ${expected} this line runs on".toString()
+                }
+            }
+            def sharedLayer = props.getProperty('shared_layer')?.trim()
+            if (sharedLayer && !new File(dir.parentFile, "${sharedLayer}/src/main/java").isDirectory()) {
+                violations << "${manifest}: shared_layer '${sharedLayer}' has no src/main/java".toString()
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Adapter properties are incomplete or inconsistent:\n" + violations.join('\n'))
+        }
+    }
+}
+
 tasks.named('check') {
     dependsOn tasks.named('verifyFeatureIsolation')
     dependsOn tasks.named('verifyFeatureOptionalDependencies')
@@ -413,6 +494,7 @@ tasks.named('check') {
     dependsOn tasks.named('verifyCommonAdapterNeutral')
     dependsOn tasks.named('verifyNoPlatformImport')
     dependsOn tasks.named('verifyUniversalModuleJars')
+    dependsOn tasks.named('verifyAdapterProperties')
 }
 
 // ---------------------------------------------------------------- test concurrency
