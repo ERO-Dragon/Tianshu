@@ -143,7 +143,7 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 3. LLM 默认 3 秒后提交自动加载。
 4. 两者共用协议中心的单线程 `MODEL_LOAD` lane；TTS 在 1 秒时先提交，加载超过 2 秒时 LLM 仍只会排队，不会并行占用重模型资源。
 
-退出世界时取消尚未触发的自动加载，停止 Session、纯合成和播放，并使旧 generation 的回调失效。模块持有的 runtime 和已加载 backend 可以跨世界复用，避免重进世界时重复构造重资源；重新进入世界只创建新的运行会话，不复用旧 Session、旧回调或旧音频。若退出时模型仍在加载，下一次 `prepare` 会合并到同一加载结果并接收新的 capability 状态，不会因旧操作 busy 被误判失败。只有模块 `destroy`、模型切换或显式重载才关闭或替换 backend/ORT 资源。
+退出世界时取消尚未触发的自动加载，停止 Session、纯合成和播放，并使旧 generation 的回调失效。runtime 和 engine 属于单次世界会话：重新进入世界会重建它们，旧引擎由 `destroy` 关闭，因此“退出时模型仍在加载”不会被下一次 `prepare` 合并——那次加载属于已丢弃的引擎，闸门只保证它不会与新会话的加载同时进行（`abandon` 丢弃尚未开始的请求，运行中的加载由自己的 `release` 结算）。只有模块 `destroy`、模型切换或显式重载才关闭或替换 backend/ORT 资源。
 
 | 工作 | Lane |
 |---|---|
@@ -154,7 +154,9 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 | 模型初始化/切换/关闭 | `MODEL_LOAD` |
 | 延迟触发 | `SCHEDULED` |
 
-合成和模型生命周期使用同一个 `module.tts:backend` concurrency key。即使 lane 不同，shutdown 也必须等待当前原子推理返回，不能在 ORT run 中并发关闭 session。
+合成和模型生命周期使用同一个 `module.tts:backend` concurrency key。即使 lane 不同，最终关闭引擎的 shutdown 任务也排在模型 lane 上，因此它在当前推理返回之后才执行，不会在 ORT run 中并发关闭 session。`destroy` 会等这个任务最多 3 秒：任务完成即返回；仍在排队（前面有长推理）时不等，任务保留在 lane 上稍后执行；如果连排队都被拒绝，说明 lane 已经不存在，`destroy` 直接关闭引擎——最后一份引擎引用绝不会被丢掉。
+
+模型重载分两种：**重载当前正在使用的模型**时先释放再加载，因为那份“回退”只是同一批文件的副本，两份同时驻留只会让峰值翻倍；**切换到另一个模型**时仍然是先加载新的、成功后再关旧的，旧模型是真实的回退。
 
 ## 8. MOSS 性能敏感边界
 
@@ -177,9 +179,18 @@ placement、协议优先级、音色、speaker 和语速只在首包 admission �
 
 TTS 复用 model 域下载能力，不重写 transport：
 
-- Hugging Face 仓库按 repo/revision 拼接特定文件，并支持 HF Mirror 降级；仓库 id 由 catalog 声明（MOSS 的第二个仓库用 `codecRepoId`），backend 不硬编码也不自行下载。
-- GitHub archive 支持 proxy 到 direct URI 降级。
-- 下载使用 staging、完整性校验、暂停/继续/取消和原子提交，半成品目录不可被选为模型。
+- Hugging Face 仓库按 repo 加固定 revision `main` 拼接特定文件，并支持 HF Mirror 降级；仓库 id 由 catalog 声明（MOSS 的第二个仓库用 `codecRepoId`），backend 不硬编码也不自行下载。catalog 目前不声明 revision。
+- GitHub archive 支持 proxy 到 direct URI 降级（当前 catalog 没有条目使用 archive）。
+- 下载使用 staging，暂停/继续/取消都保留或清理 staging；提交是“先删正式目录再移动 staging”的两步操作，因此中途失败会保留 staging 但失去旧目录。
+- **完整性校验以仓库声明为准**：每个文件下载完成后比对仓库声明的字节数；仓库给出 LFS 摘要（`lfs.oid`，即 sha256）时再算一遍摘要比对。校验失败的文件立即删除，重试才会重新下载而不是被 `skipExisting` 跳过。传输层的 `Content-Length` 只说明服务器发了多少，说明不了发的是什么，因此不作为完整性依据。
+- **写完即落盘**：每次传输结束前对文件 `force(true)`，再让 resume 状态以真实文件长度为准；断电后不会出现“长度对、内容有洞”还被当作可续传的情况。
+- 启动清理会**回收 staging**：模型已安装时它的 staging 属于提交后残留，空目录也没有可续的内容，两种都删除；其余保留——一份未完成的下载可以逐文件续传，留着才是它的用处。`-extract` 目录一律删除。
+- 开始前检查目标磁盘可用空间（不足 `size × 1.2` 直接拒绝并给出“空间不足”，不启动传输）。失败后的分类不依赖这个预估值：传输失败时再问一次文件系统，剩余空间不足以再来一次即判定为“空间不足”，与平台语言无关。
+- 下载与删除互斥：下载进行中拒绝删除，删除进行中拒绝下载。
+- 删除失败会继续尝试删除剩余文件；只要目录还在（即使内容不完整），设置页仍然允许再次删除。
+- 下载成功**不写** `model-settings.json`：没有该文件就代表“使用 catalog 的默认音色”，写一份默认值会把 `defaultSpeakerId` 永久压死。
+- MOSS 的“已安装”除 manifest 外还要求 manifest 声明文件真实存在，且目录里有 `.onnx` 或 `.data`。
+- catalog 的 `size` 由实测文件总和校正，用于界面显示与下载前的空间预检；它不参与完整性判定。
 
 TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务。Debug 构建中由设置页右下角的全局 Debug 开关统一控制结构化诊断；所有天枢运行日志和被接受的结构化诊断事件（WARN/ERROR 恒落盘，INFO 仅随开关）由 Client 写入独立的 `logs/tianshu-diagnostics.log`，backend 不自行创建日志文件或线程。
 
@@ -190,6 +201,8 @@ TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务。D
 `TtsModelService.saveSettings` 必须向调用方传递模型参数写盘错误。模型参数先写同目录临时文件，再替换正式文件（文件系统支持时使用原子替换），避免直接截断原有配置。设置会话只在持久化成功后接受草稿并执行运行时更新；统一配置保存失败时，恢复先前已写入的模型参数和内存配置。
 
 试听默认文本来自语言资源，不在 Java/config 中固定某种语言。已删除未使用的 `ttsPort`。未来 Qwen/Fish 等后端通过新的 model/backend descriptor 接入，由玩家在 GUI 显式选择，运行时不静默切换。
+
+设置页的“运行中”一行读取 `TtsRuntimeSnapshot.activeModelName()`，与配置不一致时显式标出两者：试听还原失败会让引擎停在预览模型上，这行是玩家唯一能看出“声音为什么变了”的地方。
 
 ## 11. 验收重点
 

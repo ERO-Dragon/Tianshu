@@ -52,6 +52,7 @@ public final class PocketTtsBackend implements TtsBackend {
     @Override
     public synchronized boolean initialize(TtsResolvedModel model) {
         shutdown();
+        boolean ready = false;
         try {
             Path modelDir = model.modelDir();
             for (String required : REQUIRED_FILES) {
@@ -63,12 +64,19 @@ public final class PocketTtsBackend implements TtsBackend {
             sampleRate = service.sampleRate();
             initialized = true;
             env.info("Pocket-TTS backend initialized, sampleRate=" + sampleRate + "Hz");
+            ready = true;
             return true;
         } catch (Throwable failure) {
             TtsRuntimeFailurePolicy.rethrowFatal(failure);
             env.error("Pocket-TTS backend initialization failed", failure);
-            shutdown();
             return false;
+        } finally {
+            // rethrowFatal leaves this method with a fatal Throwable before the catch body can clean
+            // up, so the release has to sit in a finally; it is also the single owner for the plain
+            // "initialize returned false" outcome.
+            if (!ready) {
+                shutdown();
+            }
         }
     }
 

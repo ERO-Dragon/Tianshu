@@ -74,6 +74,25 @@ class NativeModelLoadQueueTest {
     }
 
     @Test
+    void abandoningATierDoesNotClearThePermitOfALoadThatIsStillRunning() {
+        // A speech load is reading native memory when the module stops. Its own release settles the tier;
+        // abandoning it here used to clear the live permit, which let the next session start a second load
+        // while the first one was still running.
+        assertEquals(NativeModelLoadQueue.Outcome.GRANTED,
+                queue.request(TTS, "tts-model", submit("tts"), NativeModelLoadQueue.Tier.DEFERRED));
+
+        queue.abandon(NativeModelLoadQueue.Tier.DEFERRED);
+
+        assertEquals(NativeModelLoadQueue.Outcome.PARKED,
+                queue.request(ASR, "asr-model", submit("asr"), NativeModelLoadQueue.Tier.LAST),
+                "the next native load must wait for the running one instead of overlapping with it");
+        assertEquals(List.of("tts"), ran);
+
+        queue.release(TTS);
+        assertEquals(List.of("tts", "asr"), ran);
+    }
+
+    @Test
     void voiceInputProceedsWhenSpeechOutputGivesUp() {
         assertEquals(NativeModelLoadQueue.Outcome.PARKED,
                 queue.request(ASR, "asr-model", submit("asr"), NativeModelLoadQueue.Tier.LAST));

@@ -111,6 +111,7 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
                         .button("tts.preview.stop", tts("action.preview_stop"), draft::stopPreview, draft::previewRunning))
                 .status("tts.model.status", tts("section.model_status"), status -> status
                         .row("tts.model.name", tts("row.model"), draft::selectedModelNameStatus)
+                        .row("tts.model.running", tts("row.running_model"), draft::runningModelStatus)
                         .row("tts.model.description", tts("row.description"), draft::selectedModelDescriptionStatus)
                         .row("tts.model.meta", tts("row.meta"), draft::selectedModelMetaStatus)
                         .row("tts.preview.status", tts("row.preview_status"), draft::previewStatus)
@@ -469,6 +470,24 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             return info == null ? common("not_selected") : UiText.literal(info.name);
         }
 
+        /**
+         * What the engine is really speaking with. A failed preview restore leaves it on the preview model
+         * while the configuration still names the old one; saying so is the only way the player can tell
+         * why the voice changed.
+         */
+        private UiText runningModelStatus() {
+            com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeSnapshot snapshot = ttsModuleService().snapshot();
+            String active = snapshot.activeModelName();
+            if (active.isBlank()) {
+                return common("not_selected");
+            }
+            String configured = config.getCustomTtsName();
+            if (!snapshot.modelMismatch(configured)) {
+                return UiText.literal(active);
+            }
+            return tts("status.model_mismatch", active, configured.isBlank() ? common("not_selected") : UiText.literal(configured));
+        }
+
         private UiText selectedModelDescriptionStatus() {
             TtsModelInfo info = resolveModel(selectedModelName.get());
             if (info == null) {
@@ -611,8 +630,11 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             boolean cancelling = activeDownload && status.cancelling();
             boolean known = availabilityEntry(info) != null;
             boolean installed = info != null && isDownloaded(info);
+            // A half-deleted or otherwise incomplete directory is not installed, but it still occupies the
+            // model name; only "a directory exists" keeps its delete button usable.
+            boolean hasDirectory = ttsModelService().hasModelDirectory(info);
             boolean operationActive = downloading || ttsModelService().isDeleting();
-            return new TtsModelCardState(info, known, installed, operationActive, activeDownload, paused, cancelling);
+            return new TtsModelCardState(info, known, installed, hasDirectory, operationActive, activeDownload, paused, cancelling);
         }
 
         private void deleteModel(ModuleSettingsContext context, TtsModelInfo info) {
@@ -878,7 +900,7 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
         }
     }
 
-    private record TtsModelCardState(TtsModelInfo info, boolean known, boolean installed, boolean operationActive, boolean activeDownload, boolean paused, boolean cancelling) {
+    private record TtsModelCardState(TtsModelInfo info, boolean known, boolean installed, boolean hasDirectory, boolean operationActive, boolean activeDownload, boolean paused, boolean cancelling) {
         private boolean canStartDownload() {
             return info != null && known && !installed && !operationActive;
         }
@@ -896,7 +918,7 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
         }
 
         private boolean canDeleteModel() {
-            return info != null && known && installed && !operationActive;
+            return info != null && known && hasDirectory && !operationActive;
         }
 
         private UiText statusLabel() {

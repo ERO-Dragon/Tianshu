@@ -5,6 +5,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * The live sessions of this runtime.
+ *
+ * <p>It holds a session only while that session can still change. Keeping finished ones was the one unbounded
+ * structure in the module: a session is created per sentence and its request carries the whole text, so a long
+ * play session accumulated every line ever spoken. A terminal session has nothing left to stop, so nothing
+ * that reads this map needs it to stay.</p>
+ */
 public final class TtsSessionManager {
     private final Map<String, TtsSession> sessions = new LinkedHashMap<>();
     private TtsSession active;
@@ -34,6 +42,7 @@ public final class TtsSessionManager {
             return Optional.empty();
         }
         session.cancel(reason);
+        sessions.remove(session.request().requestId(), session);
         if (active == session) {
             active = null;
         }
@@ -47,6 +56,7 @@ public final class TtsSessionManager {
         for (TtsSession session : cancelled) {
             session.cancel(reason);
         }
+        sessions.values().removeIf(TtsSession::isTerminal);
         if (active != null && active.isTerminal()) {
             active = null;
         }
@@ -56,6 +66,7 @@ public final class TtsSessionManager {
     public synchronized TtsSession complete(TtsSession session) {
         if (session != null) {
             session.complete();
+            sessions.remove(session.request().requestId(), session);
         }
         if (active == session) {
             active = null;
@@ -66,5 +77,13 @@ public final class TtsSessionManager {
     public synchronized void clear() {
         sessions.clear();
         active = null;
+    }
+
+    /**
+     * How many sessions are still live. Package-visible so a test can assert the invariant this class exists
+     * to keep — that a terminal session leaves the map — instead of trusting a comment.
+     */
+    synchronized int liveCount() {
+        return sessions.size();
     }
 }

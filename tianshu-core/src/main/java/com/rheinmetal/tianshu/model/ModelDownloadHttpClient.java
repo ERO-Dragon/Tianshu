@@ -9,6 +9,8 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -179,18 +181,26 @@ public final class ModelDownloadHttpClient {
         Optional<ModelDownloadResumeMetadata> metadata = ModelDownloadResumeMetadata.fromResponse(candidate, connection);
         Files.deleteIfExists(temporary);
         Files.deleteIfExists(metadataFile);
+        // The metadata carries the transfer's identity (url, etag, total length), not how much arrived: the
+        // resume length is read back from the file itself. Writing it first therefore makes a crash leave a
+        // resumable pair, and it is the file that is forced below so the length it reports is real.
         if (metadata.isPresent()) {
             metadata.get().write(metadataFile);
         }
         long downloaded = 0L;
         try (InputStream input = connection.getInputStream();
-             OutputStream output = Files.newOutputStream(
+             FileChannel channel = FileChannel.open(
                      temporary,
                      StandardOpenOption.CREATE,
                      StandardOpenOption.TRUNCATE_EXISTING,
                      StandardOpenOption.WRITE
-             )) {
+             );
+             OutputStream output = Channels.newOutputStream(channel)) {
             downloaded = copy(input, output, 0L, expectedLength, control, progress);
+            // The bytes are on the platter before anything claims the file is complete; a resume that later
+            // trusts this length must not be able to start from a file whose tail only lived in the page
+            // cache when the power went.
+            channel.force(true);
         } catch (IOException failure) {
             cleanupIfNotResumable(temporary, metadataFile);
             throw failure;
@@ -224,12 +234,13 @@ public final class ModelDownloadHttpClient {
         }
         long downloaded;
         try (InputStream input = connection.getInputStream();
-             OutputStream output = Files.newOutputStream(
+             FileChannel channel = FileChannel.open(
                      temporary,
                      StandardOpenOption.CREATE,
                      StandardOpenOption.APPEND,
                      StandardOpenOption.WRITE
-             )) {
+             );
+             OutputStream output = Channels.newOutputStream(channel)) {
             downloaded = copy(
                     input,
                     output,
@@ -238,6 +249,8 @@ public final class ModelDownloadHttpClient {
                     control,
                     progress
             );
+            // Same rule as a full download: the appended bytes are durable before the length is trusted.
+            channel.force(true);
         }
         validateLength(candidate, resume.metadata().totalLength(), downloaded, true);
     }

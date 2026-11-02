@@ -91,7 +91,7 @@ class TtsModelInfoTest {
     }
 
     @Test
-    void mossDirectoryRequiresManifestReferencedMetaFiles(@TempDir Path tempDir) throws Exception {
+    void mossDirectoryRequiresManifestReferencedMetaFilesAndAGraphFile(@TempDir Path tempDir) throws Exception {
         TtsModelInfo info = find(TtsModelInfo.loadCatalog(), "MOSS-TTS-Nano-100M-ONNX");
 
         Files.writeString(tempDir.resolve("browser_poc_manifest.json"), """
@@ -103,10 +103,15 @@ class TtsModelInfoTest {
                 }
                 """);
 
-        assertFalse(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
+        assertFalse(TtsModelInfo.isModelDirectoryComplete(info, tempDir), "the manifest alone is not a model");
 
         Files.writeString(tempDir.resolve("tts_meta.json"), "{}");
         Files.writeString(tempDir.resolve("codec_meta.json"), "{}");
+
+        assertFalse(TtsModelInfo.isModelDirectoryComplete(info, tempDir),
+                "metadata without weights must not count as an installed model: it can only be repaired by re-downloading");
+
+        Files.createFile(tempDir.resolve("model.onnx"));
 
         assertTrue(TtsModelInfo.isModelDirectoryComplete(info, tempDir));
     }

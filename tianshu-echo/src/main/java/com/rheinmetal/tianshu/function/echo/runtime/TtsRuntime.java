@@ -69,8 +69,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
     private final Map<TtsSpeechSessionCoordinator.SentenceWork, PreparedSpeech> preparedSpeech = new ConcurrentHashMap<>();
     private final Set<TtsSpeechSessionCoordinator.SentenceWork> preparingSpeech = ConcurrentHashMap.newKeySet();
     private final Set<TtsSpeechSessionKey> droppedStreams = Collections.synchronizedSet(new LinkedHashSet<>());
-    /** Last packet time of every open stream, so a caller that went silent can be reclaimed lazily. */
-    private final Map<TtsSpeechSessionKey, Long> streamActivity = new ConcurrentHashMap<>();
     private final TtsTextNormalizer normalizer = new TtsTextNormalizer();
     private final TtsPlaybackBufferTracker playbackBufferTracker = new TtsPlaybackBufferTracker();
     private final TtsAdaptiveSynthesisPolicy synthesisPolicy;
@@ -110,13 +108,42 @@ public final class TtsRuntime implements TtsPlaybackListener {
     ) {
         this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher,
                 playbackStatePublisher, requestStatusPublisher, modelLoadingPublisher,
-                streamingSynthesisEnabled, null);
+                streamingSynthesisEnabled, null, ignored -> { });
     }
 
     /**
-     * @param loadQueue the process-wide serial gate every native model load goes through; the speech
-     *                  model is a deferred request there, because retrieval is the dialogue precondition
+     * @param loadQueue     the process-wide serial gate every native model load goes through; the speech
+     *                      model is a deferred request there, because retrieval is the dialogue precondition
+     * @param availability  told when outside synthesis becomes possible or impossible, which is what the
+     *                      module's capability bits have to follow
      */
+    public TtsRuntime(
+            IGameEnvironment env,
+            ModuleExecutionAccess executorManager,
+            TtsSynthesisEngine synthesisEngine,
+            IAudioBridge audioBridge,
+            Consumer<TtsSession> sessionStatusPublisher,
+            Consumer<TtsPlaybackState> playbackStatePublisher,
+            Consumer<TtsRequestStatusPayload> requestStatusPublisher,
+            Consumer<Boolean> modelLoadingPublisher,
+            BooleanSupplier streamingSynthesisEnabled,
+            NativeModelLoadQueue loadQueue,
+            Consumer<Boolean> availability
+    ) {
+        this.env = env;
+        this.executorManager = executorManager;
+        this.synthesisEngine = synthesisEngine;
+        this.synthesisScheduler = new TtsSynthesisScheduler(executorManager, synthesisEngine);
+        this.synthesisPolicy = new TtsAdaptiveSynthesisPolicy(streamingSynthesisEnabled);
+        this.synthesisTaskCoordinator = new TtsSynthesisTaskCoordinator(synthesisEngine, synthesisScheduler, synthesisPolicy, lastFailure::set);
+        this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set, modelLoadingPublisher, loadQueue);
+        this.modelLifecycleCoordinator.observeAvailability(availability);
+        this.playbackController = new TtsPlaybackController(audioBridge, env, this, executorManager);
+        this.sessionStatusPublisher = sessionStatusPublisher == null ? ignored -> {} : sessionStatusPublisher;
+        this.playbackStatePublisher = playbackStatePublisher == null ? ignored -> {} : playbackStatePublisher;
+        this.requestStatusPublisher = requestStatusPublisher == null ? ignored -> { } : requestStatusPublisher;
+    }
+
     public TtsRuntime(
             IGameEnvironment env,
             ModuleExecutionAccess executorManager,
@@ -129,17 +156,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
             BooleanSupplier streamingSynthesisEnabled,
             NativeModelLoadQueue loadQueue
     ) {
-        this.env = env;
-        this.executorManager = executorManager;
-        this.synthesisEngine = synthesisEngine;
-        this.synthesisScheduler = new TtsSynthesisScheduler(executorManager, synthesisEngine);
-        this.synthesisPolicy = new TtsAdaptiveSynthesisPolicy(streamingSynthesisEnabled);
-        this.synthesisTaskCoordinator = new TtsSynthesisTaskCoordinator(synthesisEngine, synthesisScheduler, synthesisPolicy, lastFailure::set);
-        this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set, modelLoadingPublisher, loadQueue);
-        this.playbackController = new TtsPlaybackController(audioBridge, env, this, executorManager);
-        this.sessionStatusPublisher = sessionStatusPublisher == null ? ignored -> {} : sessionStatusPublisher;
-        this.playbackStatePublisher = playbackStatePublisher == null ? ignored -> {} : playbackStatePublisher;
-        this.requestStatusPublisher = requestStatusPublisher == null ? ignored -> { } : requestStatusPublisher;
+        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher,
+                requestStatusPublisher, modelLoadingPublisher, streamingSynthesisEnabled, loadQueue, ignored -> { });
     }
 
     public TtsOperationResult prepare(Consumer<Boolean> completion) {
@@ -172,7 +190,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
         workSessions.clear();
         preparedSpeech.clear();
         preparingSpeech.clear();
-        streamActivity.clear();
         droppedStreams.clear();
         synthesisTaskCoordinator.cancelAll("runtime stopped");
         List<TtsSession> cancelled = sessionManager.cancelAll("runtime stopped");
@@ -183,10 +200,52 @@ public final class TtsRuntime implements TtsPlaybackListener {
         publishPlaybackState();
     }
 
+    /**
+     * How long {@link #destroy()} waits for the queued engine close. The close is ordered behind any running
+     * inference, so this is a bound on "give it a moment", not a correctness requirement: a task that is
+     * still queued runs as soon as the lane reaches it.
+     */
+    private static final long ENGINE_CLOSE_WAIT_MILLIS = 3_000L;
+
     public void destroy() {
         stop();
         sessionManager.clear();
-        modelLifecycleCoordinator.shutdown();
+        ProtocolTaskHandle closeTask = modelLifecycleCoordinator.shutdown();
+        if (closeTask == null) {
+            // The model lane refused the close, so nothing else can ever reach the engine; this frame is its
+            // last owner. Leaving it open would hold a whole model's native memory for the rest of the run.
+            shutdownEngineInline();
+            return;
+        }
+        if (!awaitEngineClosed(closeTask)) {
+            // A long inference is still in front of the close. The task keeps its place in the lane and runs
+            // as soon as that inference returns — waiting longer here would only stall leaving the world.
+            env.warn("TTS model close is still queued behind running work");
+        }
+    }
+
+    private boolean awaitEngineClosed(ProtocolTaskHandle closeTask) {
+        long deadline = System.currentTimeMillis() + ENGINE_CLOSE_WAIT_MILLIS;
+        while (System.currentTimeMillis() < deadline) {
+            if (closeTask.isDone()) {
+                return true;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return closeTask.isDone();
+            }
+        }
+        return closeTask.isDone();
+    }
+
+    private void shutdownEngineInline() {
+        try {
+            synthesisEngine.shutdown();
+        } catch (RuntimeException ignored) {
+            // A dead engine has nothing left to report.
+        }
     }
 
     public boolean isReady() {
@@ -208,6 +267,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 isReady(),
                 synthesisEngine.isInitialized(),
                 synthesisEngine.isAutoregressive(),
+                synthesisEngine.activeModelName(),
                 stateOf(session),
                 request == null ? "" : request.requestId(),
                 request == null ? "" : request.source().value(),
@@ -265,7 +325,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
         if (droppedStreams.contains(key)) {
             if (end) {
                 droppedStreams.remove(key);
-                streamActivity.remove(key);
                 speechSessionCoordinator.end(key);
             }
             return TtsOperationResult.accepted(request.requestId());
@@ -282,13 +341,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
             String normalized = normalizeSpeech(sentence);
             if (!normalized.isBlank()) {
                 sentences.add(normalized);
-            }
-        }
-        if (inputMode != TtsTextInputMode.DOCUMENT) {
-            if (end) {
-                streamActivity.remove(key);
-            } else {
-                streamActivity.put(key, System.currentTimeMillis());
             }
         }
         if (inputMode == TtsTextInputMode.DOCUMENT) {
@@ -493,15 +545,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
      * @param now current time; a test can pass a future instant instead of waiting
      */
     void reapIdleStreams(long now) {
-        for (Map.Entry<TtsSpeechSessionKey, Long> entry : List.copyOf(streamActivity.entrySet())) {
-            TtsSpeechSessionKey key = entry.getKey();
-            if (!speechInputAssembler.isOpen(key)) {
-                streamActivity.remove(key, entry.getValue());
-                continue;
-            }
-            if (now - entry.getValue() < STREAM_IDLE_TIMEOUT_MILLIS) {
-                continue;
-            }
+        for (TtsSpeechSessionKey key : speechInputAssembler.idleKeys(now, STREAM_IDLE_TIMEOUT_MILLIS)) {
             closeIdleStream(key);
         }
     }
@@ -511,7 +555,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
      * session completes, and the key becomes reusable.
      */
     private void closeIdleStream(TtsSpeechSessionKey key) {
-        streamActivity.remove(key);
         TtsSpeechInputAssembler.Batch batch = speechInputAssembler.endStream(key);
         for (String sentence : batch.sentences()) {
             String normalized = normalizeSpeech(sentence);
@@ -955,7 +998,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
         }
         boolean openStream = speechInputAssembler.isOpen(key);
         speechInputAssembler.cancel(key);
-        streamActivity.remove(key);
         if (openStream) {
             markStreamDropped(key);
         } else {
@@ -985,7 +1027,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
                 }
             }
             SpeechContext context = speechContexts.remove(termination.sessionKey());
-            streamActivity.remove(termination.sessionKey());
             if (context == null) {
                 continue;
             }

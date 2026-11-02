@@ -27,6 +27,14 @@ public final class TtsModelResolver {
             return Optional.empty();
         }
         TtsModelInfo info = modelService.resolveModelInfo(modelName);
+        // The settings page calls a model installed through this same predicate, so a directory that
+        // merely exists must not resolve: otherwise the runtime tries to load a model the user was
+        // told is not installed and fails deeper, with a native-load error instead of "not installed".
+        // A null entry is a legacy/custom directory the catalog knows nothing about; it keeps resolving.
+        if (info != null && !TtsModelInfo.isModelDirectoryComplete(info, modelDir)) {
+            env.warn("tts.model.directory_incomplete: " + modelDir);
+            return Optional.empty();
+        }
         return Optional.of(new TtsResolvedModel(modelDir, info, TtsResolvedModel.resolveBackendType(info)));
     }
 }

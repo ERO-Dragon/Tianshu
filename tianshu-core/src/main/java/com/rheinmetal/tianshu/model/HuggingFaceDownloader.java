@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
@@ -14,6 +15,8 @@ import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -212,7 +215,7 @@ public class HuggingFaceDownloader {
                     preferredBase,
                     repoId,
                     revision,
-                    filePath,
+                    repositoryFile,
                     localPath,
                     maxRetries,
                     control,
@@ -220,8 +223,7 @@ public class HuggingFaceDownloader {
                     fileIndex,
                     toDownload.size(),
                     fileStartBytes,
-                    totalBytes,
-                    repositoryFile.size()
+                    totalBytes
             );
             completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
@@ -269,7 +271,7 @@ public class HuggingFaceDownloader {
                     preferredBase,
                     VOCODER_REPO,
                     MAIN_REVISION,
-                    filePath,
+                    repositoryFile,
                     localPath,
                     maxRetries,
                     control,
@@ -277,8 +279,7 @@ public class HuggingFaceDownloader {
                     fileIndex,
                     toDownload.size(),
                     fileStartBytes,
-                    totalBytes,
-                    repositoryFile.size()
+                    totalBytes
             );
             completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
@@ -326,7 +327,9 @@ public class HuggingFaceDownloader {
                 preferredBase,
                 repoId,
                 revision,
-                filePath,
+                // A single file is not resolved through a tree, so there is no declared size or digest to
+                // check against; the transport's own length check is all this call can rely on.
+                new RepositoryFile(filePath, -1L, null),
                 absoluteTarget,
                 maxRetries,
                 control,
@@ -334,8 +337,7 @@ public class HuggingFaceDownloader {
                 1,
                 1,
                 0L,
-                0L,
-                -1L
+                0L
         );
     }
 
@@ -379,17 +381,40 @@ public class HuggingFaceDownloader {
                 continue;
             }
             if ("file".equalsIgnoreCase(node.get("type").getAsString())) {
-                result.add(new RepositoryFile(node.get("path").getAsString(), readSize(node)));
+                result.add(new RepositoryFile(
+                        node.get("path").getAsString(),
+                        readSize(node),
+                        readChecksum(node)
+                ));
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * The sha256 the repository publishes for a large file, or {@code null} when it publishes none.
+     *
+     * <p>Hugging Face reports LFS content as {@code lfs: {oid, size}} where {@code oid} is the sha256 of the
+     * bytes. Small non-LFS files have no digest, and a download must not fail just because a repository
+     * chose not to publish one.</p>
+     */
+    private static String readChecksum(JsonObject node) {
+        if (!node.has("lfs") || !node.get("lfs").isJsonObject()) {
+            return null;
+        }
+        JsonObject lfs = node.getAsJsonObject("lfs");
+        if (!lfs.has("oid") || lfs.get("oid").isJsonNull()) {
+            return null;
+        }
+        String oid = lfs.get("oid").getAsString();
+        return oid == null || oid.isBlank() ? null : oid.trim();
     }
 
     private void downloadRepositoryFile(
             String preferredBase,
             String repoId,
             String revision,
-            String filePath,
+            RepositoryFile file,
             Path target,
             int maxRetries,
             DownloadControl control,
@@ -397,13 +422,13 @@ public class HuggingFaceDownloader {
             int fileIndex,
             int totalFiles,
             long fileStartBytes,
-            long overallTotalBytes,
-            long knownFileSize
+            long overallTotalBytes
     ) throws IOException {
+        String filePath = file.path();
         List<URI> candidates = sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath);
         try {
             downloadCandidates(candidates, target, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, knownFileSize);
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, file.size());
         } catch (IOException failure) {
             if (!isConnectivityFailure(failure)) {
                 throw failure;
@@ -414,9 +439,63 @@ public class HuggingFaceDownloader {
             downloadCandidates(
                     sources.huggingFaceFileCandidates(fallback, repoId, revision, filePath),
                     target, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, knownFileSize);
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, file.size());
         }
+        verifyDownloadedFile(target, file);
         env.info("HF_FILE_COMPLETE repo=" + repoId + " file=" + filePath);
+    }
+
+    /**
+     * Checks the bytes that landed on disk against what the repository declared.
+     *
+     * <p>The transport can only compare against the response's own {@code Content-Length}, which says how
+     * much the server sent, not what it sent. A resumed transfer that started from a file whose tail never
+     * reached the disk, or a proxy that served a truncated body with a matching length, would pass that
+     * check and produce a model that fails much later inside the runtime. The declared size and the digest
+     * are the two facts that come from the repository rather than from the transfer.</p>
+     *
+     * <p>A file that fails is deleted, so the retry re-downloads it instead of skipping it as "already
+     * present".</p>
+     */
+    private void verifyDownloadedFile(Path target, RepositoryFile file) throws IOException {
+        long actualSize = Files.size(target);
+        if (file.size() > 0L && actualSize != file.size()) {
+            Files.deleteIfExists(target);
+            throw new IOException("MODEL_FILE_SIZE_MISMATCH file=" + file.path()
+                    + " expected=" + file.size() + " actual=" + actualSize);
+        }
+        String expected = file.sha256();
+        if (expected == null || expected.isBlank()) {
+            return;
+        }
+        String actual = sha256(target);
+        if (!expected.equalsIgnoreCase(actual)) {
+            Files.deleteIfExists(target);
+            throw new IOException("MODEL_FILE_CHECKSUM_MISMATCH file=" + file.path()
+                    + " expected=" + expected + " actual=" + actual);
+        }
+    }
+
+    private static String sha256(Path file) throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException missing) {
+            throw new IOException("SHA-256 is not available on this runtime", missing);
+        }
+        try (InputStream input = Files.newInputStream(file)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        StringBuilder hex = new StringBuilder(64);
+        for (byte value : digest.digest()) {
+            hex.append(Character.forDigit((value >> 4) & 0xF, 16));
+            hex.append(Character.forDigit(value & 0xF, 16));
+        }
+        return hex.toString();
     }
 
     private void downloadCandidates(
@@ -531,6 +610,6 @@ public class HuggingFaceDownloader {
         }
     }
 
-    private record RepositoryFile(String path, long size) {
+    private record RepositoryFile(String path, long size, String sha256) {
     }
 }

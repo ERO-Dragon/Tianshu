@@ -9,6 +9,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class TtsSessionManagerTest {
+    /**
+     * A session is created per sentence and carries the whole text, so keeping terminal ones made this the one
+     * structure that grew for as long as the player kept talking.
+     */
+    @Test
+    void terminalSessionsDoNotStayInTheManager() {
+        TtsSessionManager manager = new TtsSessionManager();
+        TtsSession completed = manager.create(request("completed"));
+        TtsSession cancelled = manager.create(request("cancelled"));
+        TtsSession live = manager.create(request("live"));
+
+        manager.complete(completed);
+        manager.cancel("cancelled", "stop");
+
+        assertEquals(1, manager.liveCount(), "only the session that can still change may remain");
+        assertFalse(manager.cancel("cancelled", "stop again").isPresent(),
+                "a cancelled session has nothing left to stop");
+        manager.complete(live);
+        assertEquals(0, manager.liveCount());
+    }
+
     @Test
     void cancelAllCancelsOnlyNonTerminalSessions() {
         TtsSessionManager manager = new TtsSessionManager();

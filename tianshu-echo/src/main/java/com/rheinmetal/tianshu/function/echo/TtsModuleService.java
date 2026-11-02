@@ -22,15 +22,9 @@ import java.util.function.Consumer;
 public final class TtsModuleService {
     private final AtomicReference<TtsRuntime> runtime = new AtomicReference<>();
     private final AtomicReference<TtsModelService> modelService = new AtomicReference<>();
-    /** Tells the module that a preview owns the model lane, so its capability bits can say so too. */
-    private volatile Consumer<Boolean> modelBusyListener = ignored -> { };
 
     public void bindRuntime(TtsRuntime ttsRuntime) {
         runtime.set(Objects.requireNonNull(ttsRuntime));
-    }
-
-    public void bindModelBusyListener(Consumer<Boolean> listener) {
-        modelBusyListener = listener == null ? ignored -> { } : listener;
     }
 
     public void bindModelService(TtsModelService service) {
@@ -97,25 +91,13 @@ public final class TtsModuleService {
                 Priority.NORMAL,
                 voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
         );
-        modelBusyListener.accept(true);
         TtsOperationResult result = current.previewWithModel(
                 previewModel.name,
                 models.currentConfiguredModelName(),
                 request,
-                () -> {
-                    modelBusyListener.accept(false);
-                    if (onComplete != null) {
-                        onComplete.run();
-                    }
-                },
-                failure -> {
-                    modelBusyListener.accept(false);
-                    notifyFailure(onFailure, failure);
-                }
+                onComplete,
+                onFailure
         );
-        if (!result.accepted()) {
-            modelBusyListener.accept(false);
-        }
         return result;
     }
 
@@ -125,7 +107,6 @@ public final class TtsModuleService {
             return runtimeUnavailable(TtsControlAction.STOP_PREVIEW);
         }
         TtsControlResult result = current.stopSource(TtsRequestSource.PREVIEW, reason == null || reason.isBlank() ? "preview stopped" : reason);
-        modelBusyListener.accept(false);
         return result.accepted()
                 ? TtsControlResult.accepted(TtsControlAction.STOP_PREVIEW, result.affectedSessions())
                 : TtsControlResult.rejected(TtsControlAction.STOP_PREVIEW, result.failure());

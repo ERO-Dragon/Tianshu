@@ -239,6 +239,8 @@ TtsControlPayload load = new TtsControlPayload(
 
 模型预览和重载期间，`SYNTHESIS` 与 `PLAYBACK` 能力标记为 failed（此时外部请求会被拒绝），操作结束后恢复；模块停止后四个能力保持 failed，直到下一次 prepare。
 
+预览的还原如果失败（例如预览期间旧模型目录被删掉），引擎会停在预览模型上，而配置仍然指向旧模型。这种情况不会再被伪装成正常：`TtsRuntimeSnapshot.activeModelName()` 报告引擎实际使用的模型，宿主用它和配置比较并提示；下一次成功的加载或重载会把两者重新对齐。
+
 退出世界会停止本轮 Session、纯合成和播放。模块可以复用内部 runtime 与已加载模型以降低重进开销，但重新进入世界一定开启新的运行会话；调用方不能保存或复用旧世界的 envelope、回调或 Session 状态。
 
 ## 10. 线程与下载边界

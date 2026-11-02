@@ -46,6 +46,12 @@ final class PocketModelRuntime implements AutoCloseable {
     private OrtEnvironment environment;
     private SentencePieceProcessor tokenizer;
     private Glue glue;
+    /**
+     * Set only after every session, the tokenizer and the glue tensors are in place. Replacing the
+     * old "sessions is not empty" test with an explicit flag is what stops a half-finished init from
+     * answering the next {@link #initialize()} successfully while a session is still missing.
+     */
+    private boolean initialized;
 
     PocketModelRuntime(IGameEnvironment env, Path modelDir, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
@@ -54,21 +60,33 @@ final class PocketModelRuntime implements AutoCloseable {
     }
 
     synchronized void initialize() throws Exception {
-        if (!sessions.isEmpty()) {
+        if (initialized) {
             return;
         }
-        NativeLibraryLoader.ensureLoaded();
-        environment = OrtEnvironment.getEnvironment();
-        int threads = resourcePolicy.pocketTtsThreads();
-        for (String name : List.of("conditioner", "flowlm_prefill", "flowlm_step", "mimi_encode", "mimi_decode_int8")) {
-            OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-            options.setIntraOpNumThreads(threads);
-            sessions.put(name, environment.createSession(
-                    modelDir.resolve(fileName(name)).toString(), options));
+        try {
+            NativeLibraryLoader.ensureLoaded();
+            environment = OrtEnvironment.getEnvironment();
+            int threads = resourcePolicy.pocketTtsThreads();
+            for (String name : List.of("conditioner", "flowlm_prefill", "flowlm_step", "mimi_encode", "mimi_decode_int8")) {
+                // SessionOptions is only read while a session is built, so it is released here: keeping it
+                // until close(), or losing it on the exception path, leaks one native config object per
+                // graph on every load.
+                try (OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+                    options.setIntraOpNumThreads(threads);
+                    sessions.put(name, environment.createSession(
+                            modelDir.resolve(fileName(name)).toString(), options));
+                }
+            }
+            tokenizer = new SentencePieceProcessor(modelDir.resolve("tokenizer.model"));
+            glue = Glue.load(modelDir.resolve("ort_glue.npz"));
+            env.info("Pocket-TTS runtime initialized: threads=" + threads);
+            initialized = true;
+        } catch (Exception | Error failure) {
+            // A partially built runtime must not survive: release what it did create so the next
+            // initialize() really retries instead of reporting success with sessions missing.
+            close();
+            throw failure;
         }
-        tokenizer = new SentencePieceProcessor(modelDir.resolve("tokenizer.model"));
-        glue = Glue.load(modelDir.resolve("ort_glue.npz"));
-        env.info("Pocket-TTS runtime initialized: threads=" + threads);
     }
 
     private static String fileName(String session) {
@@ -293,6 +311,9 @@ final class PocketModelRuntime implements AutoCloseable {
         sessions.clear();
         glue = null;
         tokenizer = null;
+        // Closing has to reset the flag, otherwise a closed runtime would answer the next
+        // initialize() without loading anything.
+        initialized = false;
     }
 
     record Step(float[] latent, boolean eos) {

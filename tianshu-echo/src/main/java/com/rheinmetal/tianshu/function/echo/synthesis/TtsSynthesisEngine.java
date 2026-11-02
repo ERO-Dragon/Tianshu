@@ -27,6 +27,17 @@ public interface TtsSynthesisEngine {
     boolean useModel(String modelName);
 
     /**
+     * The model the running backend actually speaks with; empty when the engine cannot tell.
+     *
+     * <p>Surfaced so a caller can compare it with the configured model: a failed preview restore leaves the
+     * engine on the preview model while the configuration still names the old one, and that divergence has
+     * to be visible instead of being guessed from a failure bit.</p>
+     */
+    default String activeModelName() {
+        return "";
+    }
+
+    /**
      * Rebuilds the running backend for the current selection.
      *
      * <p>The default is the historical stop-then-start pair. The engine this build ships overrides it to

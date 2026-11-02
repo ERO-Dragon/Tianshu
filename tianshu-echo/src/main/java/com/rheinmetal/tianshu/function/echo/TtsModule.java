@@ -122,11 +122,38 @@ public final class TtsModule implements TianshuManagedModule {
         context.services().register(TtsModelService.class, modelService);
         context.services().register(TtsVoiceLibraryService.class, voiceLibraryService);
         context.services().register(TtsVoiceCloneRegistry.class, voiceCloneRegistry);
-        adapter.registerSpeakCapability(this::handleSpeak);
-        adapter.registerSynthesizeCapability(this::handleSynthesize);
-        adapter.registerAudioAckCapability(this::handleAudioAck);
-        adapter.registerControlCapability(this::handleControl);
-        moduleService.bindModelBusyListener(this::markModelBusy);
+        adapter.registerSpeakCapability(guarded("speak", this::handleSpeak));
+        adapter.registerSynthesizeCapability(guarded("synthesize", this::handleSynthesize));
+        adapter.registerAudioAckCapability(guarded("audio-ack", this::handleAudioAck));
+        adapter.registerControlCapability(guarded("control", this::handleControl));
+    }
+
+    /** What a capability handler does; declared so {@link #guarded} can wrap all four the same way. */
+    @FunctionalInterface
+    private interface CapabilityHandler {
+        void handle(TianshuEnvelope envelope, ProtocolContext context) throws Exception;
+    }
+
+    /**
+     * Makes every envelope end, whatever the handler does.
+     *
+     * <p>An exception that escapes a handler leaves the caller's request without a terminal state: the
+     * protocol converts the {@code Exception}s it sees, but an {@code Error} travels past it and the envelope
+     * simply stops existing. Failing it here means the caller always learns the outcome.</p>
+     */
+    private com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler guarded(String action, CapabilityHandler body) {
+        return (envelope, context) -> {
+            try {
+                body.handle(envelope, context);
+            } catch (Throwable failure) {
+                failProtocol(context, envelope.envelopeId(),
+                        com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeFailurePolicy.classify(
+                                TtsFailureCode.UNKNOWN, failure));
+                if (env != null) {
+                    env.error("tts.handler.failed: " + action, failure);
+                }
+            }
+        };
     }
 
     @Override
@@ -169,7 +196,8 @@ public final class TtsModule implements TianshuManagedModule {
                 this::publishRequestStatus,
                 adapter::publishLoadingActivity,
                 config::isTtsStreamingSynthesisEnabled,
-                loadQueue
+                loadQueue,
+                this::markModelBusy
         );
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);
@@ -297,6 +325,8 @@ public final class TtsModule implements TianshuManagedModule {
         if (loadQueue != null) {
             // The scheduled auto-load may have been cancelled above, so its tier is given up here rather
             // than in the load that will never run — otherwise the voice-input tier would wait forever.
+            // A load that is already running is not affected: it hands the permit back when it returns, and
+            // clearing it here would let the next session read a model while this one is still reading.
             loadQueue.abandon(NativeModelLoadQueue.Tier.DEFERRED);
         }
         if (ttsRuntime != null) {
@@ -488,9 +518,9 @@ public final class TtsModule implements TianshuManagedModule {
             return moduleService.reloadModel();
         }
         publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.runtime.module.tts.reload_started"));
-        markModelBusy(true);
+        // The capability bits follow the model lane through markModelBusy, which the coordinator drives; a
+        // reload is one more span of that lane, not a second source of truth about it.
         ttsRuntime.reloadModel(result -> {
-            markModelBusy(false);
             publishModuleStatus(result != null && result.accepted()
                     ? ModuleStatuses.readyKeyed(moduleId(), "tianshu.runtime.module.tts.reload_complete")
                     : ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.tts.reload_failed"));

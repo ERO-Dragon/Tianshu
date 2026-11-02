@@ -25,8 +25,9 @@ class TtsRuntimeSnapshotTest {
 
     @Test
     void constructorNormalizesNullableValues() {
-        TtsRuntimeSnapshot snapshot = new TtsRuntimeSnapshot(true, true, false, false, false, null, null, null, null, null, null, 0L);
+        TtsRuntimeSnapshot snapshot = new TtsRuntimeSnapshot(true, true, false, false, false, null, null, null, null, null, null, null, 0L);
 
+        assertEquals("", snapshot.activeModelName());
         assertEquals(TtsPlaybackState.IDLE, snapshot.playbackState());
         assertEquals(Priority.NORMAL, snapshot.activePriority());
         assertEquals(TtsFailureCode.UNKNOWN, snapshot.lastFailureCode());
@@ -34,12 +35,25 @@ class TtsRuntimeSnapshotTest {
     }
 
     @Test
+    void modelMismatchOnlyWhenAnActiveModelDisagreesWithTheConfiguration() {
+        TtsRuntimeSnapshot previewing = new TtsRuntimeSnapshot(
+                true, true, true, true, false, "kokoro-preview", TtsPlaybackState.IDLE,
+                "", "", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
+
+        assertTrue(previewing.modelMismatch("kokoro-main"));
+        assertFalse(previewing.modelMismatch("Kokoro-Preview"), "the comparison ignores case");
+        assertFalse(new TtsRuntimeSnapshot(true, true, true, true, false, "", TtsPlaybackState.IDLE,
+                "", "", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L).modelMismatch("kokoro-main"),
+                "an engine that cannot name its model is not a mismatch");
+    }
+
+    @Test
     void previewingMatchesThePreviewRequestSourceRatherThanAnAbbreviation() {
         TtsRuntimeSnapshot preview = new TtsRuntimeSnapshot(
-                true, true, true, true, false, TtsPlaybackState.SPEAKING,
+                true, true, true, true, false, "", TtsPlaybackState.SPEAKING,
                 "request", TtsRequestSource.PREVIEW.value(), Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
         TtsRuntimeSnapshot dialogue = new TtsRuntimeSnapshot(
-                true, true, true, true, false, TtsPlaybackState.SPEAKING,
+                true, true, true, true, false, "", TtsPlaybackState.SPEAKING,
                 "request", "module.ax", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
 
         assertTrue(preview.previewing());
