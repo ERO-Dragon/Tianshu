@@ -60,6 +60,7 @@ public final class GameFactCollector {
     public void register(IEventBus gameBus) {
         gameBus.addListener(this::onServerTick);
         gameBus.addListener(this::onLivingDeath);
+        gameBus.addListener(this::onChat);
         gameBus.addListener(this::onItemCrafted);
         gameBus.addListener(this::onItemFished);
         gameBus.addListener(this::onTamed);
@@ -200,6 +201,17 @@ public final class GameFactCollector {
         }
     }
 
+    /** Player chat: the server-side event, recorded with the sender and the raw text. */
+    public void onChat(net.neoforged.neoforge.event.ServerChatEvent event) {
+        ServerPlayer player = event.getPlayer();
+        if (player == null) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_SENDER_NAME, player.getName().getString());
+        values.put(WorldEventTypes.VALUE_TEXT, event.getRawText());
+        send(player, WorldEventTypes.EVENT_CHAT_MESSAGE, values);
+    }
     public void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;

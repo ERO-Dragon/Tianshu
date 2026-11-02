@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -57,6 +58,7 @@ public final class FabricGameFactCollector {
     public void register() {
         ServerTickEvents.END_SERVER_TICK.register(server -> flush());
         ServerLivingEntityEvents.AFTER_DAMAGE.register(this::onDamage);
+        ServerMessageEvents.CHAT_MESSAGE.register(this::onChat);
         ServerLivingEntityEvents.AFTER_DEATH.register(this::onDeath);
         PlayerBlockBreakEvents.AFTER.register(this::onBlockBroken);
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerJoin(handler.getPlayer()));
@@ -73,6 +75,14 @@ public final class FabricGameFactCollector {
     }
 
     /** Two facts, one event: the player's own death, and a kill the player made. */
+    /** Player chat: the server-side event, recorded with the sender and the raw text. */
+    private void onChat(net.minecraft.network.chat.PlayerChatMessage message, ServerPlayer sender,
+                        net.minecraft.network.chat.ChatType.Bound bound) {
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_SENDER_NAME, sender.getName().getString());
+        values.put(WorldEventTypes.VALUE_TEXT, message.signedContent());
+        send(sender, WorldEventTypes.EVENT_CHAT_MESSAGE, values);
+    }
     private void onDeath(LivingEntity dying, DamageSource source) {
         if (dying instanceof ServerPlayer player) {
             Map<String, String> values = new HashMap<>();

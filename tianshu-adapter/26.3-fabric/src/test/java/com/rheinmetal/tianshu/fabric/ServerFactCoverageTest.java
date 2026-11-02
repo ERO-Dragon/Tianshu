@@ -30,7 +30,8 @@ final class ServerFactCoverageTest {
             "EVENT_MOB_KILLED",
             "EVENT_BLOCK_BROKEN",
             "EVENT_FRIEND_JOIN",
-            "EVENT_FRIEND_LEAVE");
+            "EVENT_FRIEND_LEAVE",
+            "EVENT_CHAT_MESSAGE");
 
     /** Would need a mixin or a poll; absent here, and their consumers simply receive nothing on this loader. */
     private static final Set<String> ABSENT = Set.of(
