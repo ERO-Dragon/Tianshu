@@ -35,14 +35,14 @@ final class ServerFactCoverageTest {
             "EVENT_ITEM_PICKUP",
             "EVENT_CHAT_MESSAGE",
             "EVENT_MOUNT",
-            "EVENT_DISMOUNT");
+            "EVENT_DISMOUNT",
+            "EVENT_BLOCK_PLACED");
 
     /** Would need a mixin or a poll; absent here, and their consumers simply receive nothing on this loader. */
     private static final Set<String> ABSENT = Set.of(
             "EVENT_ITEM_CRAFTED",
             "EVENT_FISHING_CATCH",
             "EVENT_TAMED",
-            "EVENT_BLOCK_PLACED",
             "EVENT_EFFECT_GAINED",
             "EVENT_EFFECT_EXPIRED",
             "EVENT_TRADE");

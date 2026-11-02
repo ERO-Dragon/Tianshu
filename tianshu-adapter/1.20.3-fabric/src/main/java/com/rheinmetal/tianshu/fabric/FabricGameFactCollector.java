@@ -65,12 +65,23 @@ public final class FabricGameFactCollector {
     /** Pickups are sampled every fourth tick: a picked-up stack stays in the inventory, so latency costs nothing. */
     private int inventoryTick;
 
+    /** Placement target per player: the callback runs before the block is set, so the state is checked next tick. */
+    private final Map<ServerPlayer, net.minecraft.core.BlockPos> pendingPlacements = new LinkedHashMap<>();
+
     /** Last vehicle seen per player: mount and dismount are state changes, not events in this loader's API. */
     private final Map<ServerPlayer, net.minecraft.world.entity.Entity> lastVehicles = new LinkedHashMap<>();
 
     public void register() {
+        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
+            if (player instanceof ServerPlayer serverPlayer
+                    && hand == net.minecraft.world.InteractionHand.MAIN_HAND) {
+                pendingPlacements.put(serverPlayer, hit.getBlockPos().relative(hit.getDirection()));
+            }
+            return net.minecraft.world.InteractionResult.PASS;
+        });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             publishMountChanges(server);
+            publishPlacements();
             publishLevelChanges(server);
             if (++inventoryTick % 4 == 0) {
                 publishPickups(server);
@@ -187,6 +198,26 @@ public final class FabricGameFactCollector {
 
     /** Inventory growth is not an event in this loader's API, so counts are diffed at one quarter of the tick rate. */
     /** A vehicle reference compared once per tick: no allocation, and a fact only on a real change. */
+    /** A right-clicked position whose block is no longer air next tick was a placement. */
+    private void publishPlacements() {
+        if (pendingPlacements.isEmpty()) {
+            return;
+        }
+        var iterator = pendingPlacements.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            iterator.remove();
+            net.minecraft.world.level.block.state.BlockState state = entry.getKey().level().getBlockState(entry.getValue());
+            if (state.isAir()) {
+                continue;
+            }
+            Map<String, String> values = new HashMap<>();
+            values.put(WorldEventTypes.VALUE_BLOCK_ID,
+                    net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+            values.put(WorldEventTypes.VALUE_BLOCK_NAME, state.getBlock().getName().getString());
+            send(entry.getKey(), WorldEventTypes.EVENT_BLOCK_PLACED, values);
+        }
+    }
     private void publishMountChanges(MinecraftServer server) {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             net.minecraft.world.entity.Entity vehicle = player.getVehicle();
