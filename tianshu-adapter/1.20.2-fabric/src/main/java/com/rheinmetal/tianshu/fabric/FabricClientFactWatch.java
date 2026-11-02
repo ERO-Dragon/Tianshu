@@ -4,8 +4,10 @@ import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
 import java.util.Map;
@@ -25,6 +27,33 @@ final class FabricClientFactWatch {
 
     static void register() {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> onScreenOpened(screen));
+        ClientTickEvents.END_CLIENT_TICK.register(FabricClientFactWatch::onClientTick);
+    }
+
+    /**
+     * The dimension the client is currently in.
+     *
+     * <p>1.20 has no client world-change event (lifecycle 2.2.x), so the level is compared by reference once per
+     * tick: one identity check, no allocation, and a fact only when the reference actually changes.
+     */
+    private static ClientLevel lastLevel;
+
+    private static void onClientTick(net.minecraft.client.Minecraft client) {
+        ClientLevel level = client.level;
+        if (level == lastLevel) {
+            return;
+        }
+        lastLevel = level;
+        if (level == null) {
+            return;
+        }
+        var dimension = level.dimension().location();
+        WorldEventHooks.publish(new WorldEventPayload(
+                WorldEventTypes.EVENT_DIMENSION_CHANGED,
+                dimension.toString(),
+                dimension.getPath(),
+                Map.of(),
+                System.currentTimeMillis()));
     }
 
     private static void onScreenOpened(Screen screen) {
