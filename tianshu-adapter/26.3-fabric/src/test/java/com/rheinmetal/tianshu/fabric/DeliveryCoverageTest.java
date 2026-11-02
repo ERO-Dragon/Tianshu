@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 final class DeliveryCoverageTest {
     private static final Path SHARED_EVENTS =
-            Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java");
+            Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java");
     private static final List<Path> ADAPTER = List.of(
             Path.of("src/main/java/com/rheinmetal/tianshu/fabric/FabricClientEvents.java"),
             Path.of("src/main/java/com/rheinmetal/tianshu/fabric/FabricClientBootstrap.java"));
