@@ -88,7 +88,7 @@ public final class TianshuNeoForge {
             modEventBus.addListener(this::clientSetup);
             // A boss bar is the player's own signal that a fight started; the client is where it is visible.
             NeoForgeBossEventWatch.register(NeoForge.EVENT_BUS);
-            // Facts the client observes exactly on its own: level rebuilds, respawn, opening a container.
+            // Facts the client observes exactly on its own: level rebuilds and opening a container.
             new NeoForgeClientFactWatch().register(NeoForge.EVENT_BUS);
         } else {
             clientBootstrap = null;

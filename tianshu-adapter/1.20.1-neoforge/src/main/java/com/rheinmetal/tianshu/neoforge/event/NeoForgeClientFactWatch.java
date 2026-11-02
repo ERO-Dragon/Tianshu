@@ -19,9 +19,9 @@ import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
 /**
  * Facts the client itself can observe exactly, without a server component.
  *
- * <p>Three of them live here because the client has the event and the server does not need to be involved: a level
- * being (re)built is a dimension change or a respawn, and opening a container screen is a container being opened.
- * Reporting them here means they keep working on a server that does not run Tianshu at all.</p>
+ * <p>Two of them live here because the client has the event and the server does not need to be involved: a level
+ * being (re)built is a dimension change, and opening a container screen is a container being opened. Reporting
+ * them here means they keep working on a server that does not run Tianshu at all.</p>
  *
  * <p>The first level load after joining a world is the join itself, not a move, so it is swallowed once; logging out
  * drops that memory so the next join is a join again.</p>

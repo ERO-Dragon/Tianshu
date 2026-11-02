@@ -15,13 +15,13 @@ import java.util.Map;
 /**
  * The client-observed world facts Fabric has a native event for.
  *
- * <p>Only one qualifies: a container screen being built. Fabric's screen event is sent by the screen itself, so
- * the host neither polls nor compares anything per tick — it reacts to a notification the game already sends.</p>
+ * <p>Two facts qualify: a container screen being built, and the dimension changing. The screen event is sent by the
+ * screen itself, so that one is a notification the game already sends; the dedicated level-change event only exists
+ * from lifecycle 2.5 onward and is renamed in 26.x, so this whole pre-26 range uses one per-tick reference
+ * comparison instead of branching per line, and publishes only when the reference really changed.</p>
  *
- * <p>The facts that would need polling are deliberately absent rather than approximated: a dimension change and a
- * respawn have no Fabric client event, and a per-tick identity comparison to synthesise one is a cost paid every
- * tick for an event that happens rarely. Their consumers simply receive nothing on this loader (see
- * {@code DeliveryCoverageTest}, which lists the gaps as data so they cannot be forgotten).</p>
+ * <p>Boss engagement has no Fabric hook at all — the overlay exposes no accessor for the bars it is tracking — so
+ * it is deliberately absent rather than approximated, and its consumers receive nothing on this loader.</p>
  */
 final class FabricClientFactWatch {
 

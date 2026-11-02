@@ -11,9 +11,9 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 /**
  * Fabric's delivery of the events; the decisions live in {@link ClientEvents}.
  *
- * <p>Every callback here is one loader fact turned into one shared call. The one gap is a respawn: Fabric has no
- * "player cloned" callback, and the shared layer already refreshes a stale world identity on the next tick, so the
- * world facts follow the player rather than the event.</p>
+ * <p>Every callback here is one loader fact turned into one shared call. The one gap is the player-clone callback:
+ * Fabric has no equivalent, and the shared layer already refreshes a stale world identity on the next tick, so
+ * the world facts follow the player rather than the event.</p>
  */
 final class FabricClientEvents {
 
