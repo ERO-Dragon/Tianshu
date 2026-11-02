@@ -22,7 +22,20 @@ class MossFrameGenerationResultTest {
         assertTrue(result.naturallyEnded());
         assertFalse(result.cancelled());
         assertEquals(1, result.generatedFrameCount());
-        assertEquals(1, result.requireNaturalEnd(7).size());
+        assertEquals(1, result.requireFinishedGeneration(7).size());
+    }
+
+    @Test
+    void degeneratedUtteranceIsUsableEvenThoughItIsShort() throws Exception {
+        MossFrameGenerationResult result = MossFrameGenerationResult.degenerateEnd(
+                List.of(List.of(1, 2, 3, 4)),
+                375
+        );
+
+        assertTrue(result.degenerateEnded());
+        assertFalse(result.naturallyEnded());
+        assertFalse(result.cancelled());
+        assertEquals(1, result.requireFinishedGeneration(7).size());
     }
 
     @Test
@@ -34,7 +47,7 @@ class MossFrameGenerationResultTest {
 
         assertTrue(result.cancelled());
         assertFalse(result.naturallyEnded());
-        assertThrows(MossGenerationCancelledException.class, () -> result.requireNaturalEnd(7));
+        assertThrows(MossGenerationCancelledException.class, () -> result.requireFinishedGeneration(7));
     }
 
     @Test
@@ -46,7 +59,7 @@ class MossFrameGenerationResultTest {
 
         TtsFailureException failure = assertThrows(
                 TtsFailureException.class,
-                () -> result.requireNaturalEnd(11)
+                () -> result.requireFinishedGeneration(11)
         );
 
         assertEquals(TtsFailureCode.GENERATION_LIMIT_REACHED, failure.code());

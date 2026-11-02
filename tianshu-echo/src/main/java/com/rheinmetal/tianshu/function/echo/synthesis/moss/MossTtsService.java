@@ -171,22 +171,12 @@ public class MossTtsService implements AutoCloseable {
             RequestRows requestRows,
             BooleanSupplier cancellationRequested
     ) throws Exception {
-        return frameGenerator.generateAudioFrames(requestRows, null, cancellationRequested, false);
-    }
-
-    private MossFrameGenerationResult generateAudioFramesWithRepeatGuard(
-            RequestRows requestRows,
-            BooleanSupplier cancellationRequested
-    ) throws Exception {
-        return frameGenerator.generateAudioFrames(requestRows, null, cancellationRequested, true);
+        return frameGenerator.generateAudioFrames(requestRows, null, cancellationRequested);
     }
     public DecodeResult decodeFullAudio(List<List<Integer>> generatedFrames) throws Exception {
         return audioCodec.decodeFullAudio(generatedFrames);
     }
 
-    public DecodeResult decodeFullAudioSafe(List<List<Integer>> generatedFrames) throws Exception {
-        return audioCodec.decodeFullAudioSafe(generatedFrames);
-    }
     public float[][] synthesizeToWaveform(String text, List<List<Integer>> promptAudioCodes) throws Exception {
         return synthesizeToWaveform(text, promptAudioCodes, () -> false);
     }
@@ -196,22 +186,26 @@ public class MossTtsService implements AutoCloseable {
             List<List<Integer>> promptAudioCodes,
             BooleanSupplier cancellationRequested
     ) throws Exception {
-        return synthesizeToWaveform(text, promptAudioCodes, cancellationRequested, false);
+        return synthesizeWaveform(text, promptAudioCodes, cancellationRequested).audio();
     }
 
-    private float[][] synthesizeToWaveform(
+    /** Waveform of one request plus whether the model degenerated before it finished the text. */
+    private record WaveformSynthesis(float[][] audio, boolean degenerate) {
+    }
+
+    private WaveformSynthesis synthesizeWaveform(
             String text,
             List<List<Integer>> promptAudioCodes,
-            BooleanSupplier cancellationRequested,
-            boolean detectRepeatedFrames
+            BooleanSupplier cancellationRequested
     ) throws Exception {
         BooleanSupplier cancellation = cancellationRequested == null ? () -> false : cancellationRequested;
         List<String> chunks = textChunker.split(text);
         if (chunks.isEmpty() || cancellation.getAsBoolean()) {
-            return new float[][]{new float[0]};
+            return new WaveformSynthesis(new float[][]{new float[0]}, false);
         }
         if (chunks.size() == 1) {
-            return synthesizeSingleChunk(chunks.get(0), promptAudioCodes, cancellation, detectRepeatedFrames);
+            SynthesisResult single = synthesizeSingleChunkDetailed(chunks.get(0), promptAudioCodes, cancellation);
+            return new WaveformSynthesis(single.channels, single.degenerate);
         }
         int sampleRate = getSampleRate();
         int channels = audioCodec.channels();
@@ -221,15 +215,17 @@ public class MossTtsService implements AutoCloseable {
         int pauseSamplesLong = (int) (sampleRate * interChunkPauseLong);
 
         List<float[][]> chunkAudios = new ArrayList<>();
+        boolean degenerate = false;
         for (int i = 0; i < chunks.size(); i++) {
             if (cancellation.getAsBoolean()) {
                 break;
             }
-            float[][] chunkAudio = synthesizeSingleChunk(chunks.get(i), promptAudioCodes, cancellation, detectRepeatedFrames);
-            if (chunkAudio == null || chunkAudio.length == 0 || chunkAudio[0].length == 0) {
+            SynthesisResult chunk = synthesizeSingleChunkDetailed(chunks.get(i), promptAudioCodes, cancellation);
+            degenerate |= chunk.degenerate;
+            if (chunk.channels == null || chunk.channels.length == 0 || chunk.channels[0].length == 0) {
                 continue;
             }
-            chunkAudios.add(chunkAudio);
+            chunkAudios.add(chunk.channels);
             if (i < chunks.size() - 1) {
                 int pauseSamples = isSentenceEnding(chunks.get(i)) ? pauseSamplesLong : pauseSamplesShort;
                 float[][] silence = new float[channels][pauseSamples];
@@ -237,7 +233,7 @@ public class MossTtsService implements AutoCloseable {
             }
         }
         if (chunkAudios.isEmpty()) {
-            return new float[][]{new float[0]};
+            return new WaveformSynthesis(new float[][]{new float[0]}, degenerate);
         }
         int totalLength = 0;
         for (float[][] ca : chunkAudios) {
@@ -251,20 +247,26 @@ public class MossTtsService implements AutoCloseable {
             }
             offset += ca[0].length;
         }
-        return merged;
+        return new WaveformSynthesis(merged, degenerate);
     }
 
+    /**
+     * Complete-result synthesis with one recovery attempt. A degenerated run is a valid but truncated
+     * utterance, so one fresh seed is worth trying before the caller hands the audio over. The
+     * streaming path cannot retry — its audio is already playing while the frames arrive.
+     */
     public float[][] synthesizeToWaveformResilient(
             String text,
             List<List<Integer>> promptAudioCodes,
             BooleanSupplier cancellationRequested
     ) throws Exception {
         BooleanSupplier cancellation = cancellationRequested == null ? () -> false : cancellationRequested;
-        MossOfflineSynthesisRetry retry = new MossOfflineSynthesisRetry(synthesisSeedSource);
-        return retry.execute(cancellation, seed -> {
-            setGenerationSeed(seed);
-            return synthesizeToWaveform(text, promptAudioCodes, cancellation, true);
-        });
+        WaveformSynthesis first = synthesizeWaveform(text, promptAudioCodes, cancellation);
+        if (!first.degenerate() || cancellation.getAsBoolean()) {
+            return first.audio();
+        }
+        setGenerationSeed(synthesisSeedSource.getAsLong());
+        return synthesizeWaveform(text, promptAudioCodes, cancellation).audio();
     }
 
     public interface StreamingAudioCallback {
@@ -371,7 +373,7 @@ public class MossTtsService implements AutoCloseable {
         if (cancellationRequested.getAsBoolean() || generation.cancelled()) {
             return chunkIndex[0];
         }
-        generation.requireNaturalEnd(textTokenIds.length);
+        generation.requireFinishedGeneration(textTokenIds.length);
         return chunkIndex[0];
     }
 
@@ -409,27 +411,6 @@ public class MossTtsService implements AutoCloseable {
         }
     }
 
-    private float[][] synthesizeSingleChunk(String text, List<List<Integer>> promptAudioCodes) throws Exception {
-        return synthesizeSingleChunk(text, promptAudioCodes, () -> false);
-    }
-
-    private float[][] synthesizeSingleChunk(
-            String text,
-            List<List<Integer>> promptAudioCodes,
-            BooleanSupplier cancellationRequested
-    ) throws Exception {
-        return synthesizeSingleChunk(text, promptAudioCodes, cancellationRequested, false);
-    }
-
-    private float[][] synthesizeSingleChunk(
-            String text,
-            List<List<Integer>> promptAudioCodes,
-            BooleanSupplier cancellationRequested,
-            boolean detectRepeatedFrames
-    ) throws Exception {
-        return synthesizeSingleChunkDetailed(text, promptAudioCodes, cancellationRequested, detectRepeatedFrames).channels;
-    }
-
     public SynthesisResult synthesizeSingleChunkDetailed(String text, List<List<Integer>> promptAudioCodes) throws Exception {
         return synthesizeSingleChunkDetailed(text, promptAudioCodes, () -> false);
     }
@@ -439,44 +420,69 @@ public class MossTtsService implements AutoCloseable {
             List<List<Integer>> promptAudioCodes,
             BooleanSupplier cancellationRequested
     ) throws Exception {
-        return synthesizeSingleChunkDetailed(text, promptAudioCodes, cancellationRequested, false);
-    }
-
-    private SynthesisResult synthesizeSingleChunkDetailed(
-            String text,
-            List<List<Integer>> promptAudioCodes,
-            BooleanSupplier cancellationRequested,
-            boolean detectRepeatedFrames
-    ) throws Exception {
         long startNanos = System.nanoTime();
         int[] textTokenIds = encodeText(text);
         if (textTokenIds == null || textTokenIds.length == 0) {
-            return new SynthesisResult(new float[][]{new float[0]}, 0, 0, 0, 0, 0);
+            return new SynthesisResult(new float[][]{new float[0]}, 0, 0, 0, 0, 0, false);
         }
         RequestRows requestRows = buildVoiceCloneRequestRows(promptAudioCodes, textTokenIds);
         long generateStartNanos = System.nanoTime();
-        MossFrameGenerationResult generation = detectRepeatedFrames
-                ? generateAudioFramesWithRepeatGuard(requestRows, cancellationRequested)
-                : generateAudioFrames(requestRows, cancellationRequested);
+        MossFrameGenerationResult generation = generateAudioFrames(requestRows, cancellationRequested);
         long generateMillis = elapsedMillis(generateStartNanos);
+        boolean frameLimitReached = generation.termination() == MossFrameGenerationTermination.FRAME_LIMIT_REACHED;
+        boolean degenerate = generation.degenerateEnded() || frameLimitReached;
         if (generation.cancelled()) {
-            return new SynthesisResult(new float[][]{new float[0]}, textTokenIds.length, generation.generatedFrameCount(), elapsedMillis(startNanos), generateMillis, 0);
+            return new SynthesisResult(new float[][]{new float[0]}, textTokenIds.length, generation.generatedFrameCount(), elapsedMillis(startNanos), generateMillis, 0, degenerate);
         }
-        List<List<Integer>> generatedFrames = generation.requireNaturalEnd(textTokenIds.length);
+        List<List<Integer>> generatedFrames = generation.frames();
         if (generatedFrames.isEmpty()) {
-            return new SynthesisResult(new float[][]{new float[0]}, textTokenIds.length, 0, elapsedMillis(startNanos), generateMillis, 0);
+            if (frameLimitReached) {
+                // Nothing was decoded, so there is no dead tail to cut and nothing worth keeping.
+                generation.requireFinishedGeneration(textTokenIds.length);
+            }
+            return new SynthesisResult(new float[][]{new float[0]}, textTokenIds.length, 0, elapsedMillis(startNanos), generateMillis, 0, degenerate);
         }
         long decodeStartNanos = System.nanoTime();
-        DecodeResult decodeResult = decodeFullAudioSafe(generatedFrames);
+        DecodeResult decodeResult = decodeFullAudio(generatedFrames);
         long decodeMillis = elapsedMillis(decodeStartNanos);
+        int sampleRate = getSampleRate();
+        int keepSamples = Math.max(1, sampleRate / 5);
+        float[][] audio;
+        if (frameLimitReached) {
+            // Nothing told the loop to stop, so the only usable part is the speech before its last
+            // sustained silence. A run that has no such silence never said anything worth keeping.
+            int cut = MossSilenceDetector.lastLongSilenceStart(decodeResult.channels, sampleRate, 1000);
+            if (cut <= sampleRate) {
+                throw generation.frameLimitFailure(textTokenIds.length);
+            }
+            audio = truncateAudio(decodeResult.channels, cut + keepSamples);
+        } else {
+            int silentSamples = MossSilenceDetector.trailingSilentSamples(decodeResult.channels, sampleRate);
+            audio = silentSamples > keepSamples
+                    ? truncateAudio(decodeResult.channels, decodeResult.channels[0].length - silentSamples + keepSamples)
+                    : decodeResult.channels;
+        }
         return new SynthesisResult(
-                decodeResult.channels,
+                audio,
                 textTokenIds.length,
                 generatedFrames.size(),
                 elapsedMillis(startNanos),
                 generateMillis,
-                decodeMillis
+                decodeMillis,
+                degenerate
         );
+    }
+
+    private static float[][] truncateAudio(float[][] audio, int samples) {
+        if (audio == null || audio.length == 0 || samples >= audio[0].length) {
+            return audio;
+        }
+        int kept = Math.max(1, samples);
+        float[][] truncated = new float[audio.length][kept];
+        for (int channel = 0; channel < audio.length; channel++) {
+            System.arraycopy(audio[channel], 0, truncated[channel], 0, Math.min(kept, audio[channel].length));
+        }
+        return truncated;
     }
 
     private static long elapsedMillis(long startNanos) {
@@ -538,6 +544,8 @@ public class MossTtsService implements AutoCloseable {
         public final long totalMillis;
         public final long generateMillis;
         public final long decodeMillis;
+        /** The model stopped saying anything before the text ended; the audio is truncated but valid. */
+        public final boolean degenerate;
 
         public SynthesisResult(String text, int[] textTokenIds, List<List<Integer>> generatedFrames, float[][] waveformChannels, Path outputPath) {
             this(
@@ -553,6 +561,18 @@ public class MossTtsService implements AutoCloseable {
         }
 
         public SynthesisResult(float[][] channels, int textTokenCount, int generatedFrameCount, long totalMillis, long generateMillis, long decodeMillis) {
+            this(channels, textTokenCount, generatedFrameCount, totalMillis, generateMillis, decodeMillis, false);
+        }
+
+        public SynthesisResult(
+                float[][] channels,
+                int textTokenCount,
+                int generatedFrameCount,
+                long totalMillis,
+                long generateMillis,
+                long decodeMillis,
+                boolean degenerate
+        ) {
             this(
                     "",
                     new int[textTokenCount],
@@ -563,7 +583,8 @@ public class MossTtsService implements AutoCloseable {
                     generateMillis,
                     decodeMillis,
                     textTokenCount,
-                    generatedFrameCount
+                    generatedFrameCount,
+                    degenerate
             );
         }
 
@@ -587,7 +608,8 @@ public class MossTtsService implements AutoCloseable {
                     generateMillis,
                     decodeMillis,
                     textTokenIds == null ? 0 : textTokenIds.length,
-                    generatedFrames == null ? 0 : generatedFrames.size()
+                    generatedFrames == null ? 0 : generatedFrames.size(),
+                    false
             );
         }
 
@@ -601,7 +623,8 @@ public class MossTtsService implements AutoCloseable {
                 long generateMillis,
                 long decodeMillis,
                 int textTokenCount,
-                int generatedFrameCount
+                int generatedFrameCount,
+                boolean degenerate
         ) {
             this.text = text;
             this.textTokenIds = textTokenIds;
@@ -614,6 +637,7 @@ public class MossTtsService implements AutoCloseable {
             this.totalMillis = totalMillis;
             this.generateMillis = generateMillis;
             this.decodeMillis = decodeMillis;
+            this.degenerate = degenerate;
         }
     }
 }

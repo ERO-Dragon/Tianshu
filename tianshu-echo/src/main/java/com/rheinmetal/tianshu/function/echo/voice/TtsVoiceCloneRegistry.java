@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -80,23 +81,66 @@ public final class TtsVoiceCloneRegistry {
         }
         TtsVoiceCloneProfile existing = profiles.get(normalizedVoiceId);
         if (existing == null) {
-            return TtsControlResult.accepted(TtsControlAction.UNLOAD_VOICE, 0);
+            return TtsControlResult.rejected(TtsControlAction.UNLOAD_VOICE, TtsFailure.of(
+                    TtsFailureCode.REQUEST_NOT_FOUND,
+                    "TTS voice is not registered: " + normalizedVoiceId
+            ));
         }
         String owner = normalizeOwner(ownerModuleId);
         if (!owner.isBlank() && !existing.ownerModuleId().isBlank() && !owner.equals(existing.ownerModuleId())) {
             return reject(TtsControlAction.UNLOAD_VOICE, "TTS voice belongs to another module: " + normalizedVoiceId);
         }
-        return profiles.remove(normalizedVoiceId, existing)
-                ? TtsControlResult.accepted(TtsControlAction.UNLOAD_VOICE, 1)
-                : TtsControlResult.accepted(TtsControlAction.UNLOAD_VOICE, 0);
+        if (!profiles.remove(normalizedVoiceId, existing)) {
+            return TtsControlResult.rejected(TtsControlAction.UNLOAD_VOICE, TtsFailure.of(
+                    TtsFailureCode.REQUEST_NOT_FOUND,
+                    "TTS voice is not registered: " + normalizedVoiceId
+            ));
+        }
+        releaseSample(existing);
+        return TtsControlResult.accepted(TtsControlAction.UNLOAD_VOICE, 1);
     }
 
     public TtsControlResult clear(String ownerModuleId) {
         String owner = normalizeOwner(ownerModuleId);
         Predicate<TtsVoiceCloneProfile> shouldRemove = profile -> owner.isBlank() || owner.equals(profile.ownerModuleId());
-        int before = profiles.size();
-        profiles.entrySet().removeIf(entry -> shouldRemove.test(entry.getValue()));
-        return TtsControlResult.accepted(TtsControlAction.CLEAR_VOICE_CACHE, Math.max(0, before - profiles.size()));
+        Map<String, TtsVoiceCloneProfile> removed = new LinkedHashMap<>();
+        profiles.entrySet().removeIf(entry -> {
+            if (!shouldRemove.test(entry.getValue())) {
+                return false;
+            }
+            removed.put(entry.getKey(), entry.getValue());
+            return true;
+        });
+        removed.values().forEach(this::releaseSample);
+        return TtsControlResult.accepted(TtsControlAction.CLEAR_VOICE_CACHE, removed.size());
+    }
+
+    /**
+     * Drops the audio file an import created. A profile can point at a sample the caller placed in the
+     * library itself, so only files this owner's import directory holds are deleted, and only once no
+     * other profile still references them.
+     */
+    private void releaseSample(TtsVoiceCloneProfile profile) {
+        if (profile == null || profile.samplePath() == null || config == null) {
+            return;
+        }
+        Path sample = profile.samplePath().toAbsolutePath().normalize();
+        Path ownerDirectory = ownerVoiceDirectory(profile.ownerModuleId());
+        if (!sample.startsWith(ownerDirectory)) {
+            return;
+        }
+        boolean referenced = profiles.values().stream().anyMatch(other -> other.samplePath() != null
+                && other.samplePath().toAbsolutePath().normalize().equals(sample));
+        if (referenced) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(sample);
+        } catch (Exception exception) {
+            if (env != null) {
+                env.warn("TTS voice sample could not be deleted: " + sample);
+            }
+        }
     }
 
     public synchronized TtsControlResult importVoice(
@@ -125,11 +169,11 @@ public final class TtsVoiceCloneRegistry {
         }
         String safeFileName = importedAudioFileName(normalizedVoiceId, audio);
         try {
-            Path ownerDir = ownerVoiceDirectory(ownerModuleId);
+            Path ownerDir = ownerVoiceDirectory(owner);
             Files.createDirectories(ownerDir);
-            Path target = uniqueTarget(ownerDir, safeFileName);
-            Files.write(target, audio, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            TtsControlResult loadResult = load(normalizedVoiceId, ownerModuleId, target.toString(), referenceText);
+            Path target = importTarget(ownerDir, existing, safeFileName);
+            writeImportedAudio(target, audio);
+            TtsControlResult loadResult = load(normalizedVoiceId, owner, target.toString(), referenceText);
             if (!loadResult.accepted()) {
                 Files.deleteIfExists(target);
                 return TtsControlResult.rejected(TtsControlAction.IMPORT_VOICE, loadResult.failure());
@@ -143,6 +187,35 @@ public final class TtsVoiceCloneRegistry {
                     TtsControlAction.IMPORT_VOICE,
                     TtsFailure.fromThrowable(TtsFailureCode.VOICE_CLONE_UNAVAILABLE, exception)
             );
+        }
+    }
+
+    /**
+     * Re-importing a voice replaces its file instead of adding another copy: a caller that re-sends the
+     * same audio must not accumulate one file per attempt.
+     */
+    private Path importTarget(Path ownerDir, TtsVoiceCloneProfile existing, String fileName) {
+        if (existing != null && existing.samplePath() != null) {
+            Path previous = existing.samplePath().toAbsolutePath().normalize();
+            if (previous.startsWith(ownerDir) && Files.isRegularFile(previous)) {
+                return previous;
+            }
+        }
+        return uniqueTarget(ownerDir, fileName);
+    }
+
+    private static void writeImportedAudio(Path target, byte[] audio) throws java.io.IOException {
+        try {
+            Files.write(target, audio, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
+        } catch (Exception exception) {
+            // A failed import must not leave a half-written file behind.
+            try {
+                Files.deleteIfExists(target);
+            } catch (Exception ignored) {
+                // The write failure is the one worth reporting.
+            }
+            throw exception;
         }
     }
 

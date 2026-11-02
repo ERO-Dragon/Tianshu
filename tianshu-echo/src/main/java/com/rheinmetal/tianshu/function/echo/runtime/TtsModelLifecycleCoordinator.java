@@ -47,6 +47,16 @@ final class TtsModelLifecycleCoordinator {
     private String requestedModelName = "";
     private boolean reloadRequested;
     private long switchRevision;
+    /**
+     * Told whenever outside synthesis becomes allowed or forbidden, so the capability bits can follow the
+     * model lane instead of being maintained by every caller of a preview or a reload.
+     *
+     * <p>Runs while this coordinator is locked and must not call back into it. A model operation and a
+     * preview are the same thing from a caller's side: both make {@link #allowsSynthesis} refuse a request
+     * that does not own the lane.</p>
+     */
+    private Consumer<Boolean> availabilityObserver = ignored -> { };
+    private boolean publishedAvailable = true;
 
     TtsModelLifecycleCoordinator(ModuleExecutionAccess executorManager, TtsSynthesisEngine synthesisEngine,
                                  Consumer<TtsFailure> failureObserver) {
@@ -68,6 +78,38 @@ final class TtsModelLifecycleCoordinator {
         this.loadQueue = loadQueue;
     }
 
+    /** Registers the availability listener; see {@link #availabilityObserver}. */
+    void observeAvailability(Consumer<Boolean> observer) {
+        synchronized (this) {
+            availabilityObserver = observer == null ? ignored -> { } : observer;
+            publishedAvailable = externallyAvailable(state);
+        }
+    }
+
+    /**
+     * The single mutation point of {@link #state}.
+     *
+     * <p>It exists so that every transition lands in one place: shutdown is terminal (a preview restore
+     * that finishes after the module went away must not turn the coordinator back into IDLE), and a change
+     * of state is exactly the moment outside synthesis becomes possible or impossible.</p>
+     */
+    private void setStateLocked(LifecycleState next) {
+        if (state == next || state == LifecycleState.SHUTDOWN) {
+            return;
+        }
+        state = next;
+        boolean available = externallyAvailable(next);
+        if (available != publishedAvailable) {
+            publishedAvailable = available;
+            availabilityObserver.accept(available);
+        }
+    }
+
+    /** Outside synthesis is possible only while nothing owns the model lane. */
+    private static boolean externallyAvailable(LifecycleState state) {
+        return state == LifecycleState.IDLE;
+    }
+
     TtsOperationResult prepare(Consumer<Boolean> completion) {
         return prepare(TtsVoiceProfile.defaults(), completion);
     }
@@ -82,7 +124,7 @@ final class TtsModelLifecycleCoordinator {
         if (state != LifecycleState.IDLE) {
             return rejectBusy(null);
         }
-        state = LifecycleState.PREPARING;
+        setStateLocked(LifecycleState.PREPARING);
         requestedPrepareVoice = normalizedVoice(voiceProfile);
         prepareRevision++;
         addPrepareCompletion(completion);
@@ -113,7 +155,7 @@ final class TtsModelLifecycleCoordinator {
         if (state != LifecycleState.IDLE) {
             return rejectBusy(failure);
         }
-        state = LifecycleState.PREVIEW;
+        setStateLocked(LifecycleState.PREVIEW);
         previewRequestId = requestId == null ? "" : requestId;
         previewRestoreModel = restoreModel == null ? "" : restoreModel;
         previewRestoreScheduled = false;
@@ -163,13 +205,21 @@ final class TtsModelLifecycleCoordinator {
                 && previewRequestId.equals(request.requestId());
     }
 
-    void shutdown() {
+    /**
+     * Closes the engine and answers every waiter. The close itself is queued on the model lane so it cannot
+     * race a running inference.
+     *
+     * @return the queued close, or {@code null} when the lane refused it: the engine is then still open and
+     *         the caller owns it, because nothing else will ever close it
+     */
+    ProtocolTaskHandle shutdown() {
         List<Consumer<Boolean>> cancelledPrepares;
         List<Consumer<TtsControlResult>> cancelledSwitches;
         Consumer<TtsFailure> cancelledPreview;
+        ProtocolTaskHandle closeTask = null;
         synchronized (this) {
             boolean previewPending = state == LifecycleState.PREVIEW;
-            state = LifecycleState.SHUTDOWN;
+            setStateLocked(LifecycleState.SHUTDOWN);
             cancelledPrepares = drainPrepareCompletions();
             cancelledSwitches = drainSwitchCompletions();
             cancelledPreview = previewPending ? pendingPreviewFailure : null;
@@ -180,8 +230,10 @@ final class TtsModelLifecycleCoordinator {
             // A prepare or a switch still parked in the native-load gate never reaches its own release, so the
             // "loading" signal has to be dropped here or the HUD would wait for a load that will not happen.
             publishLoading(false);
-            ProtocolTaskState taskState = executorManager.submit(taskSpec("shutdown"), synthesisEngine::shutdown).state();
-            if (taskState == ProtocolTaskState.REJECTED) {
+            ProtocolTaskHandle handle = executorManager.submit(taskSpec("shutdown"), synthesisEngine::shutdown);
+            if (handle.state() != ProtocolTaskState.REJECTED) {
+                closeTask = handle;
+            } else {
                 failureObserver.accept(TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
                         "TTS model shutdown task was rejected"));
             }
@@ -195,6 +247,7 @@ final class TtsModelLifecycleCoordinator {
         notifySwitchCompletions(cancelledSwitches,
                 TtsControlResult.rejected(TtsControlAction.RELOAD_MODEL, cancelled));
         notifyFailure(cancelledPreview, cancelled);
+        return closeTask;
     }
 
     // ---------------------------------------------------------------- the one managed load path
@@ -303,9 +356,7 @@ final class TtsModelLifecycleCoordinator {
     private void failPrepareQueueFull() {
         List<Consumer<Boolean>> completions;
         synchronized (this) {
-            if (state == LifecycleState.PREPARING) {
-                state = LifecycleState.IDLE;
-            }
+            setStateLocked(LifecycleState.IDLE);
             completions = drainPrepareCompletions();
         }
         TtsFailure failure = TtsFailure.of(TtsFailureCode.QUEUE_FULL,
@@ -363,24 +414,28 @@ final class TtsModelLifecycleCoordinator {
             synchronized (this) {
                 if (state != LifecycleState.PREPARING) {
                     completions = drainPrepareCompletions();
-                    preloaded = false;
+                    return new PrepareOutcome(completions, false);
                 } else if (preloaded && revision != prepareRevision) {
                     continue;
                 } else {
-                    state = LifecycleState.IDLE;
+                    setStateLocked(LifecycleState.IDLE);
                     completions = drainPrepareCompletions();
                 }
             }
-            return new PrepareOutcome(completions, preloaded);
+            if (!preloaded) {
+                // The engine itself is up; only the default voice is missing. A request that carries its own
+                // reference audio still works, so the module must not be reported as failed for this.
+                failureObserver.accept(TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
+                        "TTS default voice is not preloaded"));
+            }
+            return new PrepareOutcome(completions, true);
         }
     }
 
     private PrepareOutcome completePrepare(boolean initialized) {
         List<Consumer<Boolean>> completions;
         synchronized (this) {
-            if (state == LifecycleState.PREPARING) {
-                state = LifecycleState.IDLE;
-            }
+            setStateLocked(LifecycleState.IDLE);
             completions = drainPrepareCompletions();
         }
         return new PrepareOutcome(completions, initialized);
@@ -428,11 +483,18 @@ final class TtsModelLifecycleCoordinator {
             return TtsOperationResult.accepted("tts-model:" + action);
         }
         if (state != LifecycleState.IDLE) {
-            return rejectBusy(null);
+            // Every caller gets exactly one answer: a request that cannot even start still has to end,
+            // otherwise the caller waits on a completion that the busy lane will never send.
+            TtsControlResult rejected = TtsControlResult.rejected(
+                    TtsControlAction.RELOAD_MODEL,
+                    TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS model lifecycle is busy"));
+            if (completion != null) {
+                completion.accept(rejected);
+            }
+            return TtsOperationResult.rejected(rejected.failure());
         }
-        state = LifecycleState.OPERATION;
-        operationKind = action;
-        requestedModelName = modelName;
+        setStateLocked(LifecycleState.OPERATION);
+        operationKind = action;        requestedModelName = modelName;
         reloadRequested = forceReload;
         switchRevision++;
         addSwitchCompletion(completion);
@@ -491,9 +553,7 @@ final class TtsModelLifecycleCoordinator {
                 if (superseded) {
                     continue;
                 }
-                if (state == LifecycleState.OPERATION) {
-                    state = LifecycleState.IDLE;
-                }
+                setStateLocked(LifecycleState.IDLE);
                 operationKind = "";
                 reloadRequested = false;
                 completions = drainSwitchCompletions();
@@ -520,9 +580,7 @@ final class TtsModelLifecycleCoordinator {
     private void failModelSwitch(String action) {
         List<Consumer<TtsControlResult>> completions;
         synchronized (this) {
-            if (state == LifecycleState.OPERATION) {
-                state = LifecycleState.IDLE;
-            }
+            setStateLocked(LifecycleState.IDLE);
             operationKind = "";
             reloadRequested = false;
             completions = drainSwitchCompletions();
@@ -553,9 +611,7 @@ final class TtsModelLifecycleCoordinator {
     }
 
     private List<Consumer<TtsControlResult>> drainSwitchCompletionsLocked() {
-        if (state == LifecycleState.OPERATION) {
-            state = LifecycleState.IDLE;
-        }
+        setStateLocked(LifecycleState.IDLE);
         operationKind = "";
         reloadRequested = false;
         return drainSwitchCompletions();
@@ -620,10 +676,16 @@ final class TtsModelLifecycleCoordinator {
             }
         } catch (Throwable throwable) {
             restoreFailure = TtsRuntimeFailurePolicy.classify(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, throwable);
-        } finally {
-            synchronized (TtsModelLifecycleCoordinator.this) {
-                clearPreviewState();
-            }
+        }
+        boolean previewStillLive;
+        synchronized (this) {
+            previewStillLive = state == LifecycleState.PREVIEW;
+            clearPreviewState();
+        }
+        if (!previewStillLive) {
+            // The load outlived the module: the shutdown task queued behind it closes whatever it just
+            // loaded, and nobody may be told the preview ended normally.
+            return;
         }
         if (restoreFailure != null) {
             failureObserver.accept(restoreFailure);
@@ -688,7 +750,9 @@ final class TtsModelLifecycleCoordinator {
     }
 
     private void clearPreviewState() {
-        state = LifecycleState.IDLE;
+        // Shutdown is terminal: setStateLocked refuses to leave it, so a restore that finishes after the
+        // module went away cannot make the next caller believe the engine can still be used.
+        setStateLocked(LifecycleState.IDLE);
         previewRequestId = "";
         previewRestoreModel = "";
         previewRestoreScheduled = false;

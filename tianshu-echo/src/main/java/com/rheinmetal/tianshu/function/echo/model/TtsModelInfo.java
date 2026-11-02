@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.model;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class TtsModelInfo {
@@ -263,11 +265,44 @@ public class TtsModelInfo {
                 return false;
             }
             JsonObject modelFiles = root.getAsJsonObject("model_files");
-            return manifestRelativeFilePresent(manifest, modelFiles, "tts_meta")
-                    && manifestRelativeFilePresent(manifest, modelFiles, "codec_meta");
+            // Every file the manifest names is required, not only the two meta descriptors: a directory
+            // holding just those two was reported installed while the graphs they point at were missing.
+            // Only the explicit file lists are checked; the manifest's other fields carry inline data rather
+            // than paths. The flat-name fallback inside manifestRelativeValuePresent stays, because the codec
+            // repository is downloaded flat into the same directory while the manifest names it as
+            // "../MOSS-Audio-Tokenizer-Nano-ONNX/...".
+            for (Map.Entry<String, JsonElement> declared : modelFiles.entrySet()) {
+                JsonElement value = declared.getValue();
+                // The runtime reads these entries as path strings; a value that is not a string names no file.
+                if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()
+                        || !manifestRelativeFilePresent(manifest, modelFiles, declared.getKey())) {
+                    return false;
+                }
+            }
+            if (!manifestListedFilesPresent(manifest, root)) {
+                return false;
+            }
+            // Metadata alone cannot answer audio: at least one graph or weight file has to be on disk.
+            return containsAnyFileWithExtension(dir, ".onnx", ".data");
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** Some manifests name their payload as a plain {@code files} list; when present, that list is required too. */
+    private static boolean manifestListedFilesPresent(Path manifest, JsonObject root) {
+        if (!root.has("files") || !root.get("files").isJsonArray()) {
+            return true;
+        }
+        for (JsonElement declared : root.getAsJsonArray("files")) {
+            // Entries this reader cannot read as a path are skipped instead of failing the install; the
+            // model_files check and the on-disk graph check already cover the payload.
+            if (declared.isJsonPrimitive() && declared.getAsJsonPrimitive().isString()
+                    && !manifestRelativeValuePresent(manifest, declared.getAsString())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static Path findMossManifest(Path dir) {
@@ -288,7 +323,10 @@ public class TtsModelInfo {
         if (!modelFiles.has(key) || modelFiles.get(key).isJsonNull()) {
             return false;
         }
-        String relativeValue = modelFiles.get(key).getAsString();
+        return manifestRelativeValuePresent(manifest, modelFiles.get(key).getAsString());
+    }
+
+    private static boolean manifestRelativeValuePresent(Path manifest, String relativeValue) {
         if (relativeValue == null || relativeValue.isBlank()) {
             return false;
         }
@@ -299,6 +337,24 @@ public class TtsModelInfo {
         }
         Path fileName = relative.getFileName();
         return fileName != null && containsExactFileName(manifest.getParent(), fileName.toString());
+    }
+
+    private static boolean containsAnyFileWithExtension(Path dir, String... extensions) {
+        if (!Files.isDirectory(dir)) {
+            return false;
+        }
+        List<String> suffixes = List.of(extensions);
+        try (var stream = Files.walk(dir)) {
+            return stream.anyMatch(path -> {
+                if (!Files.isRegularFile(path)) {
+                    return false;
+                }
+                String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+                return suffixes.stream().anyMatch(name::endsWith);
+            });
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static boolean containsModelFile(Path dir) {

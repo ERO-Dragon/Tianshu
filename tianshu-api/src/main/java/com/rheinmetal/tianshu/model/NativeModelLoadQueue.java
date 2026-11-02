@@ -252,18 +252,18 @@ public final class NativeModelLoadQueue {
     /**
      * Gives up the claim of {@code tier} and hands the gate to whoever was waiting behind it.
      *
-     * <p>Used when a module stops or decides not to load: a load queued on a lane that will never run must
-     * not hold a claim, and the worse tiers parked behind it may now go ahead. A permit held by a load of
-     * that tier is cleared, because that load will never run either; a permit held by another tier is left
-     * alone and releases its own.
+     * <p>Used when a module stops or decides not to load: requests of that tier that are still waiting will
+     * never run, so they are dropped here and the worse tiers parked behind them may go ahead. A permit
+     * held by a <em>running</em> load is deliberately left alone: that load is reading native memory right
+     * now and hands the permit back through its own {@link #release(String)}. Clearing it here (which this
+     * method used to do) let the next session start a second native load while the first one was still
+     * running, which is exactly the peak this queue exists to prevent.</p>
      */
     public void abandon(Tier tier) {
         Objects.requireNonNull(tier, "tier");
         List<Request> granted;
         synchronized (lock) {
-            if (active != null && active.tier == tier) {
-                active = null;
-            }
+            parked.removeIf(request -> request.tier == tier);
             tierExpected[tier.rank()] = false;
             tierSettled[tier.rank()] = true;
             granted = drainLocked();

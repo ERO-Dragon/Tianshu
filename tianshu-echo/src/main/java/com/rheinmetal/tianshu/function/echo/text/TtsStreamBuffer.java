@@ -15,7 +15,7 @@ public final class TtsStreamBuffer {
     }
 
     public synchronized Optional<String> append(String text) {
-        if (text == null || text.isBlank()) {
+        if (text == null || text.isEmpty()) {
             return Optional.empty();
         }
         buffer.append(text);
@@ -23,7 +23,7 @@ public final class TtsStreamBuffer {
     }
 
     public synchronized List<String> appendSegments(String text) {
-        if (text == null || text.isBlank()) {
+        if (text == null || text.isEmpty()) {
             return List.of();
         }
         buffer.append(text);

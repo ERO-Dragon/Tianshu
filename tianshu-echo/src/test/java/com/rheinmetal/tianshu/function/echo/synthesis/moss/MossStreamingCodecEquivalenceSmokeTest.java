@@ -62,7 +62,7 @@ class MossStreamingCodecEquivalenceSmokeTest {
                     tokenIds
             );
             MossFrameGenerationResult generation = generator.generateAudioFrames(requestRows);
-            List<List<Integer>> frames = generation.requireNaturalEnd(tokenIds.length);
+            List<List<Integer>> frames = generation.requireFinishedGeneration(tokenIds.length);
 
             float[][] serial4 = decodeSerial(codec, frames, 4);
             float[][] pipelined4 = decodePipeline(codec, execution, frames, generation.maxFrameCount(), runtime.sampleRate(), 4);

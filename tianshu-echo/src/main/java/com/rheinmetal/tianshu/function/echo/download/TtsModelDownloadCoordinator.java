@@ -9,16 +9,23 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 public final class TtsModelDownloadCoordinator {
     private final IGameEnvironment env;
+    private final Supplier<HuggingFaceDownloader> downloaderFactory;
 
     public TtsModelDownloadCoordinator(IGameEnvironment env) {
+        this(env, () -> new HuggingFaceDownloader(env));
+    }
+
+    public TtsModelDownloadCoordinator(IGameEnvironment env, Supplier<HuggingFaceDownloader> downloaderFactory) {
         this.env = Objects.requireNonNull(env, "env");
+        this.downloaderFactory = Objects.requireNonNull(downloaderFactory, "downloaderFactory");
     }
 
     public DownloadSession newSession() {
-        return new DownloadSession(new HuggingFaceDownloader(env), new ModelArchiveDownloader(env));
+        return new DownloadSession(downloaderFactory.get(), new ModelArchiveDownloader(env));
     }
 
     public static final class DownloadCancelledException extends IOException {

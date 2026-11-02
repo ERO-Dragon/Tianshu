@@ -205,12 +205,120 @@ class TtsModelLifecycleCoordinatorTest {
         assertEquals(TtsFailureCode.CANCELLED, failures.get(0).code());
     }
 
+    /**
+     * A restore that outlives the module must not resurrect the state machine or report a finished preview.
+     *
+     * <p>Shutdown is terminal. The restore used to clear the preview state unconditionally, which turned
+     * SHUTDOWN back into IDLE and let the coordinator accept a new load against an engine that was already
+     * being torn down.</p>
+     */
+    @Test
+    void aRestoreThatOutlivesTheModuleNeitherNotifiesNorResurrectsTheState() throws Exception {
+        BlockingRestoreEngine engine = new BlockingRestoreEngine();
+        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(
+                executors, engine, ignored -> { }, ignored -> { });
+        CountDownLatch restored = new CountDownLatch(1);
+
+        assertTrue(coordinator.beginExclusivePreview(
+                "request-1",
+                "preview-model",
+                "restore-model",
+                null,
+                () -> TtsOperationResult.accepted("request-1"),
+                ignored -> { }
+        ).accepted());
+        coordinator.finishExclusivePreview("request-1", restored::countDown, null);
+        assertTrue(engine.awaitRestoreStarted(), "the restore must reach the engine before shutdown can race it");
+
+        coordinator.shutdown();
+        engine.releaseRestore();
+
+        assertEquals(1L, restored.getCount(), "a preview torn down mid-restore did not end normally");
+        assertFalse(coordinator.beginExclusivePreview(
+                        "request-2", "preview-model", "restore-model", null, null, ignored -> { }).accepted(),
+                "shutdown is terminal, so the coordinator must not accept a new preview afterwards");
+    }
+
+    /**
+     * Outside synthesis is possible exactly while nothing owns the model lane, and the lane is only free
+     * again once the restore has actually run.
+     *
+     * <p>This is what the module's capability bits follow. Reporting "available" while the restore is still
+     * queued made the settings page claim TTS was usable and then reject the next request.</p>
+     */
+    @Test
+    void availabilityReturnsOnlyAfterTheRestoreHasRun() throws Exception {
+        BlockingRestoreEngine engine = new BlockingRestoreEngine();
+        TtsModelLifecycleCoordinator coordinator = new TtsModelLifecycleCoordinator(
+                executors, engine, ignored -> { }, ignored -> { });
+        List<Boolean> availability = java.util.Collections.synchronizedList(new ArrayList<>());
+        coordinator.observeAvailability(availability::add);
+        CountDownLatch restored = new CountDownLatch(1);
+
+        assertTrue(coordinator.beginExclusivePreview(
+                "request-1",
+                "preview-model",
+                "restore-model",
+                null,
+                () -> TtsOperationResult.accepted("request-1"),
+                ignored -> { }
+        ).accepted());
+        assertEquals(List.of(false), List.copyOf(availability), "a preview owns the lane from the start");
+
+        coordinator.finishExclusivePreview("request-1", restored::countDown, null);
+        assertTrue(engine.awaitRestoreStarted());
+        assertEquals(List.of(false), List.copyOf(availability),
+                "the lane is still owned while the restore is in flight");
+
+        engine.releaseRestore();
+
+        assertTrue(restored.await(2L, TimeUnit.SECONDS), "the restore never finished");
+        assertEquals(List.of(false, true), List.copyOf(availability),
+                "availability must come back exactly once, when the lane is free");
+    }
+
     /** A gate whose permit is held by another module forever, so every request from here parks. */
     private static NativeModelLoadQueue gateHeldElsewhere() {
         NativeModelLoadQueue queue = new NativeModelLoadQueue();
         assertEquals(NativeModelLoadQueue.Outcome.GRANTED, queue.request("seed", "seed", () -> { },
                 NativeModelLoadQueue.Tier.PRIMARY));
         return queue;
+    }
+
+    private static final class BlockingRestoreEngine implements TtsSynthesisEngine {
+        private final CountDownLatch restoreStarted = new CountDownLatch(1);
+        private final CountDownLatch releaseRestore = new CountDownLatch(1);
+
+        @Override public boolean initialize() { return true; }
+        @Override public boolean isInitialized() { return true; }
+        @Override public boolean isAutoregressive() { return false; }
+        @Override public int sampleRate() { return 24_000; }
+        @Override public TtsBackendSnapshot backendSnapshot() { return TtsBackendSnapshot.unavailable(); }
+
+        @Override
+        public boolean useModel(String modelName) {
+            if ("restore-model".equals(modelName)) {
+                restoreStarted.countDown();
+                try {
+                    releaseRestore.await(2L, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return true;
+        }
+
+        @Override public void synthesize(TtsRequest request, com.rheinmetal.tianshu.function.echo.synthesis.TtsAudioSink sink) { }
+        @Override public void interrupt() { }
+        @Override public void shutdown() { }
+
+        private void releaseRestore() {
+            releaseRestore.countDown();
+        }
+
+        private boolean awaitRestoreStarted() throws InterruptedException {
+            return restoreStarted.await(2L, TimeUnit.SECONDS);
+        }
     }
 
     private static final class BlockingSwitchEngine implements TtsSynthesisEngine {

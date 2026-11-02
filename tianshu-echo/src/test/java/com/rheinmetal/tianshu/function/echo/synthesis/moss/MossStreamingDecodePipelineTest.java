@@ -163,6 +163,7 @@ class MossStreamingDecodePipelineTest {
             }
             return switch (termination) {
                 case NATURAL_END -> MossFrameGenerationResult.naturalEnd(frames, frameCount);
+                case DEGENERATE_END -> MossFrameGenerationResult.degenerateEnd(frames, frameCount);
                 case CANCELLED -> MossFrameGenerationResult.cancelled(frames, frameCount);
                 case FRAME_LIMIT_REACHED -> MossFrameGenerationResult.frameLimitReached(frames, frameCount);
             };

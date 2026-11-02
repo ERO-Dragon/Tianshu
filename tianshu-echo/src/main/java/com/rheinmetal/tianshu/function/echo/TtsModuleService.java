@@ -91,7 +91,14 @@ public final class TtsModuleService {
                 Priority.NORMAL,
                 voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
         );
-        return current.previewWithModel(previewModel.name, models.currentConfiguredModelName(), request, onComplete, onFailure);
+        TtsOperationResult result = current.previewWithModel(
+                previewModel.name,
+                models.currentConfiguredModelName(),
+                request,
+                onComplete,
+                onFailure
+        );
+        return result;
     }
 
     public TtsControlResult stopPreview(String reason) {

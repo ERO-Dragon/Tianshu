@@ -31,6 +31,31 @@ class TtsRuntimeControlTest {
     }
 
     @Test
+    void stopSourceCancelsPureSynthesisOfThatSourceToo() {
+        BlockingSynthesisEngine engine = new BlockingSynthesisEngine();
+        List<TtsFailure> failures = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, new ArrayList<>());
+        prepareRuntime(runtime);
+
+        try {
+            assertTrue(runtime.synthesize(request("synth-a"), 30_000L, audio -> { }, null,
+                    () -> { }, failures::add).accepted());
+            assertTrue(engine.awaitStarted());
+
+            TtsControlResult result = runtime.stopSource(TtsRequestSource.of("module.ax"), "source stop");
+
+            assertEquals(1, result.affectedSessions(), "STOP_SOURCE must cover pure synthesis, not only playback");
+            assertTrue(failures.stream().anyMatch(failure -> failure.code() == TtsFailureCode.CANCELLED),
+                    "the cancelled synthesis must be reported to its caller");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            org.junit.jupiter.api.Assertions.fail(exception);
+        } finally {
+            runtime.stop();
+        }
+    }
+
+    @Test
     void submitStreamRejectsWhenRuntimeIsNotRunning() {
         CountingSynthesisEngine engine = new CountingSynthesisEngine();
         TtsRuntime runtime = runtime(engine, new ArrayList<>());

@@ -35,22 +35,31 @@ public final class MossTtsBackend implements TtsBackend {
     @Override
     public synchronized boolean initialize(TtsResolvedModel model) {
         shutdown();
+        boolean ready = false;
         try {
             Path modelRootDir = model.modelDir();
-            if (!Files.exists(modelRootDir)) {
-                Files.createDirectories(modelRootDir);
-            }
+            // Nothing is created here on purpose: the model service owns installation, and creating
+            // the folder made "directory exists" disagree with "model installed" while leaving an
+            // empty directory behind after every attempt to load a model that was never downloaded.
+            // A missing directory therefore falls through to the runtime's model-not-installed failure.
             service = new MossTtsService(env, modelRootDir, codecExecution);
             service.init();
             sampleRate = service.getSampleRate();
             initialized = true;
             env.info("MOSS-TTS backend initialized, sampleRate=" + sampleRate + "Hz");
+            ready = true;
             return true;
         } catch (Throwable t) {
             TtsRuntimeFailurePolicy.rethrowFatal(t);
             env.error("MOSS-TTS backend initialization failed", t);
-            shutdown();
             return false;
+        } finally {
+            // rethrowFatal leaves this method with a fatal Throwable before the catch body can clean
+            // up, so the release has to sit in a finally; it is also the single owner for the plain
+            // "initialize returned false" outcome.
+            if (!ready) {
+                shutdown();
+            }
         }
     }
 

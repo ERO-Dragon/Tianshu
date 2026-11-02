@@ -5,12 +5,16 @@ import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HuggingFaceDownloaderTest {
     @TempDir
@@ -96,5 +100,89 @@ class HuggingFaceDownloaderTest {
             assertEquals(0, official.requests(filePath));
             assertEquals(0, mirror.requests(filePath));
         }
+    }
+
+    /**
+     * A body shorter than the size the repository declared must not be accepted. The transport can only see
+     * the length the server itself claimed, so without this check a truncated proxy response would install a
+     * model that fails much later, inside the runtime.
+     */
+    @Test
+    void rejectsAFileShorterThanTheDeclaredSizeAndDeletesIt() throws Exception {
+        try (ModelDownloadTestServer official = new ModelDownloadTestServer();
+             ModelDownloadTestServer mirror = new ModelDownloadTestServer()) {
+            official.enqueue("/api/models/org/model/tree/main", ModelDownloadTestServer.text(200,
+                    "[{\"type\":\"file\",\"path\":\"model.onnx\",\"size\":40}]"));
+            official.enqueue("/org/model/resolve/main/model.onnx",
+                    ModelDownloadTestServer.text(200, "short"));
+
+            IOException failure = assertThrows(IOException.class, () -> downloader(official, mirror)
+                    .downloadModelFiles("org/model", tempDir, "main", false, 1));
+
+            assertTrue(failure.getMessage().startsWith("MODEL_FILE_SIZE_MISMATCH"), failure.getMessage());
+            assertFalse(Files.exists(tempDir.resolve("model.onnx")),
+                    "a file that failed verification must be removed so a retry re-downloads it");
+        }
+    }
+
+    /**
+     * A published digest is the only fact that says what the bytes are, so a body that arrives complete but
+     * wrong must not be installed either.
+     */
+    @Test
+    void rejectsAFileWhoseDigestDoesNotMatchAndDeletesIt() throws Exception {
+        try (ModelDownloadTestServer official = new ModelDownloadTestServer();
+             ModelDownloadTestServer mirror = new ModelDownloadTestServer()) {
+            String body = "model-content";
+            official.enqueue("/api/models/org/model/tree/main", ModelDownloadTestServer.text(200,
+                    "[{\"type\":\"file\",\"path\":\"model.onnx\",\"size\":" + body.length() + ","
+                            + "\"lfs\":{\"oid\":\"" + "0".repeat(64) + "\",\"size\":" + body.length() + "}}]"));
+            official.enqueue("/org/model/resolve/main/model.onnx",
+                    ModelDownloadTestServer.text(200, body));
+
+            IOException failure = assertThrows(IOException.class, () -> downloader(official, mirror)
+                    .downloadModelFiles("org/model", tempDir, "main", false, 1));
+
+            assertTrue(failure.getMessage().startsWith("MODEL_FILE_CHECKSUM_MISMATCH"), failure.getMessage());
+            assertFalse(Files.exists(tempDir.resolve("model.onnx")),
+                    "a checksum mismatch must not leave the file where a retry would skip it");
+        }
+    }
+
+    @Test
+    void acceptsAFileWhoseDigestMatches() throws Exception {
+        try (ModelDownloadTestServer official = new ModelDownloadTestServer();
+             ModelDownloadTestServer mirror = new ModelDownloadTestServer()) {
+            String body = "model-content";
+            String digest = sha256(body);
+            official.enqueue("/api/models/org/model/tree/main", ModelDownloadTestServer.text(200,
+                    "[{\"type\":\"file\",\"path\":\"model.onnx\",\"size\":" + body.length() + ","
+                            + "\"lfs\":{\"oid\":\"" + digest + "\",\"size\":" + body.length() + "}}]"));
+            official.enqueue("/org/model/resolve/main/model.onnx", ModelDownloadTestServer.text(200, body));
+
+            downloader(official, mirror).downloadModelFiles("org/model", tempDir, "main", false, 1);
+
+            assertEquals(body, Files.readString(tempDir.resolve("model.onnx"), StandardCharsets.UTF_8));
+        }
+    }
+
+    private static HuggingFaceDownloader downloader(ModelDownloadTestServer official, ModelDownloadTestServer mirror) {
+        FakeGameEnvironment env = new FakeGameEnvironment();
+        return new HuggingFaceDownloader(
+                env,
+                new ModelDownloadSourcePolicy(official.baseUrl(), mirror.baseUrl()),
+                new ModelDownloadHttpClient(env),
+                official::baseUrl
+        );
+    }
+
+    private static String sha256(String text) throws Exception {
+        byte[] hash = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(text.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(64);
+        for (byte value : hash) {
+            hex.append(String.format("%02x", value));
+        }
+        return hex.toString();
     }
 }

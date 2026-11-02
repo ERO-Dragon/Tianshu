@@ -48,6 +48,13 @@ public class TtsModelService {
     private static final String EXTRACT_SUFFIX = "-extract";
     private static final String TEMP_FILE_SUFFIX = ".tmp";
 
+    /**
+     * The two transfer failures the player can act on, so they get their own text: free space, or retry.
+     * Everything else is reported as the generic download failure.
+     */
+    private static final String INSUFFICIENT_SPACE = "tianshu.gui.tts.status.download_no_space";
+    private static final String INCOMPLETE_TRANSFER = "tianshu.gui.tts.status.download_incomplete";
+
     public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelName, ModelDownloadProgress progress) {
         public static DownloadStatus idle() {
             return new DownloadStatus(false, false, false, "", ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, ""));
@@ -70,11 +77,22 @@ public class TtsModelService {
     }
 
     public TtsModelService(IGameEnvironment env, EchoConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+        this(env, config, executorManager, moduleStatusSink, new TtsModelDownloadCoordinator(env));
+    }
+
+    // test seam: lets a test replace the download transport without changing the production constructors.
+    TtsModelService(
+            IGameEnvironment env,
+            EchoConfiguration config,
+            ModuleExecutionAccess executorManager,
+            Consumer<ModuleStatus> moduleStatusSink,
+            TtsModelDownloadCoordinator downloadCoordinator
+    ) {
         this.env = env;
         this.config = config;
         this.executorManager = executorManager;
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
-        this.downloadCoordinator = new TtsModelDownloadCoordinator(env);
+        this.downloadCoordinator = downloadCoordinator;
         this.availabilityRefresher = new ModelAvailabilityRefresher(
                 TtsModuleId.VALUE, executorManager, env, this::buildAvailabilitySnapshot);
         this.deletionRunner = new ModelDeletionRunner(TtsModuleId.VALUE, executorManager, availabilityRefresher);
@@ -221,13 +239,75 @@ public class TtsModelService {
                 if (Files.isRegularFile(path) && name.endsWith(TEMP_FILE_SUFFIX)) {
                     Files.deleteIfExists(path);
                 } else if (Files.isDirectory(path) && name.endsWith(EXTRACT_SUFFIX)) {
-                    // Extraction is a one-shot step; its directory is garbage. A staging directory is
-                    // resume state for an interrupted transfer, so startup deliberately keeps it.
+                    // Extraction is a one-shot step; its directory is garbage.
                     deleteRecursively(path);
+                } else if (Files.isDirectory(path) && name.endsWith(STAGING_SUFFIX)) {
+                    reclaimStaging(path);
                 }
             }
         } catch (IOException e) {
             env.warn("tts.download.cleanup_failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Decides whether a staging directory is worth keeping.
+     *
+     * <p>A staging directory exists for exactly one reason: resuming an interrupted transfer, file by file —
+     * a retry reuses whatever already landed there. So the two cases worth deleting are the ones that can
+     * never be resumed: the model it belongs to is already installed (the commit happened, the directory is a
+     * leftover — for MOSS most of a gigabyte), and a directory with no files in it at all.</p>
+     */
+    private void reclaimStaging(Path stagingDir) {
+        Path modelDir = siblingModelDirectory(stagingDir);
+        TtsModelInfo owner = modelDir == null ? null : catalogEntryFor(modelDir);
+        if (owner != null && TtsModelInfo.isModelDirectoryComplete(owner, modelDir)) {
+            deleteRecursivelyQuietly(stagingDir, "installed");
+            return;
+        }
+        if (!holdsAnyFile(stagingDir)) {
+            deleteRecursivelyQuietly(stagingDir, "empty");
+        }
+    }
+
+    private static boolean holdsAnyFile(Path stagingDir) {
+        try (var walk = Files.walk(stagingDir)) {
+            return walk.anyMatch(Files::isRegularFile);
+        } catch (IOException unreadable) {
+            // An unreadable staging directory cannot be examined; deleting what cannot be listed is not this
+            // method's call, so it is left for the next run.
+            return true;
+        }
+    }
+
+    private Path siblingModelDirectory(Path stagingDir) {
+        String name = stagingDir.getFileName() == null ? "" : stagingDir.getFileName().toString();
+        if (name.length() <= STAGING_SUFFIX.length()) {
+            return null;
+        }
+        String modelName = name.substring(0, name.length() - STAGING_SUFFIX.length());
+        return stagingDir.resolveSibling(modelName);
+    }
+
+    private TtsModelInfo catalogEntryFor(Path modelDir) {
+        for (TtsModelInfo info : catalog()) {
+            if (info == null || info.name == null || info.name.isBlank()) {
+                continue;
+            }
+            Path candidate = resolveModelDir(info);
+            if (candidate != null && candidate.toAbsolutePath().normalize().equals(modelDir.toAbsolutePath().normalize())) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    private void deleteRecursivelyQuietly(Path path, String why) {
+        try {
+            deleteRecursively(path);
+            env.info("tts.download.staging_reclaimed: " + path.getFileName() + " (" + why + ")");
+        } catch (IOException failure) {
+            env.warn("tts.download.staging_reclaim_failed: " + path.getFileName() + " — " + failure.getMessage());
         }
     }
 
@@ -313,22 +393,59 @@ public class TtsModelService {
         }
     }
 
+    /** Whether a model directory exists at all, complete or half-deleted; such a directory stays deletable. */
+    public boolean hasModelDirectory(TtsModelInfo info) {
+        Path modelDir = resolveModelDir(info);
+        return modelDir != null && Files.isDirectory(modelDir);
+    }
+
     public boolean deleteModel(TtsModelInfo info) {
         Path modelDir = resolveModelDir(info);
-        if (modelDir == null || !Files.exists(modelDir)) {
+        if (modelDir == null || !Files.isDirectory(modelDir)) {
+            return false;
+        }
+        List<Path> entries;
+        try (var walk = Files.walk(modelDir)) {
+            entries = walk.filter(path -> !path.equals(modelDir))
+                    .sorted((left, right) -> right.getNameCount() - left.getNameCount())
+                    .toList();
+        } catch (IOException failure) {
+            env.error("tts.model.delete_failed", failure);
+            return false;
+        }
+        // A single locked file used to abandon the rest of the tree; the leftovers made the directory
+        // undeletable for good. Every entry is attempted, and the remaining ones alone decide the result.
+        int failures = 0;
+        for (Path entry : entries) {
+            try {
+                Files.deleteIfExists(entry);
+            } catch (IOException failure) {
+                failures++;
+            }
+        }
+        if (failures > 0) {
+            env.warn("tts.model.delete_incomplete: " + failures + " of " + entries.size()
+                    + " entries remain in " + modelDir);
             return false;
         }
         try {
-            deleteRecursively(modelDir);
+            Files.deleteIfExists(modelDir);
             return true;
-        } catch (IOException e) {
-            env.error("tts.model.delete_failed", e);
+        } catch (IOException failure) {
+            env.error("tts.model.delete_failed", failure);
             return false;
         }
     }
 
     public void deleteModelAsync(TtsModelInfo info, ModelDeleteCallback callback) {
         if (info == null) {
+            if (callback != null) {
+                callback.onComplete(false);
+            }
+            return;
+        }
+        if (activeDownload.get() != null) {
+            publishFailed("tianshu.runtime.module.tts.download_busy");
             if (callback != null) {
                 callback.onComplete(false);
             }
@@ -348,10 +465,22 @@ public class TtsModelService {
             }
             return;
         }
+        if (deletionRunner.isDeleting()) {
+            if (callback != null) {
+                callback.onError("tianshu.gui.tts.failure.download_deleting");
+            }
+            return;
+        }
         Path modelDir = resolveModelDir(info);
         if (modelDir == null) {
             if (callback != null) {
                 callback.onError("tianshu.gui.tts.failure.invalid_request");
+            }
+            return;
+        }
+        if (!hasEnoughDiskSpace(info, modelDir)) {
+            if (callback != null) {
+                callback.onError(INSUFFICIENT_SPACE);
             }
             return;
         }
@@ -465,9 +594,12 @@ public class TtsModelService {
             }
             task.session().awaitReady();
             if (!TtsModelInfo.isModelDirectoryComplete(info, stagingDir)) {
-                throw new IOException("tts.download.model_incomplete: " + info.getDisplayName());
+                // The declared files did not all arrive. That is a retry, not a mystery: say so.
+                throw new DownloadFailure(INCOMPLETE_TRANSFER, "tts.download.model_incomplete: " + info.getDisplayName());
             }
-            TtsModelSettings.save(stagingDir, TtsModelSettings.load(stagingDir));
+            // Deliberately no settings file here: an absent file means "use the catalog default", while a
+            // file written without the catalog entry would persist speakerId 0 and override the model's own
+            // default voice for good.
             commitStagingDownload(stagingDir, task.modelDir());
             finishDownloadComplete(task, callback);
         } catch (Exception e) {
@@ -475,7 +607,7 @@ public class TtsModelService {
                 finishDownloadCancelled(task, callback);
             } else {
                 env.error("tts.download.failed", e);
-                finishDownloadError(task, callback, "tianshu.gui.tts.status.download_failed");
+                finishDownloadError(task, callback, downloadFailureMessage(e, task.modelDir(), info));
             }
         }
     }
@@ -811,6 +943,73 @@ public class TtsModelService {
             current = current.getCause();
         }
         return false;
+    }
+
+    /**
+     * Refuses a transfer the disk cannot hold before a staging directory is even created. A model whose
+     * catalog size is unknown skips the check, and so does an unreadable file store: the platform may
+     * still be able to complete the transfer, and a wrong refusal would be worse than a late failure.
+     */
+    private static boolean hasEnoughDiskSpace(TtsModelInfo info, Path modelDir) {
+        if (info == null || modelDir == null || info.size <= 0L) {
+            return true;
+        }
+        long requiredBytes = (long) Math.ceil(info.size * 1.2D);
+        Path probe = existingAncestor(modelDir.getParent());
+        if (probe == null) {
+            return true;
+        }
+        try {
+            return Files.getFileStore(probe).getUsableSpace() >= requiredBytes;
+        } catch (IOException | RuntimeException unavailable) {
+            return true;
+        }
+    }
+
+    /** The nearest directory that exists: the model root itself does not exist before the first download. */
+    private static Path existingAncestor(Path path) {
+        Path current = path == null ? null : path.toAbsolutePath().normalize();
+        while (current != null && !Files.exists(current)) {
+            current = current.getParent();
+        }
+        return current;
+    }
+
+    /**
+     * The message the player sees for a failed transfer. Only causes they can act on get their own text:
+     * a transfer that ran out of room, and a model that arrived incomplete (retry fixes it). Everything
+     * else stays the generic failure, because naming a cause the module cannot prove would be a guess.
+     *
+     * @param modelDir where the transfer was writing; the free-space probe runs against it
+     */
+    private static String downloadFailureMessage(Exception failure, Path modelDir, TtsModelInfo info) {
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current instanceof DownloadFailure typed) {
+                return typed.messageKey;
+            }
+        }
+        // Disk exhaustion reaches us as a plain IOException from the transport, and its text is produced by
+        // the platform (localized on Windows), so it cannot be classified by reading it. Asking the
+        // filesystem afterwards is locale independent: if what is left cannot hold another attempt, the
+        // transfer ran out of room.
+        if (!hasEnoughDiskSpace(info, modelDir)) {
+            return INSUFFICIENT_SPACE;
+        }
+        return "tianshu.gui.tts.status.download_failed";
+    }
+
+    /**
+     * A transfer failure whose message the player should see verbatim. The transport has no typed signal for
+     * the checks this module performs itself, so the reason travels with the exception instead of being
+     * recovered later by matching strings.
+     */
+    private static final class DownloadFailure extends IOException {
+        private final String messageKey;
+
+        private DownloadFailure(String messageKey, String detail) {
+            super(detail);
+            this.messageKey = messageKey;
+        }
     }
 
     private record DownloadTask(

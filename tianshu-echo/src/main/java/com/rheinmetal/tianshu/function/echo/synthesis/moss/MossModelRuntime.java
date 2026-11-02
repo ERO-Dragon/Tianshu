@@ -29,6 +29,12 @@ final class MossModelRuntime implements AutoCloseable {
     private JsonObject manifest;
     private JsonObject ttsMeta;
     private JsonObject codecMeta;
+    /**
+     * Set only after the manifest, the tokenizer and every session are in place. The previous
+     * "sessions is not empty" test let a half-finished init answer the next {@link #initialize()}
+     * successfully while sessions were still missing.
+     */
+    private boolean initialized;
 
     MossModelRuntime(IGameEnvironment env, Path modelRootDir, InferenceResourcePolicy resourcePolicy) {
         this.env = env;
@@ -37,19 +43,27 @@ final class MossModelRuntime implements AutoCloseable {
     }
 
     synchronized void initialize() throws Exception {
-        if (!sessions.isEmpty()) {
+        if (initialized) {
             return;
         }
-        // The model service owns downloading, staging and progress. A backend that silently fetched here
-        // would be a second, unobserved door into the same files, so an incomplete directory is reported
-        // instead of repaired.
-        if (findManifestPath() == null) {
-            throw new IOException("TTS_MOSS_MODEL_NOT_INSTALLED: " + modelRootDir);
+        try {
+            // The model service owns downloading, staging and progress. A backend that silently fetched here
+            // would be a second, unobserved door into the same files, so an incomplete directory is reported
+            // instead of repaired.
+            if (findManifestPath() == null) {
+                throw new IOException("TTS_MOSS_MODEL_NOT_INSTALLED: " + modelRootDir);
+            }
+            loadManifestAndMeta();
+            environment = OrtEnvironment.getEnvironment();
+            initTokenizer();
+            initSessions();
+            initialized = true;
+        } catch (Exception | Error failure) {
+            // A partially built runtime must not survive: release the sessions it did create so the
+            // next initialize() really retries instead of reporting success with sessions missing.
+            close();
+            throw failure;
         }
-        loadManifestAndMeta();
-        environment = OrtEnvironment.getEnvironment();
-        initTokenizer();
-        initSessions();
     }
 
     OrtEnvironment environment() {
@@ -116,8 +130,9 @@ final class MossModelRuntime implements AutoCloseable {
         addOptionalSession("local_fixed_sampled_frame", ttsFiles, "local_fixed_sampled_frame");
         addOptionalSession("local_cached_step", ttsFiles, "local_cached_step");
         addSession("codec_encode", codecFiles, "encode");
-        addSession("codec_decode", codecFiles, "decode_full");
-        addOptionalSession("codec_decode_step", codecFiles, "decode_step");
+        // Decoding always runs in fixed windows through the step session: the one-shot `decode_full`
+        // session materialises a tensor that grows with the utterance and cannot decode a long result.
+        addSession("codec_decode_step", codecFiles, "decode_step");
     }
 
     private void addSession(String name, JsonObject files, String fileKey) throws OrtException {
@@ -305,6 +320,9 @@ final class MossModelRuntime implements AutoCloseable {
         manifest = null;
         ttsMeta = null;
         codecMeta = null;
+        // Closing has to reset the flag, otherwise a closed runtime would answer the next
+        // initialize() without loading anything.
+        initialized = false;
     }
 
     private static <T> T require(T value, String resource) {

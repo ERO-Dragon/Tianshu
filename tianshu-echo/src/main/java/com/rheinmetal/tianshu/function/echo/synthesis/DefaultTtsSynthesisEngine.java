@@ -127,6 +127,11 @@ public final class DefaultTtsSynthesisEngine implements TtsSynthesisEngine {
         return applyModel(info.name, false);
     }
 
+    @Override
+    public String activeModelName() {
+        return modelSelection.currentModelName();
+    }
+
     /**
      * Brings the backend up on {@code modelName} and adopts the model only after the load succeeded.
      *

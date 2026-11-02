@@ -24,6 +24,7 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
     @Override
     public synchronized boolean initialize(TtsResolvedModel model) {
         shutdown();
+        boolean ready = false;
         try {
             SherpaOnnxTtsConfigFactory.ResolvedConfig resolvedConfig = configFactory.build(model).orElse(null);
             if (resolvedConfig == null) {
@@ -36,12 +37,19 @@ public final class SherpaOnnxTtsBackend implements TtsBackend {
             defaultSpeakerId = settings.speakerId;
             initialized = true;
             env.info("Sherpa ONNX TTS backend initialized, sampleRate=" + sampleRate + "Hz, speakers=" + tts.getNumSpeakers());
+            ready = true;
             return true;
         } catch (Throwable t) {
             TtsRuntimeFailurePolicy.rethrowFatal(t);
             env.error("Sherpa ONNX TTS backend initialization failed", t);
-            shutdown();
             return false;
+        } finally {
+            // rethrowFatal leaves this method with a fatal Throwable before the catch body can clean
+            // up, so the release has to sit in a finally; it is also the single owner for the plain
+            // "initialize returned false" outcomes.
+            if (!ready) {
+                shutdown();
+            }
         }
     }
 

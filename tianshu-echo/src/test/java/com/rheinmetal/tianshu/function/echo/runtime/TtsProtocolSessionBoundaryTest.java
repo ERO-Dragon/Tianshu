@@ -33,6 +33,38 @@ class TtsProtocolSessionBoundaryTest {
     }
 
     @Test
+    void idleStreamEndsWithoutAnEndPacketAndFreesItsKey() throws Exception {
+        BlockingFirstSynthesisEngine engine = new BlockingFirstSynthesisEngine();
+        List<TtsRequestStatusPayload> statuses = Collections.synchronizedList(new ArrayList<>());
+        TtsRuntime runtime = runtime(engine, statuses);
+        prepare(runtime);
+        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.a", 61L, 1, "idle");
+
+        // "unfinished" has no sentence boundary yet, so the session is admitted with nothing to speak and
+        // would hold the slot until an end packet that never comes.
+        assertTrue(runtime.submitSpeech(key, TtsTextInputMode.RAW_TEXT_STREAM, false,
+                request("idle", "unfinished", "module.a", TtsPlaybackPlacement.QUEUE_AFTER_SESSION)).accepted());
+
+        runtime.reapIdleStreams(System.currentTimeMillis() + 60_000L);
+
+        // The buffered fragment is spoken first, exactly as the caller's own end packet would do; only
+        // then does the request complete.
+        engine.releaseFirst.countDown();
+        long deadline = System.currentTimeMillis() + 2_000L;
+        while (System.currentTimeMillis() < deadline
+                && statuses.stream().noneMatch(status -> status.requestId().equals("idle")
+                && status.status() == TtsRequestStatus.COMPLETED)) {
+            Thread.sleep(10L);
+        }
+        assertTrue(statuses.stream().anyMatch(status -> status.requestId().equals("idle")
+                        && status.status() == TtsRequestStatus.COMPLETED),
+                "an idle stream must complete so its caller is not left on PLAYING; saw " + statuses);
+        assertTrue(runtime.submitSpeech(key, TtsTextInputMode.DOCUMENT, true,
+                        request("after-idle", "Hello.", "module.a", TtsPlaybackPlacement.QUEUE_AFTER_SESSION)).accepted(),
+                "the key must be reusable once the idle stream was reclaimed");
+    }
+
+    @Test
     void laterChunksCannotChangePlacementFrozenAtAdmission() throws Exception {
         BlockingFirstSynthesisEngine engine = new BlockingFirstSynthesisEngine();
         List<TtsRequestStatusPayload> statuses = Collections.synchronizedList(new ArrayList<>());

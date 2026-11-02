@@ -56,22 +56,38 @@ public final class SentenceSegmenter {
         return nextBoundary(text).shouldFlush();
     }
 
+    /**
+     * The first boundary in {@code text}, as an index <b>into {@code text}</b>.
+     *
+     * <p>Leading whitespace is ignored while looking for the boundary, but the returned index always
+     * addresses the caller's own string: callers slice the buffer they passed in, so an index computed
+     * against a stripped view would cut that many characters too early and split a word.</p>
+     */
     public SegmentBoundary nextBoundary(String text) {
         if (text == null || text.isBlank()) {
             return SegmentBoundary.none();
         }
-        String value = text.stripLeading();
+        int leading = leadingWhitespace(text);
+        String value = text.substring(leading);
         if (value.isBlank()) {
             return SegmentBoundary.none();
         }
         int boundary = findBestBoundary(value);
         if (boundary > 0) {
-            return new SegmentBoundary(true, boundary);
+            return new SegmentBoundary(true, leading + boundary);
         }
         if (value.length() >= maxLength) {
-            return new SegmentBoundary(true, findForcedBoundary(value));
+            return new SegmentBoundary(true, leading + findForcedBoundary(value));
         }
         return SegmentBoundary.none();
+    }
+
+    private static int leadingWhitespace(String text) {
+        int index = 0;
+        while (index < text.length() && Character.isWhitespace(text.charAt(index))) {
+            index++;
+        }
+        return index;
     }
 
     private int findBestBoundary(String text) {

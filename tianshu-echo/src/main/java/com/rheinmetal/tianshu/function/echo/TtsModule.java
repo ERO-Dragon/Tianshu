@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
+import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsControlAction;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsControlResult;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsFailure;
@@ -64,6 +65,8 @@ public final class TtsModule implements TianshuManagedModule {
     private volatile long lifecycleStatusGeneration;
     private volatile boolean lifecycleActive;
     private volatile boolean destroyed;
+    /** Capability registry of the running session; null before prepare and after destroy. */
+    private volatile ModuleRuntimeState runtimeState;
     private final Set<String> activeRequestActivities = ConcurrentHashMap.newKeySet();
     /** Process-wide serial gate for native model loads; null keeps this module self-contained. */
     private final NativeModelLoadQueue loadQueue;
@@ -119,16 +122,45 @@ public final class TtsModule implements TianshuManagedModule {
         context.services().register(TtsModelService.class, modelService);
         context.services().register(TtsVoiceLibraryService.class, voiceLibraryService);
         context.services().register(TtsVoiceCloneRegistry.class, voiceCloneRegistry);
-        adapter.registerSpeakCapability(this::handleSpeak);
-        adapter.registerSynthesizeCapability(this::handleSynthesize);
-        adapter.registerAudioAckCapability(this::handleAudioAck);
-        adapter.registerControlCapability(this::handleControl);
+        adapter.registerSpeakCapability(guarded("speak", this::handleSpeak));
+        adapter.registerSynthesizeCapability(guarded("synthesize", this::handleSynthesize));
+        adapter.registerAudioAckCapability(guarded("audio-ack", this::handleAudioAck));
+        adapter.registerControlCapability(guarded("control", this::handleControl));
+    }
+
+    /** What a capability handler does; declared so {@link #guarded} can wrap all four the same way. */
+    @FunctionalInterface
+    private interface CapabilityHandler {
+        void handle(TianshuEnvelope envelope, ProtocolContext context) throws Exception;
+    }
+
+    /**
+     * Makes every envelope end, whatever the handler does.
+     *
+     * <p>An exception that escapes a handler leaves the caller's request without a terminal state: the
+     * protocol converts the {@code Exception}s it sees, but an {@code Error} travels past it and the envelope
+     * simply stops existing. Failing it here means the caller always learns the outcome.</p>
+     */
+    private com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler guarded(String action, CapabilityHandler body) {
+        return (envelope, context) -> {
+            try {
+                body.handle(envelope, context);
+            } catch (Throwable failure) {
+                failProtocol(context, envelope.envelopeId(),
+                        com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeFailurePolicy.classify(
+                                TtsFailureCode.UNKNOWN, failure));
+                if (env != null) {
+                    env.error("tts.handler.failed: " + action, failure);
+                }
+            }
+        };
     }
 
     @Override
     public void prepare(ModuleRuntimeContext context) {
         lifecycleStatusGeneration++;
         lifecycleActive = true;
+        runtimeState = context.runtimeState();
         if (loadQueue != null) {
             // Re-arms the ordering claim for this session: the queue expects the speech-output tier from
             // construction, and a stopped-and-restarted module has to say so again.
@@ -164,7 +196,8 @@ public final class TtsModule implements TianshuManagedModule {
                 this::publishRequestStatus,
                 adapter::publishLoadingActivity,
                 config::isTtsStreamingSynthesisEnabled,
-                loadQueue
+                loadQueue,
+                this::markModelBusy
         );
         if (moduleService != null) {
             moduleService.bindRuntime(ttsRuntime);
@@ -196,6 +229,47 @@ public final class TtsModule implements TianshuManagedModule {
             publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.tts.failed"));
             publishModuleStatus(ModuleStatuses.lifecycleFailed(moduleId(), "tianshu.runtime.module.tts.failed", lifecycleStatusGeneration));
         }
+    }
+
+    /**
+     * The capability bits have to describe what a caller can do now, not only whether the module started.
+     * A model operation (preview, reload) rejects outside synthesis for its duration, and a stopped module
+     * accepts nothing, so both states are published rather than left behind as a misleading ready bit.
+     */
+    private void markModelBusy(boolean busy) {
+        ModuleRuntimeState state = runtimeState;
+        if (state == null) {
+            return;
+        }
+        if (busy) {
+            state.capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS model operation in progress");
+            state.capabilities().markFailed(TtsRuntimeCapabilities.PLAYBACK, moduleId(), "TTS model operation in progress");
+            return;
+        }
+        // A late completion from a preview or reload that outlived the module must not resurrect the
+        // capability bits of a stopped module.
+        if (!lifecycleActive) {
+            markStopped();
+            return;
+        }
+        if (ttsRuntime != null && ttsRuntime.isReady()) {
+            state.capabilities().markReady(TtsRuntimeCapabilities.SYNTHESIS, moduleId());
+            state.capabilities().markReady(TtsRuntimeCapabilities.PLAYBACK, moduleId());
+        } else {
+            state.capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS model is not loaded");
+            state.capabilities().markFailed(TtsRuntimeCapabilities.PLAYBACK, moduleId(), "TTS model is not loaded");
+        }
+    }
+
+    private void markStopped() {
+        ModuleRuntimeState state = runtimeState;
+        if (state == null) {
+            return;
+        }
+        state.capabilities().markFailed(TtsRuntimeCapabilities.SYNTHESIS, moduleId(), "TTS module is stopped");
+        state.capabilities().markFailed(TtsRuntimeCapabilities.PLAYBACK, moduleId(), "TTS module is stopped");
+        state.capabilities().markFailed(TtsRuntimeCapabilities.VOICE_LIBRARY, moduleId(), "TTS module is stopped");
+        state.capabilities().markFailed(TtsRuntimeCapabilities.MODEL_MANAGEMENT, moduleId(), "TTS module is stopped");
     }
 
     @Override
@@ -251,6 +325,8 @@ public final class TtsModule implements TianshuManagedModule {
         if (loadQueue != null) {
             // The scheduled auto-load may have been cancelled above, so its tier is given up here rather
             // than in the load that will never run — otherwise the voice-input tier would wait forever.
+            // A load that is already running is not affected: it hands the permit back when it returns, and
+            // clearing it here would let the next session read a model while this one is still reading.
             loadQueue.abandon(NativeModelLoadQueue.Tier.DEFERRED);
         }
         if (ttsRuntime != null) {
@@ -259,6 +335,7 @@ public final class TtsModule implements TianshuManagedModule {
         if (modelService != null) {
             modelService.stop();
         }
+        markStopped();
         endActiveRequestActivities();
         if (lifecycleActive) {
             lifecycleActive = false;
@@ -283,12 +360,13 @@ public final class TtsModule implements TianshuManagedModule {
             ttsRuntime.destroy();
             ttsRuntime = null;
         }
+        runtimeState = null;
         endActiveRequestActivities();
     }
 
     private void handleSpeak(TianshuEnvelope envelope, ProtocolContext context) {
         if (!(envelope.payload() instanceof TtsSpeakPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "TTS payload is invalid", null);
+            failWith(context, envelope.envelopeId(), "TTS_INVALID_PAYLOAD", "TTS payload is invalid", null);
             return;
         }
         if (!ensureRuntimeAvailable(context, envelope.envelopeId())) {
@@ -296,17 +374,19 @@ public final class TtsModule implements TianshuManagedModule {
         }
         java.util.Optional<TtsFailure> voiceFailure = validateVoice(payload.voice());
         if (voiceFailure.isPresent()) {
-            failProtocol(context, envelope.envelopeId(), "TTS_VOICE_UNAVAILABLE", voiceFailure.get());
+            failProtocol(context, envelope.envelopeId(), voiceFailure.get());
             return;
         }
         PacketType packetType = envelope.header().packetType();
         boolean streaming = packetType == PacketType.STREAM_CHUNK || packetType == PacketType.STREAM_END;
         if (streaming && payload.inputMode() == com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.DOCUMENT) {
-            context.fail(envelope.envelopeId(), "INVALID_TTS_INPUT_MODE", "TTS stream packets require a stream input mode", null);
+            failWith(context, envelope.envelopeId(), failureReasonCode(TtsFailureCode.INVALID_REQUEST),
+                    "TTS stream packets require a stream input mode", null);
             return;
         }
         if (!streaming && payload.inputMode() != com.rheinmetal.tianshu.function.echo.contract.TtsTextInputMode.DOCUMENT) {
-            context.fail(envelope.envelopeId(), "INVALID_TTS_INPUT_MODE", "TTS command packets require DOCUMENT input mode", null);
+            failWith(context, envelope.envelopeId(), failureReasonCode(TtsFailureCode.INVALID_REQUEST),
+                    "TTS command packets require DOCUMENT input mode", null);
             return;
         }
         TtsSpeechSessionKey key = speechSessionKey(envelope, payload);
@@ -320,13 +400,13 @@ public final class TtsModule implements TianshuManagedModule {
         if (result.accepted()) {
             context.complete(envelope.envelopeId());
         } else {
-            failProtocol(context, envelope.envelopeId(), "TTS_FAILED", result.failure());
+            failProtocol(context, envelope.envelopeId(), result.failure());
         }
     }
 
     private void handleSynthesize(TianshuEnvelope envelope, ProtocolContext context) {
         if (!(envelope.payload() instanceof TtsSynthesisRequestPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "TTS synthesis payload is invalid", null);
+            failWith(context, envelope.envelopeId(), "TTS_INVALID_PAYLOAD", "TTS synthesis payload is invalid", null);
             return;
         }
         if (!ensureRuntimeAvailable(context, envelope.envelopeId())) {
@@ -334,7 +414,7 @@ public final class TtsModule implements TianshuManagedModule {
         }
         java.util.Optional<TtsFailure> voiceFailure = validateVoice(payload.voice());
         if (voiceFailure.isPresent()) {
-            failProtocol(context, envelope.envelopeId(), "TTS_VOICE_UNAVAILABLE", voiceFailure.get());
+            failProtocol(context, envelope.envelopeId(), voiceFailure.get());
             return;
         }
         TtsRequest request = synthesisRequestFromPayload(envelope, payload);
@@ -356,18 +436,18 @@ public final class TtsModule implements TianshuManagedModule {
                 },
                 failure -> {
                     endRequestActivity(request.requestId());
-                    failProtocol(context, envelope.envelopeId(), "TTS_SYNTHESIS_FAILED", failure);
+                    failProtocol(context, envelope.envelopeId(), failure);
                 }
         );
     }
 
     private void handleAudioAck(TianshuEnvelope envelope, ProtocolContext context) {
         if (!(envelope.payload() instanceof TtsAudioAckPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "", null);
+            failWith(context, envelope.envelopeId(), "TTS_INVALID_PAYLOAD", "TTS audio acknowledgement payload is invalid", null);
             return;
         }
         if (ttsRuntime == null) {
-            context.fail(envelope.envelopeId(), "TTS_RUNTIME_NOT_RUNNING", "", null);
+            failWith(context, envelope.envelopeId(), "TTS_RUNTIME_NOT_RUNNING", "TTS runtime is not available", null);
             return;
         }
         TtsOperationResult result = ttsRuntime.acknowledgeSynthesisAudio(
@@ -377,94 +457,76 @@ public final class TtsModule implements TianshuManagedModule {
         if (result.accepted()) {
             context.complete(envelope.envelopeId());
         } else {
-            failProtocol(context, envelope.envelopeId(), "TTS_AUDIO_ACK_FAILED", result.failure());
+            failProtocol(context, envelope.envelopeId(), result.failure());
         }
     }
 
     private void handleControl(TianshuEnvelope envelope, ProtocolContext context) {
         if (!(envelope.payload() instanceof TtsControlPayload payload)) {
-            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "TTS control payload is invalid", null);
+            failWith(context, envelope.envelopeId(), "TTS_INVALID_PAYLOAD", "TTS control payload is invalid", null);
             return;
         }
-        if (payload.action() == TtsControlPayload.Action.STOP_CURRENT) {
-            String reason = payload.reason().isBlank() ? "protocol current stop" : payload.reason();
-            TtsControlResult result = ttsRuntime == null
-                    ? moduleService.stopCurrent(reason)
-                    : ttsRuntime.stopCurrent(reason);
-            completeOrFailControl(context, envelope.envelopeId(), result);
-            return;
-        }
-        if (payload.action() == TtsControlPayload.Action.STOP) {
-            String reason = payload.reason().isBlank() ? "protocol control stop" : payload.reason();
-            TtsControlResult result;
-            if (ttsRuntime == null) {
-                result = moduleService.stopAll(reason);
-            } else {
-                result = payload.targetRequestId().isBlank()
+        TtsControlResult result = switch (payload.action()) {
+            case STOP_CURRENT -> {
+                String reason = payload.reason().isBlank() ? "protocol current stop" : payload.reason();
+                yield ttsRuntime == null
+                        ? moduleService.stopCurrent(reason)
+                        : ttsRuntime.stopCurrent(reason);
+            }
+            case STOP -> {
+                String reason = payload.reason().isBlank() ? "protocol control stop" : payload.reason();
+                if (ttsRuntime == null) {
+                    yield moduleService.stopAll(reason);
+                }
+                yield payload.targetRequestId().isBlank()
                         ? ttsRuntime.stopAll(reason)
                         : ttsRuntime.stopRequest(payload.targetRequestId(), reason);
             }
-            completeOrFailControl(context, envelope.envelopeId(), result);
-            return;
-        }
-        if (payload.action() == TtsControlPayload.Action.STOP_SOURCE) {
-            String reason = payload.reason().isBlank() ? "protocol source stop" : payload.reason();
-            TtsControlResult result = ttsRuntime == null
-                    ? runtimeUnavailable(TtsControlAction.STOP_SOURCE)
-                    : ttsRuntime.stopSource(resolveSource(payload.targetSource()), reason);
-            completeOrFailControl(context, envelope.envelopeId(), result);
-            return;
-        }
-        if (payload.action() == TtsControlPayload.Action.RELOAD_MODEL) {
-            publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.runtime.module.tts.reload_started"));
-            if (ttsRuntime == null) {
-                completeOrFailControl(context, envelope.envelopeId(), moduleService.reloadModel());
-                return;
+            case STOP_SOURCE -> {
+                String reason = payload.reason().isBlank() ? "protocol source stop" : payload.reason();
+                yield ttsRuntime == null
+                        ? runtimeUnavailable(TtsControlAction.STOP_SOURCE)
+                        : ttsRuntime.stopSource(TtsRequestSource.from(payload.targetSource()), reason);
             }
-            TtsOperationResult submitted = ttsRuntime.reloadModel(result -> {
-                if (result != null && result.accepted()) {
-                    publishModuleStatus(ModuleStatuses.readyKeyed(moduleId(), "tianshu.runtime.module.tts.reload_complete"));
-                } else {
-                    publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.tts.reload_failed"));
-                }
-                completeOrFailControl(context, envelope.envelopeId(), result);
-            });
-            if (!submitted.accepted()) {
-                TtsControlResult rejected = TtsControlResult.rejected(TtsControlAction.RELOAD_MODEL, submitted.failure());
-                completeOrFailControl(context, envelope.envelopeId(), rejected);
-            }
-            return;
-        }
-        if (payload.action() == TtsControlPayload.Action.LOAD_VOICE) {
-            completeOrFailControl(context, envelope.envelopeId(), voiceRegistry().load(
+            case RELOAD_MODEL -> requestModelReload(context, envelope.envelopeId());
+            case LOAD_VOICE -> voiceRegistry().load(
                     payload.voiceId(),
                     envelope.header().sourceId(),
                     payload.voiceSample(),
                     payload.referenceText()
-            ));
-            return;
-        }
-        if (payload.action() == TtsControlPayload.Action.IMPORT_VOICE) {
-            completeOrFailControl(context, envelope.envelopeId(), voiceRegistry().importVoice(
+            );
+            case IMPORT_VOICE -> voiceRegistry().importVoice(
                     payload.voiceId(),
                     envelope.header().sourceId(),
                     payload.voiceAudio(),
                     payload.referenceText()
-            ));
-            return;
-        }
-        if (payload.action() == TtsControlPayload.Action.UNLOAD_VOICE) {
-            completeOrFailControl(context, envelope.envelopeId(), voiceRegistry().unload(
+            );
+            case UNLOAD_VOICE -> voiceRegistry().unload(
                     payload.voiceId(),
                     envelope.header().sourceId()
-            ));
-            return;
+            );
+            case CLEAR_VOICE_CACHE -> voiceRegistry().clear(envelope.header().sourceId());
+        };
+        // The reload answers on the model lane; every other action answers here.
+        if (result != null) {
+            completeOrFailControl(context, envelope.envelopeId(), result);
         }
-        if (payload.action() == TtsControlPayload.Action.CLEAR_VOICE_CACHE) {
-            completeOrFailControl(context, envelope.envelopeId(), voiceRegistry().clear(envelope.header().sourceId()));
-            return;
+    }
+
+    private TtsControlResult requestModelReload(ProtocolContext context, String envelopeId) {
+        if (ttsRuntime == null) {
+            return moduleService.reloadModel();
         }
-        context.fail(envelope.envelopeId(), "UNSUPPORTED_TTS_CONTROL", payload.action().name(), null);
+        publishModuleStatus(ModuleStatuses.waitingKeyed(moduleId(), "tianshu.runtime.module.tts.reload_started"));
+        // The capability bits follow the model lane through markModelBusy, which the coordinator drives; a
+        // reload is one more span of that lane, not a second source of truth about it.
+        ttsRuntime.reloadModel(result -> {
+            publishModuleStatus(result != null && result.accepted()
+                    ? ModuleStatuses.readyKeyed(moduleId(), "tianshu.runtime.module.tts.reload_complete")
+                    : ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.tts.reload_failed"));
+            completeOrFailControl(context, envelopeId, result);
+        });
+        return null;
     }
 
     private TtsControlResult runtimeUnavailable(TtsControlAction action) {
@@ -477,11 +539,11 @@ public final class TtsModule implements TianshuManagedModule {
 
     private boolean ensureRuntimeAvailable(ProtocolContext context, String envelopeId) {
         if (!config.isTtsEnabled()) {
-            context.fail(envelopeId, "TTS_DISABLED", "TTS is disabled", null);
+            failWith(context, envelopeId, "TTS_DISABLED", "TTS is disabled", null);
             return false;
         }
         if (ttsRuntime == null) {
-            context.fail(envelopeId, "TTS_RUNTIME_NOT_RUNNING", "TTS runtime is not available", null);
+            failWith(context, envelopeId, "TTS_RUNTIME_NOT_RUNNING", "TTS runtime is not available", null);
             return false;
         }
         return true;
@@ -524,14 +586,14 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private TtsSpeechSessionKey speechSessionKey(TianshuEnvelope envelope, TtsSpeakPayload payload) {
-        String localId = envelope.traceId() == null || envelope.traceId().isBlank()
-                ? envelope.envelopeId()
-                : envelope.traceId();
+        // A caller that declares a session id owns the stream identity through it. Without one, the
+        // envelope is the identity: a trace groups several envelopes, so using it here merged two
+        // independent documents that happened to share a parent.
         return TtsSpeechSessionKey.of(
                 envelope.header().sourceId(),
                 payload.sessionId(),
                 payload.turnId(),
-                localId
+                envelope.envelopeId()
         );
     }
 
@@ -620,14 +682,21 @@ public final class TtsModule implements TianshuManagedModule {
             context.complete(envelopeId);
             return;
         }
-        TtsFailure failure = result == null ? null : result.failure();
-        failProtocol(context, envelopeId, "TTS_CONTROL_FAILED", failure);
+        failProtocol(context, envelopeId, result == null ? null : result.failure());
     }
 
-    private void failProtocol(ProtocolContext context, String envelopeId, String fallbackCode, TtsFailure failure) {
-        String code = failure == null ? fallbackCode : "TTS_" + failure.code().name();
-        String message = failure == null ? "" : failure.message();
-        context.fail(envelopeId, code, message, failure == null ? null : failure.cause());
+    /** One failure vocabulary: every structured reason code is {@code TTS_} plus a {@link TtsFailureCode}. */
+    private void failProtocol(ProtocolContext context, String envelopeId, TtsFailure failure) {
+        TtsFailure resolved = failure == null ? TtsFailure.of(TtsFailureCode.UNKNOWN, "") : failure;
+        failWith(context, envelopeId, failureReasonCode(resolved.code()), resolved.message(), resolved.cause());
+    }
+
+    private void failWith(ProtocolContext context, String envelopeId, String reasonCode, String message, Throwable throwable) {
+        context.fail(envelopeId, reasonCode, message == null ? "" : message, throwable);
+    }
+
+    private static String failureReasonCode(TtsFailureCode code) {
+        return "TTS_" + (code == null ? TtsFailureCode.UNKNOWN.name() : code.name());
     }
 
     private void publishPlaybackStatus(TtsPlaybackState state) {

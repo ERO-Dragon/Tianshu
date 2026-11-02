@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsControlAction;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsControlResult;
+import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -108,6 +109,47 @@ class TtsVoiceCloneRegistryTest {
         TtsVoiceCloneProfile retained = registry.resolve("shared").orElseThrow();
         assertEquals("module.first", retained.ownerModuleId());
         assertEquals("first", retained.referenceText());
+    }
+
+    @Test
+    void unloadingAVoiceThatWasNeverRegisteredFails() {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        TtsVoiceCloneRegistry registry = new TtsVoiceCloneRegistry(new FakeGameEnvironment(), config);
+
+        TtsControlResult result = registry.unload("never-registered", "module.maid");
+
+        assertFalse(result.accepted());
+        assertEquals(TtsFailureCode.REQUEST_NOT_FOUND, result.failure().code());
+    }
+
+    @Test
+    void unloadingAnImportedVoiceDeletesItsAudioFile() throws Exception {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        TtsVoiceCloneRegistry registry = new TtsVoiceCloneRegistry(new FakeGameEnvironment(), config);
+        assertTrue(registry.importVoice("create:wrench", "create", sineWaveBytes(16_000, 160), "wrench").accepted());
+        Path sample = registry.resolve("create:wrench").orElseThrow().samplePath();
+
+        TtsControlResult result = registry.unload("create:wrench", "create");
+
+        assertTrue(result.accepted());
+        assertFalse(Files.exists(sample), "an unloaded import must not leave its audio behind");
+        assertTrue(registry.resolve("create:wrench").isEmpty());
+    }
+
+    @Test
+    void reimportingTheSameVoiceReplacesItsFileInsteadOfAddingAnother() throws Exception {
+        TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
+        TtsVoiceCloneRegistry registry = new TtsVoiceCloneRegistry(new FakeGameEnvironment(), config);
+        assertTrue(registry.importVoice("create:wrench", "create", sineWaveBytes(16_000, 160), "first").accepted());
+        Path firstFile = registry.resolve("create:wrench").orElseThrow().samplePath();
+
+        assertTrue(registry.importVoice("create:wrench", "create", sineWaveBytes(16_000, 200), "second").accepted());
+
+        Path ownerDir = config.getVoiceLibraryPath().resolve("create");
+        try (var files = Files.list(ownerDir)) {
+            assertEquals(1L, files.count(), "a re-import must not accumulate one file per attempt");
+        }
+        assertEquals(firstFile.normalize(), registry.resolve("create:wrench").orElseThrow().samplePath());
     }
 
     private static void writeSineWave(Path path, int sampleRate, int frames) throws Exception {
