@@ -26,7 +26,6 @@ public final class WorldEventTypes {
     public static final String EVENT_DIMENSION_CHANGED = "dimension_changed";
     public static final String EVENT_EFFECT_GAINED = "effect_gained";
     public static final String EVENT_EFFECT_EXPIRED = "effect_expired";
-    public static final String EVENT_RESPAWN = "respawn";
     public static final String EVENT_DAMAGE_TAKEN = "damage_taken";
     public static final String EVENT_EXP_LEVEL = "exp_level";
     public static final String EVENT_FRIEND_JOIN = "friend_join";

@@ -45,7 +45,6 @@ public record PresenceWorldEventPayload(
     public static final String EVENT_DIMENSION_CHANGED = WorldEventTypes.EVENT_DIMENSION_CHANGED;
     public static final String EVENT_EFFECT_GAINED = WorldEventTypes.EVENT_EFFECT_GAINED;
     public static final String EVENT_EFFECT_EXPIRED = WorldEventTypes.EVENT_EFFECT_EXPIRED;
-    public static final String EVENT_RESPAWN = WorldEventTypes.EVENT_RESPAWN;
     public static final String EVENT_DAMAGE_TAKEN = WorldEventTypes.EVENT_DAMAGE_TAKEN;
     public static final String EVENT_EXP_LEVEL = WorldEventTypes.EVENT_EXP_LEVEL;
     public static final String EVENT_FRIEND_JOIN = WorldEventTypes.EVENT_FRIEND_JOIN;

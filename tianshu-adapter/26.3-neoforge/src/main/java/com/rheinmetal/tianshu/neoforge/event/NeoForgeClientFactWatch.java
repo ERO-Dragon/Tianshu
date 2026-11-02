@@ -32,7 +32,6 @@ public final class NeoForgeClientFactWatch {
 
     public void register(IEventBus gameBus) {
         gameBus.addListener(this::onLevelLoad);
-        gameBus.addListener(this::onPlayerClone);
         gameBus.addListener(this::onScreenOpening);
         // A new session starts from "not in a world yet": without this the next join would be reported as a move.
         gameBus.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> reset());
@@ -47,11 +46,6 @@ public final class NeoForgeClientFactWatch {
             return;
         }
         publish(WorldEventTypes.EVENT_DIMENSION_CHANGED, level, dimensionValues(level));
-    }
-
-    public void onPlayerClone(ClientPlayerNetworkEvent.Clone event) {
-        Level level = event.getNewPlayer() == null ? null : event.getNewPlayer().level();
-        publish(WorldEventTypes.EVENT_RESPAWN, level, dimensionValues(level));
     }
 
     public void onScreenOpening(ScreenEvent.Opening event) {

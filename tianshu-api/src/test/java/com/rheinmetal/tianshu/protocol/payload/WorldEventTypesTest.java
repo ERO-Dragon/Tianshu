@@ -34,7 +34,6 @@ final class WorldEventTypesTest {
                 Map.entry(WorldEventTypes.EVENT_DIMENSION_CHANGED, "dimension_changed"),
                 Map.entry(WorldEventTypes.EVENT_EFFECT_GAINED, "effect_gained"),
                 Map.entry(WorldEventTypes.EVENT_EFFECT_EXPIRED, "effect_expired"),
-                Map.entry(WorldEventTypes.EVENT_RESPAWN, "respawn"),
                 Map.entry(WorldEventTypes.EVENT_DAMAGE_TAKEN, "damage_taken"),
                 Map.entry(WorldEventTypes.EVENT_EXP_LEVEL, "exp_level"),
                 Map.entry(WorldEventTypes.EVENT_FRIEND_JOIN, "friend_join"),
@@ -43,7 +42,7 @@ final class WorldEventTypesTest {
                 Map.entry(WorldEventTypes.EVENT_TRADE, "trade"),
                 Map.entry(WorldEventTypes.EVENT_BOSS_ENGAGE, "boss_engage"),
                 Map.entry(WorldEventTypes.EVENT_CHAT_MESSAGE, "chat_message")
-        ), 23);
+        ), 22);
     }
 
     @Test
