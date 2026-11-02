@@ -16,13 +16,13 @@ class AXEventTierTableTest {
     void builtinTableShipsTheDocumentedKinds() {
         AXEventTierTable table = AXEventTierTable.builtin();
 
-        assertEquals(41, table.size(), "chat is a presence world event type, and biome change has no exact source");
+        assertEquals(40, table.size(), "chat is a presence world event type, and biome change has no exact source");
         assertEquals(8, table.count(AXEventTier.RARE));
-        assertEquals(13, table.count(AXEventTier.NORMAL));
+        assertEquals(12, table.count(AXEventTier.NORMAL));
         assertEquals(20, table.count(AXEventTier.FREQUENT));
         assertEquals(14, table.count(AXEventList.BLACKLIST));
         assertEquals(5, table.count(AXEventList.WHITELIST), "the shipped whitelist is the actionable warnings");
-        assertEquals(22, table.count(AXEventList.NEUTRAL));
+        assertEquals(21, table.count(AXEventList.NEUTRAL));
     }
 
     @Test
@@ -41,9 +41,9 @@ class AXEventTierTableTest {
 
         assertEquals(AXEventTier.RARE, table.tierOf("tianshu:death").orElseThrow());
         assertEquals(AXEventList.WHITELIST, table.listOf("tianshu:death"));
-        assertEquals(AXEventTier.NORMAL, table.tierOf("tianshu:respawn").orElseThrow());
-        assertEquals(AXEventList.NEUTRAL, table.listOf("tianshu:respawn"),
-                "a respawn right after a death would only repeat what was just said");
+        assertEquals(AXEventTier.NORMAL, table.tierOf("tianshu:damage_taken").orElseThrow());
+        assertEquals(AXEventList.NEUTRAL, table.listOf("tianshu:damage_taken"),
+                "a damage line is context, not an interruption");
         assertEquals(AXEventTier.FREQUENT, table.tierOf("tianshu:health_change").orElseThrow());
         assertEquals(AXEventList.NEUTRAL, table.listOf("tianshu:health_change"));
         assertEquals(AXEventTier.FREQUENT, table.tierOf("tianshu:block_break").orElseThrow());

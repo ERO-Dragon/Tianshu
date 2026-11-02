@@ -185,7 +185,8 @@ public final class AXGameEventService {
             return false;
         }
         if (batch.parts().isEmpty()) {
-            // A detail-less kind ("opened a container", "respawned"): the kind's own template is the whole sentence.
+            // A detail-less kind ("opened a container", "picked something up"): the kind's own template is the
+            // whole sentence.
             String line = AXEventTexts.sanitize(texts.text(batch.lineKey()));
             if (line.isBlank()) {
                 return false;
