@@ -14,6 +14,14 @@ import com.rheinmetal.tianshu.client.host.ClientTextProvider;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SwingFilePickerTest {
+    /**
+     * Budget for the event dispatch thread to reach the queued dialog. Creating a chooser initialises the platform
+     * file system view, which is slow on some desktops, and a full build compiles other modules on the same machine;
+     * this is a "will eventually happen" budget, not a latency measurement - the assertions before it already
+     * prove that the caller is not blocked.
+     */
+    private static final long EDT_BUDGET_SECONDS = 60L;
+
     private final ClientTextProvider texts = new ClientTextProvider() {
         public String text(UiText text) { return text.value(); }
         public String currentLanguage() { return "en_us"; }
@@ -38,7 +46,7 @@ class SwingFilePickerTest {
             try { release.await(10, TimeUnit.SECONDS); }
             catch (InterruptedException failure) { Thread.currentThread().interrupt(); }
         });
-        assertTrue(entered.await(10, TimeUnit.SECONDS));
+        assertTrue(entered.await(EDT_BUDGET_SECONDS, TimeUnit.SECONDS));
         try (var picker = new SwingFilePicker(texts, () -> new JFileChooser() {
             @Override public int showOpenDialog(Component parent) {
                 assertTrue(SwingUtilities.isEventDispatchThread());
@@ -50,7 +58,7 @@ class SwingFilePickerTest {
             assertFalse(selected.isDone());
             assertSame(selected, picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")));
             release.countDown();
-            assertEquals(Path.of("voice.wav"), selected.get(10, TimeUnit.SECONDS).orElseThrow());
+            assertEquals(Path.of("voice.wav"), selected.get(EDT_BUDGET_SECONDS, TimeUnit.SECONDS).orElseThrow());
         } finally {
             release.countDown();
         }
@@ -80,8 +88,8 @@ class SwingFilePickerTest {
             };
         })) {
             assertThrows(java.util.concurrent.ExecutionException.class,
-                    () -> picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")).get(10, TimeUnit.SECONDS));
-            assertTrue(picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")).get(10, TimeUnit.SECONDS).isEmpty());
+                    () -> picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")).get(EDT_BUDGET_SECONDS, TimeUnit.SECONDS));
+            assertTrue(picker.chooseFile(UiText.literal("voice"), "wav", UiText.literal("Audio")).get(EDT_BUDGET_SECONDS, TimeUnit.SECONDS).isEmpty());
         }
     }
 }
