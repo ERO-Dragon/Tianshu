@@ -32,6 +32,7 @@ final class ServerFactCoverageTest {
             "EVENT_FRIEND_JOIN",
             "EVENT_FRIEND_LEAVE",
             "EVENT_EXP_LEVEL",
+            "EVENT_ITEM_PICKUP",
             "EVENT_CHAT_MESSAGE");
 
     /** Would need a mixin or a poll; absent here, and their consumers simply receive nothing on this loader. */
@@ -44,7 +45,6 @@ final class ServerFactCoverageTest {
             "EVENT_DISMOUNT",
             "EVENT_EFFECT_GAINED",
             "EVENT_EFFECT_EXPIRED",
-            "EVENT_ITEM_PICKUP",
             "EVENT_TRADE");
 
     @Test

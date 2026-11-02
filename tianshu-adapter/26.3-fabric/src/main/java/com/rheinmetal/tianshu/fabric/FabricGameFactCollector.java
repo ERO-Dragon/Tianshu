@@ -58,9 +58,18 @@ public final class FabricGameFactCollector {
     /** Last experience level seen per player, so only real changes are published. */
     private final Map<ServerPlayer, Integer> lastLevels = new LinkedHashMap<>();
 
+    /** Inventory counts as of the previous sample, per player, so only increases are reported as pickups. */
+    private final Map<ServerPlayer, Map<String, Integer>> lastInventory = new LinkedHashMap<>();
+
+    /** Pickups are sampled every fourth tick: a picked-up stack stays in the inventory, so latency costs nothing. */
+    private int inventoryTick;
+
     public void register() {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             publishLevelChanges(server);
+            if (++inventoryTick % 4 == 0) {
+                publishPickups(server);
+            }
             flush();
         });
         ServerLivingEntityEvents.AFTER_DAMAGE.register(this::onDamage);
@@ -177,6 +186,34 @@ public final class FabricGameFactCollector {
         }
     }
 
+    /** Inventory growth is not an event in this loader's API, so counts are diffed at one quarter of the tick rate. */
+    private void publishPickups(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Map<String, Integer> current = new HashMap<>();
+            for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+                net.minecraft.world.item.ItemStack stack = player.getInventory().getItem(slot);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                current.merge(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),
+                        stack.getCount(), Integer::sum);
+            }
+            Map<String, Integer> previous = lastInventory.put(player, current);
+            if (previous == null) {
+                continue;
+            }
+            current.forEach((itemId, count) -> {
+                int before = previous.getOrDefault(itemId, 0);
+                if (count <= before) {
+                    return;
+                }
+                Map<String, String> values = new HashMap<>();
+                values.put(WorldEventTypes.VALUE_ITEM_ID, itemId);
+                values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(count - before));
+                send(player, WorldEventTypes.EVENT_ITEM_PICKUP, values);
+            });
+        }
+    }
     private void flush() {
         if (pendingByPlayer.isEmpty()) {
             return;
