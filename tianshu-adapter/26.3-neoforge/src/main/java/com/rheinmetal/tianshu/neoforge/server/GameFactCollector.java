@@ -43,8 +43,8 @@ import java.util.Objects;
  * inventories are not shipped, because the client has no use for them and the server has no business broadcasting
  * them. There is no "forward events?" switch: whether this component is installed <em>is</em> the switch.</p>
  *
- * <p>Every fact below is one a client cannot observe on its own. Facts the client already sees (advancement packets,
- * chat) are not duplicated here.</p>
+ * <p>Every fact below is one a client cannot observe on its own. Chat is the exception the client also displays:
+ * only the server knows who sent a message, so the authoritative event is recorded here.</p>
  */
 public final class GameFactCollector {
 
@@ -212,6 +212,7 @@ public final class GameFactCollector {
         values.put(WorldEventTypes.VALUE_TEXT, event.getRawText());
         send(player, WorldEventTypes.EVENT_CHAT_MESSAGE, values);
     }
+
     public void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;

@@ -11,6 +11,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.event.ServerChatEvent;
 import net.neoforged.neoforge.event.entity.EntityMountEvent;
 import net.neoforged.neoforge.event.entity.living.AnimalTameEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
@@ -43,8 +44,8 @@ import java.util.Objects;
  * inventories are not shipped, because the client has no use for them and the server has no business broadcasting
  * them. There is no "forward events?" switch: whether this component is installed <em>is</em> the switch.</p>
  *
- * <p>Every fact below is one a client cannot observe on its own. Facts the client already sees (advancement packets,
- * chat) are not duplicated here.</p>
+ * <p>Every fact below is one a client cannot observe on its own. Chat is the exception the client also displays:
+ * only the server knows who sent a message, so the authoritative event is recorded here.</p>
  */
 public final class GameFactCollector {
 
@@ -60,6 +61,7 @@ public final class GameFactCollector {
     public void register(IEventBus gameBus) {
         gameBus.addListener(this::onServerTick);
         gameBus.addListener(this::onLivingDeath);
+        gameBus.addListener(this::onChat);
         gameBus.addListener(this::onItemCrafted);
         gameBus.addListener(this::onItemFished);
         gameBus.addListener(this::onTamed);
@@ -198,6 +200,18 @@ public final class GameFactCollector {
             values.put(WorldEventTypes.VALUE_COUNT, "1");
             send(killer, WorldEventTypes.EVENT_MOB_KILLED, values);
         }
+    }
+
+    /** Player chat: the server-side event, recorded with the sender and the raw text. */
+    public void onChat(ServerChatEvent event) {
+        ServerPlayer player = event.getPlayer();
+        if (player == null) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_SENDER_NAME, player.getName().getString());
+        values.put(WorldEventTypes.VALUE_TEXT, event.getRawText());
+        send(player, WorldEventTypes.EVENT_CHAT_MESSAGE, values);
     }
 
     public void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
