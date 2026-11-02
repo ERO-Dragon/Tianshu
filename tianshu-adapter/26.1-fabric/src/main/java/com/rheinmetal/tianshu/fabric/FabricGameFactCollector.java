@@ -87,6 +87,9 @@ public final class FabricGameFactCollector {
             flush();
         });
         ServerLivingEntityEvents.AFTER_DAMAGE.register(this::onDamage);
+        net.fabricmc.fabric.api.entity.event.v1.effect.ServerMobEffectEvents.AFTER_ADD.register((effect, entity, context) -> onEffect(entity, effect, true));
+        net.fabricmc.fabric.api.entity.event.v1.effect.ServerMobEffectEvents.AFTER_REMOVE.register((effect, entity, context) -> onEffect(entity, effect, false));
+
         ServerLivingEntityEvents.AFTER_DEATH.register(this::onDeath);
         PlayerBlockBreakEvents.AFTER.register(this::onBlockBroken);
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerJoin(handler.getPlayer()));
@@ -178,6 +181,15 @@ public final class FabricGameFactCollector {
 
     /** Sends everything buffered so far and clears the buffer; the batch size cap is why a tick can cost two packets. */
     /** Experience-level changes are not an event in this loader's API, so the level is compared once per tick. */
+    /** Effect gained or removed: this generation's fabric-api exposes both as server events. */
+    private void onEffect(LivingEntity entity, net.minecraft.world.effect.MobEffectInstance effect, boolean gained) {
+        if (!(entity instanceof ServerPlayer player)) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_EFFECT_NAME, effect.getEffect().value().getDisplayName().getString());
+        send(player, gained ? WorldEventTypes.EVENT_EFFECT_GAINED : WorldEventTypes.EVENT_EFFECT_EXPIRED, values);
+    }
     private void publishLevelChanges(MinecraftServer server) {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             int level = player.experienceLevel;
