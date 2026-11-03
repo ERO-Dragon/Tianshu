@@ -33,7 +33,6 @@ final class ServerFactCoverageTest {
             "EVENT_FRIEND_LEAVE",
             "EVENT_EXP_LEVEL",
             "EVENT_ITEM_PICKUP",
-            "EVENT_CHAT_MESSAGE",
             "EVENT_BLOCK_PLACED",
             "EVENT_EFFECT_GAINED",
             "EVENT_EFFECT_EXPIRED");

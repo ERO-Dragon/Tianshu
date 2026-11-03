@@ -7,14 +7,11 @@ import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
-import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.ChatType;
-import net.minecraft.network.chat.PlayerChatMessage;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
@@ -94,7 +91,6 @@ public final class FabricGameFactCollector {
         // (fabric-entity-events 2.x), while 1.21 bundles 1.6.x with only ALLOW_DAMAGE. The fact is still produced, but
         // its amount is the incoming damage rather than the part that lands after armour and enchantments.
         ServerLivingEntityEvents.ALLOW_DAMAGE.register(this::onDamage);
-        ServerMessageEvents.CHAT_MESSAGE.register(this::onChat);
         ServerLivingEntityEvents.AFTER_DEATH.register(this::onDeath);
         PlayerBlockBreakEvents.AFTER.register(this::onBlockBroken);
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerJoin(handler.getPlayer()));
@@ -111,13 +107,6 @@ public final class FabricGameFactCollector {
         return true;
     }
 
-    /** Player chat: the server-side event, recorded with the sender and the raw text. */
-    private void onChat(PlayerChatMessage message, ServerPlayer sender, ChatType.Bound bound) {
-        Map<String, String> values = new HashMap<>();
-        values.put(WorldEventTypes.VALUE_SENDER_NAME, sender.getName().getString());
-        values.put(WorldEventTypes.VALUE_TEXT, message.signedContent());
-        send(sender, WorldEventTypes.EVENT_CHAT_MESSAGE, values);
-    }
 
     /** Two facts, one event: the player's own death, and a kill the player made. */
     private void onDeath(LivingEntity dying, DamageSource source) {
