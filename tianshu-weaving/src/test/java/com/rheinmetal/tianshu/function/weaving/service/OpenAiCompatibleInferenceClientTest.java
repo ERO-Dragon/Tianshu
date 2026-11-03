@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
@@ -76,8 +77,8 @@ class OpenAiCompatibleInferenceClientTest {
                 List.of(ChatMessage.system("sys"), ChatMessage.user("hi"), ChatMessage.assistant("hello")),
                 sampling,
                 128,
-                LlmReasoningWire.NONE,
-                ""
+                LlmReasoningProfile.NONE,
+                null
         );
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
 
@@ -100,54 +101,59 @@ class OpenAiCompatibleInferenceClientTest {
         assertEquals("hello", content(messages, 2));
     }
 
+    private static final LlmReasoningProfile DEEPSEEK_REASONING = new LlmReasoningProfile(
+            LlmReasoningWire.DEEPSEEK_THINKING, true, List.of("low", "high", "max"), 2);
+    private static final LlmReasoningProfile OPENAI_REASONING = new LlmReasoningProfile(
+            LlmReasoningWire.OPENAI_EFFORT, false, List.of("low", "medium", "high"), 1);
+
     @Test
-    void deepSeekWireDisablesThinkingForOffAndFoldsMediumIntoHigh() {
-        JsonObject off = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
-                MODEL, messages(), sampling(), 0,
-                LlmReasoningWire.DEEPSEEK_THINKING, LLMPromptRequestPayload.REASONING_OFF
-        )).getAsJsonObject();
+    void deepSeekTierZeroDisablesThinkingAndOtherTiersSendTheOfficialName() {
+        JsonObject off = body(DEEPSEEK_REASONING, 0);
         assertEquals("disabled", off.getAsJsonObject("thinking").get("type").getAsString());
-        assertFalse(off.has("reasoning_effort"), "off must not send an effort value");
+        assertFalse(off.has("reasoning_effort"), "the non-thinking slot has no effort name");
 
-        JsonObject medium = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
-                MODEL, messages(), sampling(), 0,
-                LlmReasoningWire.DEEPSEEK_THINKING, LLMPromptRequestPayload.REASONING_MEDIUM
-        )).getAsJsonObject();
-        assertEquals("enabled", medium.getAsJsonObject("thinking").get("type").getAsString());
-        assertEquals("high", medium.get("reasoning_effort").getAsString());
+        JsonObject low = body(DEEPSEEK_REASONING, 1);
+        assertEquals("enabled", low.getAsJsonObject("thinking").get("type").getAsString());
+        assertEquals("low", low.get("reasoning_effort").getAsString());
 
-        JsonObject max = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
-                MODEL, messages(), sampling(), 0,
-                LlmReasoningWire.DEEPSEEK_THINKING, LLMPromptRequestPayload.REASONING_MAX
-        )).getAsJsonObject();
+        JsonObject max = body(DEEPSEEK_REASONING, 3);
         assertEquals("max", max.get("reasoning_effort").getAsString());
+
+        JsonObject clamped = body(DEEPSEEK_REASONING, 99);
+        assertEquals("max", clamped.get("reasoning_effort").getAsString(),
+                "a stale tier clamps to the model's last level instead of failing the turn");
     }
 
     @Test
-    void openAiWireCannotDisableReasoningSoOffMapsToLow() {
-        JsonObject off = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
-                MODEL, messages(), sampling(), 0,
-                LlmReasoningWire.OPENAI_EFFORT, LLMPromptRequestPayload.REASONING_OFF
-        )).getAsJsonObject();
-        assertEquals("low", off.get("reasoning_effort").getAsString());
-        assertFalse(off.has("thinking"));
+    void openAiTierIndexSelectsTheOfficialNameWithoutANonThinkingSlot() {
+        JsonObject low = body(OPENAI_REASONING, 0);
+        assertEquals("low", low.get("reasoning_effort").getAsString());
+        assertFalse(low.has("thinking"));
 
-        JsonObject high = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
-                MODEL, messages(), sampling(), 0,
-                LlmReasoningWire.OPENAI_EFFORT, LLMPromptRequestPayload.REASONING_HIGH
-        )).getAsJsonObject();
+        JsonObject high = body(OPENAI_REASONING, 2);
         assertEquals("high", high.get("reasoning_effort").getAsString());
     }
 
     @Test
-    void aProviderWithoutReasoningWireSendsNoReasoningField() {
-        JsonObject body = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
-                MODEL, messages(), sampling(), 0,
-                LlmReasoningWire.NONE, LLMPromptRequestPayload.REASONING_HIGH
-        )).getAsJsonObject();
+    void aProviderWithoutReasoningControlSendsNoField() {
+        JsonObject body = body(LlmReasoningProfile.NONE, 2);
 
         assertFalse(body.has("thinking"));
         assertFalse(body.has("reasoning_effort"));
+    }
+
+    @Test
+    void aMissingTierLeavesTheEndpointDefault() {
+        JsonObject body = body(DEEPSEEK_REASONING, null);
+
+        assertFalse(body.has("thinking"));
+        assertFalse(body.has("reasoning_effort"));
+    }
+
+    private static JsonObject body(LlmReasoningProfile profile, Integer tier) {
+        return JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0, profile, tier
+        )).getAsJsonObject();
     }
 
     @Test
@@ -188,7 +194,7 @@ class OpenAiCompatibleInferenceClientTest {
         List<String> tokens = new ArrayList<>();
 
         CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, "", tokens::add, null, null, null);
+                messages(), sampling(), 0, false, null, tokens::add, null, null, null);
 
         assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).text());
         assertEquals(List.of("Hel", "lo"), tokens);
@@ -203,7 +209,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
 
-        assertEquals("answer", client.chat(messages(), sampling(), 64, false, "", null).text());
+        assertEquals("answer", client.chat(messages(), sampling(), 64, false, null, null).text());
     }
 
     @Test
@@ -218,7 +224,7 @@ class OpenAiCompatibleInferenceClientTest {
 
         Exception failure = assertThrows(
                 Exception.class,
-                () -> client.chat(messages(), sampling(), 0, false, "", null)
+                () -> client.chat(messages(), sampling(), 0, false, null, null)
         );
 
         assertTrue(failure.getMessage().contains("status=401"), failure.getMessage());
@@ -243,7 +249,7 @@ class OpenAiCompatibleInferenceClientTest {
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test", diagnostics::add);
 
         CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, "", token -> { }, null, null, null);
+                messages(), sampling(), 0, false, null, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         assertTrue(streamed.cancel(true));
@@ -257,7 +263,7 @@ class OpenAiCompatibleInferenceClientTest {
         BlockingSseStream blocking = new BlockingSseStream();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test");
 
-        client.chatStream(messages(), sampling(), 0, false, "", token -> { }, null, null, null);
+        client.chatStream(messages(), sampling(), 0, false, null, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         client.shutdown();

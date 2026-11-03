@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.function.weaving.contract;
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 import java.util.List;
-import java.util.Locale;
 
 /**
  * One inference request: the conversation to send, and the sampling that shapes the answer.
@@ -14,8 +13,9 @@ import java.util.Locale;
  *
  * <p>{@code stream} only decides whether incremental chunks are published; both values use the same
  * single HTTP stream internally. {@code captureThinkingContent} asks for the provider's reasoning
- * text when it sends one; the visible answer never mixes it in. {@code reasoningEffort} is the
- * provider-neutral depth the caller wants; the transport maps it to whatever the endpoint accepts.</p>
+ * text when it sends one; the visible answer never mixes it in. {@code reasoningTier} is the index
+ * into the selected model's reasoning ladder ({@code 0} = the model's least reasoning, usually the
+ * non-thinking slot); {@code null} follows the endpoint default.</p>
  */
 public record LLMPromptRequestPayload(
         String requestId,
@@ -23,19 +23,12 @@ public record LLMPromptRequestPayload(
         Boolean stream,
         Boolean captureThinkingContent,
         Integer maxTokens,
-        String reasoningEffort,
+        Integer reasoningTier,
         SamplingPayload sampling
 ) implements ITianshuPayload {
 
-    /** No reasoning: the answer should be produced without a chain of thought. */
-    public static final String REASONING_OFF = "off";
-    public static final String REASONING_LOW = "low";
-    public static final String REASONING_MEDIUM = "medium";
-    public static final String REASONING_HIGH = "high";
-    public static final String REASONING_MAX = "max";
-
     public static final LLMPromptRequestPayload EMPTY = new LLMPromptRequestPayload(
-            "llm.request", List.of(), false, false, 0, "", SamplingPayload.empty()
+            "llm.request", List.of(), false, false, 0, null, SamplingPayload.empty()
     );
 
     public LLMPromptRequestPayload {
@@ -44,7 +37,7 @@ public record LLMPromptRequestPayload(
         stream = stream != null && stream;
         captureThinkingContent = captureThinkingContent != null && captureThinkingContent;
         maxTokens = maxTokens != null && maxTokens > 0 ? maxTokens : 0;
-        reasoningEffort = normalizeReasoningEffort(reasoningEffort);
+        reasoningTier = reasoningTier != null && reasoningTier >= 0 ? reasoningTier : null;
         sampling = sampling == null ? SamplingPayload.empty() : sampling;
     }
 
@@ -57,11 +50,11 @@ public record LLMPromptRequestPayload(
             Integer maxTokens,
             SamplingPayload sampling
     ) {
-        this(requestId, messages, stream, captureThinkingContent, maxTokens, "", sampling);
+        this(requestId, messages, stream, captureThinkingContent, maxTokens, null, sampling);
     }
 
     public boolean hasReasoningOverride() {
-        return !reasoningEffort.isEmpty();
+        return reasoningTier != null;
     }
 
     /**
@@ -119,18 +112,6 @@ public record LLMPromptRequestPayload(
 
     private static String normalizeRequestId(String value) {
         return value == null || value.isBlank() ? "llm.request" : value.trim();
-    }
-
-    /** Known effort values only; an unknown value follows the endpoint default instead of failing. */
-    private static String normalizeReasoningEffort(String value) {
-        if (value == null || value.isBlank()) {
-            return "";
-        }
-        String normalized = value.trim().toLowerCase(Locale.ROOT);
-        return switch (normalized) {
-            case REASONING_OFF, REASONING_LOW, REASONING_MEDIUM, REASONING_HIGH, REASONING_MAX -> normalized;
-            default -> "";
-        };
     }
 
     /**

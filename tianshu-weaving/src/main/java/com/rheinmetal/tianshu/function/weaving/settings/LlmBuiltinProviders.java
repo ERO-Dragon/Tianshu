@@ -27,7 +27,12 @@ public final class LlmBuiltinProviders {
             WeavingConfiguration.DEFAULT_LLM_REMOTE_BASE_URL,
             WeavingConfiguration.DEFAULT_LLM_REMOTE_MODEL,
             WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS,
-            LlmReasoningWire.DEEPSEEK_THINKING);
+            new LlmReasoningProfile(
+                    LlmReasoningWire.DEEPSEEK_THINKING,
+                    true,
+                    List.of("low", "high", "max"),
+                    2
+            ));
 
     /** Every built-in provider, in the order the form lists them; the first one is the default. */
     private static final List<Provider> PROVIDERS = List.of(DEEPSEEK);
@@ -82,7 +87,7 @@ public final class LlmBuiltinProviders {
      * @param baseUrl            endpoint the profile talks to
      * @param defaultModelId     provider model id the profile uses
      * @param contextWindowTokens declared context window of that model
-     * @param reasoningWire      which request field this endpoint understands for reasoning depth
+     * @param reasoning          the reasoning ladder this endpoint offers
      */
     public record Provider(
             String id,
@@ -90,7 +95,7 @@ public final class LlmBuiltinProviders {
             String baseUrl,
             String defaultModelId,
             int contextWindowTokens,
-            LlmReasoningWire reasoningWire
+            LlmReasoningProfile reasoning
     ) {
         public Provider {
             id = requireText(id, WeavingConfiguration.DEFAULT_LLM_PROVIDER_ID);
@@ -100,7 +105,7 @@ public final class LlmBuiltinProviders {
             contextWindowTokens = contextWindowTokens > 0
                     ? contextWindowTokens
                     : WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
-            reasoningWire = reasoningWire == null ? LlmReasoningWire.NONE : reasoningWire;
+            reasoning = reasoning == null ? LlmReasoningProfile.NONE : reasoning;
         }
 
         /**

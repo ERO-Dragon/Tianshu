@@ -62,22 +62,23 @@ class LLMPromptRequestPayloadTest {
     }
 
     @Test
-    void normalizesReasoningEffortAndDropsUnknownValues() {
-        assertEquals("low", payloadWithEffort(" LOW ").reasoningEffort());
-        assertEquals("off", payloadWithEffort("off").reasoningEffort());
-        assertEquals("", payloadWithEffort("turbo").reasoningEffort(), "unknown effort follows the endpoint default");
-        assertEquals("", payloadWithEffort(null).reasoningEffort());
-        assertTrue(payloadWithEffort("high").hasReasoningOverride());
+    void keepsNonNegativeReasoningTiersAndDropsNegatives() {
+        assertEquals(0, payloadWithTier(0).reasoningTier());
+        assertEquals(3, payloadWithTier(3).reasoningTier());
+        assertNull(payloadWithTier(-1).reasoningTier(), "a negative tier is not a valid selection");
+        assertNull(payloadWithTier(null).reasoningTier());
+        assertTrue(payloadWithTier(3).hasReasoningOverride());
+        assertFalse(payloadWithTier(null).hasReasoningOverride());
     }
 
-    private static LLMPromptRequestPayload payloadWithEffort(String effort) {
+    private static LLMPromptRequestPayload payloadWithTier(Integer tier) {
         return new LLMPromptRequestPayload(
                 "request",
                 List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello")),
                 false,
                 false,
                 0,
-                effort,
+                tier,
                 LLMPromptRequestPayload.SamplingPayload.empty()
         );
     }

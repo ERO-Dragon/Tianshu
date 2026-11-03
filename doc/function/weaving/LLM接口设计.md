@@ -32,31 +32,31 @@
 | `stream` | `false` | `true` 时先返回分片与结束帧，再返回终态结果；两种模式内部都走同一条 HTTP 流 |
 | `captureThinkingContent` | `false` | 要求把供应商的 reasoning 文本放到独立通道；正文永不混入 |
 | `maxTokens` | `0` | 最大生成 token；`0` 表示不额外限制 |
-| `reasoningEffort` | 空 | 推理强度：`off` / `low` / `medium` / `high` / `max`；空表示跟随端点默认。见 2.2 |
+| `reasoningTier` | `null` | 该模型推理档位的序号；`null` = 端点默认。见 2.2 |
 | `sampling` | 空 | 采样覆盖项，见 2.3 |
 
 空消息列表会在发出请求前被拒绝，错误码 `LLM_EMPTY_MESSAGES`。
 
-### 2.2 推理强度
+### 2.2 推理档位
 
-`reasoningEffort` 是**与供应商无关的意图**，不是厂商字段的镜像：
+调用方只使用**序号**：每个模型有一条从 0 开始的有序档位表，`0` 是模型支持的非思考档，其余序号依次是提供商官方的档位名。表长与名称由提供商 profile 的数据决定，织言不写死 `low/medium/high` 这类字面量。
 
-| 值 | 含义 |
-|---|---|
-| `off` | 不要生成思维链；能关就关，不能关的端点取它最低的档 |
-| `low` / `medium` / `high` | 由浅到深 |
-| `max` | 端点支持的最高档 |
-| 空 | 跟随端点默认（不发送任何推理字段） |
+- 请求：`reasoningTier`，`null` 表示不覆盖；负数按 `null` 处理；
+- 能力查询：`LLM.STATUS` 返回 `reasoningTierCount`、`reasoningIncludesNoThinking`、`reasoningDefaultTier`、`reasoningLevels`（index = tier，非思考档在 `levels` 中没有条目）；
+- 越界：请求超出当前梯子时夹到最近档，模型切换后旧序号不会让请求失败；
+- 无控制：`reasoningTierCount=0` 的模型忽略该字段，保持端点默认。
 
-织言按“提供商 profile”选择线上表示，不会根据模型名猜测：
+提供商的“线协议形状”仍是代码，档位名称与顺序是数据：
 
-| wire | 线上字段 | 映射 |
+| wire | 线上字段 | 编码 |
 |---|---|---|
-| `DEEPSEEK_THINKING` | `thinking.type` + `reasoning_effort` | `off` → `thinking.type=disabled`，不发送 effort；`low` → `low`；`medium` / `high` → `high`（DeepSeek 官方表把 medium 折到 high）；`max` → `max` |
-| `OPENAI_EFFORT` | `reasoning_effort` | `off` → `low`（该协议无法关闭推理）；`low` / `medium` / `high` → 同名；`max` → `high` |
-| `NONE` | 无 | 不发送，端点默认生效 |
+| `DEEPSEEK_THINKING` | `thinking.type` + `reasoning_effort` | tier 0 → `disabled`；其余 → `enabled` + 该 tier 的官方名称 |
+| `OPENAI_EFFORT` | `reasoning_effort` | 该 tier 的官方名称；没有非思考槽时第一项就是最低档 |
+| `NONE` | 无 | 不发送 |
 
-`captureThinkingContent` 与推理强度正交：前者决定是否把 reasoning 文本回传，后者决定生成多深。DeepSeek 思考模式不接受 `temperature` / `frequency_penalty` / `presence_penalty`，这些字段仍会发送但被端点忽略；`top_p` 的行为随模型而变。
+DeepSeek 内置档位表：`[非思考, low, high, max]`，默认 tier 2（high）。如果官方以后增加 `medium`，只需在数据里插入一项，序号自然变化；不做名称之间的别名折叠。
+
+`captureThinkingContent` 与档位正交：前者决定是否把 reasoning 文本回传，后者决定生成多深。DeepSeek 思考模式不接受 `temperature` / `frequency_penalty` / `presence_penalty`，这些字段仍会发送但被端点忽略；`top_p` 的行为随模型而变。
 
 ### 2.3 `SamplingPayload`
 
@@ -143,12 +143,16 @@ record LLMRuntimeSnapshotPayload(
     int contextTokenBudget,     // 容量 − 输出保留 − 头部余量
     String embeddingModelName,
     String embeddingNamespace,
+    int reasoningTierCount,
+    boolean reasoningIncludesNoThinking,
+    int reasoningDefaultTier,
+    List<String> reasoningLevels, // index = tier；非思考档没有条目
     String failureMessage,
     long sampledAtMillis
 )
 ```
 
-调用方做 prompt 预算时只消费 `contextTokenBudget`。
+调用方做 prompt 预算时消费 `contextTokenBudget`；选择推理档位时消费 `reasoningTierCount` / `reasoningIncludesNoThinking` / `reasoningDefaultTier`，并只把序号放进请求。
 
 ## 5. 运行时
 

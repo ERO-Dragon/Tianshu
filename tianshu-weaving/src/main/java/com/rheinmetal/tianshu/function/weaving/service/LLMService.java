@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.function.weaving.protocol.LlmModuleId;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudget;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
@@ -37,6 +38,7 @@ public final class LLMService {
     private final LlmInferenceClient inferenceClient;
     private final EmbeddingRuntime embeddingRuntime;
     private final LlmServiceMetadata metadata;
+    private final LlmReasoningProfile reasoningProfile;
     private final String cacheNamespace;
 
     private LLMService(Builder builder) {
@@ -44,6 +46,9 @@ public final class LLMService {
         this.inferenceClient = Objects.requireNonNull(builder.inferenceClient, "inferenceClient");
         this.embeddingRuntime = Objects.requireNonNull(builder.embeddingRuntime, "embeddingRuntime");
         this.metadata = LlmServiceMetadata.from(builder.config);
+        this.reasoningProfile = builder.reasoningProfile == null
+                ? LlmReasoningProfile.NONE
+                : builder.reasoningProfile;
         this.cacheNamespace = builder.cacheNamespace == null ? "" : builder.cacheNamespace.trim();
         env.info("[LLMService] Initialized, endpoint ready=" + inferenceClient.isReady());
     }
@@ -62,7 +67,7 @@ public final class LLMService {
                     effective.sampling(),
                     effective.maxTokens(),
                     effective.captureThinkingContent(),
-                    effective.reasoningEffort(),
+                    effective.reasoningTier(),
                     cacheSink
             );
             LLMResult response = new LLMResult(
@@ -92,7 +97,7 @@ public final class LLMService {
                     effective.sampling(),
                     effective.maxTokens(),
                     effective.captureThinkingContent(),
-                    effective.reasoningEffort(),
+                    effective.reasoningTier(),
                     safeTokenConsumer(onToken),
                     safeTokenConsumer(onThinking),
                     finishHolder::set,
@@ -197,6 +202,10 @@ public final class LLMService {
                 LlmContextBudget.promptTokenBudget(window),
                 metadata.embeddingModelName(),
                 embeddingNamespace(),
+                reasoningProfile.tierCount(),
+                reasoningProfile.includesNoThinking(),
+                reasoningProfile.defaultTier(),
+                reasoningProfile.levels(),
                 "",
                 System.currentTimeMillis()
         );
@@ -344,6 +353,7 @@ public final class LLMService {
         private WeavingConfiguration config;
         private LlmInferenceClient inferenceClient;
         private EmbeddingRuntime embeddingRuntime;
+        private LlmReasoningProfile reasoningProfile = LlmReasoningProfile.NONE;
         private String cacheNamespace = "";
 
         public Builder env(IGameEnvironment env) {
@@ -364,6 +374,12 @@ public final class LLMService {
         /** The live embedding lane; the same object RAG storage writes through. */
         public Builder embeddingRuntime(EmbeddingRuntime embeddingRuntime) {
             this.embeddingRuntime = embeddingRuntime;
+            return this;
+        }
+
+        /** The selected provider's reasoning ladder; reported in the runtime snapshot. */
+        public Builder reasoningProfile(LlmReasoningProfile reasoningProfile) {
+            this.reasoningProfile = reasoningProfile == null ? LlmReasoningProfile.NONE : reasoningProfile;
             return this;
         }
 

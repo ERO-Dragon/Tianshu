@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.account.DeepSeekBalanceProbe;
 import com.rheinmetal.tianshu.function.weaving.catalog.OpenAiCompatibleModelCatalogClient;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmBuiltinProviders;
-import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -384,6 +384,7 @@ public final class LlmModule implements TianshuManagedModule {
                     .config(config)
                     .inferenceClient(client)
                     .embeddingRuntime(embeddingRuntime)
+                    .reasoningProfile(resolveReasoningProfile())
                     .cacheNamespace(ragCacheLayout.cacheNamespace())
                     .build();
             llmService = service;
@@ -421,16 +422,21 @@ public final class LlmModule implements TianshuManagedModule {
         if (isBlank(baseUrl) || isBlank(apiKey) || isBlank(model)) {
             return null;
         }
-        LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(config.getLlmProviderId());
-        LlmReasoningWire reasoningWire = profile == null ? LlmReasoningWire.NONE : profile.reasoningWire();
+        LlmReasoningProfile reasoning = resolveReasoningProfile();
         return new OpenAiCompatibleInferenceClient(
                 baseUrl,
                 apiKey,
                 model,
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
                 env::warn,
-                reasoningWire
+                reasoning
         );
+    }
+
+    /** The reasoning ladder of the selected provider; a custom entry has no control. */
+    private LlmReasoningProfile resolveReasoningProfile() {
+        LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(config.getLlmProviderId());
+        return profile == null ? LlmReasoningProfile.NONE : profile.reasoning();
     }
 
     /**
@@ -625,6 +631,7 @@ public final class LlmModule implements TianshuManagedModule {
     private LLMRuntimeSnapshotPayload runtimeSnapshotWhenGenerationUnavailable() {
         String failure = moduleService == null ? "" : moduleService.snapshot().failureMessage();
         int window = config.getLlmContextWindowTokens();
+        LlmReasoningProfile reasoning = resolveReasoningProfile();
         return new LLMRuntimeSnapshotPayload(
                 false,
                 embeddingRuntime.available(),
@@ -633,6 +640,10 @@ public final class LlmModule implements TianshuManagedModule {
                 LlmContextBudget.promptTokenBudget(window),
                 config.getLlmEmbeddingModelName(),
                 ragCacheLayout.cacheNamespace(),
+                reasoning.tierCount(),
+                reasoning.includesNoThinking(),
+                reasoning.defaultTier(),
+                reasoning.levels(),
                 failure,
                 System.currentTimeMillis()
         );

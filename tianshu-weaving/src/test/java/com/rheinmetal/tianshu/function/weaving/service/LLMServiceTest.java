@@ -52,7 +52,7 @@ class LLMServiceTest {
         assertEquals(4, result.usage().completionTokens());
         assertEquals(List.of("user:hello"), client.lastMessages);
         assertTrue(client.lastCaptureThinking);
-        assertEquals(LLMPromptRequestPayload.REASONING_LOW, client.lastReasoningEffort);
+        assertEquals(1, client.lastReasoningTier);
     }
 
     @Test
@@ -167,7 +167,7 @@ class LLMServiceTest {
                 LLMPromptRequestPayload.SamplingPayload.empty(),
                 0,
                 true,
-                LLMPromptRequestPayload.REASONING_LOW
+                1
         );
     }
 
@@ -199,7 +199,7 @@ class LLMServiceTest {
         private int countCalls;
         private List<String> lastMessages = List.of();
         private boolean lastCaptureThinking;
-        private String lastReasoningEffort = "";
+        private Integer lastReasoningTier;
         private boolean ready = true;
 
         @Override
@@ -208,13 +208,13 @@ class LLMServiceTest {
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
                 boolean captureThinkingContent,
-                String reasoningEffort,
+                Integer reasoningTier,
                 Consumer<LlmPromptCacheUsage> cacheSink
         ) {
             chatCalls++;
             lastMessages = messages.stream().map(message -> message.role + ":" + message.content).toList();
             lastCaptureThinking = captureThinkingContent;
-            lastReasoningEffort = reasoningEffort;
+            lastReasoningTier = reasoningTier;
             return new LlmGenerationResult(text, usage, captureThinkingContent ? thinking : "");
         }
 
@@ -224,7 +224,7 @@ class LLMServiceTest {
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
                 boolean captureThinkingContent,
-                String reasoningEffort,
+                Integer reasoningTier,
                 Consumer<String> onToken,
                 Consumer<String> onThinking,
                 Consumer<LlmStreamFinish> onFinish,

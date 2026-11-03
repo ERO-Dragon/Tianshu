@@ -43,7 +43,7 @@ public final class LlmPromptFactory {
                 resolveSampling(payload.sampling()),
                 payload.maxTokens(),
                 payload.captureThinkingContent(),
-                payload.reasoningEffort()
+                payload.reasoningTier()
         );
     }
 

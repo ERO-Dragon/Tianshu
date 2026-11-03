@@ -195,7 +195,7 @@ class LlmUsageWiringTest {
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
                 boolean captureThinkingContent,
-                String reasoningEffort,
+                Integer reasoningTier,
                 Consumer<LlmPromptCacheUsage> cacheSink
         ) {
             if (cacheSink != null && cacheUsage.known()) {
@@ -210,7 +210,7 @@ class LlmUsageWiringTest {
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
                 boolean captureThinkingContent,
-                String reasoningEffort,
+                Integer reasoningTier,
                 Consumer<String> onToken,
                 Consumer<String> onThinking,
                 Consumer<LlmStreamFinish> onFinish,
