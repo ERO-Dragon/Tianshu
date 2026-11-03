@@ -21,7 +21,7 @@ class AXLlmRetryPolicyTest {
     void aFailureWithNothingToClassifyIsRetried() {
         assertTrue(AXLlmRetryPolicy.isRetryable(failure("LLM request failed")));
         assertTrue(AXLlmRetryPolicy.isRetryable(new LLMPromptResultPayload(
-                "request", "FAILED", "", null, null, java.util.List.of(), null
+                "request", "FAILED", "", "", null, null, null
         )));
     }
 

@@ -120,12 +120,10 @@ class AXMemoryMaintenanceServiceTest {
 
             assertEquals(1, llm.requests.size(), "一次调用产出三要素");
             LLMPromptRequestPayload request = llm.requests.get(0);
-            assertEquals("COMPLEX", request.lane());
             assertEquals(4096, request.maxTokens().intValue());
-            assertEquals(0.2F, request.temperature().floatValue(), 1e-6F);
-            assertTrue(request.thinking());
+            assertEquals(0.2F, request.sampling().temperature(), 1e-6F);
             assertFalse(request.captureThinkingContent());
-            List<LLMPromptRequestPayload.MessageItemPayload> messages = request.chunks().get(0).messageContent();
+            List<LLMPromptRequestPayload.MessageItemPayload> messages = request.messages();
             assertEquals(3, messages.size(), "system + raw 轮次 + 指令后缀");
             assertEquals("system", messages.get(0).role());
             assertTrue(messages.get(0).content().contains("schemaVersion"));

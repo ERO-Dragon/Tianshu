@@ -3,9 +3,10 @@ package com.rheinmetal.tianshu.function.weaving.service;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
-import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
+import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
@@ -66,14 +67,13 @@ class OpenAiCompatibleInferenceClientTest {
 
     @Test
     void buildsOpenAiCompatibleStreamingBody() {
-        SamplerConfig sampler = SamplerConfig.defaults();
-        sampler.setTemperature(0.3F);
-        sampler.setTopP(0.9F);
+        LLMPromptRequestPayload.SamplingPayload sampling =
+                new LLMPromptRequestPayload.SamplingPayload(0.3F, 0.9F, 0.1F, -0.1F);
 
         String body = OpenAiCompatibleInferenceClient.buildChatRequestBody(
                 MODEL,
                 List.of(ChatMessage.system("sys"), ChatMessage.user("hi"), ChatMessage.assistant("hello")),
-                sampler,
+                sampling,
                 128
         );
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
@@ -84,6 +84,8 @@ class OpenAiCompatibleInferenceClientTest {
         assertEquals(128, root.get("max_tokens").getAsInt());
         assertEquals(0.3F, root.get("temperature").getAsFloat());
         assertEquals(0.9F, root.get("top_p").getAsFloat());
+        assertEquals(0.1F, root.get("frequency_penalty").getAsFloat());
+        assertEquals(-0.1F, root.get("presence_penalty").getAsFloat());
 
         JsonArray messages = root.getAsJsonArray("messages");
         assertEquals(3, messages.size());
@@ -132,10 +134,10 @@ class OpenAiCompatibleInferenceClientTest {
         OpenAiCompatibleInferenceClient client = client(transport, "sk-test", diagnostics::add);
         List<String> tokens = new ArrayList<>();
 
-        CompletableFuture<String> streamed = client.chatStreamWithUsage(
-                messages(), SamplerConfig.defaults(), 0, null, tokens::add, null);
+        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+                messages(), sampling(), 0, false, tokens::add, null, null, null);
 
-        assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS));
+        assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).text());
         assertEquals(List.of("Hel", "lo"), tokens);
         assertTrue(diagnostics.isEmpty(), diagnostics.toString());
     }
@@ -148,8 +150,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
 
-        assertEquals("answer", client.chat(messages(), SamplerConfig.defaults(), 64));
-        assertEquals("answer", client.chatWithUsage(messages(), SamplerConfig.defaults(), 64, null).text());
+        assertEquals("answer", client.chat(messages(), sampling(), 64, false, null).text());
     }
 
     @Test
@@ -164,7 +165,7 @@ class OpenAiCompatibleInferenceClientTest {
 
         Exception failure = assertThrows(
                 Exception.class,
-                () -> client.chat(messages(), SamplerConfig.defaults(), 0)
+                () -> client.chat(messages(), sampling(), 0, false, null)
         );
 
         assertTrue(failure.getMessage().contains("status=401"), failure.getMessage());
@@ -188,8 +189,8 @@ class OpenAiCompatibleInferenceClientTest {
         List<String> diagnostics = new ArrayList<>();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test", diagnostics::add);
 
-        CompletableFuture<String> streamed = client.chatStreamWithUsage(
-                messages(), SamplerConfig.defaults(), 0, null, token -> { }, null);
+        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+                messages(), sampling(), 0, false, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         assertTrue(streamed.cancel(true));
@@ -203,7 +204,7 @@ class OpenAiCompatibleInferenceClientTest {
         BlockingSseStream blocking = new BlockingSseStream();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test");
 
-        client.chatStreamWithUsage(messages(), SamplerConfig.defaults(), 0, null, token -> { }, null);
+        client.chatStream(messages(), sampling(), 0, false, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         client.shutdown();
@@ -257,6 +258,10 @@ class OpenAiCompatibleInferenceClientTest {
 
     private static List<ChatMessage> messages() {
         return List.of(ChatMessage.system("sys"), ChatMessage.user("hi"));
+    }
+
+    private static LLMPromptRequestPayload.SamplingPayload sampling() {
+        return LLMPromptRequestPayload.SamplingPayload.empty();
     }
 
     private static String role(JsonArray messages, int index) {

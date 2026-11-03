@@ -124,35 +124,20 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
     }
 
     /**
-     * The page, top to bottom: the enable switch, the RAG vector model, the lane selector, then the two
-     * columns.
+     * The page, top to bottom: the enable switch, the RAG vector model, then the two columns.
      *
      * <p>Everything below the vector model depends on it: without an embedding file there is no
      * retrieval, and without retrieval the cloud lane cannot answer. The gate is therefore a
-     * <em>visibility</em> gate, not a disabled state — the lane and both columns are not built into the
-     * page at all until the model is on disk, which leaves an unready page as exactly two rows.
+     * <em>visibility</em> gate, not a disabled state — the columns are not built into the page at
+     * all until the model is on disk, which leaves an unready page as exactly two rows.
      */
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled);
         buildEmbeddingSection(panel, context, draft);
         BooleanSupplier ready = draft::embeddingReady;
-        buildLaneSelector(panel, context, ready);
         panel.columns("llm.panel.layout", 0.45D, 0.55D, () -> true, ready, columns -> columns
                 .column(0, left -> buildProviderColumn(left, context, draft))
                 .column(1, right -> buildStatsColumn(right, draft)));
-    }
-
-    /**
-     * Lane selector at the top of the page. The framework has no segmented control, so the two lanes
-     * are an action row: the cloud tab is the active, styled one and the sealed local tab is rendered
-     * with its enabled predicate switched off, which greys it out and makes it unclickable.
-     */
-    private void buildLaneSelector(ModuleSettingsPanel panel, ModuleSettingsContext context, BooleanSupplier visible) {
-        panel.actions("llm.lane.selector", llm("section.lane"), () -> true, visible, actions -> actions
-                .button("llm.lane.cloud", llm("lane.cloud"), SettingsButtonStyle.PRIMARY,
-                        () -> context.showStatus(llm("lane.cloud_active"), 2000), () -> true)
-                .button("llm.lane.local", llm("lane.local"),
-                        () -> { }, () -> false));
     }
 
     /**
@@ -1048,9 +1033,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         @Override
         public SettingsValidationResult validate() {
-            // The page hides the lane and the provider columns while the vector model is missing, but a
-            // form opened before the model was removed, or a programmatic save, must not slip past that.
-            // Only cloud profile changes are refused: the enable switch stays writable.
+            // The page hides the provider columns while the vector model is missing, but a form opened
+            // before the model was removed, or a programmatic save, must not slip past that. Only cloud
+            // profile changes are refused: the enable switch stays writable.
             if (!embeddingReady() && cloudSettingsDirty()) {
                 return SettingsValidationResult.failure(llm("validation.embedding_missing"));
             }
@@ -1238,7 +1223,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         /**
          * Whether the page may show anything below the vector model.
          *
-         * <p>The lane and the provider columns are gated on this: without the embedding file there is no
+         * <p>The provider columns are gated on this: without the embedding file there is no
          * retrieval, so the cloud lane cannot answer and offering its configuration would be a promise the
          * page cannot keep.
          */

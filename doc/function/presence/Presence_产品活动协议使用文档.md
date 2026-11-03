@@ -124,7 +124,7 @@ TTL 使用墙上时钟是为了让跨模块协议事件可以比较；动画使�
 | --- | --- |
 | ASR | `asr.model.load`、`asr.recognition.<sessionId>`、`asr.speech.<sessionId>`（按下说话键开始，由思衡在仲裁出结果时结束） |
 | AX | `ax.chat.<sessionId>.<turnId/requestId>`、`ax.memory.maintenance.<worldSafeId>` |
-| LLM | `llm.model.load`（云端通道启动期间）、`llm.runtime.reconnecting`、`llm.runtime.error`；三者都在就绪、恢复或停止时撤回。`llm.task.<taskId>` 的能力已实现但当前没有发布方，先按未接线看待 |
+| LLM | `llm.model.load`（云端通道启动期间）、`llm.runtime.reconnecting`、`llm.runtime.error`；三者都在就绪、恢复或停止时撤回 |
 | TTS | `tts.model.load`、`tts.request.<requestId>`；非 AX 播放和纯合成任务共用请求活动，`module.ax` 不重复覆盖 AX 自己的回复状态 |
 
-`MODULE.STATUS`、`LLM.STATUS`、`TTS.PLAYBACK` 和 `TTS.REQUEST_STATUS` 仍有各自诊断或业务用途，但映迹不会从这些 topic 推断产品 HUD 状态。
+`MODULE.STATUS`、`TTS.PLAYBACK` 和 `TTS.REQUEST_STATUS` 仍有各自诊断或业务用途，但映迹不会从这些 topic 推断产品 HUD 状态。

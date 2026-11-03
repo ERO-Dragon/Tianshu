@@ -136,22 +136,19 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
-    void theVectorModelIsAFullWidthRowDirectlyAboveTheLaneSelector() throws Exception {
+    void theVectorModelIsAFullWidthRowDirectlyAboveTheColumns() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertEquals(List.of("llm.enabled", EMBEDDING_GROUP, "llm.lane.selector", "llm.panel.layout"),
+            assertEquals(List.of("llm.enabled", EMBEDDING_GROUP, "llm.panel.layout"),
                     harness.topLevelIds(),
-                    "the vector model is the page's second row: everything below it needs an embedding "
-                            + "file, so it outranks the lane and spans the page");
+                    "the vector model is the page's second row: everything below it needs an embedding file");
         }
     }
 
     @Test
-    void anUnreadyVectorModelHidesTheLaneAndBothColumns() throws Exception {
+    void anUnreadyVectorModelHidesBothColumns() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
             assertTrue(harness.template(EMBEDDING_GROUP).visible().getAsBoolean(),
                     "the download row itself stays on screen");
-            assertFalse(harness.template("llm.lane.selector").visible().getAsBoolean(),
-                    "an unready page does not offer a lane");
             assertFalse(harness.template("llm.panel.layout").visible().getAsBoolean(),
                     "and it does not draw the provider columns: the gate is visibility, not a grey-out");
 

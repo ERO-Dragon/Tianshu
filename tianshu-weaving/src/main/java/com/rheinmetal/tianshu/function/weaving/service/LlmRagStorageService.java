@@ -3,13 +3,20 @@ package com.rheinmetal.tianshu.function.weaving.service;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 
-/** Persistent RAG storage and library registry independent from generation runtime. */
+/**
+ * Persistent RAG storage and library registry.
+ *
+ * <p>This is the module's retrieval data plane: it owns entries, vectors, libraries and the hybrid
+ * search over them. Prompt injection is not part of it — a caller retrieves here and decides itself
+ * what to put into a message.</p>
+ */
 public final class LlmRagStorageService {
-    private final SwitchableEmbeddingService embeddingService = new SwitchableEmbeddingService();
+    private final EmbeddingRuntime embeddingRuntime;
     private final RagCacheManager cache;
     private final RagLibraryRegistry libraries;
 
@@ -19,21 +26,20 @@ public final class LlmRagStorageService {
             String cacheNamespace,
             boolean persistent,
             Executor searchExecutor,
-            RagPersistenceScheduler persistenceScheduler
+            RagPersistenceScheduler persistenceScheduler,
+            EmbeddingRuntime embeddingRuntime
     ) {
         Objects.requireNonNull(environment, "environment");
+        this.embeddingRuntime = Objects.requireNonNull(embeddingRuntime, "embeddingRuntime");
         this.cache = persistent
-                ? new PersistentRagCacheManager(environment, embeddingService, cacheDirectory, cacheNamespace, searchExecutor, persistenceScheduler)
-                : new DefaultRagCacheManager(environment, embeddingService, searchExecutor);
+                ? new PersistentRagCacheManager(
+                        environment, embeddingRuntime, cacheDirectory, cacheNamespace, searchExecutor, persistenceScheduler)
+                : new DefaultRagCacheManager(environment, embeddingRuntime, searchExecutor);
         this.libraries = new RagLibraryRegistry(environment, persistent ? cacheDirectory : null);
     }
 
-    public void bindEmbeddingService(EmbeddingService service) {
-        embeddingService.bind(service);
-    }
-
     public boolean embeddingAvailable() {
-        return embeddingService.available();
+        return embeddingRuntime.available();
     }
 
     public RagCacheManager cache() {
@@ -42,7 +48,7 @@ public final class LlmRagStorageService {
 
     public float[] embedQueryVector(String queryText) {
         try {
-            return embeddingService.embed(queryText);
+            return embeddingRuntime.embed(queryText);
         } catch (Exception ignored) {
             return null;
         }
@@ -53,19 +59,22 @@ public final class LlmRagStorageService {
             return RagWriteResult.failure("EMBEDDING_NOT_READY");
         }
         cache.upsert(uid, entryId, content, vector);
-        return cache.hasEntry(uid, entryId)
-                ? RagWriteResult.ok()
-                : RagWriteResult.failure("RAG_WRITE_FAILED");
+        return cache.hasEntry(uid, entryId) ? RagWriteResult.ok() : RagWriteResult.failure("RAG_WRITE_FAILED");
     }
 
-    public RagWriteResult patch(String uid, String entryId, String content, float[] vector, boolean updateContent, boolean updateVector) {
+    public RagWriteResult patch(
+            String uid,
+            String entryId,
+            String content,
+            float[] vector,
+            boolean updateContent,
+            boolean updateVector
+    ) {
         if (updateVector && requiresEmbedding(content, vector) && !embeddingAvailable()) {
             return RagWriteResult.failure("EMBEDDING_NOT_READY");
         }
         cache.patch(uid, entryId, content, vector, updateContent, updateVector);
-        return cache.hasEntry(uid, entryId)
-                ? RagWriteResult.ok()
-                : RagWriteResult.failure("RAG_WRITE_FAILED");
+        return cache.hasEntry(uid, entryId) ? RagWriteResult.ok() : RagWriteResult.failure("RAG_WRITE_FAILED");
     }
 
     public boolean delete(String uid, String entryId) {
@@ -90,11 +99,17 @@ public final class LlmRagStorageService {
         return cache.searchEntries(uid, queryText, topK, threshold);
     }
 
-    public List<RagCacheManager.RagEntrySearchResult> searchEntries(String uid, String queryText, float[] queryVector, int topK, float threshold) {
-        return cache.searchEntries(uid, queryText, queryVector, topK, threshold);
-    }
-
-    public List<RagCacheManager.RagEntrySearchResult> searchInline(List<String> contents, String queryText, int topK, float threshold) {
+    /**
+     * Lexical search over request-supplied contents: nothing is stored or registered, so this is
+     * free of side effects. Vector search is deliberately not attempted here — inline candidates
+     * have no stored vectors.
+     */
+    public List<RagCacheManager.RagEntrySearchResult> searchInline(
+            List<String> contents,
+            String queryText,
+            int topK,
+            float threshold
+    ) {
         if (contents == null || contents.isEmpty() || queryText == null || queryText.isBlank()) {
             return List.of();
         }
@@ -151,7 +166,7 @@ public final class LlmRagStorageService {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        java.util.ArrayList<LibrarySearchResult> results = new java.util.ArrayList<>();
+        List<LibrarySearchResult> results = new ArrayList<>();
         for (RagLibraryRegistry.RagLibraryMeta library : candidates) {
             List<RagCacheManager.RagEntrySearchResult> entries = searchEntries(library.uid(), queryText, topK, threshold);
             if (!entries.isEmpty()) {
@@ -199,50 +214,6 @@ public final class LlmRagStorageService {
         public LibrarySearchResult {
             uid = uid == null ? "" : uid.trim();
             entries = entries == null ? List.of() : List.copyOf(entries);
-        }
-    }
-
-    private static final class SwitchableEmbeddingService implements EmbeddingService {
-        private volatile EmbeddingService delegate = new UnavailableEmbeddingService();
-
-        void bind(EmbeddingService service) {
-            delegate = service == null ? new UnavailableEmbeddingService() : service;
-        }
-
-        boolean available() {
-            return !(delegate instanceof UnavailableEmbeddingService);
-        }
-
-        @Override
-        public float[] embed(String text) throws Exception {
-            return delegate.embed(text);
-        }
-
-        @Override
-        public float[][] embed(List<String> texts) throws Exception {
-            return delegate.embed(texts);
-        }
-
-        @Override
-        public int getEmbeddingDimension() {
-            return delegate.getEmbeddingDimension();
-        }
-    }
-
-    private static final class UnavailableEmbeddingService implements EmbeddingService {
-        @Override
-        public float[] embed(String text) {
-            throw new IllegalStateException("EMBEDDING_NOT_READY");
-        }
-
-        @Override
-        public float[][] embed(List<String> texts) {
-            throw new IllegalStateException("EMBEDDING_NOT_READY");
-        }
-
-        @Override
-        public int getEmbeddingDimension() {
-            return 0;
         }
     }
 }

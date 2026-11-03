@@ -4,327 +4,63 @@ import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
 import java.util.List;
 
+/**
+ * One inference request: the conversation to send, and the sampling that shapes the answer.
+ *
+ * <p>The module is a transport, not an assistant: prompt assembly, context budgeting and tool
+ * orchestration belong to the caller. A request therefore carries a finished message list — no RAG
+ * chunks, no dialogue identity, no execution lane — and the module sends exactly those messages.</p>
+ *
+ * <p>{@code stream} only decides whether incremental chunks are published; both values use the same
+ * single HTTP stream internally. {@code captureThinkingContent} asks for the provider's reasoning
+ * text when it sends one; the visible answer never mixes it in.</p>
+ */
 public record LLMPromptRequestPayload(
         String requestId,
-        Integer maxTokens,
-        Float temperature,
-        Integer topK,
-        Float topP,
-        Float minP,
-        Float penaltyRepeat,
-        Float penaltyFreq,
-        Float penaltyPresent,
-        Integer penaltyLastN,
+        List<MessageItemPayload> messages,
         Boolean stream,
-        Boolean thinking,
         Boolean captureThinkingContent,
-        String lane,
-        Integer taskPriority,
-        Boolean taskPreemptible,
-        List<ChunkPayload> chunks,
-        String dialogueSessionId,
-        String requesterModuleId,
-        String requesterParticipantId,
-        String dialogueTurnId,
-        InferencePolicyPayload inferencePolicy,
-        String toolsJson
+        Integer maxTokens,
+        SamplingPayload sampling
 ) implements ITianshuPayload {
-    public static final int MIN_TASK_PRIORITY = 0;
-    public static final int MAX_TASK_PRIORITY = 1000;
 
     public static final LLMPromptRequestPayload EMPTY = new LLMPromptRequestPayload(
-            "llm.request", 0, null, false, false, "SIMPLE", 0, false, List.of()
+            "llm.request", List.of(), false, false, 0, SamplingPayload.empty()
     );
 
-    public LLMPromptRequestPayload(
-            String requestId,
-            Integer maxTokens,
-            Float temperature,
-            Boolean stream,
-            Boolean thinking,
-            Boolean captureThinkingContent,
-            String lane,
-            Integer taskPriority,
-            Boolean taskPreemptible,
-            List<ChunkPayload> chunks,
-            String dialogueSessionId,
-            String requesterModuleId,
-            String requesterParticipantId,
-            String dialogueTurnId,
-            InferencePolicyPayload inferencePolicy
-    ) {
-        this(requestId, maxTokens, temperature, null, null, null, null, null, null, null, stream, thinking, captureThinkingContent, lane, taskPriority,
-                taskPreemptible, chunks, dialogueSessionId, requesterModuleId, requesterParticipantId, dialogueTurnId,
-                inferencePolicy, null);
-    }
-
-    public LLMPromptRequestPayload(
-            String requestId,
-            Integer maxTokens,
-            Float temperature,
-            Boolean stream,
-            Boolean thinking,
-            String lane,
-            Integer taskPriority,
-            Boolean taskPreemptible,
-            List<ChunkPayload> chunks,
-            String dialogueSessionId,
-            String requesterModuleId,
-            String requesterParticipantId,
-            String dialogueTurnId
-    ) {
-        this(requestId, maxTokens, temperature, null, null, null, null, null, null, null, stream, thinking, false, lane, taskPriority, taskPreemptible, chunks,
-                dialogueSessionId, requesterModuleId, requesterParticipantId, dialogueTurnId, null, null);
-    }
-
-    public LLMPromptRequestPayload(
-            String requestId,
-            Integer maxTokens,
-            Float temperature,
-            Boolean stream,
-            Boolean thinking,
-            String lane,
-            Integer taskPriority,
-            Boolean taskPreemptible,
-            List<ChunkPayload> chunks
-    ) {
-        this(requestId, maxTokens, temperature, null, null, null, null, null, null, null, stream, thinking, false, lane, taskPriority, taskPreemptible, chunks, "", "", "", "", null, null);
-    }
-
-    public LLMPromptRequestPayload(
-            String requestId,
-            Integer maxTokens,
-            Float temperature,
-            Boolean stream,
-            Boolean thinking,
-            Boolean captureThinkingContent,
-            String lane,
-            Integer taskPriority,
-            Boolean taskPreemptible,
-            List<ChunkPayload> chunks
-    ) {
-        this(requestId, maxTokens, temperature, null, null, null, null, null, null, null, stream, thinking, captureThinkingContent, lane, taskPriority, taskPreemptible, chunks, "", "", "", "", null, null);
-    }
-
     public LLMPromptRequestPayload {
-        requestId = normalize(requestId);
+        requestId = normalizeRequestId(requestId);
+        messages = messages == null ? List.of() : List.copyOf(messages);
+        stream = stream != null && stream;
+        captureThinkingContent = captureThinkingContent != null && captureThinkingContent;
         maxTokens = maxTokens != null && maxTokens > 0 ? maxTokens : 0;
-        temperature = normalizeTemperature(temperature);
-        topK = normalizePositive(topK);
-        topP = normalizeUnit(topP);
-        minP = normalizeUnit(minP);
-        penaltyRepeat = normalizePenalty(penaltyRepeat);
-        penaltyFreq = normalizePenalty(penaltyFreq);
-        penaltyPresent = normalizePenalty(penaltyPresent);
-        penaltyLastN = normalizeNonNegative(penaltyLastN);
-        stream = stream != null ? stream : false;
-        thinking = thinking != null ? thinking : false;
-        captureThinkingContent = captureThinkingContent != null ? captureThinkingContent : false;
-        lane = normalizeLane(lane);
-        taskPriority = clampPriority(taskPriority);
-        taskPreemptible = taskPreemptible != null ? taskPreemptible : false;
-        chunks = chunks != null ? List.copyOf(chunks) : List.of();
-        dialogueSessionId = clean(dialogueSessionId);
-        requesterModuleId = clean(requesterModuleId);
-        requesterParticipantId = clean(requesterParticipantId);
-        dialogueTurnId = clean(dialogueTurnId);
-        inferencePolicy = inferencePolicy == null ? InferencePolicyPayload.followGlobal() : inferencePolicy;
-        toolsJson = toolsJson == null || toolsJson.isBlank() ? "" : toolsJson.trim();
+        sampling = sampling == null ? SamplingPayload.empty() : sampling;
     }
 
-    public LLMPromptRequestPayload withDialogueIdentity(String sessionId, String moduleId, String participantId, String turnId) {
-        return new LLMPromptRequestPayload(
-                requestId,
-                maxTokens,
-                temperature,
-                topK,
-                topP,
-                minP,
-                penaltyRepeat,
-                penaltyFreq,
-                penaltyPresent,
-                penaltyLastN,
-                stream,
-                thinking,
-                captureThinkingContent,
-                lane,
-                taskPriority,
-                taskPreemptible,
-                chunks,
-                sessionId,
-                moduleId,
-                participantId,
-                turnId,
-                inferencePolicy,
-                toolsJson
-        );
-    }
-
-    public LLMPromptRequestPayload withCaptureThinkingContent(boolean captureThinkingContent) {
-        return new LLMPromptRequestPayload(
-                requestId,
-                maxTokens,
-                temperature,
-                topK,
-                topP,
-                minP,
-                penaltyRepeat,
-                penaltyFreq,
-                penaltyPresent,
-                penaltyLastN,
-                stream,
-                thinking,
-                captureThinkingContent,
-                lane,
-                taskPriority,
-                taskPreemptible,
-                chunks,
-                dialogueSessionId,
-                requesterModuleId,
-                requesterParticipantId,
-                dialogueTurnId,
-                inferencePolicy,
-                toolsJson
-        );
-    }
-
-    public LLMPromptRequestPayload withToolsJson(String toolsJson) {
-        return new LLMPromptRequestPayload(
-                requestId,
-                maxTokens,
-                temperature,
-                topK,
-                topP,
-                minP,
-                penaltyRepeat,
-                penaltyFreq,
-                penaltyPresent,
-                penaltyLastN,
-                stream,
-                thinking,
-                captureThinkingContent,
-                lane,
-                taskPriority,
-                taskPreemptible,
-                chunks,
-                dialogueSessionId,
-                requesterModuleId,
-                requesterParticipantId,
-                dialogueTurnId,
-                inferencePolicy,
-                toolsJson
-        );
-    }
-
-    public LLMPromptRequestPayload withInferencePolicy(InferencePolicyPayload inferencePolicy) {
-        return new LLMPromptRequestPayload(
-                requestId,
-                maxTokens,
-                temperature,
-                topK,
-                topP,
-                minP,
-                penaltyRepeat,
-                penaltyFreq,
-                penaltyPresent,
-                penaltyLastN,
-                stream,
-                thinking,
-                captureThinkingContent,
-                lane,
-                taskPriority,
-                taskPreemptible,
-                chunks,
-                dialogueSessionId,
-                requesterModuleId,
-                requesterParticipantId,
-                dialogueTurnId,
-                inferencePolicy,
-                toolsJson
-        );
-    }
-
-    public boolean hasDialogueAuthorizationContext() {
-        return !dialogueSessionId.isBlank() && !requesterModuleId.isBlank() && !requesterParticipantId.isBlank();
-    }
-
-    private static String normalize(String value) {
-        return value == null || value.isBlank() ? "llm.request" : value.trim();
-    }
-
-    private static String clean(String value) {
-        return value == null ? "" : value.trim();
-    }
-
-    private static Float normalizeTemperature(Float value) {
-        if (value == null || Float.isNaN(value) || value < 0f || value > 2f) {
-            return null;
-        }
-        return value;
-    }
-
-    private static Integer normalizePositive(Integer value) {
-        return value != null && value > 0 ? value : null;
-    }
-
-    private static Integer normalizeNonNegative(Integer value) {
-        return value != null && value >= 0 ? value : null;
-    }
-
-    private static Float normalizeUnit(Float value) {
-        if (value == null || Float.isNaN(value) || value < 0f || value > 1f) {
-            return null;
-        }
-        return value;
-    }
-
-    private static Float normalizePenalty(Float value) {
-        if (value == null || Float.isNaN(value) || value < 0f || value > 4f) {
-            return null;
-        }
-        return value;
-    }
-
-    private static String normalizeLane(String value) {
-        String normalized = value == null ? "" : value.trim().toUpperCase();
-        return "COMPLEX".equals(normalized) ? "COMPLEX" : "SIMPLE";
-    }
-
-    private static Integer clampPriority(Integer value) {
-        if (value == null) return MIN_TASK_PRIORITY;
-        return Math.max(MIN_TASK_PRIORITY, Math.min(MAX_TASK_PRIORITY, value));
-    }
-
-    public record ChunkPayload(
-            String type,
-            List<MessageItemPayload> messageContent,
-            List<String> ragContent,
-            String uid,
-            String prompt,
-            Boolean useCache,
-            Boolean includeRagHits,
-            Integer memoryRagTokenBudget
+    /**
+     * The sampling overrides a request may set, limited to the four fields an OpenAI-compatible
+     * completion actually accepts. A {@code null} field means "follow the model catalog default";
+     * out-of-range values are dropped for the same reason.
+     */
+    public record SamplingPayload(
+            Float temperature,
+            Float topP,
+            Float frequencyPenalty,
+            Float presencePenalty
     ) implements ITianshuPayload {
-        public ChunkPayload {
-            type = type == null ? "message" : type.trim().toLowerCase();
-            messageContent = messageContent != null ? List.copyOf(messageContent) : List.of();
-            ragContent = ragContent != null ? List.copyOf(ragContent) : List.of();
-            prompt = prompt != null ? prompt.trim() : "";
-            useCache = useCache != null ? useCache : true;
-            includeRagHits = includeRagHits != null ? includeRagHits : true;
-            memoryRagTokenBudget = memoryRagTokenBudget != null ? memoryRagTokenBudget : 1000;
+        public SamplingPayload {
+            temperature = rangeOrNull(temperature, 0.0F, 2.0F);
+            topP = rangeOrNull(topP, 0.0F, 1.0F);
+            frequencyPenalty = rangeOrNull(frequencyPenalty, -2.0F, 2.0F);
+            presencePenalty = rangeOrNull(presencePenalty, -2.0F, 2.0F);
         }
 
-        public static ChunkPayload message(List<MessageItemPayload> messages) {
-            return new ChunkPayload("message", messages, null, null, null, null, null, null);
+        public static SamplingPayload empty() {
+            return new SamplingPayload(null, null, null, null);
         }
 
-        public static ChunkPayload rag(String uid, List<String> contents) {
-            return new ChunkPayload("rag", null, contents, uid, "", true, true, 1000);
-        }
-
-        public static ChunkPayload rag(String uid, String prompt, List<String> contents, boolean useCache, boolean includeRagHits, int memoryTokenBudget) {
-            return new ChunkPayload("rag", null, contents, uid, prompt, useCache, includeRagHits, memoryTokenBudget);
+        public boolean isEmpty() {
+            return temperature == null && topP == null && frequencyPenalty == null && presencePenalty == null;
         }
     }
 
@@ -333,8 +69,8 @@ public record LLMPromptRequestPayload(
             String content
     ) implements ITianshuPayload {
         public MessageItemPayload {
-            role = role == null ? "user" : role.trim().toLowerCase();
-            content = content == null ? "" : content.trim();
+            role = normalizeRole(role);
+            content = content == null ? "" : content;
         }
 
         public static MessageItemPayload of(String role, String content) {
@@ -354,17 +90,28 @@ public record LLMPromptRequestPayload(
         }
     }
 
-    public record InferencePolicyPayload(
-            Boolean frameGuardEnabled,
-            Integer targetFps,
-            Boolean mtpEnabled
-    ) implements ITianshuPayload {
-        public InferencePolicyPayload {
-            targetFps = targetFps == null ? null : Math.max(15, Math.min(240, targetFps));
-        }
+    private static String normalizeRequestId(String value) {
+        return value == null || value.isBlank() ? "llm.request" : value.trim();
+    }
 
-        public static InferencePolicyPayload followGlobal() {
-            return new InferencePolicyPayload(null, null, null);
+    /**
+     * The three roles an OpenAI-compatible endpoint accepts. Anything else degrades to {@code user}
+     * instead of failing the request, which keeps a malformed caller from taking the lane down.
+     */
+    private static String normalizeRole(String role) {
+        if (role == null) {
+            return "user";
         }
+        return switch (role.trim().toLowerCase()) {
+            case "system", "assistant", "user" -> role.trim().toLowerCase();
+            default -> "user";
+        };
+    }
+
+    private static Float rangeOrNull(Float value, float min, float max) {
+        if (value == null || value.isNaN() || value < min || value > max) {
+            return null;
+        }
+        return value;
     }
 }

@@ -141,8 +141,7 @@ class AXTurnOrchestratorTest {
         TianshuEnvelope requestEnvelope = llmRequest.get();
         assertNotNull(requestEnvelope);
         LLMPromptRequestPayload requestPayload = (LLMPromptRequestPayload) requestEnvelope.payload();
-        assertTrue(requestPayload.chunks().stream()
-                .flatMap(chunk -> chunk.messageContent().stream())
+        assertTrue(requestPayload.messages().stream()
                 .noneMatch(message -> message.content().contains("normalized text should not be used")));
 
         llmClient.handleStreamChunk(
@@ -196,7 +195,7 @@ class AXTurnOrchestratorTest {
         LLMPromptResultPayload.TokenUsagePayload usage = new LLMPromptResultPayload.TokenUsagePayload(120, 7, 3, 10, 130);
         llmClient.handleResult(
                 llmRequest.get().envelopeId(),
-                LLMPromptResultPayload.completed(requestPayload.requestId(), "assistant completed text", "thinking", List.of(), usage)
+                LLMPromptResultPayload.completed(requestPayload.requestId(), "assistant completed text", "thinking", usage)
         );
 
         await(() -> recentDialogueSystem.snapshot(scope).turns().size() == 2);
@@ -245,11 +244,14 @@ class AXTurnOrchestratorTest {
                 llmRequest.get().envelopeId(),
                 LLMPromptStreamChunkPayload.chunk(requestPayload.requestId(), "partial assistant text", 0)
         );
-        assertTrue(llmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("test interruption")));
+        assertTrue(llmClient.cancelRequestAwaitTerminal(
+                llmRequest.get().envelopeId(),
+                AXTurnCancellation.playerInterrupted("test interruption")
+        ));
         LLMPromptResultPayload.TokenUsagePayload usage = new LLMPromptResultPayload.TokenUsagePayload(120, 5, 2, 7, 127);
         llmClient.handleResult(
                 llmRequest.get().envelopeId(),
-                LLMPromptResultPayload.cancelled(requestPayload.requestId(), "partial assistant text", "thinking", List.of(), usage)
+                LLMPromptResultPayload.cancelled(requestPayload.requestId(), "partial assistant text", "thinking", usage)
         );
 
         await(() -> recentDialogueSystem.snapshot(scope).turns().size() == 2);
@@ -520,7 +522,10 @@ class AXTurnOrchestratorTest {
 
         interruptedOrchestrator.startTurn(deliveryEnvelope(), delivery());
         await(() -> interruptedLlmRequest.get() != null);
-        assertTrue(interruptedLlmClient.cancelChatRequests(AXTurnCancellation.playerInterrupted("test interruption")));
+        assertTrue(interruptedLlmClient.cancelRequestAwaitTerminal(
+                interruptedLlmRequest.get().envelopeId(),
+                AXTurnCancellation.playerInterrupted("test interruption")
+        ));
 
         ModuleStatus interrupted = assertStatusKey(interruptedRuntime, AXTurnStatusPublisher.TYPE_INTERRUPTED, AXTurnStatusPublisher.KEY_INTERRUPTED);
         assertEquals("interrupted", interrupted.tags().get("axPipelineStage"));
@@ -563,14 +568,14 @@ class AXTurnOrchestratorTest {
 
         LLMPromptRequestPayload payload = builder.buildChatRequest(request, context, AXContextBudget.DEFAULT);
 
-        assertEquals(1, payload.chunks().size());
-        assertTrue(payload.chunks().get(0).messageContent().stream()
+        assertFalse(payload.messages().isEmpty());
+        assertTrue(payload.messages().stream()
                 .anyMatch(message -> message.content().contains("<game_context>")
                         && message.content().contains("minecraft:enchanting_table")));
     }
 
     @Test
-    void promptAssemblyDoesNotCreateSeparateRagChunks() {
+    void promptAssemblyInlinesKnowledgeIntoMessages() {
         AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(new AXPromptOrchestrator(
                 null,
                 null,
@@ -584,9 +589,8 @@ class AXTurnOrchestratorTest {
 
         LLMPromptRequestPayload payload = builder.buildChatRequest(request, AXContextSnapshot.empty(), AXContextBudget.DEFAULT);
 
-        assertEquals(1, payload.chunks().size());
-        assertEquals("message", payload.chunks().get(0).type());
-        assertTrue(payload.chunks().get(0).messageContent().stream()
+        assertFalse(payload.messages().isEmpty());
+        assertTrue(payload.messages().stream()
                 .anyMatch(message -> message.content().contains("minecraft:anvil")));
     }
 
@@ -652,8 +656,7 @@ class AXTurnOrchestratorTest {
 
         await(() -> llmRequest.get() != null);
         LLMPromptRequestPayload payload = (LLMPromptRequestPayload) llmRequest.get().payload();
-        assertTrue(payload.chunks().stream()
-                .flatMap(chunk -> chunk.messageContent().stream())
+        assertTrue(payload.messages().stream()
                 .anyMatch(message -> message.content().contains("<game_context>")
                         && message.content().contains("enchanting table")));
     }
@@ -695,8 +698,7 @@ class AXTurnOrchestratorTest {
         await(() -> llmRequest.get() != null);
         assertNotNull(llmRequest.get());
         LLMPromptRequestPayload payload = (LLMPromptRequestPayload) llmRequest.get().payload();
-        assertTrue(payload.chunks().stream()
-                .flatMap(chunk -> chunk.messageContent().stream())
+        assertTrue(payload.messages().stream()
                 .noneMatch(message -> message.content().contains("动态环境")));
     }
 
@@ -751,8 +753,7 @@ class AXTurnOrchestratorTest {
 
         await(() -> llmRequest.get() != null);
         LLMPromptRequestPayload payload = (LLMPromptRequestPayload) llmRequest.get().payload();
-        assertTrue(payload.chunks().stream()
-                .flatMap(chunk -> chunk.messageContent().stream())
+        assertTrue(payload.messages().stream()
                 .noneMatch(message -> message.content().contains("动态环境")));
     }
 

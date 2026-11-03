@@ -27,17 +27,13 @@ public final class AXLlmPromptRequestBuilder {
     public LLMPromptRequestPayload buildChatRequest(AXRequest request, AXContextSnapshot context, AXContextBudget budget) {
         AXContextBudget effectiveBudget = budget == null ? AXContextBudget.DEFAULT : budget;
         AXPromptAssembly assembly = promptOrchestrator.assemble(request, context, effectiveBudget);
-        List<LLMPromptRequestPayload.ChunkPayload> chunks = List.of(LLMPromptRequestPayload.ChunkPayload.message(assembly.messages()));
         return new LLMPromptRequestPayload(
                 request == null ? "AX.request" : request.requestKey(),
-                0,
-                null,
+                assembly.messages(),
                 true,
-                assistantSettings.chatThinkingEnabled(),
-                "SIMPLE",
-                0,
                 false,
-                chunks
+                0,
+                LLMPromptRequestPayload.SamplingPayload.empty()
         );
     }
 }

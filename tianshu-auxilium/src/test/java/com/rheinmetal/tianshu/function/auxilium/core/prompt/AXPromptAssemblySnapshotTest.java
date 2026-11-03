@@ -82,11 +82,8 @@ class AXPromptAssemblySnapshotTest {
                 budget
         );
 
-        assertEquals(1, payload.chunks().size());
         assertEquals(0, payload.maxTokens());
-        assertTrue(!payload.thinking());
-        assertEquals("message", payload.chunks().get(0).type());
-        List<LLMPromptRequestPayload.MessageItemPayload> messages = payload.chunks().get(0).messageContent();
+        List<LLMPromptRequestPayload.MessageItemPayload> messages = payload.messages();
         // system 在最前且唯一
         assertEquals("system", messages.get(0).role());
         long systemCount = messages.stream().filter(m -> "system".equals(m.role())).count();
@@ -115,35 +112,6 @@ class AXPromptAssemblySnapshotTest {
         // 摘要块只渲染单元摘要正文：挂在块上的世界事件不重复进前缀，它们随检索进入尾部。
         assertTrue(!joined.contains("Stone Age"), "摘要块不得夹带附件事件");
         assertTrue(!joined.contains("IA delivery 附带上下文"));
-    }
-
-    @Test
-    void chatThinkingSettingIsForwardedWithoutCapturingThinkingContent() {
-        AuxiliumAssistantSettings settings = new AuxiliumAssistantSettings() {
-            @Override
-            public String wakeWord() {
-                return DEFAULT_WAKE_WORD;
-            }
-
-            @Override
-            public boolean chatThinkingEnabled() {
-                return true;
-            }
-        };
-        AXLlmPromptRequestBuilder builder = new AXLlmPromptRequestBuilder(
-                new AXPromptOrchestrator(null, null, null),
-                settings
-        );
-
-        LLMPromptRequestPayload payload = builder.buildChatRequest(
-                new AXRequest("thinking", "请仔细想想", ""),
-                AXContextSnapshot.empty(),
-                AXContextBudget.DEFAULT
-        );
-
-        assertTrue(payload.thinking());
-        assertTrue(!payload.captureThinkingContent());
-        assertEquals("SIMPLE", payload.lane());
     }
 
     @Test
@@ -185,11 +153,11 @@ class AXPromptAssemblySnapshotTest {
 
         LLMPromptRequestPayload payload = builder.buildChatRequest(new AXRequest("request", "本轮唯一输入-排序测试", ""), context, budget);
 
-        String joined = payload.chunks().get(0).messageContent().stream()
+        String joined = payload.messages().stream()
                 .map(LLMPromptRequestPayload.MessageItemPayload::content)
                 .collect(java.util.stream.Collectors.joining("\n\n"));
         // 装配位置不再由 sectionOrder 决定：system 恒定在最前，动态段恒定落在当前输入之前。
-        java.util.List<LLMPromptRequestPayload.MessageItemPayload> ordered = payload.chunks().get(0).messageContent();
+        java.util.List<LLMPromptRequestPayload.MessageItemPayload> ordered = payload.messages();
         assertEquals("system", ordered.get(0).role());
         assertTrue(ordered.get(0).content().contains("<ax_system>"));
         assertEquals("本轮唯一输入-排序测试", ordered.get(ordered.size() - 1).content());

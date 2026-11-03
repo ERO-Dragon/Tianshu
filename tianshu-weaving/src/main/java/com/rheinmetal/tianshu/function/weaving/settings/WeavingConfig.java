@@ -25,7 +25,6 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     private static final String KEY_LEGACY_API_KEY = "legacyApiKey";
     private static final String KEY_LEGACY_MODEL = "legacyModel";
     private static final String KEY_CONTEXT_WINDOW = "contextWindowTokens";
-    private static final String KEY_CONTEXT_TIER = "contextTier";
     private static final String KEY_MODELS = "models";
     private static final String KEY_ACTIVE_MODEL_ID = "activeModelId";
     private static final String KEY_CREDENTIALS = "credentials";
@@ -215,14 +214,6 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     @Override
     public void save() {
         store.save();
-    }
-
-    private int getContextTier() {
-        return store.getInt(KEY_CONTEXT_TIER, WeavingContextTiers.DEFAULT_TIER);
-    }
-
-    public void setLlmContextTier(int tier) {
-        store.setInt(KEY_CONTEXT_TIER, tier);
     }
 
     /**

@@ -1,23 +1,22 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
-
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.account.DeepSeekBalanceProbe;
 import com.rheinmetal.tianshu.function.weaving.catalog.OpenAiCompatibleModelCatalogClient;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.function.weaving.settings.WeavingContextTiers;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.function.weaving.rag.LlmRagCacheLayout;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudget;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeRetryPolicy;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingLoadReport;
-import com.rheinmetal.tianshu.function.weaving.service.EmbeddingService;
+import com.rheinmetal.tianshu.function.weaving.service.EmbeddingRuntime;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
+import com.rheinmetal.tianshu.function.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.weaving.service.OpenAiCompatibleInferenceClient;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
@@ -69,6 +68,7 @@ public final class LlmModule implements TianshuManagedModule {
     private final WeavingConfiguration config;
     private final ModuleRuntimeAccess runtime;
     private final LlmRagCacheLayout ragCacheLayout;
+    private final EmbeddingRuntime embeddingRuntime = new EmbeddingRuntime();
     private final LlmRagStorageService ragStorageService;
     private final LlmExecutor llmExecutor;
     private final LlmEngineProvider engineProvider;
@@ -117,9 +117,15 @@ public final class LlmModule implements TianshuManagedModule {
                 ragCacheLayout.cacheNamespace(),
                 true,
                 llmExecutor.cpuExecutor(),
-                llmExecutor.ragPersistenceScheduler()
+                llmExecutor.ragPersistenceScheduler(),
+                embeddingRuntime
         );
-        this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config), usageLedger);
+        this.adapter = new LlmProtocolAdapter(
+                runtime,
+                null,
+                new LlmPromptFactory(config::getLlmRemoteModel),
+                usageLedger
+        );
         this.adapter.setRagStorageService(ragStorageService);
         this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
         this.engineProvider = new LlmEngineProvider(env, config,
@@ -135,7 +141,6 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
-        adapter.registerOwnedTopics(context.protocol());
         serviceRegistry = context == null ? null : context.services();
         moduleService = new LlmModuleService(config, usageLedger);
         // The service owns the runtime state; the module owns what the HUD is told about it. Switching the
@@ -369,21 +374,15 @@ public final class LlmModule implements TianshuManagedModule {
             if (replaced != null) {
                 replaced.shutdown();
             }
-            // Only the embedding side of the local engine is live here, so vector RAG keeps writing
-            // and searching while generation itself is remote.
-            EmbeddingService embeddingService = embeddingReady ? engineProvider.embeddingService() : null;
-            ragStorageService.bindEmbeddingService(embeddingService);
+            // The embedding lane is the only local model; binding it here is what makes RAG writes,
+            // the EMBED primitive and the runtime snapshot agree on whether vectors are available.
+            embeddingRuntime.bind(embeddingReady ? engineProvider.embeddingService() : null);
             LLMService service = LLMService.builder()
                     .env(env)
                     .config(config)
                     .inferenceClient(client)
-                    .usePersistentCache(true)
-                    .cacheDirectory(ragCacheLayout.cacheDirectory())
+                    .embeddingRuntime(embeddingRuntime)
                     .cacheNamespace(ragCacheLayout.cacheNamespace())
-                    .embeddingConfigured(embeddingService != null)
-                    .ragStorage(ragStorageService)
-                    .ragSearchExecutor(llmExecutor.cpuExecutor())
-                    .ragPersistenceScheduler(llmExecutor.ragPersistenceScheduler())
                     .build();
             llmService = service;
             if (serviceRegistry != null) {
@@ -420,19 +419,12 @@ public final class LlmModule implements TianshuManagedModule {
         if (isBlank(baseUrl) || isBlank(apiKey) || isBlank(model)) {
             return null;
         }
-        int windowTokens = config.getLlmContextWindowTokens();
-        int tier = WeavingContextTiers.downgradeToLargestAvailable(config.getLlmContextTier(), windowTokens);
-        if (tier != config.getLlmContextTier()) {
-            env.warn("[LLM] Context tier downgraded to fit the declared window: requested="
-                    + config.getLlmContextTier() + " window=" + windowTokens + " effective=" + tier);
-        }
         return new OpenAiCompatibleInferenceClient(
                 baseUrl,
                 apiKey,
                 model,
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
-                env::warn,
-                tier
+                env::warn
         );
     }
 
@@ -562,15 +554,13 @@ public final class LlmModule implements TianshuManagedModule {
             if (serviceRegistry != null && stoppingService != null) {
                 serviceRegistry.unregister(LLMService.class, stoppingService);
             }
-            if (stoppingService != null) {
-                stoppingService.shutdown();
-            }
             OpenAiCompatibleInferenceClient stoppingRemote = remoteClient;
             remoteClient = null;
             if (stoppingRemote != null) {
                 stoppingRemote.shutdown();
             }
             engineProvider.stop();
+            embeddingRuntime.bind(null);
             ragStorageService.shutdown();
             if (moduleService != null) {
                 moduleService.markStopped();
@@ -601,10 +591,16 @@ public final class LlmModule implements TianshuManagedModule {
      */
     private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
         switch (report.outcome()) {
-            case READY -> adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
-            case DEGRADED -> env.warn("[LLM] Embedding lane runs on the CPU; retrieval continues on the reduced backend");
+            case READY -> {
+                embeddingRuntime.bind(engineProvider.embeddingService());
+                adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
+            }
+            case DEGRADED -> {
+                embeddingRuntime.bind(engineProvider.embeddingService());
+                env.warn("[LLM] Embedding lane runs on the CPU; retrieval continues on the reduced backend");
+            }
             case UNAVAILABLE -> {
-                ragStorageService.bindEmbeddingService(engineProvider.embeddingService());
+                embeddingRuntime.bind(null);
                 adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }
@@ -621,49 +617,15 @@ public final class LlmModule implements TianshuManagedModule {
         }
     }
 
-    void publishInferenceStatus(com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload status) {
-        if (status == null) {
-            return;
-        }
-        adapter.publishInferenceStatus(status);
-        if (!"COMPLEX".equals(status.taskType()) || status.taskId().isBlank()) {
-            return;
-        }
-        if (com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.STARTED.equals(status.eventType())) {
-            adapter.publishTaskActivity(status.taskId(), true);
-            return;
-        }
-        if (com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.COMPLETED.equals(status.eventType())
-                || com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.CANCELLED.equals(status.eventType())
-                || com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.FAILED.equals(status.eventType())) {
-            adapter.publishTaskActivity(status.taskId(), false);
-        }
-    }
-
     private LLMRuntimeSnapshotPayload runtimeSnapshotWhenGenerationUnavailable() {
         String failure = moduleService == null ? "" : moduleService.snapshot().failureMessage();
+        int window = config.getLlmContextWindowTokens();
         return new LLMRuntimeSnapshotPayload(
                 false,
-                false,
-                ragStorageService.embeddingAvailable(),
-                -1,
-                false,
-                false,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                0,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                "",
-                "",
+                embeddingRuntime.available(),
+                embeddingRuntime.safeDimension(),
+                window,
+                LlmContextBudget.promptTokenBudget(window),
                 config.getLlmEmbeddingModelName(),
                 ragCacheLayout.cacheNamespace(),
                 failure,

@@ -20,6 +20,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -45,12 +46,6 @@ public final class AXDelegateService {
 
     /** 结论要的是"抄结论"不是"创作"，因此低温度（与压缩任务同为确定性输出）。 */
     public static final float DELEGATE_TEMPERATURE = 0.2F;
-
-    /** {@code TASK} 车道优先级；取值归 TASK 车道优先级表（§3.8 本文不定数值），与后台压缩任务同档。 */
-    public static final int DELEGATE_TASK_PRIORITY = 500;
-
-    /** Complex run 的信封车道：§3.2 规定 Complex 跑在 {@code TASK}。 */
-    public static final String DELEGATE_LANE = "COMPLEX";
 
     private static final String REQUEST_ID_PREFIX = "ax.delegate.";
     private static final String REASON_RESULT_FAILED = "delegate.result_failed";
@@ -152,7 +147,7 @@ public final class AXDelegateService {
             // 因此第二步没有可做的事。真走到这里说明契约变了，按内部错误收尾而不是空转。
             throw new AXStepFailure(REASON_NO_REPAIR);
         }
-        requestSender.send(delegateRequest(ticket), handler);
+        requestSender.send(delegateRequest(ticket), handler, Duration.ofMillis(context.remainingMillis()));
         return step.await(context.remainingMillis(), context.cancellation());
     }
 
@@ -171,15 +166,11 @@ public final class AXDelegateService {
                 : instruction));
         return new LLMPromptRequestPayload(
                 REQUEST_ID_PREFIX + ticket.taskId(),
+                messages,
+                false,
+                false,
                 DELEGATE_MAX_TOKENS,
-                DELEGATE_TEMPERATURE,
-                false,
-                true,
-                false,
-                DELEGATE_LANE,
-                DELEGATE_TASK_PRIORITY,
-                true,
-                List.of(LLMPromptRequestPayload.ChunkPayload.message(messages))
+                new LLMPromptRequestPayload.SamplingPayload(DELEGATE_TEMPERATURE, null, null, null)
         );
     }
 

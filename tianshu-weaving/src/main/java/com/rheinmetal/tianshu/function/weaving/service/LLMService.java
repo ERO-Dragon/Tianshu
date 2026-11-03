@@ -1,108 +1,75 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
-import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
-
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
-import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudgetSnapshot;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmEngineCapabilitySnapshot;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationRequest;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationResult;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCapabilitySnapshot;
-import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
-import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
-import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
-import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmModuleId;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudget;
+import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
+import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
+import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
 
-import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
-/** Stable public facade for LLM inference, RAG and runtime inspection. */
-public class LLMService {
+/**
+ * Generation, embedding and runtime facts for the cloud lane.
+ *
+ * <p>This service knows nothing about prompts beyond the message list it is handed, and nothing
+ * about RAG: retrieval storage is a sibling service the protocol adapter talks to directly. What is
+ * left is the part a transport really owns — send a request, report what came back, answer the three
+ * measurement queries.</p>
+ */
+public final class LLMService {
     private final IGameEnvironment env;
     private final LlmInferenceClient inferenceClient;
-    private final LlmRagService ragService;
-    private final LlmRequestPreparer requestPreparer;
-    private final LlmRuntimeInspector runtimeInspector;
-    private volatile boolean initialized;
+    private final EmbeddingRuntime embeddingRuntime;
+    private final LlmServiceMetadata metadata;
+    private final String cacheNamespace;
 
     private LLMService(Builder builder) {
         this.env = Objects.requireNonNull(builder.env, "env");
         this.inferenceClient = Objects.requireNonNull(builder.inferenceClient, "inferenceClient");
-        LlmServiceMetadata metadata = LlmServiceMetadata.from(builder.config);
-        EmbeddingService embeddingService = new LlmEmbeddingServiceAdapter(inferenceClient);
-        this.ragService = builder.ragStorageService != null
-                ? new LlmRagService(env, inferenceClient, builder.ragStorageService)
-                : new LlmRagService(
-                        env,
-                        inferenceClient,
-                        embeddingService,
-                        builder.usePersistentCache,
-                        builder.cacheDirectory,
-                        builder.cacheNamespace,
-                        builder.ragSearchExecutor,
-                        builder.ragPersistenceScheduler
-                );
-        this.runtimeInspector = new LlmRuntimeInspector(
-                inferenceClient,
-                embeddingService,
-                metadata,
-                builder.cacheNamespace,
-                builder.embeddingConfigured
-        );
-        this.requestPreparer = new LlmRequestPreparer(ragService, metadata);
-        this.initialized = true;
-        env.info("[LLMService] Initialized, cache mode: " + (builder.usePersistentCache ? "PERSISTENT" : "MEMORY"));
+        this.embeddingRuntime = Objects.requireNonNull(builder.embeddingRuntime, "embeddingRuntime");
+        this.metadata = LlmServiceMetadata.from(builder.config);
+        this.cacheNamespace = builder.cacheNamespace == null ? "" : builder.cacheNamespace.trim();
+        env.info("[LLMService] Initialized, endpoint ready=" + inferenceClient.isReady());
     }
 
     public static Builder builder() {
         return new Builder();
     }
 
-    public String chat(String userMessage, String systemPrompt) {
-        return chat(LLMRequest.of(
-                Chunk.message(MessageItem.system(systemPrompt), MessageItem.user(userMessage))
-        )).text();
-    }
+    // --- generation ------------------------------------------------------------------------------
 
-    public LLMResult chat(LLMRequest request) {
-        return chat(request, null);
-    }
-
-    /**
-     * @param cacheSink receives the provider's prompt-cache split for this request; may be null when
-     *                  the caller does not account for token usage
-     */
-    public LLMResult chat(LLMRequest request, Consumer<LlmPromptCacheUsage> cacheSink) {
-        LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
-        publishPreparedRequestDiagnostic(request, prepared);
+    public LLMResult chat(LlmPrompt prompt, Consumer<LlmPromptCacheUsage> cacheSink) {
+        LlmPrompt effective = requirePrompt(prompt);
         try {
-            LlmGenerationResult result = inferenceClient.chatWithUsage(
-                    prepared.messages(),
-                    prepared.sampler(),
-                    prepared.maxTokens(),
-                    prepared.options(),
+            LlmGenerationResult result = inferenceClient.chat(
+                    effective.messages(),
+                    effective.sampling(),
+                    effective.maxTokens(),
+                    effective.captureThinkingContent(),
                     cacheSink
             );
             LLMResult response = new LLMResult(
                     result == null ? "" : result.text(),
                     result == null ? "" : result.thinkingContent(),
-                    prepared.ragHits(),
                     toUsagePayload(result == null ? null : result.usage())
             );
-            publishDialogueDiagnostic("CHAT_COMPLETED", request, response.text());
+            publishDialogueDiagnostic("CHAT_COMPLETED", effective, response.text());
             return response;
         } catch (Exception exception) {
             env.error("[LLMService] Chat failed", exception);
@@ -110,400 +77,46 @@ public class LLMService {
         }
     }
 
-    public void chatStream(LLMRequest request, Consumer<String> onToken) {
-        chatStream(request, onToken, null);
-    }
-
     public LLMStreamResult chatStream(
-            LLMRequest request,
-            Consumer<String> onToken,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
-    ) {
-        return chatStream(request, onToken, null, ragHitsSink);
-    }
-
-    public LLMStreamResult chatStream(
-            LLMRequest request,
+            LlmPrompt prompt,
             Consumer<String> onToken,
             Consumer<String> onThinking,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
-    ) {
-        return chatStream(request, onToken, onThinking, ragHitsSink, null);
-    }
-
-    /**
-     * @param cacheSink receives the provider's prompt-cache split for this request; may be null when
-     *                  the caller does not account for token usage
-     */
-    public LLMStreamResult chatStream(
-            LLMRequest request,
-            Consumer<String> onToken,
-            Consumer<String> onThinking,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) {
-        LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
-        publishPreparedRequestDiagnostic(request, prepared);
-        copyRagHits(prepared, ragHitsSink);
+        LlmPrompt effective = requirePrompt(prompt);
         try {
             LlmStreamFinishHolder finishHolder = new LlmStreamFinishHolder();
-            CompletableFuture<String> future = inferenceClient.chatStreamWithUsage(
-                    prepared.messages(),
-                    prepared.sampler(),
-                    prepared.maxTokens(),
-                    prepared.options(),
+            CompletableFuture<LlmGenerationResult> future = inferenceClient.chatStream(
+                    effective.messages(),
+                    effective.sampling(),
+                    effective.maxTokens(),
+                    effective.captureThinkingContent(),
                     safeTokenConsumer(onToken),
                     safeTokenConsumer(onThinking),
                     finishHolder::set,
                     cacheSink
             );
-            String response = future.get();
-            publishDialogueDiagnostic("STREAM_COMPLETED", request, response);
-            return new LLMStreamResult(response, toStreamFinish(finishHolder.finish()));
+            LlmGenerationResult result = future.get();
+            String text = result == null ? "" : result.text();
+            publishDialogueDiagnostic("STREAM_COMPLETED", effective, text);
+            return new LLMStreamResult(
+                    text,
+                    toStreamFinish(finishHolder.finish(), result == null ? null : result.thinkingContent())
+            );
         } catch (Exception exception) {
             env.error("[LLMService] Stream chat failed", exception);
             throw new RuntimeException("LLM stream chat failed: " + safeMessage(exception), exception);
         }
     }
 
-    public CompletableFuture<String> submitTask(LLMRequest request) {
-        return submitTask(request, null);
-    }
-
-    public CompletableFuture<String> submitTask(
-            LLMRequest request,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
-    ) {
-        LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
-        publishPreparedRequestDiagnostic(request, prepared);
-        copyRagHits(prepared, ragHitsSink);
-        try {
-            return inferenceClient.task(
-                    prepared.messages(),
-                    prepared.sampler(),
-                    prepared.maxTokens(),
-                    prepared.taskPriority(),
-                    prepared.taskPreemptible(),
-                    prepared.options()
-            );
-        } catch (Exception exception) {
-            env.error("[LLMService] Task submit failed", exception);
-            return CompletableFuture.failedFuture(exception);
-        }
-    }
-
-    public CompletableFuture<LlmGenerationResult> submitTaskWithUsage(
-            LLMRequest request,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
-            Consumer<LlmPromptCacheUsage> cacheSink
-    ) {
-        LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
-        publishPreparedRequestDiagnostic(request, prepared);
-        copyRagHits(prepared, ragHitsSink);
-        try {
-            return inferenceClient.taskWithUsage(
-                    prepared.messages(),
-                    prepared.sampler(),
-                    prepared.maxTokens(),
-                    prepared.taskPriority(),
-                    prepared.taskPreemptible(),
-                    prepared.options(),
-                    cacheSink
-            );
-        } catch (Exception exception) {
-            env.error("[LLMService] Task submit failed", exception);
-            return CompletableFuture.failedFuture(exception);
-        }
-    }
-
-    public CompletableFuture<String> submitTaskStream(
-            LLMRequest request,
-            Consumer<String> onToken,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink
-    ) {
-        LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
-        publishPreparedRequestDiagnostic(request, prepared);
-        copyRagHits(prepared, ragHitsSink);
-        try {
-            return inferenceClient.taskStream(
-                    prepared.messages(),
-                    prepared.sampler(),
-                    prepared.maxTokens(),
-                    prepared.taskPriority(),
-                    prepared.taskPreemptible(),
-                    prepared.options(),
-                    safeTokenConsumer(onToken)
-            );
-        } catch (Exception exception) {
-            env.error("[LLMService] Stream task submit failed", exception);
-            return CompletableFuture.failedFuture(exception);
-        }
-    }
-
-    public CompletableFuture<LlmGenerationResult> submitTaskStreamWithUsage(
-            LLMRequest request,
-            Consumer<String> onToken,
-            Consumer<LLMStreamFinish> onFinish,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
-            Consumer<LlmPromptCacheUsage> cacheSink
-    ) {
-        return submitTaskStreamWithUsage(request, onToken, null, onFinish, ragHitsSink, cacheSink);
-    }
-
-    public CompletableFuture<LlmGenerationResult> submitTaskStreamWithUsage(
-            LLMRequest request,
-            Consumer<String> onToken,
-            Consumer<String> onThinking,
-            Consumer<LLMStreamFinish> onFinish,
-            List<LLMPromptResultPayload.RagHitPayload> ragHitsSink,
-            Consumer<LlmPromptCacheUsage> cacheSink
-    ) {
-        LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepare(request);
-        publishPreparedRequestDiagnostic(request, prepared);
-        copyRagHits(prepared, ragHitsSink);
-        try {
-            return inferenceClient.taskStreamWithUsage(
-                    prepared.messages(),
-                    prepared.sampler(),
-                    prepared.maxTokens(),
-                    prepared.taskPriority(),
-                    prepared.taskPreemptible(),
-                    prepared.options(),
-                    safeTokenConsumer(onToken),
-                    safeTokenConsumer(onThinking),
-                    finish -> {
-                        if (onFinish != null) {
-                            onFinish.accept(toStreamFinish(finish));
-                        }
-                    },
-                    cacheSink
-            );
-        } catch (Exception exception) {
-            env.error("[LLMService] Stream task submit failed", exception);
-            return CompletableFuture.failedFuture(exception);
-        }
-    }
-
-    public RagCacheManager getRagCache() {
-        return ragService.cache();
-    }
-
-    private void publishDialogueDiagnostic(String code, LLMRequest request, String response) {
-        String input = request == null ? "" : request.extractMessages().stream()
-                .filter(Objects::nonNull)
-                .map(message -> (message.getRole() == null ? "" : message.getRole()) + ": "
-                        + (message.getContent() == null ? "" : message.getContent()))
-                .reduce((left, right) -> left + "\n" + right)
-                .orElse("");
-        env.diagnostics().publish(DiagnosticEvent.now(
-                LlmProtocolAdapter.MODULE_ID,
-                code,
-                DiagnosticSeverity.INFO,
-                DiagnosticPrivacy.RAW_CONTENT,
-                Map.of("input", input, "output", response == null ? "" : response)
-        ));
-    }
-
-    private void publishPreparedRequestDiagnostic(LLMRequest request, LlmRequestPreparer.PreparedRequest prepared) {
-        if (prepared == null) {
-            return;
-        }
-        env.diagnostics().publish(DiagnosticEvent.now(
-                LlmProtocolAdapter.MODULE_ID,
-                "LLM_REQUEST_PREPARED",
-                DiagnosticSeverity.DEBUG,
-                DiagnosticPrivacy.REDACTED,
-                Map.of(
-                        "lane", request != null && request.isTaskLane() ? "COMPLEX" : "SIMPLE",
-                        "thinking", Boolean.toString(Boolean.TRUE.equals(prepared.sampler().getEnableThinking())),
-                        "captureThinkingContent", Boolean.toString(prepared.options().captureThinkingContent()),
-                        "maxTokens", Integer.toString(prepared.maxTokens()),
-                        "messageCount", Integer.toString(prepared.messages().size()),
-                        "taskPriority", Integer.toString(prepared.taskPriority()),
-                        "taskPreemptible", Boolean.toString(prepared.taskPreemptible())
-                )
-        ));
-    }
-
-    public boolean hasCache(String uid) {
-        return ragService.hasCache(uid);
-    }
-
-    public void upsertRagEntry(String uid, String entryId, String content, float[] vector) {
-        ragService.upsert(uid, entryId, content, vector);
-    }
-
-    public void patchRagEntry(
-            String uid,
-            String entryId,
-            String content,
-            float[] vector,
-            boolean updateContent,
-            boolean updateVector
-    ) {
-        ragService.patch(uid, entryId, content, vector, updateContent, updateVector);
-    }
-
-    public void deleteRagEntry(String uid, String entryId) {
-        ragService.delete(uid, entryId);
-    }
-
-    public void clearRagUid(String uid) {
-        ragService.clear(uid);
-    }
-
-    public boolean hasRagUid(String uid) {
-        return ragService.hasCache(uid);
-    }
-
-    public boolean hasRagEntry(String uid, String entryId) {
-        return ragService.hasEntry(uid, entryId);
-    }
-
-    public List<RagCacheManager.RagEntrySearchResult> searchRagEntries(
-            String uid,
-            String queryText,
-            int topK,
-            float threshold
-    ) {
-        return ragService.searchEntries(uid, queryText, topK, threshold);
-    }
-
-    public List<RagCacheManager.RagEntrySearchResult> searchRagEntries(
-            String uid,
-            String queryText,
-            float[] queryVector,
-            int topK,
-            float threshold
-    ) {
-        return ragService.searchEntries(uid, queryText, queryVector, topK, threshold);
-    }
-
-    public RagLibraryRegistry.RagLibraryMeta registerRagLibrary(
-            String uid,
-            String modid,
-            String visibility,
-            List<String> tags
-    ) {
-        return ragService.registerLibrary(uid, modid, visibility, tags);
-    }
-
-    public void unregisterRagLibrary(String uid) {
-        ragService.unregisterLibrary(uid);
-    }
-
-    public RagLibraryRegistry.RagLibraryMeta ragLibrary(String uid) {
-        return ragService.library(uid);
-    }
-
-    public List<RagLibrarySearchResult> searchRagLibraryByUid(String uid, String queryText, int topK, float threshold) {
-        return mapLibraryResults(ragService.searchLibraryByUid(uid, queryText, topK, threshold));
-    }
-
-    public List<RagLibrarySearchResult> searchSharedRagLibrariesByModid(
-            String modid,
-            String queryText,
-            int topK,
-            float threshold
-    ) {
-        return mapLibraryResults(ragService.searchSharedByModid(modid, queryText, topK, threshold));
-    }
-
-    public List<RagLibrarySearchResult> searchSharedRagLibrariesByTags(
-            List<String> tags,
-            String queryText,
-            int topK,
-            float threshold
-    ) {
-        return mapLibraryResults(ragService.searchSharedByTags(tags, queryText, topK, threshold));
-    }
-
-    public List<RagCacheManager.RagEntrySearchResult> searchInlineRagContents(
-            List<String> contents,
-            String queryText,
-            int topK,
-            float threshold
-    ) {
-        return ragService.searchInline(contents, queryText, topK, threshold);
-    }
-
-    public boolean isReady() {
-        return initialized && runtimeInspector.isReady();
-    }
-
-    public boolean hasChatQueueCapacity() {
-        return runtimeInspector.hasChatQueueCapacity();
-    }
-
-    public boolean hasTaskQueueCapacity() {
-        return runtimeInspector.hasTaskQueueCapacity();
-    }
-
-    public boolean supportsThinking() {
-        return runtimeInspector.supportsThinking();
-    }
-
-    public boolean supportsMtp() {
-        return runtimeInspector.supportsMtp();
-    }
-
-    public LlmMtpCapabilitySnapshot getMtpCapability() {
-        return runtimeInspector.mtpCapability();
-    }
-
-    public LlmEngineCapabilitySnapshot getRuntimeCapabilities() {
-        return runtimeInspector.runtimeCapabilities();
-    }
-
-    public LlmContextBudgetSnapshot getContextBudgetPlan() {
-        return runtimeInspector.contextBudgetPlan();
-    }
-
-    public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) {
-        return runtimeInspector.contextBudgetPlan(lane);
-    }
-
-    public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) {
-        return runtimeInspector.calibrateMtpAsync(request);
-    }
+    // --- embedding -------------------------------------------------------------------------------
 
     public float[] embed(String text) throws Exception {
-        return runtimeInspector.embed(text);
+        return embeddingRuntime.embed(text);
     }
 
     public float[][] embed(List<String> texts) throws Exception {
-        return runtimeInspector.embed(texts);
-    }
-
-    public int getEmbeddingDimension() {
-        return runtimeInspector.embeddingDimension();
-    }
-
-    public LLMPrimitiveResultPayload tokenCountResponse(String requestId, LLMRequest request) {
-        if (!inferenceClient.supportsTokenCounting()) {
-            return LLMPrimitiveResultPayload.failed(
-                    requestId,
-                    LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT,
-                    "LLM_TOKENIZER_UNAVAILABLE",
-                    "The active generation backend does not provide a tokenizer"
-            );
-        }
-        try {
-            LlmRequestPreparer.PreparedRequest prepared = requestPreparer.prepareTokenCount(request);
-            return LLMPrimitiveResultPayload.tokenCount(
-                    requestId,
-                    inferenceClient.countChatPromptTokens(prepared.messages(), prepared.sampler())
-            );
-        } catch (Exception exception) {
-            return LLMPrimitiveResultPayload.failed(
-                    requestId,
-                    LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT,
-                    exception instanceof UnsupportedOperationException
-                            ? "LLM_TOKEN_COUNT_UNSUPPORTED_INPUT"
-                            : "LLM_TOKEN_COUNT_FAILED",
-                    safeMessage(exception)
-            );
-        }
+        return embeddingRuntime.embed(texts);
     }
 
     public LLMPrimitiveResultPayload embedResponse(
@@ -512,31 +125,28 @@ public class LLMService {
             boolean includeVector,
             boolean includeEmbeddingDetails
     ) {
+        if (!embeddingRuntime.available()) {
+            return LLMPrimitiveResultPayload.failed(
+                    requestId,
+                    LLMPrimitiveQueryPayload.QUERY_TYPE_EMBED,
+                    "LLM_EMBEDDING_UNAVAILABLE",
+                    "The local embedding lane is not ready"
+            );
+        }
         try {
-            List<LLMPrimitiveResultPayload.EmbedResultPayload> results = new java.util.ArrayList<>();
-            if (texts != null) {
+            List<LLMPrimitiveResultPayload.EmbedResultPayload> results = new ArrayList<>();
+            if (texts != null && !texts.isEmpty()) {
                 float[][] vectors = embed(texts);
                 for (int index = 0; index < texts.size(); index++) {
                     float[] vector = vectors != null && index < vectors.length ? vectors[index] : null;
                     results.add(LLMPrimitiveResultPayload.EmbedResultPayload.of(
                             texts.get(index),
                             vector,
-                            includeVector,
-                            runtimeInspector.embeddingModelName(),
-                            runtimeInspector.embeddingNamespace()
+                            includeVector && includeEmbeddingDetails,
+                            metadata.embeddingModelName(),
+                            embeddingNamespace()
                     ));
                 }
-            }
-            if (!includeEmbeddingDetails) {
-                results = new java.util.ArrayList<>(results.stream()
-                        .map(result -> new LLMPrimitiveResultPayload.EmbedResultPayload(
-                                result.text(),
-                                result.dimension(),
-                                new float[0],
-                                result.embeddingModelName(),
-                                result.embeddingNamespace()
-                        ))
-                        .toList());
             }
             return LLMPrimitiveResultPayload.embed(requestId, results);
         } catch (Exception exception) {
@@ -549,25 +159,111 @@ public class LLMService {
         }
     }
 
+    // --- measurement -----------------------------------------------------------------------------
+
+    /**
+     * Prompt-size estimate. The provider's own usage is authoritative for billing, but it only
+     * exists after a request; a caller that budgets before sending has nothing else to ask.
+     */
+    public LLMPrimitiveResultPayload tokenCountResponse(String requestId, List<ChatMessage> messages) {
+        try {
+            return LLMPrimitiveResultPayload.tokenCount(
+                    requestId,
+                    inferenceClient.countChatPromptTokens(messages == null ? List.of() : messages)
+            );
+        } catch (Exception exception) {
+            return LLMPrimitiveResultPayload.failed(
+                    requestId,
+                    LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT,
+                    "LLM_TOKEN_COUNT_FAILED",
+                    safeMessage(exception)
+            );
+        }
+    }
+
     public LLMPrimitiveResultPayload runtimeSnapshotResponse(String requestId) {
-        return runtimeSnapshotResponse(requestId, true);
+        return LLMPrimitiveResultPayload.runtime(requestId, runtimeSnapshot());
     }
 
-    public LLMPrimitiveResultPayload runtimeSnapshotResponse(String requestId, boolean includeRuntimeDetails) {
-        return LLMPrimitiveResultPayload.runtime(requestId, toRuntimeSnapshot(includeRuntimeDetails));
+    public LLMRuntimeSnapshotPayload runtimeSnapshot() {
+        int window = metadata.declaredContextWindowTokens();
+        return new LLMRuntimeSnapshotPayload(
+                isReady(),
+                embeddingRuntime.available(),
+                embeddingRuntime.safeDimension(),
+                window,
+                LlmContextBudget.promptTokenBudget(window),
+                metadata.embeddingModelName(),
+                embeddingNamespace(),
+                "",
+                System.currentTimeMillis()
+        );
     }
 
-    public LLMRuntimeSnapshotPayload toRuntimeSnapshot() {
-        return toRuntimeSnapshot(true);
+    public boolean isReady() {
+        return inferenceClient.isReady();
     }
 
-    public LLMRuntimeSnapshotPayload toRuntimeSnapshot(boolean includeRuntimeDetails) {
-        return runtimeInspector.snapshot(includeRuntimeDetails);
+    // --- internals -------------------------------------------------------------------------------
+
+    private LlmPrompt requirePrompt(LlmPrompt prompt) {
+        if (prompt == null) {
+            throw new IllegalArgumentException("LLM_EMPTY_REQUEST");
+        }
+        return prompt;
     }
 
-    public void shutdown() {
-        ragService.shutdown();
-        env.info("[LLMService] Shutdown complete");
+    private String embeddingNamespace() {
+        if (!cacheNamespace.isBlank()) {
+            return cacheNamespace;
+        }
+        return stableSegment(metadata.embeddingModelName());
+    }
+
+    private static String stableSegment(String value) {
+        String normalized = value == null || value.isBlank() ? "default" : value.trim();
+        return Integer.toHexString(Objects.hash(normalized));
+    }
+
+    private void publishDialogueDiagnostic(String code, LlmPrompt prompt, String response) {
+        String input = prompt == null ? "" : prompt.messages().stream()
+                .filter(Objects::nonNull)
+                .map(message -> (message.role == null ? "" : message.role) + ": "
+                        + (message.content == null ? "" : message.content))
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+        env.diagnostics().publish(DiagnosticEvent.now(
+                LlmModuleId.MODULE,
+                code,
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.RAW_CONTENT,
+                Map.of("input", input, "output", response == null ? "" : response)
+        ));
+    }
+
+    private static Consumer<String> safeTokenConsumer(Consumer<String> consumer) {
+        return token -> {
+            if (consumer != null && token != null) {
+                consumer.accept(token);
+            }
+        };
+    }
+
+    private static LLMStreamFinish toStreamFinish(LlmStreamFinish finish, String fallbackThinking) {
+        if (finish == null) {
+            return new LLMStreamFinish(
+                    "COMPLETED",
+                    LLMPromptResultPayload.TokenUsagePayload.empty(),
+                    null,
+                    fallbackThinking == null ? "" : fallbackThinking
+            );
+        }
+        return new LLMStreamFinish(
+                finish.type() == null ? "COMPLETED" : finish.type().name(),
+                toUsagePayload(finish.usage()),
+                finish.error(),
+                finish.thinkingContent()
+        );
     }
 
     public static LLMPromptResultPayload.TokenUsagePayload toUsagePayload(LlmTokenUsage usage) {
@@ -583,43 +279,6 @@ public class LLMService {
         );
     }
 
-    private List<RagLibrarySearchResult> mapLibraryResults(List<LlmRagService.LibrarySearchResult> results) {
-        return results == null || results.isEmpty()
-                ? List.of()
-                : results.stream()
-                        .map(result -> new RagLibrarySearchResult(result.uid(), result.library(), result.entries()))
-                        .toList();
-    }
-
-    private void copyRagHits(
-            LlmRequestPreparer.PreparedRequest prepared,
-            List<LLMPromptResultPayload.RagHitPayload> sink
-    ) {
-        if (sink != null) {
-            sink.addAll(prepared.ragHits());
-        }
-    }
-
-    private Consumer<String> safeTokenConsumer(Consumer<String> consumer) {
-        return token -> {
-            if (consumer != null && token != null) {
-                consumer.accept(token);
-            }
-        };
-    }
-
-    private static LLMStreamFinish toStreamFinish(LlmStreamFinish finish) {
-        if (finish == null) {
-            return LLMStreamFinish.completed(LLMPromptResultPayload.TokenUsagePayload.empty());
-        }
-        return new LLMStreamFinish(
-                finish.type() == null ? "COMPLETED" : finish.type().name(),
-                toUsagePayload(finish.usage()),
-                finish.error(),
-                finish.thinkingContent()
-        );
-    }
-
     private static String safeMessage(Throwable throwable) {
         return throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
     }
@@ -627,22 +286,12 @@ public class LLMService {
     public record LLMResult(
             String text,
             String thinkingContent,
-            List<LLMPromptResultPayload.RagHitPayload> ragHits,
             LLMPromptResultPayload.TokenUsagePayload usage
     ) {
         public LLMResult {
             text = text == null ? "" : text;
             thinkingContent = thinkingContent == null ? "" : thinkingContent;
-            ragHits = ragHits == null ? List.of() : List.copyOf(ragHits);
             usage = usage == null ? LLMPromptResultPayload.TokenUsagePayload.empty() : usage;
-        }
-
-        public LLMResult(
-                String text,
-                List<LLMPromptResultPayload.RagHitPayload> ragHits,
-                LLMPromptResultPayload.TokenUsagePayload usage
-        ) {
-            this(text, "", ragHits, usage);
         }
     }
 
@@ -676,17 +325,6 @@ public class LLMService {
         }
     }
 
-    public record RagLibrarySearchResult(
-            String uid,
-            RagLibraryRegistry.RagLibraryMeta library,
-            List<RagCacheManager.RagEntrySearchResult> entries
-    ) {
-        public RagLibrarySearchResult {
-            uid = uid == null ? "" : uid.trim();
-            entries = entries == null ? List.of() : List.copyOf(entries);
-        }
-    }
-
     private static final class LlmStreamFinishHolder {
         private volatile LlmStreamFinish finish;
 
@@ -703,13 +341,8 @@ public class LLMService {
         private IGameEnvironment env;
         private WeavingConfiguration config;
         private LlmInferenceClient inferenceClient;
-        private boolean usePersistentCache = true;
-        private Path cacheDirectory;
-        private String cacheNamespace = "default";
-        private boolean embeddingConfigured;
-        private Executor ragSearchExecutor = Runnable::run;
-        private RagPersistenceScheduler ragPersistenceScheduler = RagPersistenceScheduler.immediate();
-        private LlmRagStorageService ragStorageService;
+        private EmbeddingRuntime embeddingRuntime;
+        private String cacheNamespace = "";
 
         public Builder env(IGameEnvironment env) {
             this.env = env;
@@ -726,49 +359,23 @@ public class LLMService {
             return this;
         }
 
-        public Builder usePersistentCache(boolean usePersistentCache) {
-            this.usePersistentCache = usePersistentCache;
+        /** The live embedding lane; the same object RAG storage writes through. */
+        public Builder embeddingRuntime(EmbeddingRuntime embeddingRuntime) {
+            this.embeddingRuntime = embeddingRuntime;
             return this;
         }
 
-        public Builder cacheDirectory(Path cacheDirectory) {
-            this.cacheDirectory = cacheDirectory;
-            return this;
-        }
-
+        /** Namespace of the stored vectors; reported in the runtime snapshot. */
         public Builder cacheNamespace(String cacheNamespace) {
             this.cacheNamespace = cacheNamespace;
-            return this;
-        }
-
-        public Builder embeddingConfigured(boolean embeddingConfigured) {
-            this.embeddingConfigured = embeddingConfigured;
-            return this;
-        }
-
-        public Builder ragSearchExecutor(Executor ragSearchExecutor) {
-            this.ragSearchExecutor = ragSearchExecutor == null ? Runnable::run : ragSearchExecutor;
-            return this;
-        }
-
-        public Builder ragPersistenceScheduler(RagPersistenceScheduler ragPersistenceScheduler) {
-            this.ragPersistenceScheduler = ragPersistenceScheduler == null
-                    ? RagPersistenceScheduler.immediate()
-                    : ragPersistenceScheduler;
-            return this;
-        }
-
-        public Builder ragStorage(LlmRagStorageService ragStorageService) {
-            this.ragStorageService = ragStorageService;
             return this;
         }
 
         public LLMService build() {
             Objects.requireNonNull(env, "env must be set");
             Objects.requireNonNull(inferenceClient, "inferenceClient must be set");
-            if (usePersistentCache) {
-                Objects.requireNonNull(cacheDirectory, "cacheDirectory must be set when persistent cache is enabled");
-            }
+            Objects.requireNonNull(embeddingRuntime, "embeddingRuntime must be set");
+            Objects.requireNonNull(config, "config must be set");
             return new LLMService(this);
         }
     }

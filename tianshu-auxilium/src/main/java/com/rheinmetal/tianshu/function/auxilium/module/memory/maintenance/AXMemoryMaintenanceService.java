@@ -25,6 +25,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusSeverity;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -94,8 +95,6 @@ public final class AXMemoryMaintenanceService {
     private static final int COMPACT_MAX_TOKENS = 4096;
     /** 抽取类任务要稳定复述：低温度。 */
     private static final float COMPACT_TEMPERATURE = 0.2F;
-    /** TASK 车道的可抢占优先级。 */
-    private static final int COMPACT_TASK_PRIORITY = 500;
 
     private static final String SOURCE_KIND_COMPACT_EVENT = "compact_event";
 
@@ -391,7 +390,7 @@ public final class AXMemoryMaintenanceService {
             public void onCancelled(AXTurnCancellation cancellation) {
                 future.complete(null);
             }
-        });
+        }, Duration.ofSeconds(TASK_STAGE_TIMEOUT_SECONDS));
         return withTaskTimeout(future, envelope, null);
     }
 
@@ -418,15 +417,11 @@ public final class AXMemoryMaintenanceService {
         }
         return new LLMPromptRequestPayload(
                 "ax.memory.compact." + batch.stmId(),
+                messages,
+                false,
+                false,
                 COMPACT_MAX_TOKENS,
-                COMPACT_TEMPERATURE,
-                false,
-                true,
-                false,
-                "COMPLEX",
-                COMPACT_TASK_PRIORITY,
-                true,
-                List.of(LLMPromptRequestPayload.ChunkPayload.message(messages))
+                new LLMPromptRequestPayload.SamplingPayload(COMPACT_TEMPERATURE, null, null, null)
         );
     }
 
