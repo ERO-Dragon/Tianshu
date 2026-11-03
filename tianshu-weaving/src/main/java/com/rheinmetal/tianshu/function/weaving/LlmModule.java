@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.function.weaving;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.account.DeepSeekBalanceProbe;
 import com.rheinmetal.tianshu.function.weaving.catalog.OpenAiCompatibleModelCatalogClient;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmBuiltinProviders;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
@@ -419,12 +421,15 @@ public final class LlmModule implements TianshuManagedModule {
         if (isBlank(baseUrl) || isBlank(apiKey) || isBlank(model)) {
             return null;
         }
+        LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(config.getLlmProviderId());
+        LlmReasoningWire reasoningWire = profile == null ? LlmReasoningWire.NONE : profile.reasoningWire();
         return new OpenAiCompatibleInferenceClient(
                 baseUrl,
                 apiKey,
                 model,
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
-                env::warn
+                env::warn,
+                reasoningWire
         );
     }
 

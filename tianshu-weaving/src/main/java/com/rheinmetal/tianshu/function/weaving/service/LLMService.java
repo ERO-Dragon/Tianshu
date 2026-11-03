@@ -62,6 +62,7 @@ public final class LLMService {
                     effective.sampling(),
                     effective.maxTokens(),
                     effective.captureThinkingContent(),
+                    effective.reasoningEffort(),
                     cacheSink
             );
             LLMResult response = new LLMResult(
@@ -91,6 +92,7 @@ public final class LLMService {
                     effective.sampling(),
                     effective.maxTokens(),
                     effective.captureThinkingContent(),
+                    effective.reasoningEffort(),
                     safeTokenConsumer(onToken),
                     safeTokenConsumer(onThinking),
                     finishHolder::set,

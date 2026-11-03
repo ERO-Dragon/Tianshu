@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
@@ -74,7 +75,9 @@ class OpenAiCompatibleInferenceClientTest {
                 MODEL,
                 List.of(ChatMessage.system("sys"), ChatMessage.user("hi"), ChatMessage.assistant("hello")),
                 sampling,
-                128
+                128,
+                LlmReasoningWire.NONE,
+                ""
         );
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
 
@@ -95,6 +98,56 @@ class OpenAiCompatibleInferenceClientTest {
         assertEquals("hi", content(messages, 1));
         assertEquals("assistant", role(messages, 2));
         assertEquals("hello", content(messages, 2));
+    }
+
+    @Test
+    void deepSeekWireDisablesThinkingForOffAndFoldsMediumIntoHigh() {
+        JsonObject off = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0,
+                LlmReasoningWire.DEEPSEEK_THINKING, LLMPromptRequestPayload.REASONING_OFF
+        )).getAsJsonObject();
+        assertEquals("disabled", off.getAsJsonObject("thinking").get("type").getAsString());
+        assertFalse(off.has("reasoning_effort"), "off must not send an effort value");
+
+        JsonObject medium = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0,
+                LlmReasoningWire.DEEPSEEK_THINKING, LLMPromptRequestPayload.REASONING_MEDIUM
+        )).getAsJsonObject();
+        assertEquals("enabled", medium.getAsJsonObject("thinking").get("type").getAsString());
+        assertEquals("high", medium.get("reasoning_effort").getAsString());
+
+        JsonObject max = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0,
+                LlmReasoningWire.DEEPSEEK_THINKING, LLMPromptRequestPayload.REASONING_MAX
+        )).getAsJsonObject();
+        assertEquals("max", max.get("reasoning_effort").getAsString());
+    }
+
+    @Test
+    void openAiWireCannotDisableReasoningSoOffMapsToLow() {
+        JsonObject off = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0,
+                LlmReasoningWire.OPENAI_EFFORT, LLMPromptRequestPayload.REASONING_OFF
+        )).getAsJsonObject();
+        assertEquals("low", off.get("reasoning_effort").getAsString());
+        assertFalse(off.has("thinking"));
+
+        JsonObject high = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0,
+                LlmReasoningWire.OPENAI_EFFORT, LLMPromptRequestPayload.REASONING_HIGH
+        )).getAsJsonObject();
+        assertEquals("high", high.get("reasoning_effort").getAsString());
+    }
+
+    @Test
+    void aProviderWithoutReasoningWireSendsNoReasoningField() {
+        JsonObject body = JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0,
+                LlmReasoningWire.NONE, LLMPromptRequestPayload.REASONING_HIGH
+        )).getAsJsonObject();
+
+        assertFalse(body.has("thinking"));
+        assertFalse(body.has("reasoning_effort"));
     }
 
     @Test
@@ -135,7 +188,7 @@ class OpenAiCompatibleInferenceClientTest {
         List<String> tokens = new ArrayList<>();
 
         CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, tokens::add, null, null, null);
+                messages(), sampling(), 0, false, "", tokens::add, null, null, null);
 
         assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).text());
         assertEquals(List.of("Hel", "lo"), tokens);
@@ -150,7 +203,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
 
-        assertEquals("answer", client.chat(messages(), sampling(), 64, false, null).text());
+        assertEquals("answer", client.chat(messages(), sampling(), 64, false, "", null).text());
     }
 
     @Test
@@ -165,7 +218,7 @@ class OpenAiCompatibleInferenceClientTest {
 
         Exception failure = assertThrows(
                 Exception.class,
-                () -> client.chat(messages(), sampling(), 0, false, null)
+                () -> client.chat(messages(), sampling(), 0, false, "", null)
         );
 
         assertTrue(failure.getMessage().contains("status=401"), failure.getMessage());
@@ -190,7 +243,7 @@ class OpenAiCompatibleInferenceClientTest {
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test", diagnostics::add);
 
         CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, token -> { }, null, null, null);
+                messages(), sampling(), 0, false, "", token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         assertTrue(streamed.cancel(true));
@@ -204,7 +257,7 @@ class OpenAiCompatibleInferenceClientTest {
         BlockingSseStream blocking = new BlockingSseStream();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test");
 
-        client.chatStream(messages(), sampling(), 0, false, token -> { }, null, null, null);
+        client.chatStream(messages(), sampling(), 0, false, "", token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         client.shutdown();

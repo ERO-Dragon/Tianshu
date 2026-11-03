@@ -170,6 +170,7 @@ public final class AXDelegateService {
                 false,
                 false,
                 DELEGATE_MAX_TOKENS,
+                LLMPromptRequestPayload.REASONING_HIGH,
                 new LLMPromptRequestPayload.SamplingPayload(DELEGATE_TEMPERATURE, null, null, null)
         );
     }

@@ -84,6 +84,14 @@ public interface WeavingConfiguration {
         return "";
     }
 
+    /**
+     * Provider id of the active model entry. It selects the built-in profile's wire quirks (reasoning
+     * fields, endpoint defaults); an entry that does not name a shipped provider is custom.
+     */
+    default String getLlmProviderId() {
+        return WeavingModelEntry.CUSTOM_PROVIDER_ID;
+    }
+
     /** Provider model id of the active model. Same contract as {@link #getLlmRemoteBaseUrl()}. */
     default String getLlmRemoteModel() {
         return DEFAULT_LLM_REMOTE_MODEL;

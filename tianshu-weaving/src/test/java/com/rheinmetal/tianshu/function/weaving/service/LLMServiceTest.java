@@ -52,6 +52,7 @@ class LLMServiceTest {
         assertEquals(4, result.usage().completionTokens());
         assertEquals(List.of("user:hello"), client.lastMessages);
         assertTrue(client.lastCaptureThinking);
+        assertEquals(LLMPromptRequestPayload.REASONING_LOW, client.lastReasoningEffort);
     }
 
     @Test
@@ -165,7 +166,8 @@ class LLMServiceTest {
                 List.of(new ChatMessage("user", userMessage)),
                 LLMPromptRequestPayload.SamplingPayload.empty(),
                 0,
-                true
+                true,
+                LLMPromptRequestPayload.REASONING_LOW
         );
     }
 
@@ -197,6 +199,7 @@ class LLMServiceTest {
         private int countCalls;
         private List<String> lastMessages = List.of();
         private boolean lastCaptureThinking;
+        private String lastReasoningEffort = "";
         private boolean ready = true;
 
         @Override
@@ -205,11 +208,13 @@ class LLMServiceTest {
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
                 boolean captureThinkingContent,
+                String reasoningEffort,
                 Consumer<LlmPromptCacheUsage> cacheSink
         ) {
             chatCalls++;
             lastMessages = messages.stream().map(message -> message.role + ":" + message.content).toList();
             lastCaptureThinking = captureThinkingContent;
+            lastReasoningEffort = reasoningEffort;
             return new LlmGenerationResult(text, usage, captureThinkingContent ? thinking : "");
         }
 
@@ -219,6 +224,7 @@ class LLMServiceTest {
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
                 boolean captureThinkingContent,
+                String reasoningEffort,
                 Consumer<String> onToken,
                 Consumer<String> onThinking,
                 Consumer<LlmStreamFinish> onFinish,

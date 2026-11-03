@@ -32,11 +32,33 @@
 | `stream` | `false` | `true` 时先返回分片与结束帧，再返回终态结果；两种模式内部都走同一条 HTTP 流 |
 | `captureThinkingContent` | `false` | 要求把供应商的 reasoning 文本放到独立通道；正文永不混入 |
 | `maxTokens` | `0` | 最大生成 token；`0` 表示不额外限制 |
-| `sampling` | 空 | 采样覆盖项，见 2.2 |
+| `reasoningEffort` | 空 | 推理强度：`off` / `low` / `medium` / `high` / `max`；空表示跟随端点默认。见 2.2 |
+| `sampling` | 空 | 采样覆盖项，见 2.3 |
 
 空消息列表会在发出请求前被拒绝，错误码 `LLM_EMPTY_MESSAGES`。
 
-### 2.2 `SamplingPayload`
+### 2.2 推理强度
+
+`reasoningEffort` 是**与供应商无关的意图**，不是厂商字段的镜像：
+
+| 值 | 含义 |
+|---|---|
+| `off` | 不要生成思维链；能关就关，不能关的端点取它最低的档 |
+| `low` / `medium` / `high` | 由浅到深 |
+| `max` | 端点支持的最高档 |
+| 空 | 跟随端点默认（不发送任何推理字段） |
+
+织言按“提供商 profile”选择线上表示，不会根据模型名猜测：
+
+| wire | 线上字段 | 映射 |
+|---|---|---|
+| `DEEPSEEK_THINKING` | `thinking.type` + `reasoning_effort` | `off` → `thinking.type=disabled`，不发送 effort；`low` → `low`；`medium` / `high` → `high`（DeepSeek 官方表把 medium 折到 high）；`max` → `max` |
+| `OPENAI_EFFORT` | `reasoning_effort` | `off` → `low`（该协议无法关闭推理）；`low` / `medium` / `high` → 同名；`max` → `high` |
+| `NONE` | 无 | 不发送，端点默认生效 |
+
+`captureThinkingContent` 与推理强度正交：前者决定是否把 reasoning 文本回传，后者决定生成多深。DeepSeek 思考模式不接受 `temperature` / `frequency_penalty` / `presence_penalty`，这些字段仍会发送但被端点忽略；`top_p` 的行为随模型而变。
+
+### 2.3 `SamplingPayload`
 
 | 字段 | 说明 |
 |---|---|
@@ -47,7 +69,7 @@
 
 `null` 表示跟随模型目录中该模型的默认采样；请求里给出的值优先。协议层只发送这四个字段，其它采样参数不属于 OpenAI 兼容完成接口。
 
-### 2.3 流式语义
+### 2.4 流式语义
 
 - 正文分片：`text` 非空，`finished=false`。
 - thinking 分片：`thinkingContent` 非空，`text` 为空（仅当请求要求捕获）。
@@ -55,7 +77,7 @@
 - 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方可直接按序拼接。
 - 取消或中断时：结束帧 `CANCELLED`，终态结果同样为 `CANCELLED`，正文是本轮已经发出的部分。
 
-### 2.4 终态结果
+### 2.5 终态结果
 
 | 字段 | 说明 |
 |---|---|
@@ -68,7 +90,7 @@
 
 `usage` 来自供应商返回的真实用量；`outputTokens = completionTokens + thinkingTokens`。未报告时为零值，不猜测。
 
-### 2.5 错误码
+### 2.6 错误码
 
 | 码 | 含义 |
 |---|---|

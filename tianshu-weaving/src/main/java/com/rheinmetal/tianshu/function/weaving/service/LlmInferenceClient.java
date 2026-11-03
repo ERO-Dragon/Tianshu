@@ -24,6 +24,7 @@ public interface LlmInferenceClient {
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
             boolean captureThinkingContent,
+            String reasoningEffort,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) throws Exception;
 
@@ -32,6 +33,7 @@ public interface LlmInferenceClient {
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
             boolean captureThinkingContent,
+            String reasoningEffort,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LlmStreamFinish> onFinish,

@@ -42,7 +42,8 @@ public final class LlmPromptFactory {
                 messages,
                 resolveSampling(payload.sampling()),
                 payload.maxTokens(),
-                payload.captureThinkingContent()
+                payload.captureThinkingContent(),
+                payload.reasoningEffort()
         );
     }
 

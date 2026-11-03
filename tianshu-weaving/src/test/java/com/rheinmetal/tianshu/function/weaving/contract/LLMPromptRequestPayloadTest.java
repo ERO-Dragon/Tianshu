@@ -62,6 +62,27 @@ class LLMPromptRequestPayloadTest {
     }
 
     @Test
+    void normalizesReasoningEffortAndDropsUnknownValues() {
+        assertEquals("low", payloadWithEffort(" LOW ").reasoningEffort());
+        assertEquals("off", payloadWithEffort("off").reasoningEffort());
+        assertEquals("", payloadWithEffort("turbo").reasoningEffort(), "unknown effort follows the endpoint default");
+        assertEquals("", payloadWithEffort(null).reasoningEffort());
+        assertTrue(payloadWithEffort("high").hasReasoningOverride());
+    }
+
+    private static LLMPromptRequestPayload payloadWithEffort(String effort) {
+        return new LLMPromptRequestPayload(
+                "request",
+                List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello")),
+                false,
+                false,
+                0,
+                effort,
+                LLMPromptRequestPayload.SamplingPayload.empty()
+        );
+    }
+
+    @Test
     void keepsSamplingValuesInsideTheProviderRange() {
         LLMPromptRequestPayload.SamplingPayload sampling = new LLMPromptRequestPayload.SamplingPayload(
                 0.7F, 0.9F, -1.5F, 1.5F

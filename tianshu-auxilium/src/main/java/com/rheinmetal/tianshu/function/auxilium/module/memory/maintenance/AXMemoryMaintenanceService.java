@@ -421,6 +421,7 @@ public final class AXMemoryMaintenanceService {
                 false,
                 false,
                 COMPACT_MAX_TOKENS,
+                LLMPromptRequestPayload.REASONING_LOW,
                 new LLMPromptRequestPayload.SamplingPayload(COMPACT_TEMPERATURE, null, null, null)
         );
     }

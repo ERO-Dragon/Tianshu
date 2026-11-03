@@ -6,6 +6,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmTokenEstimator;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
@@ -73,6 +74,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private final HttpClient httpClient;
     private final Executor executor;
     private final ExecutorService ownedExecutor;
+    private final LlmReasoningWire reasoningWire;
     private final Set<RemoteStream> activeStreams = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
     /** The endpoint ships no tokenizer, so prompt size is estimated and calibrated from usage. */
@@ -85,7 +87,22 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Duration timeout,
             Consumer<String> diagnostics
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, null, null);
+        this(baseUrl, apiKey, model, timeout, diagnostics, LlmReasoningWire.NONE);
+    }
+
+    /**
+     * @param reasoningWire how this provider expresses reasoning depth; determined by the provider
+     *                      profile, never guessed from the model id
+     */
+    public OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            LlmReasoningWire reasoningWire
+    ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningWire, null, null);
     }
 
     /** Transport seam: tests drive the real stream loop with a stub {@link HttpClient}, no socket. */
@@ -98,11 +115,25 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             HttpClient httpClient,
             Executor executor
     ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics, LlmReasoningWire.NONE, httpClient, executor);
+    }
+
+    OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            LlmReasoningWire reasoningWire,
+            HttpClient httpClient,
+            Executor executor
+    ) {
         this.endpoint = normalizeEndpoint(baseUrl);
         this.apiKey = requireHeaderSafe(apiKey == null ? "" : apiKey.trim());
         this.model = requireText(model, "model");
         this.timeout = clampTimeout(timeout);
         this.diagnostics = diagnostics == null ? message -> { } : diagnostics;
+        this.reasoningWire = reasoningWire == null ? LlmReasoningWire.NONE : reasoningWire;
         this.httpClient = httpClient != null ? httpClient : newHttpClient(this.timeout);
         this.ownedExecutor = executor == null ? newOwnedExecutor() : null;
         this.executor = executor != null ? executor : ownedExecutor;
@@ -131,10 +162,12 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
             boolean captureThinkingContent,
+            String reasoningEffort,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) throws Exception {
         return await(startStream(
-                messages, sampling, maxTokens, captureThinkingContent, null, null, null, cacheSink));
+                messages, sampling, maxTokens, captureThinkingContent, reasoningEffort,
+                null, null, null, cacheSink));
     }
 
     @Override
@@ -143,12 +176,15 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
             boolean captureThinkingContent,
+            String reasoningEffort,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LlmStreamFinish> onFinish,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) {
-        return startStream(messages, sampling, maxTokens, captureThinkingContent, onToken, onThinking, onFinish, cacheSink);
+        return startStream(
+                messages, sampling, maxTokens, captureThinkingContent, reasoningEffort,
+                onToken, onThinking, onFinish, cacheSink);
     }
 
     @Override
@@ -175,6 +211,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
             boolean captureThinkingContent,
+            String reasoningEffort,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LlmStreamFinish> onFinish,
@@ -196,7 +233,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             executor.execute(() -> {
                 try {
                     LlmGenerationResult result = streamChat(
-                            messages, sampling, maxTokens, tokenSink, thinkingSink, stream, cacheSink
+                            messages, sampling, maxTokens, reasoningEffort, tokenSink, thinkingSink, stream, cacheSink
                     );
                     notifyFinish(onFinish, result, null);
                     future.complete(result);
@@ -223,6 +260,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
+            String reasoningEffort,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             RemoteStream stream,
@@ -232,7 +270,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             throw new IllegalStateException("REMOTE_LLM_CLIENT_CLOSED");
         }
         try {
-            HttpRequest request = buildRequest(buildChatRequestBody(model, messages, sampling, maxTokens));
+            HttpRequest request = buildRequest(buildChatRequestBody(
+                    model, messages, sampling, maxTokens, reasoningWire, reasoningEffort));
             HttpResponse<InputStream> response;
             try {
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -327,14 +366,17 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     // --- request construction --------------------------------------------------------------------
 
     /**
-     * OpenAI-compatible chat-completions body. Only the four sampling fields that protocol defines
-     * are forwarded; everything else in the request payload has already been dropped upstream.
+     * OpenAI-compatible chat-completions body: the four sampling fields, plus whatever reasoning
+     * field this provider understands. An unknown or absent effort override leaves the endpoint's
+     * default in place; it is never guessed from the model id.
      */
     static String buildChatRequestBody(
             String model,
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
-            int maxTokens
+            int maxTokens,
+            LlmReasoningWire reasoningWire,
+            String reasoningEffort
     ) {
         JsonObject root = new JsonObject();
         root.addProperty("model", model);
@@ -344,6 +386,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         streamOptions.addProperty("include_usage", true);
         root.add("stream_options", streamOptions);
         applySampling(root, sampling);
+        applyReasoning(root, reasoningWire, reasoningEffort);
         if (maxTokens > 0) {
             root.addProperty("max_tokens", maxTokens);
         }
@@ -386,6 +429,48 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         addClamped(root, "top_p", sampling.topP(), 0.0F, 1.0F);
         addClamped(root, "frequency_penalty", sampling.frequencyPenalty(), -2.0F, 2.0F);
         addClamped(root, "presence_penalty", sampling.presencePenalty(), -2.0F, 2.0F);
+    }
+
+    /**
+     * Translates the provider-neutral effort into this endpoint's fields. The mapping is deliberate:
+     * DeepSeek's own table folds {@code medium} into {@code high}; an OpenAI-style endpoint has no way
+     * to disable reasoning, so {@code off} becomes its lowest effort instead of being silently dropped.
+     */
+    private static void applyReasoning(JsonObject root, LlmReasoningWire wire, String effort) {
+        if (wire == null || wire == LlmReasoningWire.NONE || effort == null || effort.isBlank()) {
+            return;
+        }
+        switch (wire) {
+            case DEEPSEEK_THINKING -> {
+                JsonObject thinking = new JsonObject();
+                boolean off = "off".equals(effort);
+                thinking.addProperty("type", off ? "disabled" : "enabled");
+                root.add("thinking", thinking);
+                if (!off) {
+                    root.addProperty("reasoning_effort", deepSeekEffort(effort));
+                }
+            }
+            case OPENAI_EFFORT -> root.addProperty("reasoning_effort", openAiEffort(effort));
+            default -> {
+                // NONE handled above; no field to send.
+            }
+        }
+    }
+
+    private static String deepSeekEffort(String effort) {
+        return switch (effort) {
+            case "low" -> "low";
+            case "max" -> "max";
+            default -> "high";
+        };
+    }
+
+    private static String openAiEffort(String effort) {
+        return switch (effort) {
+            case "medium" -> "medium";
+            case "high", "max" -> "high";
+            default -> "low";
+        };
     }
 
     private static void addClamped(JsonObject root, String field, Float value, float min, float max) {

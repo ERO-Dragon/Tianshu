@@ -103,6 +103,11 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     }
 
     @Override
+    public String getLlmProviderId() {
+        return modelSettings().activeModel().providerId();
+    }
+
+    @Override
     public void setLlmRemoteApiKey(String apiKey) {
         String value = apiKey == null ? "" : apiKey.trim();
         store.setString(KEY_LEGACY_API_KEY, value);
