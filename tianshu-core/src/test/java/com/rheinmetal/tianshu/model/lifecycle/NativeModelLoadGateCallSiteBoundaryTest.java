@@ -79,10 +79,11 @@ class NativeModelLoadGateCallSiteBoundaryTest {
         // re-takes it when a restart replaces the engine. Both are the retrieval lane.
         assertEquals(1, occurrences(read(LLM_MODULE), "loadQueue.claimPrimary()"));
         assertEquals(1, occurrences(read(LLM_LANE), "loadQueue.claimPrimary()"));
-        // Two settle sites on purpose, one per way the retrieval load can end without running: no engine
-        // could be prepared, or the gate refused the request. Either way the deferred lane must be freed,
-        // which is what the M6 refusal bug was about.
-        assertEquals(2, occurrences(read(LLM_LANE), "loadQueue.settlePrimary()"),
+        // Three settle sites on purpose, one per way the retrieval load can end without running: no engine
+        // could be prepared, the gate refused the request, or the start path threw before queueing anything
+        // (a declined lane submission or an engine that failed to build). Every one of them must free the
+        // deferred lane, which is what the M6 refusal bug was about.
+        assertEquals(3, occurrences(read(LLM_LANE), "loadQueue.settlePrimary()"),
                 "every exit that cannot load must settle the claim, so the deferred lane is never left waiting");
         assertEquals(1, occurrences(read(LLM_LANE), "loadQueue.abandonPrimary()"));
 

@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.function.weaving.rag.LlmRagCacheLayout;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudget;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmFailureText;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeRetryPolicy;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingLoadReport;
@@ -338,7 +339,30 @@ public final class LlmModule implements TianshuManagedModule {
         adapter.publishLoadingActivity(true);
         // Cloud is the only chat lane. There is no local fallback: an unconfigured cloud endpoint
         // fails the lane and tells the player what to fill in, instead of quietly loading a GGUF.
-        startRemoteRuntime(generation);
+        try {
+            startRemoteRuntime(generation);
+        } catch (RuntimeException failure) {
+            // A start that throws must not leave the loading notice up for its whole backstop TTL, and
+            // it must not leave the lane marked as "starting" with no retry behind it.
+            reportUnexpectedStartFailure(failure);
+        }
+    }
+
+    /**
+     * Turns an exception thrown by the start path into the same actionable state a refused start
+     * produces: a failure the player can see, storage capabilities still usable, and one retry.
+     */
+    private void reportUnexpectedStartFailure(RuntimeException failure) {
+        String message = LlmFailureText.of(failure);
+        if (moduleService != null && moduleService.snapshot().state() == LlmRuntimeState.RUNNING) {
+            // The lane came up and only the bookkeeping after it failed; retracting the notice is all
+            // that is left to do, and tearing a working lane down here would be worse than the bug.
+            env.warn("[LLM] Cloud lane reported a late start failure: " + message);
+            adapter.publishLoadingActivity(false);
+            return;
+        }
+        env.warn("[LLM] Cloud lane failed to start: " + message);
+        reportStartFailure(STATUS_KEY_REMOTE_INCOMPLETE, "Cloud LLM failed to start: " + message);
     }
 
     /**
@@ -364,6 +388,24 @@ public final class LlmModule implements TianshuManagedModule {
             markRemoteFailure(REMOTE_SETTING_API_KEY);
             return;
         }
+        // From here on the client owns worker threads and an HTTP connection pool: any failure between
+        // building it and handing it to the service releases it instead of leaving it leased to a lane
+        // that never started.
+        try {
+            bindRemoteRuntime(client, generation);
+        } catch (RuntimeException failure) {
+            client.shutdown();
+            throw failure;
+        }
+    }
+
+    /**
+     * Hands a built client to the live service.
+     *
+     * <p>The embedding lane failing is not a start failure: chat works without retrieval, so the lane
+     * starts with vectors unavailable and the RAG data plane reports it through its own status.</p>
+     */
+    private void bindRemoteRuntime(OpenAiCompatibleInferenceClient client, long generation) {
         boolean embeddingReady = engineProvider.startEmbeddingOnly();
         synchronized (lifecycleLock) {
             if (destroyed || generation != lifecycleGeneration.get() || moduleService == null
@@ -451,7 +493,19 @@ public final class LlmModule implements TianshuManagedModule {
                 ? STATUS_KEY_MISSING_API_KEY
                 : STATUS_KEY_REMOTE_INCOMPLETE;
         env.warn("[LLM] Cloud LLM lane is not configured: missing " + missingSetting);
-        markGenerationCapabilityFailed("Cloud LLM is not configured: missing " + missingSetting);
+        reportStartFailure(statusKey, "Cloud LLM is not configured: missing " + missingSetting);
+    }
+
+    /**
+     * The one end state for a start that did not come up, whatever the cause.
+     *
+     * <p>Generation is the only capability a bad start breaks: the RAG data plane does not depend on
+     * the remote endpoint, so storage stays usable and a caller can keep reading what it already
+     * stored. The adapter's loading notice comes down here, not after a timeout, and the retry budget
+     * is spent through {@link #scheduleRuntimeRetry()} like every other start failure.</p>
+     */
+    private void reportStartFailure(String statusKey, String reason) {
+        markGenerationCapabilityFailed(reason);
         markStorageCapabilitiesReady();
         if (moduleService != null) {
             moduleService.markFailed(statusKey);

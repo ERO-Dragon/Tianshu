@@ -11,6 +11,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayl
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.function.weaving.protocol.LlmCapabilities;
 import com.rheinmetal.tianshu.function.weaving.protocol.LlmModuleId;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmFailureText;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
 import com.rheinmetal.tianshu.function.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
@@ -365,9 +366,9 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             respondTo(
                     envelope,
                     PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
-                    LLMCacheManageResultPayload.failed(payload.uid(), exception.getMessage())
+                    LLMCacheManageResultPayload.failed(payload.uid(), LlmFailureText.of(exception))
             );
-            fail(context, envelope, "LLM_CACHE_MANAGE_FAILED", exception.getMessage(), exception);
+            fail(context, envelope, "LLM_CACHE_MANAGE_FAILED", LlmFailureText.of(exception), exception);
         }
     }
 
@@ -420,10 +421,10 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                             payload.requestId(),
                             payload.queryType(),
                             "LLM_PRIMITIVE_QUERY_FAILED",
-                            exception.getMessage()
+                            LlmFailureText.of(exception)
                     )
             );
-            fail(context, envelope, "LLM_PRIMITIVE_QUERY_FAILED", exception.getMessage(), exception);
+            fail(context, envelope, "LLM_PRIMITIVE_QUERY_FAILED", LlmFailureText.of(exception), exception);
         }
     }
 

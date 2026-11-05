@@ -16,20 +16,24 @@ class LlmPromptFactoryTest {
     void anEmptyMessageListIsRejectedBeforeAnyRequestIsSent() {
         LlmPromptFactory factory = new LlmPromptFactory(() -> "deepseek-flash");
 
-        IllegalArgumentException failure = assertThrows(
-                IllegalArgumentException.class,
+        LlmRequestRejectedException failure = assertThrows(
+                LlmRequestRejectedException.class,
                 () -> factory.create(new LLMPromptRequestPayload(
                         "req", List.of(), false, false, 0, LLMPromptRequestPayload.SamplingPayload.empty()))
         );
 
         assertEquals("LLM_EMPTY_MESSAGES", failure.getMessage());
+        assertEquals("LLM_EMPTY_MESSAGES", failure.code());
     }
 
     @Test
     void aMissingPayloadIsRejected() {
         LlmPromptFactory factory = new LlmPromptFactory(() -> "");
 
-        assertThrows(IllegalArgumentException.class, () -> factory.create(null));
+        LlmRequestRejectedException failure = assertThrows(
+                LlmRequestRejectedException.class, () -> factory.create(null)
+        );
+        assertEquals("LLM_EMPTY_REQUEST", failure.code());
     }
 
     @Test

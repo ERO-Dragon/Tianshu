@@ -103,12 +103,18 @@ class LlmProtocolAdapterTest {
         assertEquals(1, context.completed.get());
         assertEquals(1, client.streamCalls);
         assertTrue(await(() -> chunks.size() == 4), "one thinking frame, two token frames and one terminal frame");
-        assertEquals("reasoning", chunks.get(0).thinkingContent());
-        assertEquals(List.of("Hel", "lo"), List.of(chunks.get(1).text(), chunks.get(2).text()));
-        assertTrue(chunks.get(3).finished());
-        assertEquals("COMPLETED", chunks.get(3).finishType());
-        assertEquals("reasoning", chunks.get(3).thinkingContent());
-        assertEquals(3, chunks.get(3).index());
+        // Frames are published in order, but the runtime dispatches responses on a broker, so they can
+        // reach a handler on different workers. The index is the ordering contract; a caller that
+        // appends by arrival order would corrupt the answer.
+        List<LLMPromptStreamChunkPayload> ordered = chunks.stream()
+                .sorted(java.util.Comparator.comparingInt(LLMPromptStreamChunkPayload::index))
+                .toList();
+        assertEquals("reasoning", ordered.get(0).thinkingContent());
+        assertEquals(List.of("Hel", "lo"), List.of(ordered.get(1).text(), ordered.get(2).text()));
+        assertTrue(ordered.get(3).finished());
+        assertEquals("COMPLETED", ordered.get(3).finishType());
+        assertEquals("reasoning", ordered.get(3).thinkingContent());
+        assertEquals(3, ordered.get(3).index());
     }
 
     @Test
@@ -121,11 +127,17 @@ class LlmProtocolAdapterTest {
         TianshuEnvelope envelope = requestEnvelope(new LLMPromptRequestPayload(
                 "req-empty", List.of(), false, false, 0, LLMPromptRequestPayload.SamplingPayload.empty()
         ));
+        List<LLMPromptResultPayload> results = captureResults(runtime, envelope.envelopeId());
 
         adapter.handleLLMRequest(envelope, context);
 
         assertEquals(1, context.failed.get());
         assertEquals(0, client.chatCalls + client.streamCalls);
+        assertTrue(await(() -> results.size() == 1));
+        assertEquals("FAILED", results.get(0).status());
+        // A refusal keeps its own code: it used to arrive as LLM_REQUEST_FAILED with the reason only in
+        // the message, which made the caller parse text to learn what it got wrong.
+        assertEquals("LLM_EMPTY_MESSAGES", results.get(0).errorCode());
     }
 
     @Test

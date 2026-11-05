@@ -29,14 +29,14 @@ public final class LlmPromptFactory {
 
     public LlmPrompt create(LLMPromptRequestPayload payload) {
         if (payload == null) {
-            throw new IllegalArgumentException("LLM_EMPTY_REQUEST");
+            throw new LlmRequestRejectedException("LLM_EMPTY_REQUEST", "LLM_EMPTY_REQUEST");
         }
         List<ChatMessage> messages = payload.messages().stream()
                 .filter(Objects::nonNull)
                 .map(item -> new ChatMessage(item.role(), item.content()))
                 .toList();
         if (messages.isEmpty()) {
-            throw new IllegalArgumentException("LLM_EMPTY_MESSAGES");
+            throw new LlmRequestRejectedException("LLM_EMPTY_MESSAGES", "LLM_EMPTY_MESSAGES");
         }
         return new LlmPrompt(
                 messages,

@@ -42,7 +42,7 @@
 调用方只使用**序号**：每个模型有一条从 0 开始的有序档位表，`0` 是模型支持的非思考档，其余序号依次是提供商官方的档位名。表长与名称由提供商 profile 的数据决定，织言不写死 `low/medium/high` 这类字面量。
 
 - 请求：`reasoningTier`；`null` 表示“用这个模型的默认档”，不是“什么都不发”——端点自己的默认往往是高档，所以默认档必须显式编码出去；
-- 能力查询：`LLM.STATUS` 返回 `reasoningTierCount`、`reasoningIncludesNoThinking`、`reasoningDefaultTier`、`reasoningLevels`（index = tier，非思考档在 `levels` 中没有条目）；
+- 能力查询：`LLM.PRIMITIVE_QUERY`（`queryType=STATUS`）返回 `reasoningTierCount`、`reasoningIncludesNoThinking`、`reasoningDefaultTier`、`reasoningLevels`（index = tier，非思考档在 `levels` 中没有条目）；
 - 越界：请求超出当前梯子时夹到最近档，模型切换后旧序号不会让请求失败；
 - 无控制：`reasoningTierCount=0` 的模型（例如没有档位数据的自定义提供商）完全不发送推理字段。
 
@@ -76,7 +76,7 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 - 正文分片：`text` 非空，`finished=false`。
 - thinking 分片：`thinkingContent` 非空，`text` 为空（仅当请求要求捕获）。
 - 结束帧：`finished=true`，带 `finishType`（`COMPLETED` / `CANCELLED` / `FAILED`）、累计 thinking 文本与 usage；发生失败时带 `errorMessage`。
-- 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方可直接按序拼接。
+- 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方应按 `index` 拼接——分片经协议运行时派发，可能由不同工作线程送达，按到达顺序拼接会打乱正文。
 - 取消或中断时：结束帧 `CANCELLED`，终态结果同样为 `CANCELLED`，正文是本轮已经发出的部分。
 
 ### 2.5 终态结果
@@ -97,11 +97,14 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 | 码 | 含义 |
 |---|---|
 | `LLM_SERVICE_NOT_READY` | 云端通道尚未就绪 |
+| `LLM_EMPTY_REQUEST` | 请求对象为空 |
 | `LLM_EMPTY_MESSAGES` | 消息列表为空 |
 | `LLM_INFERENCE_FAILED` | 供应商失败、非 2xx、超时或流中断 |
-| `LLM_REQUEST_FAILED` | 请求转换或执行过程失败 |
+| `LLM_REQUEST_FAILED` | 请求转换或执行过程失败（兜底码） |
 | `LLM_REQUEST_CANCELLED` | 调用方取消 |
 | `LLM_REQUEST_INTERRUPTED` | 执行线程中断 |
+
+前三个是**发出前**就被拒绝的请求，一律带自己的码。取消与中断按类型判定：`CancellationException` → `LLM_REQUEST_CANCELLED`，线程中断 → `LLM_REQUEST_INTERRUPTED`，不靠比较错误文本。
 
 ## 3. `LLM.CACHE_MANAGE`
 
@@ -162,8 +165,10 @@ record LLMRuntimeSnapshotPayload(
 - 上下文容量来自所选模型条目声明的 `contextWindowTokens`（tier 值，例如 100K / 200K / 500K）。预算公式为
   `容量 − 512 输出保留 − headroom`，headroom 为 prompt 窗口的 6.25%，钳位 4096..32768 并向上取整到 1024。
 - 向量引擎是本机唯一加载的模型：进世界后延迟数秒在模型加载 lane 上启动；GPU 失败自动回落 CPU（`DEGRADED`），两级都失败才 `UNAVAILABLE`。
+- 向量引擎起不来**不会**让云端通道失败：聊天不依赖检索，此时只有 RAG / `EMBED` 报不可用。
 - 原生模型加载经过进程级串行闸门，与听澜 / 回响的语音模型互斥。
-- 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。
+- 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。请求本身不产生映迹活动，那属于调用方的一轮对话。
+- 取消或线程中断会中止底层 HTTP 交换，而不是让读者线程继续读到超时；中断标志会被恢复，交给上层决定。
 
 ## 6. 边界
 

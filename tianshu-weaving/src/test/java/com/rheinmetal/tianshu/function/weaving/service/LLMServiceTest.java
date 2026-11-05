@@ -18,6 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -151,6 +152,22 @@ class LLMServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.chat(null, null));
     }
 
+    /**
+     * A cancelled stream stays cancelled. It used to be wrapped in a generic runtime failure, which
+     * left the request handler matching the word "cancel" in a message to tell the two apart.
+     */
+    @Test
+    void cancellationKeepsItsTypeInsteadOfBecomingAGenericFailure() {
+        StubInferenceClient client = new StubInferenceClient();
+        client.streamFailure = new CancellationException("REMOTE_LLM_REQUEST_CANCELLED");
+        LLMService service = service(client, new EmbeddingRuntime());
+
+        assertThrows(
+                CancellationException.class,
+                () -> service.chatStream(prompt("hello"), token -> { }, token -> { }, null)
+        );
+    }
+
     private LLMService service(LlmInferenceClient client, EmbeddingRuntime embedding) {
         return LLMService.builder()
                 .env(new FakeGameEnvironment())
@@ -201,6 +218,8 @@ class LLMServiceTest {
         private boolean lastCaptureThinking;
         private Integer lastReasoningTier;
         private boolean ready = true;
+        /** Failure the next streamed call reports instead of an answer. */
+        private RuntimeException streamFailure;
 
         @Override
         public LlmGenerationResult chat(
@@ -231,6 +250,9 @@ class LLMServiceTest {
                 Consumer<LlmPromptCacheUsage> cacheSink
         ) {
             streamCalls++;
+            if (streamFailure != null) {
+                return CompletableFuture.failedFuture(streamFailure);
+            }
             if (onThinking != null && captureThinkingContent && !thinking.isEmpty()) {
                 onThinking.accept(thinking);
             }

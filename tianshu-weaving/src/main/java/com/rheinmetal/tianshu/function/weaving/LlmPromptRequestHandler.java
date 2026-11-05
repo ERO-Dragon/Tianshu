@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
 import com.rheinmetal.tianshu.function.weaving.service.LlmPrompt;
 import com.rheinmetal.tianshu.function.weaving.service.LlmPromptFactory;
+import com.rheinmetal.tianshu.function.weaving.service.LlmRequestRejectedException;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
@@ -12,6 +13,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -57,6 +59,9 @@ final class LlmPromptRequestHandler {
             } else {
                 handleBlocking(service, envelope, prompt, payload, context, usage);
             }
+        } catch (LlmRequestRejectedException rejected) {
+            // A refusal has its own code; reporting it as a generic failure would hide the reason.
+            reject(envelope, payload, context, rejected.code(), rejected.getMessage(), null);
         } catch (Exception exception) {
             reject(envelope, payload, context, "LLM_REQUEST_FAILED", failureMessage(exception), exception);
         }
@@ -213,19 +218,24 @@ final class LlmPromptRequestHandler {
 
     private static Throwable unwrapCompletion(Throwable throwable) {
         Throwable current = throwable;
-        while (current instanceof CompletionException && current.getCause() != null) {
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
+                && current.getCause() != null) {
             current = current.getCause();
         }
         return current;
     }
 
+    /**
+     * Cancellation is decided by type, never by wording.
+     *
+     * <p>The transport reports a cancelled exchange as {@link CancellationException} and an
+     * interrupted caller as {@link InterruptedException}; both are preserved up to here by
+     * {@code LLMService}. Sniffing the message for "cancel" made a provider whose error text merely
+     * contained the word look like a cancellation.</p>
+     */
     private static boolean isCancellation(Throwable throwable) {
         Throwable current = unwrapCompletion(throwable);
-        if (current instanceof CancellationException || current instanceof InterruptedException) {
-            return true;
-        }
-        String message = current == null ? "" : String.valueOf(current.getMessage()).toLowerCase();
-        return message.contains("cancel") || message.contains("interrupt");
+        return current instanceof CancellationException || current instanceof InterruptedException;
     }
 
     private static String cancellationReasonCode(Throwable throwable) {

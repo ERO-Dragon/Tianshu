@@ -16,10 +16,6 @@ public record LLMPromptResultPayload(
         TokenUsagePayload usage
 ) implements ITianshuPayload {
 
-    public static final LLMPromptResultPayload SUCCESS_EMPTY = new LLMPromptResultPayload(
-            "", "COMPLETED", "", "", null, null, TokenUsagePayload.empty()
-    );
-
     public LLMPromptResultPayload {
         requestId = normalize(requestId);
         status = normalizeStatus(status);

@@ -11,10 +11,11 @@ import java.util.Locale;
 /**
  * The only place weaving touches presence's activity contract.
  *
- * <p>Presence is an optional integration here: the cloud lane reports loading, request progress and its ambient
- * reconnecting/error notices when the HUD module is installed, and is completely unaffected when it is absent. The
- * nested implementation is only loaded after the installed-mod check, so an absent presence never causes a
- * class-load.</p>
+ * <p>Presence is an optional integration here: the cloud lane reports its startup and its ambient
+ * reconnecting/error notices when the HUD module is installed, and is completely unaffected when it is
+ * absent. Requests carry no presence activity of their own — a cloud turn is short and belongs to the
+ * caller's own activity, not to the transport. The nested implementation is only loaded after the
+ * installed-mod check, so an absent presence never causes a class-load.</p>
  */
 public abstract class LlmPresenceActivityBridge {
 
@@ -23,7 +24,6 @@ public abstract class LlmPresenceActivityBridge {
 
     public enum Kind {
         LOADING,
-        PROCESSING_TASK,
         RECONNECTING,
         ERROR
     }
@@ -75,7 +75,6 @@ public abstract class LlmPresenceActivityBridge {
         private static PresenceActivityPublisher.Kind kindOf(Kind kind) {
             return switch (kind) {
                 case LOADING -> PresenceActivityPublisher.Kind.LOADING;
-                case PROCESSING_TASK -> PresenceActivityPublisher.Kind.PROCESSING_TASK;
                 case RECONNECTING -> PresenceActivityPublisher.Kind.RECONNECTING;
                 case ERROR -> PresenceActivityPublisher.Kind.ERROR;
             };

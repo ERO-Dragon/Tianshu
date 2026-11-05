@@ -22,7 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 /**
@@ -77,6 +79,10 @@ public final class LLMService {
             );
             publishDialogueDiagnostic("CHAT_COMPLETED", effective, response.text());
             return response;
+        } catch (CancellationException cancelled) {
+            // Cancellation keeps its type: the caller decides, and the protocol face reports it as
+            // CANCELLED rather than as a provider failure.
+            throw cancelled;
         } catch (Exception exception) {
             env.error("[LLMService] Chat failed", exception);
             throw new RuntimeException("LLM chat failed: " + safeMessage(exception), exception);
@@ -103,13 +109,15 @@ public final class LLMService {
                     finishHolder::set,
                     cacheSink
             );
-            LlmGenerationResult result = future.get();
+            LlmGenerationResult result = awaitCompletion(future);
             String text = result == null ? "" : result.text();
             publishDialogueDiagnostic("STREAM_COMPLETED", effective, text);
             return new LLMStreamResult(
                     text,
                     toStreamFinish(finishHolder.finish(), result == null ? null : result.thinkingContent())
             );
+        } catch (CancellationException cancelled) {
+            throw cancelled;
         } catch (Exception exception) {
             env.error("[LLMService] Stream chat failed", exception);
             throw new RuntimeException("LLM stream chat failed: " + safeMessage(exception), exception);
@@ -258,6 +266,36 @@ public final class LLMService {
                 consumer.accept(token);
             }
         };
+    }
+
+    /**
+     * Waits for one streamed answer and keeps the failure's type.
+     *
+     * <p>An interrupted caller cancels the future on the way out: the transport wires cancellation to
+     * the response body, so the exchange stops instead of streaming tokens nobody will read until the
+     * request timeout. The failure is unwrapped from {@link ExecutionException} for the same reason
+     * {@code get()} is not enough — a cancellation has to arrive here as a cancellation.</p>
+     */
+    private static <T> T awaitCompletion(CompletableFuture<T> future) throws Exception {
+        try {
+            return future.get();
+        } catch (InterruptedException interrupted) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new CancellationException("LLM_REQUEST_INTERRUPTED");
+        } catch (ExecutionException failed) {
+            Throwable cause = failed.getCause();
+            if (cause instanceof CancellationException cancelled) {
+                throw cancelled;
+            }
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw failed;
+        }
     }
 
     private static LLMStreamFinish toStreamFinish(LlmStreamFinish finish, String fallbackThinking) {

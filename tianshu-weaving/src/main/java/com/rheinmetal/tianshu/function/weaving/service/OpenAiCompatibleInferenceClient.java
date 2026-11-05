@@ -674,6 +674,12 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private static <T> T await(CompletableFuture<T> future) throws Exception {
         try {
             return future.get();
+        } catch (InterruptedException interrupted) {
+            // Cancelling the future closes the response body, so the reader thread stops instead of
+            // streaming an answer the caller already gave up on.
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new CancellationException("REMOTE_LLM_REQUEST_INTERRUPTED");
         } catch (CancellationException cancelled) {
             throw cancelled;
         } catch (ExecutionException failed) {
