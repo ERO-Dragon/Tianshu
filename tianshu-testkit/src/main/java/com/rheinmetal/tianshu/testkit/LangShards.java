@@ -78,6 +78,24 @@ public final class LangShards {
         return keys.keySet();
     }
 
+    /**
+     * The keys one module owns: its own shard, read directly instead of through the merge.
+     *
+     * <p>Ownership is the question a boundary gate asks ("does this key live in the module that names it?"),
+     * and the merged key set cannot answer it. An absent shard is an empty set rather than an error: a module
+     * that ships no text owns no keys.</p>
+     */
+    public static Set<String> keysIn(String moduleDirectory, String language) {
+        Path file = repositoryRoot()
+                .resolve(moduleDirectory)
+                .resolve("src/main/lang")
+                .resolve(language + ".json");
+        if (!Files.isRegularFile(file)) {
+            return Set.of();
+        }
+        return Set.copyOf(keysOf(file));
+    }
+
     /** The repository root, found by walking up from the working directory to {@code settings.gradle}. */
     public static Path repositoryRoot() {
         Path candidate = Path.of("").toAbsolutePath();

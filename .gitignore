@@ -35,7 +35,10 @@ runs/
 src/generated/
 
 # === 误提交的 Minecraft 源码 ===
+# 只挡解压/反编译出来的 net/ 源码树。入口壳的编译期注解替身（src/neoforgeStubs、src/legacyStubs）也放在 net/ 下，
+# 那是真实源码、删了构建就跑不起来，必须放行——否则干净克隆缺类，本地能编、新机器不能编。
 net/
+!**/src/*Stubs/net/
 
 # === 第三方依赖 JAR (libs/) ===
 libs/*.jar

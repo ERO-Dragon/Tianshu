@@ -144,5 +144,6 @@
   "tianshu.gui.ax.action.dismiss": "Dismiss",
   "tianshu.gui.ax.text_input.title": "Talk to Auxilium",
   "tianshu.gui.ax.text_input.hint": "Type what you want to say, Enter to send, Esc to cancel",
-  "tianshu.gui.ax.output.failed": "Failed to generate a reply; see the log"
+  "tianshu.gui.ax.output.failed": "Failed to generate a reply; see the log",
+  "tianshu.chat.progress.ax.input": "AX received: %s"
 }

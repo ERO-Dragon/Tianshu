@@ -2,7 +2,7 @@
 
 本文说明一个独立外部模组如何可选地接入天枢。天枢只提供协议中心边界与窄接口，不托管外部模组生命周期，不保存外部模组配置，也不定义外部模组业务语义。
 
-> 本文按当前代码核对（NeoForge 1.21.1 / api 契约位于 `tianshu-api`）。文末「已知限制」列出了**没有**提供的能力，接之前先看那一节。
+> 本文按当前代码核对（NeoForge 与 Fabric 两侧 / api 契约位于 `tianshu-api`）。文末「已知限制」列出了**没有**提供的能力，接之前先看那一节。
 
 ## 架构边界
 
@@ -32,7 +32,9 @@
 
 ## 依赖入口
 
-天枢在客户端装配完成后向 NeoForge 事件总线发一个注册事件：
+天枢在客户端装配完成后通知外部模组。两条路到达同一个 `TianshuIntegrationApi` 实例，按加载器选一条：
+
+### NeoForge：注册事件
 
 ```java
 @SubscribeEvent
@@ -44,7 +46,22 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 - 事件类型：`com.rheinmetal.tianshu.neoforge.integration.TianshuIntegrationRegisterEvent`（在 adapter 里，因为它是一个 NeoForge 事件）
 - 窄接口：`com.rheinmetal.tianshu.integration.TianshuIntegrationApi`（在 `tianshu-core`）
 
-也可以静态探测：
+### Fabric（以及任何没有事件的加载器）：静态注册
+
+Fabric 没有可挂第三方事件的通用总线，同一个时机改用静态注册：
+
+```java
+TianshuIntegrationAccess.registerAssembledListener(api -> {
+    // 装配完成，api 与事件里拿到的是同一个对象
+});
+```
+
+- 注册时机：模组加载期（`ModInitializer` / `ClientModInitializer`）最稳；**装配完成后再注册也会立刻回调一次**。
+- 每个监听器对每个已发布实例**只回调一次**；宿主为新的世界会话重新发布时会再次回调。
+- 撤销：`TianshuIntegrationAccess.unregisterAssembledListener(listener)`。
+- 监听器抛异常只记一条诊断，不会打断其他监听器或宿主装配。
+
+也可以静态探测（只适合延迟查询或兜底）：
 
 ```java
 if (TianshuIntegrationAccess.isAvailable()) {
@@ -52,11 +69,11 @@ if (TianshuIntegrationAccess.isAvailable()) {
 }
 ```
 
-推荐用事件。静态入口只适合延迟查询或兜底：宿主关闭时会变回 unavailable，**不要永久缓存一次 `isAvailable()` 的结果**。
+宿主关闭时会变回 unavailable，**不要永久缓存一次 `isAvailable()` 的结果**。
 
 外部模组对天枢的编译依赖分两段：事件 `TianshuIntegrationRegisterEvent` 在 adapter（随 `tianshu` jar 发布），
 需要一个能提供它的依赖；API 与契约类型在 `tianshu-core` / `tianshu-api`。运行时这两个 jar 都可能不在，
-所以清单里必须写 optional。
+所以清单里必须写 optional。**只想两端通用时不要用事件**：静态入口在所有 adapter 上都存在。
 
 ## 调用模块方法：硬性依赖或建桥
 
@@ -146,7 +163,10 @@ List<ModuleStatus> statuses = api.queryModuleStatuses(query);
 
 ## 设置页贡献
 
-天枢的设置页是"模块贡献页面"，不是通用 GUI 框架。外部模组在注册事件里交一个 `TianshuSettingsContributor`：
+天枢的设置页是"模块贡献页面"，不是通用 GUI 框架。外部模组交一个 `TianshuSettingsContributor`；
+两种加载器的入口不同，最终由同一个来源合并（`ExternalSettingsRegistrySource`）。
+
+**NeoForge**：在注册事件里交（每次装配都会重新发事件）：
 
 ```java
 event.registerSettingsContributor((registry, context) ->
@@ -165,6 +185,15 @@ event.registerSettingsContributor((registry, context) ->
                                         config::radius, 8.0D, 64.0D, config::setRadius)))
                 .build()));
 ```
+
+**Fabric（或想两端通用）**：同一个 contributor 静态声明一次，进程内有效：
+
+```java
+ExternalSettingsContributors.register(contributor);
+```
+
+同一个 contributor 在两边都声明也只画一次；页面顺序由 `order` / `moduleId` 决定。
+`ExternalSettingsContributors` 在 `tianshu-client`，撤销用 `unregister`。
 
 要点：
 
@@ -256,6 +285,9 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 }
 ```
 
+Fabric 侧把两行换掉即可：事件换成 `TianshuIntegrationAccess.registerAssembledListener(api -> { ... })`，
+`event.registerSettingsContributor` 换成 `ExternalSettingsContributors.register`，其余调用完全相同。
+
 ## 兼容性原则
 
 1. 没有天枢时仍可独立运行（依赖写成 optional，桥类只在检测到天枢时加载）。
@@ -268,8 +300,10 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 
 ## 当前可用入口
 
-- `TianshuIntegrationRegisterEvent`（adapter）
-- `TianshuIntegrationApi` / `TianshuIntegrationAccess`
+- `TianshuIntegrationRegisterEvent`（adapter，NeoForge 侧）
+- `TianshuIntegrationAccess`：`require` / `isAvailable` / `registerAssembledListener` / `unregisterAssembledListener`
+- `ExternalSettingsContributors.register` / `unregister`（`tianshu-client`，Fabric 与两端通用写法）
+- `TianshuIntegrationApi`
 - `IntegrationModuleDeclaration` / `IntegrationCapability` / `CoreCapabilityProbe`
 - `TriggerRegistration` / `TriggerRegistrationResult` / `TriggerConflict` / `TriggerDeliveryTarget`
 - `ModuleStatus` / `ModuleStatusQuery` / `ModuleStatusSeverity`
@@ -279,7 +313,7 @@ public static void onTianshuIntegration(TianshuIntegrationRegisterEvent event) {
 
 ## 已知限制
 
-- **没有生命周期 / 资源刷新事件**：天枢不发 `CoreLifecycleEventPayload`、`ResourceReloadEventPayload` 这类协议事件，也没有 GUI 描述协议（`GuiContributionDescriptor` 等类型不存在）。需要感知启停时，用 `TianshuIntegrationAccess.isAvailable()` 做延迟判断。
+- **只有"装配完成"这一个生命周期通知**：天枢不发 `CoreLifecycleEventPayload`、`ResourceReloadEventPayload` 这类协议事件，也没有 GUI 描述协议（`GuiContributionDescriptor` 等类型不存在），更没有"正在卸载"的回调。感知启停用 `registerAssembledListener`（完成）与 `isAvailable()`（当前是否可用）。
 - **版本探测是构建注入的**：`CoreCapabilityProbe.coreVersion` 报本 jar 的 mod 版本，`apiVersion` 报由 mod 版本 MAJOR 推导的 api 纪元（1.x.y → `"1"`）。可以据此判断"这一版是不是我编译时的 api 纪元"，但不要拿它做细粒度的功能分支——能力探测请用 `supports(...)`。
 - **模块声明不被校验**：`registerModule` 只记录声明，天枢不会据此限制或路由。
 - **设置页只画界面**：没有任何配置读写、校验或同步能力由天枢提供。

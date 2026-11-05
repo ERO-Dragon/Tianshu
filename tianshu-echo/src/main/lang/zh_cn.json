@@ -126,5 +126,6 @@
   "tianshu.runtime.module.tts.reload_complete": "TTS 模型重载完成",
   "tianshu.runtime.module.tts.reload_failed": "TTS 模型重载失败",
   "tianshu.runtime.module.tts.starting": "回响正在启动",
-  "tianshu.runtime.module.tts.stopped": "回响已停止"
+  "tianshu.runtime.module.tts.stopped": "回响已停止",
+  "tianshu.chat.progress.tts.input": "TTS 输入：%s"
 }

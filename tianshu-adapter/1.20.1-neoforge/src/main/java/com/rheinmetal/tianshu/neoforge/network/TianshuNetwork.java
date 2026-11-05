@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -28,7 +29,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 public final class TianshuNetwork {
 
     /** Bumped when a message changes shape; an older peer simply refuses the channel. */
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = ProtocolWireVersion.VERSION;
 
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(ModIdentity.MOD_ID, "main"),

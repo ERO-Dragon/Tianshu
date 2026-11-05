@@ -4,7 +4,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
+import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -18,6 +20,7 @@ class TianshuIntegrationAccessTest {
         if (current != null) {
             TianshuIntegrationAccess.clear(current);
         }
+        TianshuIntegrationAccess.resetListenersForTests();
     }
 
     @Test
@@ -64,6 +67,84 @@ class TianshuIntegrationAccessTest {
     @Test
     void publishRejectsNull() {
         assertThrows(NullPointerException.class, () -> TianshuIntegrationAccess.publish(null));
+    }
+
+    @Test
+    void assembledListenerRunsOnceWhenTheApiIsPublished() {
+        TianshuIntegrationApi api = apiStub();
+        java.util.List<TianshuIntegrationApi> seen = new java.util.ArrayList<>();
+
+        TianshuIntegrationAccess.registerAssembledListener(seen::add);
+        TianshuIntegrationAccess.publish(api);
+
+        assertEquals(java.util.List.of(api), seen);
+    }
+
+    @Test
+    void listenerRegisteredAfterPublicationRunsImmediately() {
+        TianshuIntegrationApi api = apiStub();
+        TianshuIntegrationAccess.publish(api);
+        java.util.List<TianshuIntegrationApi> seen = new java.util.ArrayList<>();
+
+        TianshuIntegrationAccess.registerAssembledListener(seen::add);
+
+        assertEquals(java.util.List.of(api), seen);
+    }
+
+    @Test
+    void registeringTheSameListenerTwiceKeepsOneRegistration() {
+        TianshuIntegrationApi api = apiStub();
+        java.util.List<TianshuIntegrationApi> seen = new java.util.ArrayList<>();
+        Consumer<TianshuIntegrationApi> listener = seen::add;
+
+        TianshuIntegrationAccess.registerAssembledListener(listener);
+        TianshuIntegrationAccess.registerAssembledListener(listener);
+        TianshuIntegrationAccess.publish(api);
+
+        assertEquals(1, seen.size());
+    }
+
+    @Test
+    void aNewSessionPublishesAgainButOnlyOncePerInstance() {
+        TianshuIntegrationApi first = apiStub();
+        TianshuIntegrationApi second = apiStub();
+        java.util.List<TianshuIntegrationApi> seen = new java.util.ArrayList<>();
+        TianshuIntegrationAccess.registerAssembledListener(seen::add);
+
+        TianshuIntegrationAccess.publish(first);
+        TianshuIntegrationAccess.publish(first);
+        TianshuIntegrationAccess.publish(second);
+
+        assertEquals(java.util.List.of(first, second), seen);
+    }
+
+    @Test
+    void unregisteredListenerIsNoLongerCalled() {
+        TianshuIntegrationApi api = apiStub();
+        java.util.List<TianshuIntegrationApi> seen = new java.util.ArrayList<>();
+        Consumer<TianshuIntegrationApi> listener = seen::add;
+
+        TianshuIntegrationAccess.registerAssembledListener(listener);
+        TianshuIntegrationAccess.unregisterAssembledListener(listener);
+        TianshuIntegrationAccess.publish(api);
+
+        assertTrue(seen.isEmpty());
+    }
+
+    @Test
+    void throwingListenerIsContainedAndDoesNotBlockTheNextOne() {
+        TianshuIntegrationApi api = apiStub();
+        java.util.List<TianshuIntegrationApi> seen = new java.util.ArrayList<>();
+        long failuresBefore = com.rheinmetal.tianshu.api.assembly.SignalFailures.failureCount();
+        TianshuIntegrationAccess.registerAssembledListener(ignored -> {
+            throw new IllegalStateException("broken third-party listener");
+        });
+        TianshuIntegrationAccess.registerAssembledListener(seen::add);
+
+        TianshuIntegrationAccess.publish(api);
+
+        assertEquals(java.util.List.of(api), seen, "assembly must continue after a broken listener");
+        assertEquals(failuresBefore + 1L, com.rheinmetal.tianshu.api.assembly.SignalFailures.failureCount());
     }
 
     private static TianshuIntegrationApi apiStub() {

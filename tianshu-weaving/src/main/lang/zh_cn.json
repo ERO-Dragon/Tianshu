@@ -148,5 +148,6 @@
   "tianshu.runtime.module.llm.download_failed": "LLM 模型下载失败",
   "tianshu.runtime.module.llm.download_busy": "LLM 模型下载已在进行",
   "tianshu.runtime.module.llm.download_queue_full": "LLM 模型下载队列已满",
-  "tianshu.runtime.module.llm.stopped": "织言已停止"
+  "tianshu.runtime.module.llm.stopped": "织言已停止",
+  "tianshu.chat.progress.llm.reply": "LLM 输入：%s；输出：%s"
 }

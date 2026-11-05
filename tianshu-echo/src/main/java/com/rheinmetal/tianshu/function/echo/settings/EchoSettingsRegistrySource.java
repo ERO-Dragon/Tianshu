@@ -797,6 +797,13 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             return UiText.key("tianshu.gui.settings.badge.score", label, score);
         }
 
+        /**
+         * Formats a byte count with the units players see on download pages, where 1 MB is 1000 KB.
+         *
+         * <p>The catalog stores real byte totals, so the divisor has to agree with the label: dividing
+         * by 1024 while printing "MB" made every model look smaller than the bytes it actually writes
+         * to disk (a 426,581,541-byte model was shown as 406.8 MB).</p>
+         */
         private String sizeLabel(long bytes) {
             if (bytes <= 0L) {
                 return "-";
@@ -804,8 +811,8 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             double value = bytes;
             String[] units = {"B", "KB", "MB", "GB"};
             int unit = 0;
-            while (value >= 1024.0D && unit < units.length - 1) {
-                value /= 1024.0D;
+            while (value >= 1000.0D && unit < units.length - 1) {
+                value /= 1000.0D;
                 unit++;
             }
             return unit == 0 ? String.format(Locale.ROOT, "%.0f %s", value, units[unit]) : String.format(Locale.ROOT, "%.1f %s", value, units[unit]);

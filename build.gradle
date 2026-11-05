@@ -117,7 +117,9 @@ tasks.register('verifyFeatureOptionalDependencies') {
         [(module): fileTree("${module}/src/main/java") { include '**/*.java' }.files]
     }
     def modsTomlByModule = featureModules.collectEntries { module ->
-        [(module): fileTree("${module}/src") { include '**/neoforge.mods.toml' }.files]
+        // Both NeoForge manifests: the modern one (FML 10+) and the legacy one (1.20.1-1.20.3) ship in the same jar,
+        // so an edge that is declared in only one of them is missing on half the supported line.
+        [(module): fileTree("${module}/src") { include '**/neoforge.mods.toml', '**/mods.toml' }.files]
     }
     def fabricManifestByModule = featureModules.collectEntries { module ->
         [(module): file("${module}/src/main/resources/fabric.mod.json")]
@@ -184,7 +186,7 @@ tasks.register('verifyFeatureOptionalDependencies') {
                 def modId = "tianshu_${target}".toString()
                 def declared = tomlText =~ /modId\s*=\s*"${modId}"\s*\n\s*type\s*=\s*"(\w+)"/
                 if (!declared.find()) {
-                    violations << "${module} does not declare ${modId} in neoforge.mods.toml"
+                    violations << "${module} does not declare ${modId} in its NeoForge manifests"
                 } else if (declared.group(1) != expectedType) {
                     violations << "${module} declares ${modId} as ${declared.group(1)} but it is ${expectedType}"
                 }
@@ -217,7 +219,7 @@ tasks.register('verifyFeatureOptionalDependencies') {
             (tomlText =~ /modId\s*=\s*"tianshu_([a-z]+)"/).each { match ->
                 def dependency = match[1]
                 if (dependency in shortNames && dependency != owner && !(dependency in allowed)) {
-                    violations << "${module} declares tianshu_${dependency} in neoforge.mods.toml, which is not an edge in the matrix"
+                    violations << "${module} declares tianshu_${dependency} in its NeoForge manifests, which is not an edge in the matrix"
                 }
             }
             ((fabricJson.depends ?: [:]).keySet() + (fabricJson.suggests ?: [:]).keySet()).each { key ->
@@ -389,8 +391,10 @@ tasks.register('verifyUniversalModuleJars') {
             // a String's, so Set.contains would report every interpolated entry as missing.
             def expected = [
                     'META-INF/neoforge.mods.toml',
+                    'META-INF/mods.toml',
                     'fabric.mod.json',
                     "${packagePath}/${shell}NeoForgeMod.class",
+                    "${packagePath}/${shell}ForgeMod.class",
                     "${packagePath}/${shell}FabricMod.class",
                     "${packagePath}/${shell}ModuleRegistration.class",
             ].collect { it.toString() }
@@ -399,6 +403,10 @@ tasks.register('verifyUniversalModuleJars') {
                     violations << "${jarFile.name} is missing ${entry}"
                 }
             }
+            // One universal jar covers the FML 10 boundary with two manifests and two shells: 1.20.1-1.20.3 read
+            // META-INF/mods.toml and scan for net.minecraftforge's @Mod, FML 10+ read neoforge.mods.toml and scan for
+            // net.neoforged's. Neither loader ever loads the other shell, which is why both can live here.
+            // (The sibling Tianshu-libs project ships exactly this shape.)
         }
         if (!violations.isEmpty()) {
             throw new GradleException("Feature jars are not universal:\n" + violations.join('\n'))
@@ -480,9 +488,145 @@ tasks.register('verifyAdapterProperties') {
             if (sharedLayer && !new File(dir.parentFile, "${sharedLayer}/src/main/java").isDirectory()) {
                 violations << "${manifest}: shared_layer '${sharedLayer}' has no src/main/java".toString()
             }
+            // The shipped manifest must say exactly what the jar serves — never a broader line by accident. A jar
+            // covers a range only when the adapter declares one: Fabric's `~<version>` looks like "approximately this
+            // version" but means ">=version, next minor", so a 1.20.1 jar would load on 1.20.6; the 1.21.1/1.21.3
+            // experiment recorded in doc/architecture/多加载器与多版本.md §5.0.1 is why that is fatal. The 26.1 line
+            // is the one place a range is real (26.1 / 26.1.1 / 26.1.2 share a jar), and it states it explicitly.
+            if (dir.name.endsWith('-fabric')) {
+                def templateFile = new File(dir, 'src/main/resources/fabric.mod.json')
+                if (!templateFile.isFile()) {
+                    violations << "${dir}: no src/main/resources/fabric.mod.json".toString()
+                } else {
+                    def minecraftLine = templateFile.getText('UTF-8').readLines().find { it.contains('"minecraft"') }
+                    if (minecraftLine == null) {
+                        violations << "${dir.name}: Fabric manifest does not declare a minecraft dependency".toString()
+                    } else if (!minecraftLine.contains('"minecraft": "${minecraft_version_predicate}"')) {
+                        violations << "${dir.name}: Fabric manifest must take its predicate from minecraft_version_predicate: ${minecraftLine.trim()}".toString()
+                    }
+                }
+                def declaredRange = props.getProperty('fabric_minecraft_version_range')?.trim()
+                if (declaredRange && !(declaredRange ==~ />=\S+ <\S+/)) {
+                    violations << "${dir.name}: fabric_minecraft_version_range must be written as '>=<from> <<to>', not '${declaredRange}'".toString()
+                }
+            } else if (dir.name.endsWith('-neoforge')) {
+                // 1.20.1-1.20.3 ship the legacy-modloader `mods.toml`; everything from 1.20.2's NeoForge line on
+                // ships `neoforge.mods.toml`. Both take the Minecraft range from the same property.
+                def templateFile = ['src/main/templates/META-INF/neoforge.mods.toml',
+                                    'src/main/templates/META-INF/mods.toml']
+                        .collect { new File(dir, it) }
+                        .find { it.isFile() }
+                if (templateFile == null) {
+                    violations << "${dir}: no NeoForge manifest template under src/main/templates/META-INF".toString()
+                } else if (!templateFile.getText('UTF-8').contains('${minecraft_version_range}')) {
+                    violations << "${dir.name}: NeoForge manifest must take its range from minecraft_version_range".toString()
+                }
+                def declaredRange = props.getProperty('minecraft_version_range')?.trim()
+                if (declaredRange && !(declaredRange ==~ /\[\S+,\S+\)/)) {
+                    violations << "${dir.name}: minecraft_version_range must be written as '[<from>,<to>)', not '${declaredRange}'".toString()
+                }
+            }
         }
         if (!violations.isEmpty()) {
             throw new GradleException("Adapter properties are incomplete or inconsistent:\n" + violations.join('\n'))
+        }
+    }
+}
+
+// ---------------------------------------------------------------- shipped matrix
+// The product ships one jar per Minecraft release: Fabric from 1.20 up, NeoForge from 1.20.1 up (NeoForge did not
+// exist for 1.20). "Every version" is therefore a set of per-version jars, never one jar claiming a line — the
+// per-jar claim is checked above. This gate keeps the set itself honest: the floor, no duplicate pins, and no
+// patch-level hole inside a minor line (shipping 1.21.6 while 1.21.5 is missing is the mistake it catches).
+// Cross-minor jumps are releases, not holes; the 26.x line is the exception where the minor number is the release.
+tasks.register('verifyAdapterMatrixCoverage') {
+    group = 'verification'
+    description = 'Each loader must ship a complete, duplicate-free chain of pinned Minecraft versions from its floor.'
+    def adapterDirs = (file('tianshu-adapter').listFiles() ?: [] as File[])
+            .findAll { it.isDirectory() && new File(it, 'adapter.properties').isFile() }
+    inputs.files(adapterDirs.collect { new File(it, 'adapter.properties') })
+    doLast {
+        if (adapterDirs.isEmpty()) {
+            throw new GradleException("No tianshu-adapter/*/adapter.properties found; this gate would pass vacuously")
+        }
+        // 1.20 has no NeoForge (the loader starts at 1.20.1); both floors are product decisions, written down once.
+        def floors = [fabric: '1.20', neoforge: '1.20.1']
+        def parts = { String version -> version.tokenize('.').collect { it.toInteger() } }
+        def compare = { String left, String right ->
+            def a = parts(left)
+            def b = parts(right)
+            for (int index = 0; index < Math.max(a.size(), b.size()); index++) {
+                int x = index < a.size() ? a[index] : 0
+                int y = index < b.size() ? b[index] : 0
+                if (x != y) return Integer.compare(x, y)
+            }
+            return 0
+        }
+        def lineOf = { String version -> def p = parts(version); "${p[0]}.${p[1]}" }
+        def violations = []
+        floors.each { loader, floor ->
+            def pins = adapterDirs.findAll { it.name.endsWith("-${loader}") }.collect { dir ->
+                def props = new Properties()
+                new File(dir, 'adapter.properties').withInputStream { props.load(it) }
+                [dir: dir.name, version: props.getProperty('minecraft_version')?.trim()]
+            }.findAll { it.version }
+            if (pins.isEmpty()) {
+                violations << "no ${loader} adapter found".toString()
+                return
+            }
+            pins.groupBy { it.version }.findAll { it.value.size() > 1 }.each { version, entries ->
+                violations << "${loader} ${version} is pinned by more than one adapter: ${entries*.dir}".toString()
+            }
+            def sorted = pins.sort { a, b -> compare(a.version, b.version) }*.version.unique()
+            if (sorted.first() != floor) {
+                violations << "${loader} matrix starts at ${sorted.first()}, expected the ${floor} floor".toString()
+            }
+            for (int index = 1; index < sorted.size(); index++) {
+                def previous = sorted[index - 1]
+                def current = sorted[index]
+                def p = parts(previous)
+                def c = parts(current)
+                if (lineOf(previous) == lineOf(current)) {
+                    int previousPatch = p.size() > 2 ? p[2] : 0
+                    int currentPatch = c.size() > 2 ? c[2] : 0
+                    if (currentPatch != previousPatch + 1) {
+                        violations << "${loader} ${previous} -> ${current} skips a patch release".toString()
+                    }
+                } else if (p[0] >= 26 && p[0] == c[0] && c[1] != p[1] + 1) {
+                    // 26.x numbers the release in the minor slot, so 26.2 -> 26.4 is the same kind of hole.
+                    violations << "${loader} ${previous} -> ${current} skips a release in the 26.x line".toString()
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("The shipped Minecraft matrix is not the declared one:\n" + violations.join('\n'))
+        }
+    }
+}
+
+// ---------------------------------------------------------------- wire protocol version
+// The wire epoch is one string in one place: ProtocolWireVersion in tianshu-api. Every adapter used to carry its own
+// literal, so a bump meant one edit per loader and Minecraft line, and a missed copy was a silent handshake failure
+// between two sides that each believed they were current. Referencing the constant is the whole rule.
+tasks.register('verifyProtocolVersionSingleSource') {
+    group = 'verification'
+    description = 'Adapters must reference ProtocolWireVersion.VERSION instead of writing the wire version themselves.'
+    inputs.files(commonAdapterSources)
+    adapterProjects.each { adapterProject -> inputs.dir(new File(adapterProject.projectDir, 'src/main/java')) }
+    doLast { task ->
+        def violations = []
+        task.inputs.files.files.each { source ->
+            if (!source.path.endsWith('.java')) return
+            source.eachLine('UTF-8') { line ->
+                if (line =~ /PROTOCOL_VERSION\s*=\s*"/) {
+                    violations << "${source.name}: ${line.trim()}".toString()
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException(
+                    "The wire protocol version is written as a literal in an adapter; reference "
+                            + "ProtocolWireVersion.VERSION instead:\n" + violations.join('\n'))
         }
     }
 }
@@ -495,6 +639,8 @@ tasks.named('check') {
     dependsOn tasks.named('verifyNoPlatformImport')
     dependsOn tasks.named('verifyUniversalModuleJars')
     dependsOn tasks.named('verifyAdapterProperties')
+    dependsOn tasks.named('verifyAdapterMatrixCoverage')
+    dependsOn tasks.named('verifyProtocolVersionSingleSource')
 }
 
 // ---------------------------------------------------------------- test concurrency
