@@ -108,6 +108,7 @@
 ## 📚 文档
 
 - [文档索引](doc/README.md) — 架构、协议、各功能模块、历史与计划的唯一入口
+- [北辰说明](tianshu-core/README.zh-CN.md) — 本体提供什么、支持哪些版本、与功能模组的关系（[English](tianshu-core/README.en.md)）
 - [外部接入指南](EXTERNAL_INTEGRATION_GUIDE.md) — 第三方模组如何依赖天枢与调用接入 API
 - [未完成事项](doc/architecture/未完成事项.md) — 当前进度与收口条件
 
