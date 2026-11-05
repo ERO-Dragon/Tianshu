@@ -120,5 +120,11 @@
   "tianshu.runtime.module.asr.download_busy": "ASR 模型下载已在进行",
   "tianshu.runtime.module.asr.download_queue_full": "ASR 模型下载队列已满",
   "tianshu.runtime.module.asr.starting": "听澜正在启动",
-  "tianshu.runtime.module.asr.stopped": "听澜已停止"
+  "tianshu.runtime.module.asr.stopped": "听澜已停止",
+  "tianshu.runtime.module.ia.starting": "思衡正在启动",
+  "tianshu.runtime.module.ia.ready": "思衡已就绪",
+  "tianshu.runtime.module.ia.stopped": "思衡已停止",
+  "tianshu.chat.progress.asr.recognition": "ASR 识别完成：%s",
+  "tianshu.chat.progress.ia.arbitration.accepted": "IA 已接收：%s（%s）",
+  "tianshu.chat.progress.ia.arbitration.rejected": "IA 已拒绝：%s（%s）"
 }

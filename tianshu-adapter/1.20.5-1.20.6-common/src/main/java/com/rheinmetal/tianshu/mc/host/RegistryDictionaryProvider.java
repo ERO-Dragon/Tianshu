@@ -1,0 +1,32 @@
+package com.rheinmetal.tianshu.mc.host;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Collections;
+
+public final class RegistryDictionaryProvider implements com.rheinmetal.tianshu.api.game.NamedObjectDictionary {
+    private final ClientItemDictionaryBuilder itemBuilder;
+    private final ClientEntityDictionaryBuilder entityBuilder;
+    private volatile Map<String, List<String>> dictionarySnapshot = Map.of();
+
+    public RegistryDictionaryProvider(ClientLanguageSnapshot languageSnapshot) {
+        ClientLanguageSnapshot snapshot = java.util.Objects.requireNonNull(languageSnapshot, "languageSnapshot");
+        itemBuilder = new ClientItemDictionaryBuilder(snapshot);
+        entityBuilder = new ClientEntityDictionaryBuilder(snapshot);
+    }
+
+    @Override
+    public Map<String, List<String>> snapshot() {
+        return dictionarySnapshot;
+    }
+
+    public void refresh() {
+        LinkedHashMap<String, List<String>> dictionary = new LinkedHashMap<>();
+        dictionary.putAll(itemBuilder.build());
+        dictionary.putAll(entityBuilder.build());
+        LinkedHashMap<String, List<String>> immutable = new LinkedHashMap<>();
+        dictionary.forEach((key, aliases) -> immutable.put(key, aliases == null ? List.of() : List.copyOf(aliases)));
+        dictionarySnapshot = Collections.unmodifiableMap(immutable);
+    }
+}

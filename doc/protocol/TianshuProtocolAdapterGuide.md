@@ -274,9 +274,9 @@ public ProtocolTaskHandle submitLlmIoTask(String envelopeId, Runnable task) {
 | 普通短 CPU 任务 | `CPU` |
 | 网络、文件、LLM HTTP stream | `IO` |
 | 音频播放和设备交互 | `AUDIO_IO` |
-| 快速 TTS 合成 | `TTS_FAST` |
-| 自回归 TTS 合成 | `TTS_AUTOREGRESSIVE` |
-| ASR 音频流处理 | `ASR_STREAM` |
+| 快速 TTS 合成 | `AUDIO_SYNTH_FAST` |
+| 自回归 TTS 合成 | `AUDIO_SYNTH_AR` |
+| ASR 音频流处理 | `AUDIO_INPUT_STREAM` |
 | 模型加载和切换 | `MODEL_LOAD` |
 | 长驻监控或子进程监控 | `LONG` |
 | Minecraft 主线程 | `MAIN` |

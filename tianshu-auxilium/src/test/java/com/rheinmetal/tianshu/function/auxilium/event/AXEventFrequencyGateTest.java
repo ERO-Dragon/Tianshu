@@ -21,7 +21,7 @@ class AXEventFrequencyGateTest {
     @Test
     void aSingleRareOccurrenceKeepsItsTier() {
         assertEquals(AXEventTier.RARE, gate.correctedTier(KIND, AXEventTier.RARE, START));
-        assertEquals(AXEventTier.NORMAL, gate.correctedTier("tianshu:respawn", AXEventTier.NORMAL, START));
+        assertEquals(AXEventTier.NORMAL, gate.correctedTier("tianshu:damage_taken", AXEventTier.NORMAL, START));
     }
 
     @Test

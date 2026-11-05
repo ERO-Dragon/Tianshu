@@ -452,8 +452,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
                     context.deliverySnapshot()
             );
         }
-        LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context, contextBudget)
-                .withDialogueIdentity(delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
+        LLMPromptRequestPayload llmPayload = llmRequestBuilder.buildChatRequest(request, context, contextBudget);
         execution.latencyTracker().mark(AXTurnLatencyStage.PROMPT_READY);
         extendSessionIfNeeded(deliveryEnvelope, delivery);
         // 水位取在这一行之前：本轮写进历史的东西（玩家的话，以及除游戏事件外的一切）都归这一轮，
@@ -463,7 +462,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         AXOutputProcessor.AXOutputTurn outputTurn = outputProcessor.startTurn(
                 deliveryEnvelope,
                 AXOutputContext.from(delivery),
-                isChatLane(llmPayload),
+                true,
                 () -> execution.latencyTracker().mark(AXTurnLatencyStage.TTS_SUBMITTED)
         );
         if (statusPublisher != null) {
@@ -537,7 +536,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             // Cancelled before submit: do not send the request at all.
             return new AXStepOutcome.Aborted<>(earlyCancel, AXRunExpiry.NONE);
         }
-        TianshuEnvelope llmEnvelope = llmClient.submit(deliveryEnvelope, llmPayload, pending);
+        TianshuEnvelope llmEnvelope = llmClient.submitInTurn(deliveryEnvelope, llmPayload, pending);
         execution.llmRequestId(llmEnvelope == null ? "" : llmEnvelope.envelopeId());
         AXTurnCancellation lateCancel = execution.cancellationIfCancelled();
         if (lateCancel != null && !execution.llmRequestId().isBlank()) {
@@ -719,10 +718,6 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         }
         AXRawTurn turn = AXRawTurn.dialogue(scope, role, content, iaSessionId, iaTurnId);
         recentDialogueSystem.append(scope, tokenCount > 0 ? turn.withTokenCount(tokenCount) : turn);
-    }
-
-    private boolean isChatLane(LLMPromptRequestPayload payload) {
-        return payload != null && "SIMPLE".equalsIgnoreCase(payload.lane());
     }
 
     private final class PendingTurn implements AXLlmRequestHandler {

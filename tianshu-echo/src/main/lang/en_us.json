@@ -126,5 +126,6 @@
   "tianshu.runtime.module.tts.reload_complete": "TTS model reloaded",
   "tianshu.runtime.module.tts.reload_failed": "TTS model reload failed",
   "tianshu.runtime.module.tts.starting": "Echo starting",
-  "tianshu.runtime.module.tts.stopped": "Echo stopped"
+  "tianshu.runtime.module.tts.stopped": "Echo stopped",
+  "tianshu.chat.progress.tts.input": "TTS input: %s"
 }

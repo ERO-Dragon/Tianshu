@@ -11,6 +11,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -82,13 +83,19 @@ public final class AXLlmClient {
         this.scheduler = scheduler == null ? AXLlmClient::scheduleOnCommonPool : scheduler;
     }
 
-    public TianshuEnvelope submit(TianshuEnvelope parent, LLMPromptRequestPayload payload, AXLlmRequestHandler handler) {
+    public TianshuEnvelope submitInTurn(TianshuEnvelope parent, LLMPromptRequestPayload payload, AXLlmRequestHandler handler) {
         Objects.requireNonNull(parent, "parent");
-        return dispatch(adapter.buildLlmRequest(parent, payload), handler);
+        return dispatch(adapter.buildLlmRequest(parent, payload), handler, parent.header().expireAt());
     }
 
-    public TianshuEnvelope submitDetached(LLMPromptRequestPayload payload, AXLlmRequestHandler handler) {
-        return dispatch(adapter.buildLlmRequest(payload), handler);
+    public TianshuEnvelope submitDetached(
+            LLMPromptRequestPayload payload,
+            AXLlmRequestHandler handler,
+            Duration timeout
+    ) {
+        long lifetimeMillis = timeout == null ? 0L : Math.max(1L, timeout.toMillis());
+        long deadline = nowMillis.getAsLong() + lifetimeMillis;
+        return dispatch(adapter.buildLlmRequest(payload), handler, deadline);
     }
 
     public boolean handleStreamChunk(String attemptEnvelopeId, LLMPromptStreamChunkPayload payload) {
@@ -147,21 +154,6 @@ public final class AXLlmClient {
         requests.values().forEach(request -> cancelAndForget(request, effective));
         requests.clear();
         attempts.clear();
-    }
-
-    public boolean cancelChatRequests(AXTurnCancellation cancellation) {
-        AXTurnCancellation effective = cancellation == null
-                ? AXTurnCancellation.playerInterrupted("AX chat request cancelled")
-                : cancellation;
-        AtomicBoolean cancelled = new AtomicBoolean(false);
-        requests.values().forEach(request -> {
-            if (!"SIMPLE".equals(request.lane())) {
-                return;
-            }
-            cancelAndAwaitTerminalResult(request, effective);
-            cancelled.set(true);
-        });
-        return cancelled.get();
     }
 
     public boolean cancelRequest(String requestEnvelopeId, AXTurnCancellation cancellation) {
@@ -241,14 +233,17 @@ public final class AXLlmClient {
         }
     }
 
-    private TianshuEnvelope dispatch(TianshuEnvelope envelope, AXLlmRequestHandler handler) {
+    /**
+     * @param deadline when this request gives up, in epoch millis. A turn request uses its parent
+     *                 envelope's expiry; a detached request uses the lifetime its caller supplied.
+     */
+    private TianshuEnvelope dispatch(TianshuEnvelope envelope, AXLlmRequestHandler handler, long deadline) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(handler, "handler");
         PendingRequest request = new PendingRequest(
                 envelope.envelopeId(),
                 handler,
-                envelope.header().expireAt(),
-                payloadLane(envelope),
+                deadline,
                 requestPayload(envelope),
                 envelope.header().traceId(),
                 envelope.header().parentId()
@@ -365,7 +360,7 @@ public final class AXLlmClient {
         attributes.put("attempt", Integer.toString(nextAttempt));
         attributes.put("maxAttempts", Integer.toString(AXLlmRetryPolicy.MAX_ATTEMPTS));
         attributes.put("delayMs", Long.toString(delayMillis));
-        attributes.put("lane", request.lane());
+        attributes.put("turnOwned", Boolean.toString(request.parentId() != null));
         attributes.put("reason", bounded(reasonOf(payload), 64));
         diagnostics.publish(DiagnosticEvent.now(
                 AXModule.MODULE_ID,
@@ -401,13 +396,6 @@ public final class AXLlmClient {
         return "AX_" + cancellation.releaseReason().name();
     }
 
-    private String payloadLane(TianshuEnvelope envelope) {
-        if (envelope != null && envelope.payload() instanceof LLMPromptRequestPayload payload) {
-            return payload.lane();
-        }
-        return "SIMPLE";
-    }
-
     private static LLMPromptRequestPayload requestPayload(TianshuEnvelope envelope) {
         return envelope != null && envelope.payload() instanceof LLMPromptRequestPayload payload ? payload : null;
     }
@@ -433,7 +421,6 @@ public final class AXLlmClient {
         private final String requestId;
         private final AXLlmRequestHandler handler;
         private final long expireAtMillis;
-        private final String lane;
         private final LLMPromptRequestPayload payload;
         private final String traceId;
         private final String parentId;
@@ -447,7 +434,6 @@ public final class AXLlmClient {
                 String requestId,
                 AXLlmRequestHandler handler,
                 long expireAtMillis,
-                String lane,
                 LLMPromptRequestPayload payload,
                 String traceId,
                 String parentId
@@ -455,7 +441,6 @@ public final class AXLlmClient {
             this.requestId = Objects.requireNonNull(requestId, "requestId");
             this.handler = Objects.requireNonNull(handler, "handler");
             this.expireAtMillis = expireAtMillis;
-            this.lane = lane == null || lane.isBlank() ? "SIMPLE" : lane.trim().toUpperCase();
             this.payload = payload;
             this.traceId = traceId;
             this.parentId = parentId;
@@ -467,10 +452,6 @@ public final class AXLlmClient {
 
         private AXLlmRequestHandler handler() {
             return handler;
-        }
-
-        private String lane() {
-            return lane;
         }
 
         private LLMPromptRequestPayload payload() {
@@ -536,9 +517,6 @@ public final class AXLlmClient {
         }
 
         private boolean expired(long nowMillis) {
-            if ("COMPLEX".equals(lane)) {
-                return false;
-            }
             return expireAtMillis > 0L && expireAtMillis < nowMillis;
         }
     }

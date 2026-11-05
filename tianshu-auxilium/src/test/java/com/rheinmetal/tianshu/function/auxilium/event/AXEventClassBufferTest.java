@@ -67,7 +67,7 @@ class AXEventClassBufferTest {
     void aUserTurnDrainsBothAreasInArrivalOrder() {
         AXEventClassBuffer buffer = new AXEventClassBuffer(AXEventSettings.DEFAULT, () -> 0L);
         buffer.holdImmediate("tianshu:death", "one", START);
-        buffer.defer("tianshu:respawn", "two", START + 10L);
+        buffer.defer("tianshu:damage_taken", "two", START + 10L);
         buffer.holdImmediate("tianshu:death", "three", START + 20L);
 
         assertEquals(List.of("one", "two", "three"), texts(buffer.takeForUserTurn()));

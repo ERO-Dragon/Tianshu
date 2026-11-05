@@ -132,15 +132,12 @@ Payload 必须实现 `ITianshuPayload`，推荐使用不可变 `record`。禁止
 | `INPUT.ASR_FINAL_TEXT` | `ASR_TEXT` | ASR 最终识别文本。 |
 | `IR.RESULT` | `IR_RESULT` | IR 结构化文本分析结果；IA 订阅并负责对话仲裁。 |
 | `SYSTEM.RUNTIME_INTERRUPT` | `CUSTOM` | 运行时中断。 |
-| `LLM.STATUS` | `LLM_STATUS` | LLM libs 推理事件状态。 |
 | `TTS.PLAYBACK` | `TTS_PLAYBACK_STATUS` | TTS 播放状态。 |
 | `MODULE_STATUS` | `MODULE_STATUS` | 模块生命周期和健康状态，供设置、诊断和日志观察。 |
 | `PRESENCE.ACTIVITY` | `PRESENCE_ACTIVITY` | 显式产品活动；映迹据此生成主状态（含聆听）与后台并行标记。 |
 | `PRESENCE.INTERACTION_CONTEXT` | `PRESENCE_INTERACTION_CONTEXT` | 交互上下文摘要；映迹在准星、主手、装备、屏幕变化时推送，IA 据它维护预中标人。 |
 | `DIALOGUE.SESSION_EVENTS` | `DIALOGUE_SESSION_EVENT` | IA 会话事件。 |
 | `PRESENCE.PARTNER` | `PRESENCE_PARTNER` | 当前预中标人，或中标人及其租期截止时间；听澜写入、映迹渲染，取代旧的 `DIALOGUE.OWNER_PREVIEW`。 |
-
-`LLM.STATUS` 只发布 libs `inferenceEventListener` 回调产生的真实推理事件，例如 `QUEUED`、`STARTED`、`PREFILL_STARTED`、`GENERATION_STARTED`、`SUSPENDED`、`COLD_RESUME_STARTED`、`COMPLETED`、`CANCELLED`、`FAILED`。协议层请求接收、admission 排队和响应完成状态由 response payload 与 envelope lifecycle 表达，不混入该 topic。
 
 `MODULE_STATUS` 使用 `ModuleStatusPayload`。它是观察性状态，不替代 `RuntimeCapabilityRegistry` 的请求准入判断。模块应在真实生命周期边界发布已有的 waiting/starting/ready/failed 状态：模型下载完成但运行时尚未初始化或预热时仍发布 waiting，只有对应 capability 已可用后才能发布 ready。状态中的 `messageKey` 由订阅者本地化；common 不依赖具体 HUD 或 GUI。
 

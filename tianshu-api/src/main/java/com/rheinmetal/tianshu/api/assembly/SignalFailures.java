@@ -46,7 +46,14 @@ public final class SignalFailures {
         return FAILURES.get();
     }
 
-    static void report(String bus, String channel, RuntimeException failure) {
+    /**
+     * Reports a contained failure from a synchronous fan-out.
+     *
+     * <p>The signal buses call this; so does any other place that hands one event to code it does not own
+     * (the host's third-party integration callbacks, for example). Keeping one boundary instead of one per
+     * feature is what makes "a subscriber failed" observable in exactly one place.</p>
+     */
+    public static void report(String bus, String channel, RuntimeException failure) {
         FAILURES.incrementAndGet();
         try {
             handler.onSubscriberFailure(bus, channel, failure);

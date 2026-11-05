@@ -14,32 +14,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LLMServiceCleanBoundaryTest {
     @Test
-    void serviceDelegatesRagRequestPreparationAndRuntimeInspection() {
+    void serviceOwnsTransportEmbeddingAndMetadataOnly() {
         Set<String> collaboratorTypes = Arrays.stream(LLMService.class.getDeclaredFields())
                 .map(field -> field.getType().getSimpleName())
                 .collect(Collectors.toSet());
 
-        assertTrue(collaboratorTypes.contains("LlmRagService"), collaboratorTypes.toString());
-        assertTrue(collaboratorTypes.contains("LlmRequestPreparer"), collaboratorTypes.toString());
-        assertTrue(collaboratorTypes.contains("LlmRuntimeInspector"), collaboratorTypes.toString());
+        assertTrue(collaboratorTypes.contains("LlmInferenceClient"), collaboratorTypes.toString());
+        assertTrue(collaboratorTypes.contains("EmbeddingRuntime"), collaboratorTypes.toString());
+        assertTrue(collaboratorTypes.contains("LlmServiceMetadata"), collaboratorTypes.toString());
+        assertFalse(collaboratorTypes.contains("LlmRagService"), "retrieval is a sibling service, not a dependency");
     }
 
     @Test
-    void productionServiceDoesNotImplementAWholeFallbackGameConfig() {
-        Set<String> nestedTypes = Arrays.stream(LLMService.class.getDeclaredClasses())
-                .map(Class::getSimpleName)
-                .collect(Collectors.toSet());
-
-        assertFalse(nestedTypes.contains("DefaultLlmConfig"), nestedTypes.toString());
-    }
-
-    @Test
-    void serviceContainsNoLanguageSpecificRagFallback() throws Exception {
+    void serviceContainsNoLanguageSpecificPromptFallback() throws Exception {
         String source = Files.readString(
                 Path.of("src/main/java/com/rheinmetal/tianshu/function/weaving/service/LLMService.java"),
                 StandardCharsets.UTF_8
         );
 
         assertFalse(source.contains("以下是与当前请求相关的检索上下文"));
+        assertFalse(source.contains("你对玩家说"));
     }
 }

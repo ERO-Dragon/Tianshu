@@ -259,7 +259,7 @@ PRESENCE.INTERACTION_CONTEXT
 
 ### 5.3 产品状态图标
 
-映迹对外只提供一套产品状态，不为每个模块分别建立 HUD 状态。状态来自模块显式发布的 `PRESENCE.ACTIVITY`，不会从 `MODULE.STATUS`、`LLM.STATUS` 或 `TTS.PLAYBACK` 推断。
+映迹对外只提供一套产品状态，不为每个模块分别建立 HUD 状态。状态来自模块显式发布的 `PRESENCE.ACTIVITY`，不会从 `MODULE_STATUS`、模块自己的状态 topic 或 `TTS.PLAYBACK` 推断。
 
 主状态（互斥，只有一个）：
 

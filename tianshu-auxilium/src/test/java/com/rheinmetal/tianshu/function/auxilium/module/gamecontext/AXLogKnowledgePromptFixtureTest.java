@@ -81,11 +81,9 @@ class AXLogKnowledgePromptFixtureTest {
         ));
 
         LLMPromptRequestPayload payload = builder.buildChatRequest(request, context, budget);
-        List<LLMPromptRequestPayload.MessageItemPayload> messages = payload.chunks().get(0).messageContent();
+        List<LLMPromptRequestPayload.MessageItemPayload> messages = payload.messages();
         String joined = renderMessages(messages);
 
-        assertEquals(1, payload.chunks().size());
-        assertEquals("message", payload.chunks().get(0).type());
         assertOrdered(joined, "<ax_system>", "<game_context>", "<player_memory>", request.userText());
         assertTrue(joined.contains("<game_context>"));
         assertTrue(joined.contains("以下信息与玩家当前所处的情况相关"));
@@ -122,8 +120,8 @@ class AXLogKnowledgePromptFixtureTest {
     private static List<Path> candidateLogFiles() {
         Path root = workspaceRoot();
         return List.of(
-                root.resolve("tianshu-adapter/neoforge-1.21.1/run/logs/latest.log"),
-                root.resolve("tianshu-adapter/neoforge-1.21.1/run/logs/debug.log")
+                root.resolve("tianshu-adapter/1.21-1.21.1-neoforge/run/logs/latest.log"),
+                root.resolve("tianshu-adapter/1.21-1.21.1-neoforge/run/logs/debug.log")
         );
     }
 
@@ -175,11 +173,11 @@ class AXLogKnowledgePromptFixtureTest {
 
     private static Path workspaceRoot() {
         Path current = Path.of("").toAbsolutePath().normalize();
-        if (Files.isDirectory(current.resolve("tianshu-adapter/neoforge-1.21.1/run/logs"))) {
+        if (Files.isDirectory(current.resolve("tianshu-adapter/1.21-1.21.1-neoforge/run/logs"))) {
             return current;
         }
         Path parent = current.getParent();
-        if (parent != null && Files.isDirectory(parent.resolve("tianshu-adapter/neoforge-1.21.1/run/logs"))) {
+        if (parent != null && Files.isDirectory(parent.resolve("tianshu-adapter/1.21-1.21.1-neoforge/run/logs"))) {
             return parent;
         }
         return current;

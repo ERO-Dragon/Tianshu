@@ -1,597 +1,188 @@
 # LLM 协议接口设计
 
-> **当前实现**：对话推理走云端 OpenAI 兼容端点（默认 DeepSeek），本地只运行 embedding / RAG；本文中仍保留的本地 chat 模型、chat GGUF、MTP、保帧率等描述属于旧本地引擎的兼容说明，不代表当前行为。
+> 织言是**云端推理传输 + 向量/RAG 数据面**。它不组装提示词、不管理上下文、不编排工具；这些由调用方（辅星或其它模组）自己负责。本文件描述当前实现，历史本地引擎语义不再保留。
 
-### 快速摘要
-
-- 文本生成
-
-  - LLM 为 AX 和其他功能提供语言模型推理，支持即时对话和后台任务两条链路。
-  - CHAT 面向玩家当前对话，直接处理；TASK 面向记忆压缩、整理和其他后台工作，可以等待和按任务优先级调度。
-  - 请求可以只返回完整结果，也可以边生成边返回正文；结束时会给出最终状态、已经生成的文本和 token 使用情况。
-
-- 模型能力
-
-  - 对话生成走云端 OpenAI 兼容端点（默认 DeepSeek），本地只运行 embedding 模型负责文本向量化；两者分开管理。
-  - `STATUS` 始终可以查询当前端点、模型和可用能力；端点 / Key / 模型未就绪时，CHAT 和 TASK 会明确不可用。
-  - 云端不提供精确 tokenizer：`TOKEN_COUNT` 按本地估算口径给出，并用 provider 返回的用量校准；不使用 embedding 的计数代替。
-
-- RAG 与知识库
-
-  - LLM 可以注册和管理持久知识库，也可以只检索一次请求携带的临时文本而不写入知识库。
-  - 检索会结合文本关键词匹配和 embedding 相似度；embedding 暂时不可用时仍可退化为文本检索。
-  - 模型未加载时，知识库查询、删除、清空和已有文本索引仍可使用；需要生成新向量的操作取决于本地 embedding 是否可用。
-
-- 加载与状态
-
-  - 进入世界后先建立运行会话，再等待游戏进入稳定状态后自动加载本地向量模型，避免拖慢进入世界过程。
-  - 模块健康和失败继续通过模块状态公开；真实加载和 TASK 执行另外通过产品活动公开。
-  - CHAT 不直接控制映迹的“思考/回复”，这两个状态由获得 IA delivery 的 AX 负责。
-
-## 1. 概述
-
-外部模块不直接调用 `LLMService`。AX、IA 或其他模块需要 LLM 能力时，只通过协议中心和 LLM 模块通信。
-
-`LLMRequest` 是 `LlmProtocolAdapter` 转入 LLM 模块内部后使用的实现对象，不属于外部模块协议接口。外部模块只需要构造本文件中的 protocol payload。
-
-LLM 模块对外提供三个协议能力：
+## 1. 能力一览
 
 | 能力 | Payload | 说明 |
-|------|---------|------|
-| `"LLM.REQUEST"` | `LLMPromptRequestPayload` | 发起聊天、流式聊天、后台 TASK |
-| `"LLM.CACHE_MANAGE"` | `LLMCacheManagePayload` | 管理、查询持久 RAG 条目；提供无副作用内联 RAG 召回 |
-| `"LLM.PRIMITIVE_QUERY"` | `LLMPrimitiveQueryPayload` | token 计数、embedding 向量化、运行态快照 |
+|---|---|---|
+| `LLM.REQUEST` | `LLMPromptRequestPayload` | 一次推理：消息列表 + 采样 + 流式开关 |
+| `LLM.CACHE_MANAGE` | `LLMCacheManagePayload` | RAG 库注册与条目的增删改查、检索 |
+| `LLM.PRIMITIVE_QUERY` | `LLMPrimitiveQueryPayload` | token 估算、embedding、运行态快照 |
 
 响应类型：
 
-| 请求能力 | 响应 Payload | 说明 |
-|----------|--------------|------|
-| `"LLM.REQUEST"` | `LLMPromptResultPayload` | 最终结果，包含状态、文本、RAG hits、usage |
-| `"LLM.REQUEST"` + `stream=true` | `LLMPromptStreamChunkPayload` | 流式 token 分片；结束包包含 terminal 状态和 usage，随后还有最终 `LLMPromptResultPayload` |
-| `"LLM.CACHE_MANAGE"` | `LLMCacheManageResultPayload` | cache 管理结果 |
-| `"LLM.PRIMITIVE_QUERY"` | `LLMPrimitiveResultPayload` | 原语查询结果，按请求类型返回 token、vector 或状态快照 |
+| 请求 | 响应 |
+|---|---|
+| `LLM.REQUEST` | `LLMPromptResultPayload`（终态结果） |
+| `LLM.REQUEST` + `stream=true` | `LLMPromptStreamChunkPayload`（分片 + 结束帧），随后仍有终态结果 |
+| `LLM.CACHE_MANAGE` | `LLMCacheManageResultPayload` |
+| `LLM.PRIMITIVE_QUERY` | `LLMPrimitiveResultPayload` |
 
-### 1.1 模块内部职责边界
+模块 id 为 `module.llm`，能力名由本模块在装配期注册。
 
-`LLMService` 是稳定的模块内 facade，现有调用方不需要迁移。其内部职责按下面的边界协作：
+## 2. `LLM.REQUEST`
 
-- `LlmRequestPreparer`：规范化消息、合并 system message、组装 sampler、RAG chunk 和 inference options。
-- `LlmRagService`：管理 RAG cache/library、检索、token budget、RAG hits 和注入文本组装。
-- `LlmRuntimeInspector`：提供 readiness、队列、MTP、context budget、embedding metadata 和 runtime snapshot。
-- `LlmEmbeddingServiceAdapter`：隔离 embedding 调用边界。
+### 2.1 请求字段
 
-`LlmProtocolAdapter` 只保留 capability/topic 注册、协议 transport 和稳定 public API。协议 payload 映射由 `LlmPromptPayloadMapper` 完成，SIMPLE/COMPLEX 准入、执行、取消和错误分类由 `LlmPromptRequestHandler` 完成，流式累计状态由 `LlmStreamState` 同步维护。
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `requestId` | `"llm.request"` | 调用方生成的请求标识，用于响应关联与日志 |
+| `messages` | 空 | 要发送的消息，**按顺序原样发送**；角色只接受 `system` / `user` / `assistant`，未知角色降级为 `user` |
+| `stream` | `false` | `true` 时先返回分片与结束帧，再返回终态结果；两种模式内部都走同一条 HTTP 流 |
+| `captureThinkingContent` | `false` | 要求把供应商的 reasoning 文本放到独立通道；正文永不混入 |
+| `maxTokens` | `0` | 最大生成 token；`0` 表示不额外限制 |
+| `reasoningTier` | `null` | 该模型推理档位的序号；`null` = 端点默认。见 2.2 |
+| `sampling` | 空 | 采样覆盖项，见 2.3 |
 
-这些拆分不改变 chat/task、stream、thinking、usage、finish、取消、MTP 或 RAG 协议语义。模型推理、embedding、RAG 检索、持久化和模型下载都必须在受管后台执行 lane 中运行，不得占用 Minecraft 主线程。
+空消息列表会在发出请求前被拒绝，错误码 `LLM_EMPTY_MESSAGES`。
 
-能力就绪按实际归属判断，而不是由单一 generation 模型状态覆盖全部能力：`SIMPLE`/`COMPLEX` 依赖 generation backend；`EMBED` 依赖本地 embedding；RAG storage、library 管理和 BM25 属于 LLM 基础设施；`STATUS` 始终可查询。`TOKEN_COUNT` 只在当前 generation backend 提供 tokenizer 时可用，不使用 embedding token 数代替。
+### 2.2 推理档位
 
-因此模型未加载时，library 注册、条目查询/删除/清空、提供 vector 的写入、BM25 检索和 inline BM25 检索仍可用；需要 embedding 的写入和向量检索会在 embedding 不可用时明确降级或失败。
+调用方只使用**序号**：每个模型有一条从 0 开始的有序档位表，`0` 是模型支持的非思考档，其余序号依次是提供商官方的档位名。表长与名称由提供商 profile 的数据决定，织言不写死 `low/medium/high` 这类字面量。
 
-进入世界后，LLM 先完成世界 session 初始化，再由受管调度器延迟启动模型加载。`MODULE_STATUS` 通知健康、就绪或失败；模型加载工作线程真正开始后，LLM 同时以 `llm.model.load / LOADING` 发布 `PRESENCE.ACTIVITY`，并在成功、失败或取消时结束。
+- 请求：`reasoningTier`；`null` 表示“用这个模型的默认档”，不是“什么都不发”——端点自己的默认往往是高档，所以默认档必须显式编码出去；
+- 能力查询：`LLM.PRIMITIVE_QUERY`（`queryType=STATUS`）返回 `reasoningTierCount`、`reasoningIncludesNoThinking`、`reasoningDefaultTier`、`reasoningLevels`（index = tier，非思考档在 `levels` 中没有条目）；
+- 越界：请求超出当前梯子时夹到最近档，模型切换后旧序号不会让请求失败；
+- 无控制：`reasoningTierCount=0` 的模型（例如没有档位数据的自定义提供商）完全不发送推理字段。
 
-LLM 只把实际执行的 `lane=COMPLEX` 任务公开为 `llm.task.<taskId> / PROCESSING_TASK`，终态为 `COMPLETED`、`CANCELLED` 或 `FAILED` 时结束。`lane=SIMPLE` 不发布 `THINKING` 或 `RESPONDING`，避免外部 CHAT 调用冒充辅星产品交互；AX 会在自己的对话回合中发布这两个状态。
+提供商的“线协议形状”仍是代码，档位名称与顺序是数据：
 
----
+| wire | 线上字段 | 编码 |
+|---|---|---|
+| `DEEPSEEK_THINKING` | `thinking.type` + `reasoning_effort` | tier 0 → `disabled`；其余 → `enabled` + 该 tier 的官方名称 |
+| `OPENAI_EFFORT` | `reasoning_effort` | 该 tier 的官方名称；没有非思考槽时第一项就是最低档 |
+| `NONE` | 无 | 不发送 |
 
-## 2. `"LLM.REQUEST"`
+DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low）**。如果官方以后增加 `medium`，只需在数据里插入一项，序号自然变化；不做名称之间的别名折叠。
 
-外部模块向 `"LLM.REQUEST"` 提交 `LLMPromptRequestPayload`。
+织言**不提供“模型预设”**：模型迭代很快，把某几个模型绑进预设表只会很快过期。内置提供商的梯子是提供商 profile 的数据；没有档位数据的提供商就是“无控制”，调用方按 `reasoningTierCount=0` 处理。
 
-```java
-LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
-    "ax.chat",
-    0,
-    null,
-    false,
-    false,
-    false,
-    "CHAT",
-    0,
-    false,
-    List.of(
-        LLMPromptRequestPayload.ChunkPayload.message(List.of(
-            LLMPromptRequestPayload.MessageItemPayload.system("你是铁匠NPC"),
-            LLMPromptRequestPayload.MessageItemPayload.user("我需要一把剑")
-        )),
-        LLMPromptRequestPayload.ChunkPayload.rag(
-            "ax_world_memory",
-            "相关记忆：",
-            List.of(),
-            true,
-            true,
-            1000
-        )
-    ),
-    dialogueSessionId,
-    "module.ax",
-    requesterParticipantId,
-    dialogueTurnId,
-    LLMPromptRequestPayload.InferencePolicyPayload.followGlobal()
-);
-```
+`captureThinkingContent` 与档位正交：前者决定是否把 reasoning 文本回传，后者决定生成多深。DeepSeek 思考模式不接受 `temperature` / `frequency_penalty` / `presence_penalty`，这些字段仍会发送但被端点忽略；`top_p` 的行为随模型而变。
 
-## 7. 配置与模型解析边界
-
-> 现状：对话推理走云端 OpenAI 兼容端点，不加载本地 chat GGUF；本节其余内容只适用于本地 embedding 模型与设置页的模型清单。
-
-LLM common 只依赖只读 `LlmConfiguration`。玩家设置仍统一来自 NeoForge 的 `config/tianshu-client.toml`；setter 和保存不进入 common。`LlmModelPathResolver` 根据所选模型标识、LLM 模块根和内置 catalog 解析 embedding GGUF，并拒绝越过模型根目录的选择。catalog 指定文件优先，其次才是目录内按文件名确定性排序的 GGUF。
-
-模型 context size、prompt token budget 属于模型 metadata，不再伪装为配置 getter；它们由同一 resolver 从 catalog 读取。目录扫描异常保留 cause，不在配置默认方法中静默吞掉。该边界不改变现有 embedding 推理 builder、GPU device 或协议请求语义；对话侧采样与预算由云端端点约束。
-
-例外只有一个：embedding 的**运行时窗口**。catalog 里的 `contextSize` 是模型被训练出的上限（bge-m3 为 8192），而引擎实际使用的窗口是"本构建愿意为原生内存付多少"的选择，与 `embeddingGpuLayers` 属于同一类运行预算，因此进配置；`LlmEngineProvider` 取 `min(catalog 上限, 配置预算)`。把 catalog 值直接当窗口用过一次，结果是用 8K 窗口处理几百字的输入。
-
-### 7.1 向量模型载入位置
-
-| 键（`config/tianshu-client.toml` 的 `[llm]` 段） | 默认 | 含义 |
-|----|----|----|
-| `embeddingGpuLayers` | `999`（`LlmConfiguration.EMBEDDING_GPU_LAYERS_ALL`） | 向量模型的载入位置：`999` = 全部层放到 GPU（默认）；`0`（`EMBEDDING_GPU_LAYERS_CPU`）= 纯 CPU。取值域 `0..999`，写入时钳位。 |
-| `embeddingContextSize` | `1024`（`LlmConfiguration.DEFAULT_EMBEDDING_CONTEXT_SIZE`） | 向量模型的运行时上下文窗口（token）。取值域 `256..8192`（`MIN_EMBEDDING_CONTEXT_SIZE .. MAX_EMBEDDING_CONTEXT_SIZE`），读端钳位后由 `LlmEngineProvider` 再与 catalog 上限取小。 |
-
-- **KV 内存与上下文长度成正比**：llama.cpp 按整个窗口分配 KV cache，而 KV 在原生内存里、GC 管不到。因此调小 `embeddingContextSize` 是低内存机器最直接的缓解手段，代价是**超长摘要会被截断**——截断不报错，只会悄悄降低检索质量。默认 `1024` 是在"页文件将尽的机器仍能付出"与"覆盖本构建实际存储的事件句 + 摘要"之间的取值；再往下到 `256` 属于显式取舍，由玩家自己承担截断。
-
-- **默认 GPU，CPU 是自动回落的落点**：默认把全部层放到显卡上（`999`）。已知风险是真的：同一进程内 embedding 的 Vulkan 后端与游戏的 OpenGL 渲染并存，在部分 NVIDIA 驱动上不稳定——曾观察到 `vk::Device::createComputePipeline: ErrorUnknown`（建 device 时）和进世界后的 `GL_OUT_OF_MEMORY`；两次崩溃时显存都还有富余，所以这不是显存耗尽，载入位置不能从硬件余量推断。正因为这类失败与显存无关、无法事先判定，运行时才必须自己兜底：**GPU 载入失败时自动回落到 CPU（`DEGRADED`，向量检索照常、只是更慢），本键的值不变**；只有 GPU 与 CPU 都失败才判定 `UNAVAILABLE`。也正因有这条自动回落，默认值才敢取更快的 GPU 位置。玩家可显式改为 `0` 固定走 CPU。
-- 读端只有 `LlmConfiguration.getLlmEmbeddingGpuLayers()`；写端只有 `LlmSettingsAccess.setLlmEmbeddingGpuLayers(int)`，common 不出现 setter。
-- 载入位置在页面上是**草稿值**：点击 `toggleEmbeddingPosition()` 只改草稿并提示"保存后生效"，不写配置、不重启运行时；面板级保存把它并进同一个事务，保存成功后按既有机制重启运行时（换后端＝整份 GGUF 重新载入，不在点击瞬间做）。
-- 载入跑在 model-load 线程：`LlmEngineProvider.startEmbeddingOnly()` 只把引擎排进队列并立即返回；位置判定在 `LocalEmbeddingEngine.warmUp()` 里做，结论经 `EmbeddingLoadReport` 回报一次。该队列还从进世界起延后 6 秒（`LlmModule.EMBEDDING_LOAD_DELAY_AFTER_WORLD_ENTRY`，经 `LlmExecutor.delayedModelLoadExecutor()`），让原生载入避开区块加载与开场帧；这只是推迟主动载入，延后窗口内若有 RAG 写入，`ensureServer()` 仍会按需在写入所在 lane 上载入。真正的加载本身还要过一道进程级串行闸门（`com.rheinmetal.tianshu.model.lifecycle.NativeModelLoadQueue`）：embedding 是它的 primary 请求，语音模型（ASR 的 `requestEngineLoad`、TTS 的 `requestManagedLoad`）是 deferred 请求，必须等本次判定结束后才获准——原生模型的峰值因此不再相加，而是取最大值。闸门由 `NeoForgeClientBootstrap` 构造一次并注入每个模块，三个 lane 各只有一个 `loadQueue.request(...)` 调用点（`LlmEngineProvider` / `AsrModule` / `TtsModelLifecycleCoordinator`），由 `NativeModelLoadGateCallSiteBoundaryTest` 守住。
-- **TTS 的四条载入已全部收口（原"已知缺口"已关闭）**：换模型 / 重载 / 预听开始 / 预听还原（`TtsModelLifecycleCoordinator.reload` / `useModel` / `beginExclusivePreview` / `finishExclusivePreview`）与自动加载（`prepare`）现在共用同一条受管控路径 `requestManagedLoad`（申请 permit → 获准后重投自己的 lane → 载入 → `finally` 释放），`TtsModelLifecycleCoordinator` 全文件只有一个 `loadQueue.request(`。换模型走"先载入新的、成功后再切换并关闭旧的"（`TtsEngineProvider.acquire` 先 `candidate.initialize(model)` 再 `previous.shutdown()`），载入失败时旧引擎继续服务；在途重复请求按"最新目标胜出"合并，一次跟进载入覆盖任意次请求，不丢弃也不排队。由 `TtsModelLoadPathBoundaryTest` 守住：闸门入口唯一、引擎构造点唯一、且源码里"先载入后关闭"的顺序被断言。
-- 闸门的拒绝（`Outcome.REFUSED`，停车位已满）三条 lane 都显式处置：ASR / TTS 记失败并复位状态；embedding 这条此前**被静默丢弃**，primary 声明因此永不 settle、语音 lane 会一直等到 stop——现在解绑引擎、记 `LLM_EMBEDDING_LOAD_REFUSED` 诊断与一条 UNAVAILABLE 载入结论（映迹可见），并 `settlePrimary()` 放行 deferred lane，由 `LlmEngineProviderTest.aRefusedPrimaryRequestIsReportedAndReleasesTheDeferredLane` 守住。
-- 判定以"真的能产出向量"为准（载入后跑一次 embedding 验证），三种结论：`READY`（请求位置可用，诊断 `LLM_EMBEDDING_READY`）、`DEGRADED`（GPU 失败、CPU 验证通过，向量检索照常但更慢；只记诊断 `LLM_EMBEDDING_DEGRADED` 与模块状态，**不进映迹产品状态**，因为这是玩家无法处理的性能细节）、`UNAVAILABLE`（GPU 与 CPU 都失败，模型或文件损坏；向量 RAG 关闭并解绑，映迹一条 `ERROR` 提示，诊断 `LLM_EMBEDDING_LOAD_FAILED`）。
-- GPU 模式另有一对前后诊断，供崩溃后定位：`LLM_EMBEDDING_GPU_ATTEMPT`（建后端之前，带 `requestedGpuLayers` / `effectiveGpuLayers` / `gpuLoadSucceeded=pending`）与 `LLM_EMBEDDING_GPU_OUTCOME`（成功或失败、实际生效层数、失败原因）。日志若停在 attempt 而缺对应的 outcome，就说明进程死在 Vulkan 后端初始化里。
-- 载入成功后另有一条足迹诊断 `LLM_EMBEDDING_FOOTPRINT`，在"载入已验证、维度已知"这一刻发布一次，字段：`nCtx`（实际下发的窗口）、`nBatch`（binding 推导出的批大小，窗口大于它时抬到窗口，`n_ubatch` 同值）、`embeddingDimension`、`weightsFileBytes`（mmap 的 GGUF 文件大小＝常驻权重）、`kvBytesPerTokenPerLayer` / `kvWindowBytesPerLayer`（本窗口每层的 KV 精确成本，乘模型自身 `block_count` 得总量）、`processCommitBytes`（本进程提交量，取不到则省略而不写 0）、`freePhysicalBytes`。目的是把"崩了才知道内存不够"换成"日志里一眼看出是哪一项吃掉的"。KV 只给每层值是因为 libs 未暴露 embedding lane 的层数。
-- 已知覆盖缺口：`DEGRADED` 分支需要真实 GGUF 才能让 CPU 侧验证通过，单测只覆盖 `READY` 与 `UNAVAILABLE` 终态。这是有意记录的缺口，不要当成已覆盖。
-- 释放契约：模型权重与上下文都在原生内存里，GC 管不到。`LlmEngineProvider.startEmbeddingOnly()` 先 `stop()` 再建新引擎，任何时刻只有一个引擎实例；`LocalEmbeddingEngine.shutdown()` 用一把读写锁把推理与拆卸互斥（推理持读锁、拆卸持写锁），因此进入 libs 的 `EmbeddingEngine.shutdown()` 时它的工作线程必定空闲。这一点是必须的：libs 只在工作线程按期内停下的情况下 `model.close()`，超时就跳过释放并把 `running` 永久置 false——那是唯一一条真正漏掉原生内存的路径，而且无法重试。
-
-协议提交时使用：
-
-| 项 | 值 |
-|----|----|
-| capability | `"LLM.REQUEST"` |
-| payloadType | `PayloadType.of("LLM_PROMPT_REQUEST")` |
-| payload | `LLMPromptRequestPayload` |
-
-提交示例：
-
-```java
-TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
-        "module.ax",
-        "LLM.REQUEST",
-        PayloadType.of("LLM_PROMPT_REQUEST"),
-        payload
-).build();
-
-protocolRuntime.submit(envelope);
-```
-
-### 2.1 LLMPromptRequestPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `requestId` | `"llm.request"` | 调用方生成的请求标识，用于响应关联和日志定位。 |
-| `maxTokens` | `0` | 最大生成 token 数；`0` 表示不额外限制。 |
-| `temperature` | `null` | 采样温度覆盖值；`null` 表示沿用当前模型目录 JSON 的 COT 开 / 关默认值。 |
-| `topK` / `topP` / `minP` | `null` | 采样截断覆盖值；调用方只传哪个字段就只覆盖哪个字段。 |
-| `penaltyRepeat` / `penaltyFreq` / `penaltyPresent` / `penaltyLastN` | `null` | repetition / frequency / presence 等惩罚参数覆盖值；未传字段继续沿用 JSON 默认或底层默认。 |
-| `stream` | `false` | 是否流式返回。`true` 时会先收到若干 `LLM_PROMPT_STREAM_CHUNK`，最后收到 `LLM_PROMPT_RESULT`。 |
-| `thinking` | `false` | 是否允许模型生成 thinking 内容。 |
-| `captureThinkingContent` | `false` | 是否把底层识别出的 COT/thinking 内容写入结构化 `thinkingContent` 通道；正文 `text` 始终只包含正式回答。 |
-| `lane` | `"CHAT"` | 执行通道：`SIMPLE` 或 `COMPLEX`。非法值按 `SIMPLE` 处理。 |
-| `taskPriority` | `0` | TASK 优先级，范围 `0..1000`；仅 `lane=COMPLEX` 时参与调度。 |
-| `taskPreemptible` | `false` | 当前 TASK 是否允许被更高优先级 TASK 抢占；仅 `lane=COMPLEX` 时有效。 |
-| `chunks` | 空列表 | 请求内容，按数组顺序处理。支持 `message` 和 `rag` 两类 chunk。 |
-| `dialogueSessionId` | 空字符串 | CHAT 请求的对话会话 ID；用于关联本轮对话。 |
-| `requesterModuleId` | 空字符串 | 请求方模块 ID，必须与协议 envelope 的 source module 一致。 |
-| `requesterParticipantId` | 空字符串 | 请求方参与者 ID；用于关联请求方。 |
-| `dialogueTurnId` | 空字符串 | 对话轮次 ID，用于追踪一次对话回合。 |
-| `inferencePolicy` | 跟随全局 | 请求级推理策略覆盖项。 |
-| `toolsJson` | 空字符串 | OpenAI-style function tools JSON；LLM 模块只透传给底层模板，不解析输出、不执行工具。 |
-
-CHAT 请求会带对话会话与请求方身份，用于把流式分片和结果关联到本轮对话；LLM 模块不再向 IA 查询使用授权。
-
-TASK 请求不走 CHAT 的即时通道，但会进入 LLM 模块的 TASK admission 队列。
-
-采样参数的优先级是：底层 `SamplerConfig.defaults()` -> 当前模型 JSON 中按 `thinking` 选择的 `sampling.standard` / `sampling.thinking` -> 本次请求中非 null 的采样覆盖字段。覆盖是逐字段的，不会因为调用方传了一个采样参数就替换整套采样配置。
-
-`thinking` 和 `captureThinkingContent` 是两个不同边界：
-- `thinking=false`：请求模型不要生成 thinking，LLM 模块会传给底层 sampler。
-- `thinking=true + captureThinkingContent=false`：允许模型生成 thinking；底层仍会从正文中剥离 COT，但不向上保存 thinking 内容。
-- `thinking=true + captureThinkingContent=true`：协议响应通过 `thinkingContent` 返回结构化 COT，正文 `text` 仍不混入 thinking。
-
-### 2.2 ChunkPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `type` | `"message"` | chunk 类型：`message` 或 `rag`。 |
-| `messageContent` | 空列表 | `type=message` 时使用，按顺序加入消息上下文。 |
-| `ragContent` | 空列表 | `type=rag` 且 `useCache=false` 时作为本次内联检索候选；不会隐式写入持久 RAG cache。 |
-| `uid` | 空字符串 | RAG 库标识；LLM 只按 uid 分桶，不理解世界、全局、模块、聚类等上层语义。 |
-| `prompt` | 空字符串 | 调用方显式提供的 RAG 前缀。空值不会生成默认提示引子，只注入编号后的检索正文。 |
-| `useCache` | `true` | `true` 使用 LLM 模块持久 RAG cache；`false` 仅对本次 `ragContent` 走 libs 内联检索。 |
-| `includeRagHits` | `true` | 是否在最终 `LLMPromptResultPayload` 中返回命中的 RAG 内容。 |
-| `memoryRagTokenBudget` | `1000` | 本 chunk 检索正文的 token 预算；按命中顺序贪心选择完整条目，不截断单条知识。 |
-
-`message` chunk 示例：
-
-```java
-LLMPromptRequestPayload.ChunkPayload.message(List.of(
-    LLMPromptRequestPayload.MessageItemPayload.system("你是一个 Minecraft 助手"),
-    LLMPromptRequestPayload.MessageItemPayload.user("我的钻石镐在哪里？")
-));
-```
-
-RAG chunk 示例：
-
-```java
-LLMPromptRequestPayload.ChunkPayload.rag(
-    "ax_world_memory",
-    "相关记忆：",
-    List.of(),
-    true,
-    true,
-    1000
-);
-```
-
-RAG 组装规则：
-
-- `prompt` 为空时，模型只收到 `1. ...`、`2. ...` 形式的命中正文，不附加任何默认语言提示。
-- `prompt` 非空时，该文本由调用方拥有并原样作为前缀保留。
-- `memoryRagTokenBudget <= 0` 时不注入检索正文；大于零时按检索排名逐条尝试，只有整条加入后仍在预算内才保留。
-- token budget 只约束命中正文，不截断调用方显式 `prompt`。如果当前 tokenizer 不支持计数或计数失败，为保持推理可用性会退化为保留完整命中结果。
-- 持久 RAG 的写入、修改、删除和清空统一通过 `LLM_CACHE_MANAGE` 完成；`LLM_REQUEST` 不产生持久化副作用。
-
-### 2.3 MessageItemPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `role` | `"user"` | 消息角色：`system`、`user`、`assistant`。 |
-| `content` | 空字符串 | 消息正文。 |
-
-消息编排规则：
-- 底层只支持一个 `system` role。LLM 模块会合并开头连续的 `system` 消息，并作为唯一首条 `system` 发送。
-- 对话开始后出现调用方提供的 `system` 消息会被拒绝，错误码语义为 `LLM_UNSUPPORTED_SYSTEM_POSITION`。
-- RAG chunk 生成的检索提示属于 LLM 内部编排，会并入首条 `system`，不会在中间额外插入 `system` 消息。
-
-### 2.4 InferencePolicyPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `frameGuardEnabled` | `null` | 是否启用保帧率调度；`null` 表示跟随全局配置。 |
-| `targetFps` | `null` | 保帧率目标 FPS；非空时会限制在 `15..240`。 |
-| `mtpEnabled` | `null` | 是否尝试启用 MTP；`null` 表示跟随全局配置。 |
-
-规则：
-- 未设置的字段跟随全局配置。
-- 请求中设置了某一项，只覆盖这一项。
-- MTP 仅在当前模型支持时启用，不支持时安全降级。
-- 保帧率策略只在 LLM 与渲染共享 GPU 且运行时采样可用时生效。
-
-### 2.5 LLMPromptResultPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `requestId` | 空字符串 | 对应请求 payload 的 `requestId`。 |
-| `status` | `"FAILED"` | 结果状态：`COMPLETED`、`CANCELLED`、`FAILED`。 |
-| `text` | 空字符串 | 最终可见文本；失败或取消时可能是 partial text。 |
-| `thinkingContent` | 空字符串 | 当请求设置 `captureThinkingContent=true` 时返回结构化 thinking/COT 内容；不会混入 `text`。 |
-| `errorCode` | `null` | 失败原因码。 |
-| `errorMessage` | `null` | 失败原因描述。 |
-| `ragHits` | 空列表 | 本次请求所有 RAG chunk 的命中结果；`COMPLETED`、`CANCELLED`、`FAILED` 都可能携带。 |
-| `usage` | 空 usage | 本次实际 token 统计：`promptTokens`、`completionTokens`、`thinkingTokens`、`outputTokens`、`totalTokens`。 |
-
-`usage.promptTokens` / `usage.completionTokens` 来自 provider 返回的真实用量；`thinkingTokens` 统计被识别到结构化 thinking 通道的 token；`outputTokens = completionTokens + thinkingTokens`。
-
-常见错误码：
-- `LLM_SERVICE_NOT_READY`：LLM 服务尚未就绪。
-- `LLM_TASK_QUEUE_FULL`：TASK admission 队列已满且请求未被接收。
-- `LLM_INFERENCE_FAILED`：底层推理失败。
-- `LLM_REQUEST_FAILED`：请求转换或处理过程失败。
-
-### 2.6 LLMPromptStreamChunkPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `requestId` | 空字符串 | 请求标识。 |
-| `text` | 空字符串 | 当前分片文本。 |
-| `thinkingContent` | 空字符串 | 当前分片的 thinking/COT 文本；普通正文分片为空。 |
-| `finished` | `false` | `false` 表示普通 token 分片；`true` 表示流式输出结束。 |
-| `index` | 调用方传入值 | 分片序号，调用方可按序拼接。 |
-| `ragHits` | 空列表 | 流式请求的 RAG metadata。LLM 模块会在首个 token 前发送一个 `text=""` 且 `ragHits` 非空的 metadata chunk。 |
-| `finishType` | 空字符串 | 仅 `finished=true` 时有效：`COMPLETED`、`CANCELLED`、`FAILED`。 |
-| `usage` | 空 usage | 仅结束包携带本次实际 token 统计。 |
-| `errorMessage` | `null` | 仅 `finishType=FAILED` 时携带底层错误信息。 |
-
-流式请求使用结构化双通道：正文 token 放在 `text`；thinking token 放在 `thinkingContent`。结束包会携带本次汇总后的 `thinkingContent`，最终 `LLMPromptResultPayload` 也会带同一语义的汇总结果。
-
-正文、thinking、chunk index、RAG metadata 和 terminal snapshot 由单一同步状态对象维护。普通分片与结束回调即使来自不同线程，也必须从同一快照生成，避免 terminal chunk 丢失已经发布的 thinking 或可见正文。
-
-### 2.7 RagHitPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `uid` | 空字符串 | 命中的 RAG 库 uid。 |
-| `hits` | 空列表 | 命中条目列表。 |
-
-`hits` 中每个条目包含 `entryId`、`content`、`score`。多个 RAG chunk 命中不同库时，会按请求处理顺序返回多个 `RagHitPayload`；调用方按 `uid` 识别对应 RAG 库即可。
-
----
-
-## 3. CHAT / TASK 行为
-
-| lane | 用途 | 调度行为 |
-|------|------|----------|
-| `SIMPLE` | 对话即时响应 | 不进入 TASK admission 队列；带本轮对话身份用于关联。 |
-| `COMPLEX` | 后台任务、记忆压缩、长文本整理 | 进入 TASK admission 队列，按优先级调度。 |
-
-TASK 调度规则：
-- 默认只有一个 active TASK，其余进入等待队列。
-- `taskPriority` 越高越优先。
-- 如果当前 active TASK 的 `taskPreemptible=true`，更高优先级 TASK 可进入底层抢占流程。
-- 协议层只在底层任务完成后发送最终 `LLMPromptResultPayload`。
-
-`STATUS` 中的 `taskQueueSize` 表示底层热执行队列大小。底层冷挂起任务和 LLM admission 等待任务不计入该值，因此 `0` 不等于没有等待中的 TASK。
-
-流式请求：
-- `stream=false`：只返回最终 `LLMPromptResultPayload`。
-- `stream=true`：如果本次请求产生 RAG hits，会先返回一个 `text=""`、`ragHits` 非空的 metadata chunk；随后返回 token chunk，再返回 `finished=true` 的 terminal stream end，最后返回最终 `LLMPromptResultPayload`。
-- 协议 envelope 只在 stream end 和最终 result 都发出后完成。
-- CHAT / TASK 被取消、线程中断或终止型抢占时，流式请求会收到 `finishType=CANCELLED` 的 stream end 和 `status=CANCELLED` 的最终 result；`text` 为已经对外发送过的可见 partial text，`ragHits` 仍保留已计算出的命中结果。
-
----
-
-## 4. `"LLM.CACHE_MANAGE"`
-
-外部模块向 `"LLM.CACHE_MANAGE"` 提交 `LLMCacheManagePayload`。
-
-```java
-LLMCacheManagePayload.upsertEntry(
-    "ax.memory.cluster.cluster-001",
-    "event-001",
-    "玩家把钻石镐放在末影箱",
-    eventVector
-);
-```
-
-协议提交时使用：
-
-| 项 | 值 |
-|----|----|
-| capability | `"LLM.CACHE_MANAGE"` |
-| payloadType | `PayloadType.of("LLM_CACHE_MANAGE")` |
-| payload | `LLMCacheManagePayload` |
-
-提交示例：
-
-```java
-TianshuEnvelope envelope = EnvelopeBuilder.requestCapability(
-        "module.ax",
-        "LLM.CACHE_MANAGE",
-        PayloadType.of("LLM_CACHE_MANAGE"),
-        LLMCacheManagePayload.searchUid("ax.memory.cluster.cluster-001", "玩家问钻石镐在哪里", 4, 0.7f)
-).build();
-
-protocolRuntime.submit(envelope);
-```
-
-### 4.1 LLMCacheManagePayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `action` | `"QUERY_UID"` | 操作类型：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`SEARCH_INLINE_CONTENTS`。 |
-| `uid` | 空字符串 | RAG 库标识。一个 uid 表示一个库/簇；调用方自行把世界、模块、层级等作用域编码进 uid。 |
-| `modid` | 空字符串 | RAG 库所属 modid；用于 `REGISTER_LIBRARY` 和 `SEARCH_MODID`。同一个 modid 可以注册多个 uid。 |
-| `visibility` | `"SHARED"` | RAG 库可见性：`SHARED` 可被 `modid/tag` 聚合检索发现；`PRIVATE` 不参与共享发现。 |
-| `tags` | 空列表 | RAG 库标签；用于 `REGISTER_LIBRARY` 和 `SEARCH_TAGS`，例如 `main`、`addon`。 |
-| `entryId` | 空字符串 | 条目 id，由调用方拥有；LLM 只存储和返回该 id。 |
-| `content` | 空字符串 | 条目文本，可为空。为空时仍可依赖调用方传入的向量参与检索。 |
-| `contents` | 空列表 | `SEARCH_INLINE_CONTENTS` 的请求内联候选文本列表；只参与本次检索，不写入持久 RAG cache。 |
-| `vector` | 空向量 | 条目向量，可为空。为空且 `content` 非空时，LLM 会用当前 embedding 服务生成向量。 |
-| `updateContent` | `false` | `PATCH_ENTRY` 时是否更新文本。 |
-| `updateVector` | `false` | `PATCH_ENTRY` 时是否更新向量。 |
-| `queryText` | 空字符串 | `SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`SEARCH_INLINE_CONTENTS` 时的查询文本。 |
-| `topK` | `4` | 每个 uid 返回条数。 |
-| `threshold` | `0.7` | 命中阈值。 |
-
-快捷构造：
-
-```java
-LLMCacheManagePayload.registerLibrary("ax.memory.cluster.cluster-001", "tianshu", "PRIVATE", List.of("main"));
-LLMCacheManagePayload.upsertEntry("ax.memory.cluster.cluster-001", "event-001", "玩家把钻石镐放在末影箱", eventVector);
-LLMCacheManagePayload.patchEntry("ax.memory.cluster.cluster-001", "event-001", "更新后的事实文本", null, true, false);
-LLMCacheManagePayload.deleteEntry("ax.memory.cluster.cluster-001", "event-001");
-LLMCacheManagePayload.clearUid("ax.memory.cluster.cluster-001");
-LLMCacheManagePayload.queryUid("ax.memory.cluster.cluster-001");
-LLMCacheManagePayload.searchUid("ax.memory.cluster.cluster-001", "玩家问钻石镐在哪里", 4, 0.7f);
-LLMCacheManagePayload.searchModid("botania", "魔力池怎么做", 4, 0.7f);
-LLMCacheManagePayload.searchTags(List.of("main", "addon"), "钻石镐在哪里", 4, 0.7f);
-LLMCacheManagePayload.searchInlineContents("module.example.inline", "钻石镐在哪里", candidateTexts, 4, 0.7f);
-```
-
-### 4.2 LLMCacheManageResultPayload 字段
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `action` | 空字符串 | 结果动作：`UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY`、`CLEAR_UID`、`QUERY_UID`、`REGISTER_LIBRARY`、`UNREGISTER_LIBRARY`、`SEARCH_UID`、`SEARCH_MODID`、`SEARCH_TAGS`、`SEARCH_INLINE_CONTENTS`、`FAILED`。 |
-| `uid` | 空字符串 | 对应 RAG 库标识。 |
-| `entryId` | 空字符串 | 对应条目 id；仅条目级操作返回。 |
-| `success` | 调用方传入值 | 操作是否成功。 |
-| `exists` | 调用方传入值 | `QUERY_UID` 时表示 uid 是否存在；检索时表示是否有命中。 |
-| `hits` | 空列表 | 检索返回的命中组，按 uid 分组。每组包含 `uid`、`entries`、`score`；`entries` 元素为 `entryId`、`content`、`score`。 |
-| `libraries` | 空列表 | 涉及的库元信息列表；元素为 `uid`、`modid`、`visibility`、`tags`。 |
-| `errorMessage` | `null` | 失败描述。 |
-
-### 4.3 RAG 库注册与检索语义
-
-LLM 只理解“库”和“条目”：
-- `uid` 是一个 RAG 库，可以对应一个簇、一个模组知识库或任意调用方定义的集合。
-- `entryId` 是该 uid 内的条目 id，用于写入、patch、delete，以及检索命中后原样返回。
-- `modid` 和 `tags` 只用于共享库发现；LLM 不校验 modid 真实性，依赖模组开发者自觉。
-- 调用方只传自然语言 `queryText`，不传关键词。LLM 内部用统一 analyzer 对 `queryText` 和条目 `content` 做 term 化，再执行 BM25 + embedding hybrid retrieval。
-
-共享检索规则：
-- `SEARCH_UID`：只检索指定 uid。
-- `SEARCH_MODID`：检索该 modid 下所有 `SHARED` 的 uid；同一个 modid 可以有多个 uid。
-- `SEARCH_TAGS`：检索所有 `SHARED` 且命中任意 tag 的 uid。
-- `SEARCH_INLINE_CONTENTS`：只检索请求携带的 `contents`，不注册库、不写入 cache、不触发生成。返回的 `entryId` 是输入列表中的稳定下标字符串。
-
-BM25 与 embedding 边界：
-- BM25 是 LLM RAG 内部的词法召回/排序组件，不要求上层传关键词。
-- 默认 analyzer 支持英文/数字词与 CJK ngram，可匹配文本中实际出现的专有名词；同义词、别名、错字修复仍应由 IR/AX 等上游在形成 `queryText` 前完成。
-- 持久 RAG 只落盘条目 `entryId`、`content`、`vector`；BM25 倒排索引属于可重建运行态索引，会在加载 cache 或写入变更时由 `content` 重建，不单独持久化。
-- 持久 RAG 在 `upsert` / `patch` / `delete` 时维护 BM25 倒排索引；查询时 BM25 与 query embedding 并行执行，默认按 embedding 70% / BM25 30% 融合，并按可用信号重新归一。
-- `SEARCH_MODID` / `SEARCH_TAGS` 命中多个 uid 时，同一次请求只生成一次 query embedding，并复用到各 uid 检索。
-- 如果 query embedding 暂不可用，检索会退化为 BM25-only；如果 BM25 无命中，仍可使用 vector-only。
-- 只有向量、没有文本的条目不会进入 BM25，只参与 vector-only 检索；同时有文本和向量的条目参与 hybrid retrieval；只有文本、没有向量的条目会在写入时生成向量，生成失败时仍可参与 BM25-only。
-
-AX 记忆检索示例：
-- 已知某个二级簇时：`uid = ax.memory.cluster.<clusterId>`，`entryId = eventId`，`content = E.factText`。
-- LLM 返回命中的 `entryId` 后，AX 用 eventId 回到自己的事件存储取完整结构。
-
-### 4.4 RAG cache 存储
-
-持久 RAG cache 默认位于：
-
-```text
-config/Tianshu/module/llm/ragCache/entries/
-```
-
-目录下按 RAG `uid` 分文件保存：
-
-```text
-manifest.txt
-<safeUid>.bin
-```
-
-二进制文件内部带 namespace 校验。namespace 绑定当前 LLM 模型和 embedding 模型组合；模型组合变化后，旧 cache 会被忽略并等待重新索引。
-
-持久化写入策略：
-- `UPSERT_ENTRY`、`PATCH_ENTRY`、`DELETE_ENTRY` 会先更新内存中的 RAG 条目、向量索引和 BM25 索引，检索立即可见。
-- 磁盘写入按 `uid` 标记 dirty，并做约 1 秒 debounce 合并 flush；同一 uid 的高频写入会合并为一次整库文件重写。
-- `CLEAR_UID` 会立即移除内存条目并删除对应磁盘文件。
-- LLM 服务 `shutdown` 会 flush 所有 dirty uid，降低 write-behind 的数据丢失窗口。
-
----
-
-## 5. `"LLM.PRIMITIVE_QUERY"`
-
-外部模块向 `"LLM.PRIMITIVE_QUERY"` 提交 `LLMPrimitiveQueryPayload`。
-
-### 5.1 支持的 queryType
-
-| queryType | 说明 |
-|-----------|------|
-| `TOKEN_COUNT` | 对文本或消息列表做真实 token 计数；不接受 `rag` chunk |
-| `EMBED` | 对文本数组做 embedding |
-| `STATUS` | 查询 LLM 运行态、模型信息和队列信息 |
-
-### 5.2 LLMPrimitiveQueryPayload 主要字段
+### 2.3 `SamplingPayload`
 
 | 字段 | 说明 |
-|------|------|
-| `requestId` | 请求标识 |
-| `queryType` | 原语类型：`TOKEN_COUNT` / `EMBED` / `STATUS` |
-| `text` | 参与 token 计数的单段文本 |
-| `texts` | `EMBED` 使用的文本列表 |
-| `messages` | `TOKEN_COUNT` 使用的消息列表 |
-| `chunks` | 保留字段；`TOKEN_COUNT` 不接受 `rag` chunk，避免触发检索、索引或 cache 修改 |
-| `includeVector` | `EMBED` 是否回传向量本体 |
-| `includeEmbeddingDetails` | `EMBED` 是否回传更完整的 embedding 细节 |
-| `includeRuntimeDetails` | `STATUS` 是否回传模型名 / profile 等运行态细节 |
+|---|---|
+| `temperature` | `0..2`，越界丢弃 |
+| `topP` | `0..1`，越界丢弃 |
+| `frequencyPenalty` | `-2..2`，越界丢弃 |
+| `presencePenalty` | `-2..2`，越界丢弃 |
 
-### 5.3 LLMPrimitiveResultPayload 主要字段
+`null` 表示跟随模型目录中该模型的默认采样；请求里给出的值优先。协议层只发送这四个字段，其它采样参数不属于 OpenAI 兼容完成接口。
 
-| 字段 | 说明 |
-|------|------|
-| `requestId` | 对应请求 ID |
-| `queryType` | 对应查询类型 |
-| `status` | `COMPLETED` 或 `FAILED` |
-| `tokenCount` | `TOKEN_COUNT` 的结果 |
-| `embedResults` | `EMBED` 的结果列表 |
-| `runtimeSnapshot` | `STATUS` 的结果快照 |
-| `errorCode` / `errorMessage` | 失败信息 |
+### 2.4 流式语义
 
-`TOKEN_COUNT` 来自当前 generation backend 的真实 tokenizer。不提供 tokenizer 的 backend 返回 `LLM_TOKENIZER_UNAVAILABLE`；LLM 不使用 embedding 模型的 token 数充当近似值。
+- 正文分片：`text` 非空，`finished=false`。
+- thinking 分片：`thinkingContent` 非空，`text` 为空（仅当请求要求捕获）。
+- 结束帧：`finished=true`，带 `finishType`（`COMPLETED` / `CANCELLED` / `FAILED`）、累计 thinking 文本与 usage；发生失败时带 `errorMessage`。
+- 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方应按 `index` 拼接——分片经协议运行时派发，可能由不同工作线程送达，按到达顺序拼接会打乱正文。
+- 取消或中断时：结束帧 `CANCELLED`，终态结果同样为 `CANCELLED`，正文是本轮已经发出的部分。
 
-`EMBED` 的每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName` 和 `embeddingNamespace`。`STATUS` 快照也包含 embedding 模型身份字段，用于 AX 校验持久化向量是否仍属于同一 embedding 空间。
-
-`STATUS` 快照还会返回 LLM 运行能力与 ctx 预算事实：
+### 2.5 终态结果
 
 | 字段 | 说明 |
-|------|------|
-| `supportsThinking` | 当前已加载模型 / chat template 是否支持 thinking 控制。 |
-| `supportsMtp` / `supportsEmbeddedMtp` / `externalMtpAvailable` | 当前运行环境的 MTP 能力来源与可用性。 |
-| `contextSize` | 当前已规划/加载的 ctx；优先来自底层 plan，不再只代表配置期望值。 |
-| `contextTokenBudget` | 当前已加载模型实例的最终安全输入 token 预算；已扣除底层 prompt margin，不是 CHAT / TASK lane 预算。 |
+|---|---|
+| `requestId` | 对应请求 |
+| `status` | `COMPLETED` / `CANCELLED` / `FAILED` |
+| `text` | 可见正文 |
+| `thinkingContent` | 结构化 reasoning；不混入 `text` |
+| `errorCode` / `errorMessage` | 失败原因 |
+| `usage` | `promptTokens` / `completionTokens` / `thinkingTokens` / `outputTokens` / `totalTokens` |
 
-上层做 prompt 预算时只消费 `contextTokenBudget`。LLM 模块不规划调用方的 prompt 分区，也不把底层 dryrun 的训练 ctx、显存 ctx 等诊断事实暴露成上层可消费协议；这些事实只属于 LLM 内部加载与安全预算判断。
+`usage` 来自供应商返回的真实用量；`outputTokens = completionTokens + thinkingTokens`。未报告时为零值，不猜测。
 
-`STATUS` 返回的快照应尽量保守：未知值可以返回 `-1` 或空字符串，不要硬猜。
+### 2.6 错误码
 
----
+| 码 | 含义 |
+|---|---|
+| `LLM_SERVICE_NOT_READY` | 云端通道尚未就绪 |
+| `LLM_EMPTY_REQUEST` | 请求对象为空 |
+| `LLM_EMPTY_MESSAGES` | 消息列表为空 |
+| `LLM_INFERENCE_FAILED` | 供应商失败、非 2xx、超时或流中断 |
+| `LLM_REQUEST_FAILED` | 请求转换或执行过程失败（兜底码） |
+| `LLM_REQUEST_CANCELLED` | 调用方取消 |
+| `LLM_REQUEST_INTERRUPTED` | 执行线程中断 |
 
-## 6. 请求示例
+前三个是**发出前**就被拒绝的请求，一律带自己的码。取消与中断按类型判定：`CancellationException` → `LLM_REQUEST_CANCELLED`，线程中断 → `LLM_REQUEST_INTERRUPTED`，不靠比较错误文本。
 
-### 6.1 世界记忆聊天
+## 3. `LLM.CACHE_MANAGE`
+
+只做 RAG 数据面，不做提示词注入：调用方检索到内容后自己拼进 `messages`。
+
+| 操作 | 说明 |
+|---|---|
+| `UPSERT_ENTRY` / `PATCH_ENTRY` / `DELETE_ENTRY` / `CLEAR_UID` | 条目写入、局部更新、删除、清空 |
+| `REGISTER_LIBRARY` / `UNREGISTER_LIBRARY` | 库登记与注销；`uid` 是库，`modid` / `tags` / `visibility` 只用于共享发现 |
+| `QUERY_UID` | 查询库是否存在 |
+| `SEARCH_UID` | 只检索一个库 |
+| `SEARCH_MODID` / `SEARCH_TAGS` | 检索共享库，命中多个库时一次查询只生成一次 query 向量 |
+| `SEARCH_INLINE_CONTENTS` | 只检索请求携带的文本，不写库、不触发持久化 |
+
+检索为 BM25 + 向量的混合检索：embedding 不可用时退化为纯词法；只有向量没有文本的条目只参与向量检索。命中条目返回 `entryId`、`content`、`score`。
+
+### 3.1 存储
+
+持久 RAG 位于 `config/Tianshu/module/llm/ragCache/entries/`，按 `uid` 分文件；命名空间由向量模型决定，模型变化后旧向量被视为不可用并等待重建。写入先更新内存，磁盘按约 1 秒 debounce 合并；`CLEAR_UID` 立即删除；模块停止时 flush。
+
+## 4. `LLM.PRIMITIVE_QUERY`
+
+### 4.1 `TOKEN_COUNT`
+
+发送前的 prompt 大小**估算**。云端没有“只数不生成”的接口，所以这里用本地估算器，并在每次真实请求后用供应商返回的 `prompt_tokens` 校准。它不用于计费：计费与账本使用 2.4 的真实 usage。
+
+输入为 `text` 或 `messages`；两者可同时给出，按顺序拼接。
+
+### 4.2 `EMBED`
+
+对 `texts` 调用本地向量引擎。引擎未就绪时返回 `LLM_EMBEDDING_UNAVAILABLE`；执行失败返回 `LLM_EMBED_FAILED`。每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName`、`embeddingNamespace`。
+
+### 4.3 `STATUS`
 
 ```java
-LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
-    "ax.chat.memory",
-    0,
-    0.7f,
-    true,
-    false,
-    false,
-    "CHAT",
-    0,
-    false,
-    List.of(
-        LLMPromptRequestPayload.ChunkPayload.message(List.of(
-            LLMPromptRequestPayload.MessageItemPayload.system("你是一个 Minecraft 助手"),
-            LLMPromptRequestPayload.MessageItemPayload.user("我的钻石镐在哪里？")
-        )),
-        LLMPromptRequestPayload.ChunkPayload.rag(
-            "ax_world_memory",
-            "相关记忆：",
-            List.of(),
-            true,
-            true,
-            1000
-        )
-    ),
-    dialogueSessionId,
-    "module.ax",
-    requesterParticipantId,
-    dialogueTurnId,
-    LLMPromptRequestPayload.InferencePolicyPayload.followGlobal()
-);
+record LLMRuntimeSnapshotPayload(
+    boolean ready,
+    boolean embeddingAvailable,
+    int embeddingDimension,
+    int contextSize,            // 模型声明的上下文容量
+    int contextTokenBudget,     // 容量 − 输出保留 − 头部余量
+    String embeddingModelName,
+    String embeddingNamespace,
+    int reasoningTierCount,
+    boolean reasoningIncludesNoThinking,
+    int reasoningDefaultTier,
+    List<String> reasoningLevels, // index = tier；非思考档没有条目
+    String failureMessage,
+    long sampledAtMillis
+)
 ```
 
-### 6.2 后台记忆压缩
+调用方做 prompt 预算时消费 `contextTokenBudget`；选择推理档位时消费 `reasoningTierCount` / `reasoningIncludesNoThinking` / `reasoningDefaultTier`，并只把序号放进请求。
 
-```java
-LLMPromptRequestPayload payload = new LLMPromptRequestPayload(
-    "ax.memory.compress",
-    0,
-    0.7f,
-    false,
-    false,
-    false,
-    "TASK",
-    10,
-    false,
-    List.of(LLMPromptRequestPayload.ChunkPayload.message(List.of(
-        LLMPromptRequestPayload.MessageItemPayload.system("你是记忆压缩器"),
-        LLMPromptRequestPayload.MessageItemPayload.user(longText)
-    ))),
-    "",
-    "module.ax",
-    "",
-    "",
-    LLMPromptRequestPayload.InferencePolicyPayload.followGlobal()
-);
-```
-## 诊断记录
+## 5. 运行时
 
-LLM 的结构化推理诊断由设置页右下角的全局 Debug 开关统一控制。开启后允许记录请求消息和生成结果，用于调试 prompt、上下文和输出链路；关闭时事件不再进聊天栏，但 WARN/ERROR 仍会落盘（INFO 级进度事件只在开关打开时落盘）。普通运行日志始终写入独立的 `logs/tianshu-diagnostics.log`，文件写入由 Client 异步集中完成。
+- 云端通道只校验配置（地址、密钥、模型）；启动不发送探测请求，网络断开不影响模块就绪。
+- 上下文容量来自所选模型条目声明的 `contextWindowTokens`（tier 值，例如 100K / 200K / 500K）。预算公式为
+  `容量 − 512 输出保留 − headroom`，headroom 为 prompt 窗口的 6.25%，钳位 4096..32768 并向上取整到 1024。
+- 向量引擎是本机唯一加载的模型：进世界后延迟数秒在模型加载 lane 上启动；GPU 失败自动回落 CPU（`DEGRADED`），两级都失败才 `UNAVAILABLE`。
+- 向量引擎起不来**不会**让云端通道失败：聊天不依赖检索，此时只有 RAG / `EMBED` 报不可用。
+- 原生模型加载经过进程级串行闸门，与听澜 / 回响的语音模型互斥。
+- 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。请求本身不产生映迹活动，那属于调用方的一轮对话。
+- 取消或线程中断会中止底层 HTTP 交换，而不是让读者线程继续读到超时；中断标志会被恢复，交给上层决定。
 
-模型下载进度不是 LLM 协议 payload。宿主设置页接收 `ModelDownloadProgress`，使用 `stage`、`percent`、`downloadedBytes`、`totalBytes` 和 `detailCode` 更新界面；Common 不发送自由文本下载标签。
+## 6. 边界
+
+织言**不做**：
+
+- 提示词组装、system 合并、RAG 文本注入、编号与上下文裁剪；
+- 记忆、人格、对话所有权；
+- 工具定义、工具调用与结果回填；
+- 任务调度、优先级、抢占或本地队列。
+
+这些属于调用方。织言只负责把调用方给的消息发出去、把流收回来，并提供向量与检索的数据面。
+
+## 7. 用量与余额
+
+- 每个请求结束后按 envelope 的 `sourceId` 记入本地账本：请求数、输入 / 输出 token、缓存命中断言（供应商报告才有）。
+- 本地计价按配置的每百万 token 单价估算，仅供对账，**不是账单**。
+- 剩余余额来自供应商账户接口；未接入或失败时显示“未知”，绝不以 0 代替。

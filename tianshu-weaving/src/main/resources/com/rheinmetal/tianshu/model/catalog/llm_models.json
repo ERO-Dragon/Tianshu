@@ -6,22 +6,8 @@
       "standard": {
         "temperature": 0.0,
         "topP": 0.95,
-        "topK": 40,
-        "minP": 0.05,
-        "penaltyRepeat": 1.0,
-        "penaltyFreq": 0.0,
-        "penaltyPresent": 0.0,
-        "penaltyLastN": 64
-      },
-      "thinking": {
-        "temperature": 0.0,
-        "topP": 0.95,
-        "topK": 40,
-        "minP": 0.05,
-        "penaltyRepeat": 1.0,
-        "penaltyFreq": 0.0,
-        "penaltyPresent": 0.0,
-        "penaltyLastN": 64
+        "frequencyPenalty": 0.0,
+        "presencePenalty": 0.0
       }
     },
     "lang": ["zh", "en"]

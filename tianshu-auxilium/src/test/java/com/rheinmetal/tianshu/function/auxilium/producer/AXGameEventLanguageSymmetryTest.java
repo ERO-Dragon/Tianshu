@@ -32,7 +32,7 @@ class AXGameEventLanguageSymmetryTest {
 
     /** Kinds whose folded window is rendered from an aggregate sentence. */
     private static final List<String> FOLDED_KINDS = List.of(
-            "respawn", "health_change", "hunger_critical", "hunger_change"
+            "damage_taken", "health_change", "hunger_critical", "hunger_change"
     );
 
     private static final List<String> DETAIL_SEGMENTS = List.of(

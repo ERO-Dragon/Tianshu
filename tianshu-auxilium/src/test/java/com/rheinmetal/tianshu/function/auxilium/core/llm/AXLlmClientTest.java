@@ -3,6 +3,9 @@ package com.rheinmetal.tianshu.function.auxilium.core.llm;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.function.auxilium.AXProtocolAdapter;
 import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
@@ -12,20 +15,16 @@ import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
-import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
 import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -36,53 +35,25 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+/**
+ * AX 的请求生命周期：一条请求挂在谁下面、等多久、失败怎么重投。
+ *
+ * <p>没有“对话/后台”类型：挂在一轮对话下的请求用回合信封的期限，无主请求由调用方给期限；
+ * 两者都用同一套过期与重投规则。</p>
+ */
 class AXLlmClientTest {
-    @Test
-    void asrInterruptionCancelsOnlyChatRequests() throws InterruptedException {
-        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
-        CountDownLatch taskStarted = new CountDownLatch(1);
-        registerLlmSink(runtime, taskStarted);
-        AXLlmClient client = new AXLlmClient(new AXProtocolAdapter(runtime));
-        RecordingHandler chat = new RecordingHandler();
-        RecordingHandler task = new RecordingHandler();
-        TianshuEnvelope parent = EnvelopeBuilder.commandToCapability(
-                "module.ia",
-                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
-                PayloadType.CUSTOM,
-                LLMPromptRequestPayload.EMPTY
-        ).build();
-
-        TianshuEnvelope chatEnvelope = client.submit(parent, request("chat", "SIMPLE"), chat);
-        TianshuEnvelope taskEnvelope = client.submitDetached(request("task", "COMPLEX"), task);
-
-        client.cancelChatRequests(AXTurnCancellation.playerInterrupted("user started speaking"));
-
-        assertEquals(1, chat.cancelled.get());
-        assertEquals(0, task.cancelled.get());
-        assertEquals(EnvelopeStatus.CANCELLED, runtime.lifecycle().statusOf(chatEnvelope.envelopeId()));
-        assertTrue(taskStarted.await(2, TimeUnit.SECONDS), "TASK request did not reach the LLM handler");
-        assertEquals(EnvelopeStatus.RUNNING, runtime.lifecycle().statusOf(taskEnvelope.envelopeId()));
-
-        assertTrue(client.handleStreamChunk(chatEnvelope.envelopeId(), LLMPromptStreamChunkPayload.chunk("chat", "ignored", 0)));
-        assertEquals(0, chat.streamChunks.get());
-
-        LLMPromptResultPayload.TokenUsagePayload usage = new LLMPromptResultPayload.TokenUsagePayload(120, 12, 8, 20, 140);
-        assertTrue(client.handleResult(chatEnvelope.envelopeId(), LLMPromptResultPayload.cancelled("chat", "partial", "thinking", List.of(), usage)));
-        assertEquals(0, chat.results.get());
-        assertEquals(1, chat.cancellationResults.get());
-        assertEquals(usage, chat.lastTerminalUsage.get());
-    }
+    private static final Duration DETACHED_TIMEOUT = Duration.ofMinutes(5);
 
     @Test
-    void targetedForegroundCancellationLeavesOtherChatRequestsAlive() {
+    void targetedCancellationLeavesOtherRequestsAlive() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         registerLlmSink(runtime, null);
         AXLlmClient client = new AXLlmClient(new AXProtocolAdapter(runtime));
         RecordingHandler first = new RecordingHandler();
         RecordingHandler second = new RecordingHandler();
 
-        TianshuEnvelope firstEnvelope = client.submitDetached(request("first", "SIMPLE"), first);
-        TianshuEnvelope secondEnvelope = client.submitDetached(request("second", "SIMPLE"), second);
+        TianshuEnvelope firstEnvelope = client.submitDetached(request("first"), first, DETACHED_TIMEOUT);
+        TianshuEnvelope secondEnvelope = client.submitDetached(request("second"), second, DETACHED_TIMEOUT);
 
         assertTrue(client.cancelRequestAwaitTerminal(
                 firstEnvelope.envelopeId(),
@@ -96,7 +67,8 @@ class AXLlmClientTest {
 
         assertTrue(client.handleResult(
                 firstEnvelope.envelopeId(),
-                LLMPromptResultPayload.cancelled("first", "partial", "", List.of(), null)
+                LLMPromptResultPayload.cancelled(
+                        "first", "partial", "", LLMPromptResultPayload.TokenUsagePayload.empty())
         ));
         assertEquals(1, first.cancellationResults.get());
         assertTrue(client.handleStreamChunk(
@@ -107,21 +79,45 @@ class AXLlmClientTest {
     }
 
     @Test
-    void sweepExpiredKeepsTaskRequestsOpenForSuspendedLlmTask() {
+    void sweepExpiredCancelsOnlyTheRequestPastItsDeadline() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         registerLlmSink(runtime, null);
         AtomicLong nowMillis = new AtomicLong(System.currentTimeMillis());
         AXLlmClient client = new AXLlmClient(new AXProtocolAdapter(runtime), nowMillis::get);
-        RecordingHandler chat = new RecordingHandler();
-        RecordingHandler task = new RecordingHandler();
+        RecordingHandler shortLived = new RecordingHandler();
+        RecordingHandler longLived = new RecordingHandler();
 
-        client.submitDetached(request("chat", "SIMPLE"), chat);
-        client.submitDetached(request("task", "COMPLEX"), task);
+        client.submitDetached(request("short"), shortLived, Duration.ofSeconds(1));
+        client.submitDetached(request("long"), longLived, Duration.ofMinutes(10));
         nowMillis.addAndGet(120_000L);
         client.sweepExpired();
 
-        assertEquals(1, chat.cancelled.get());
-        assertEquals(0, task.cancelled.get());
+        assertEquals(1, shortLived.cancelled.get());
+        assertEquals(0, longLived.cancelled.get());
+    }
+
+    @Test
+    void aTurnRequestUsesItsParentEnvelopeDeadline() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        registerLlmSink(runtime, null);
+        AtomicLong nowMillis = new AtomicLong(System.currentTimeMillis());
+        AXLlmClient client = new AXLlmClient(new AXProtocolAdapter(runtime), nowMillis::get);
+        RecordingHandler handler = new RecordingHandler();
+        long turnDeadline = nowMillis.get() + 1_000L;
+        TianshuEnvelope parent = EnvelopeBuilder.commandToCapability(
+                "module.ia",
+                AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                PayloadType.CUSTOM,
+                LLMPromptRequestPayload.EMPTY
+        ).deadline(turnDeadline).expireAt(turnDeadline).build();
+
+        TianshuEnvelope request = client.submitInTurn(parent, request("chat"), handler);
+        assertEquals(parent.envelopeId(), request.header().parentId(), "the request stays on the turn chain");
+
+        nowMillis.addAndGet(5_000L);
+        client.sweepExpired();
+
+        assertEquals(1, handler.cancelled.get(), "the turn deadline is the request deadline");
     }
 
     @Test
@@ -132,7 +128,7 @@ class AXLlmClientTest {
         AXLlmClient client = immediateRetryClient(runtime, delays);
         RecordingHandler handler = new RecordingHandler();
 
-        client.submitDetached(request("request", "SIMPLE"), handler);
+        client.submitDetached(request("request"), handler, DETACHED_TIMEOUT);
         await(() -> submitted.size() == 1, "首发");
 
         for (int attempt = 0; attempt < 4; attempt++) {
@@ -157,7 +153,7 @@ class AXLlmClientTest {
         AXLlmClient client = immediateRetryClient(runtime, delays);
         RecordingHandler handler = new RecordingHandler();
 
-        client.submitDetached(request("request", "SIMPLE"), handler);
+        client.submitDetached(request("request"), handler, DETACHED_TIMEOUT);
         await(() -> submitted.size() == 1, "首发");
         assertTrue(client.handleResult(submitted.get(0), LLMPromptResultPayload.failed(
                 "request",
@@ -179,7 +175,7 @@ class AXLlmClientTest {
         AXLlmClient client = immediateRetryClient(runtime, delays);
         RecordingHandler handler = new RecordingHandler();
 
-        client.submitDetached(request("request", "SIMPLE"), handler);
+        client.submitDetached(request("request"), handler, DETACHED_TIMEOUT);
         await(() -> submitted.size() == 1, "首发");
         assertTrue(client.handleResult(submitted.get(0), transientFailure()));
         await(() -> submitted.size() == 2, "重投");
@@ -202,7 +198,7 @@ class AXLlmClientTest {
                 (delayMillis, task) -> waiting.add(task)
         );
         RecordingHandler handler = new RecordingHandler();
-        TianshuEnvelope first = client.submitDetached(request("request", "SIMPLE"), handler);
+        TianshuEnvelope first = client.submitDetached(request("request"), handler, DETACHED_TIMEOUT);
 
         await(() -> submitted.size() == 1, "首发");
         assertTrue(client.handleResult(submitted.get(0), transientFailure()));
@@ -231,7 +227,7 @@ class AXLlmClientTest {
         );
         RecordingHandler handler = new RecordingHandler();
 
-        client.submitDetached(request("request", "SIMPLE"), handler);
+        client.submitDetached(request("request"), handler, Duration.ofSeconds(5));
         await(() -> submitted.size() == 1, "首发");
         assertTrue(client.handleResult(submitted.get(0), transientFailure()));
         nowMillis.addAndGet(120_000L);
@@ -291,21 +287,18 @@ class AXLlmClientTest {
         }
     }
 
-    private static LLMPromptRequestPayload request(String requestId, String lane) {
+    private static LLMPromptRequestPayload request(String requestId) {
         return new LLMPromptRequestPayload(
                 requestId,
+                List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello")),
+                false,
+                false,
                 0,
-                null,
-                false,
-                false,
-                lane,
-                0,
-                false,
-                List.of(LLMPromptRequestPayload.ChunkPayload.message(List.of(LLMPromptRequestPayload.MessageItemPayload.user("hello"))))
+                LLMPromptRequestPayload.SamplingPayload.empty()
         );
     }
 
-    private static void registerLlmSink(ProtocolRuntime runtime, CountDownLatch taskStarted) {
+    private static void registerLlmSink(ProtocolRuntime runtime, java.util.concurrent.CountDownLatch taskStarted) {
         runtime.registerModule(llmModule(), (envelope, context) -> holdRequest(envelope, taskStarted));
     }
 
@@ -340,10 +333,8 @@ class AXLlmClientTest {
         );
     }
 
-    private static void holdRequest(TianshuEnvelope envelope, CountDownLatch taskStarted) {
-        if (taskStarted != null
-                && envelope.payload() instanceof LLMPromptRequestPayload payload
-                && "task".equals(payload.requestId())) {
+    private static void holdRequest(TianshuEnvelope envelope, java.util.concurrent.CountDownLatch taskStarted) {
+        if (taskStarted != null) {
             taskStarted.countDown();
         }
     }
@@ -354,7 +345,6 @@ class AXLlmClientTest {
         private final AtomicInteger streamChunks = new AtomicInteger();
         private final AtomicInteger cancellationResults = new AtomicInteger();
         private final AtomicReference<LLMPromptResultPayload> lastResult = new AtomicReference<>();
-        private final AtomicReference<LLMPromptResultPayload.TokenUsagePayload> lastTerminalUsage = new AtomicReference<>();
 
         @Override
         public void onStreamChunk(LLMPromptStreamChunkPayload payload) {
@@ -369,7 +359,6 @@ class AXLlmClientTest {
         @Override
         public void onCancellationResult(LLMPromptResultPayload payload) {
             cancellationResults.incrementAndGet();
-            lastTerminalUsage.set(payload == null ? null : payload.usage());
         }
 
         @Override

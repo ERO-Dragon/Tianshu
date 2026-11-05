@@ -40,7 +40,6 @@
   "tianshu.ax.event.line.tianshu.boss_engage": "Boss encountered: %s",
   "tianshu.ax.event.line.tianshu.tamed": "You tamed: %s",
   "tianshu.ax.event.line.tianshu.chat_mentioned": "Someone called your name: %s",
-  "tianshu.ax.event.line.tianshu.respawn": "You respawned: %s",
   "tianshu.ax.event.line.tianshu.damage_taken": "You took damage: %s",
   "tianshu.ax.event.line.tianshu.effect_gained": "Effect gained: %s",
   "tianshu.ax.event.batch.entry": "%1$s x %2$s",
@@ -83,7 +82,6 @@
   "tianshu.ax.event.aggregate.tianshu.durability_low": "Durability low several times (%s times, %s to %s)",
   "tianshu.ax.event.aggregate.tianshu.damage_taken": "Took damage several times (%s times, %s to %s)",
   "tianshu.ax.event.aggregate.tianshu.fall_damage": "Took fall damage several times (%s times, %s to %s)",
-  "tianshu.ax.event.aggregate.tianshu.respawn": "Respawned several times (%s times)",
   "tianshu.ax.event.aggregate.tianshu.effect_gained": "Gained effects several times (%s times)",
   "tianshu.ax.event.aggregate.tianshu.structure_discovery": "Discovered structures several times (%s times)",
   "tianshu.ax.event.aggregate.tianshu.item_crafted": "Crafted several times (%s times)",
@@ -146,5 +144,6 @@
   "tianshu.gui.ax.action.dismiss": "Dismiss",
   "tianshu.gui.ax.text_input.title": "Talk to Auxilium",
   "tianshu.gui.ax.text_input.hint": "Type what you want to say, Enter to send, Esc to cancel",
-  "tianshu.gui.ax.output.failed": "Failed to generate a reply; see the log"
+  "tianshu.gui.ax.output.failed": "Failed to generate a reply; see the log",
+  "tianshu.chat.progress.ax.input": "AX received: %s"
 }

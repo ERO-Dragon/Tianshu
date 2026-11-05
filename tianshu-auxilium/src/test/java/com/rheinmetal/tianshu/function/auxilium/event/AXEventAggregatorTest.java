@@ -67,16 +67,16 @@ class AXEventAggregatorTest {
 
     @Test
     void aCountFoldCarriesTheCountOnly() {
-        AXEventAggregator aggregator = aggregator("重生 3 次");
+        AXEventAggregator aggregator = aggregator("受伤 3 次");
 
-        fold(aggregator, "tianshu:respawn", "重生了", null, AXEventFold.COUNT, SOURCE, START);
-        fold(aggregator, "tianshu:respawn", "重生了", null, AXEventFold.COUNT, SOURCE, START + 1_000L);
-        fold(aggregator, "tianshu:respawn", "重生了", null, AXEventFold.COUNT, SOURCE, START + 2_000L);
+        fold(aggregator, "tianshu:damage_taken", "受伤了", null, AXEventFold.COUNT, SOURCE, START);
+        fold(aggregator, "tianshu:damage_taken", "受伤了", null, AXEventFold.COUNT, SOURCE, START + 1_000L);
+        fold(aggregator, "tianshu:damage_taken", "受伤了", null, AXEventFold.COUNT, SOURCE, START + 2_000L);
 
         aggregator.drainAll();
 
         assertEquals(1, rendered.size());
-        assertEquals(AXEventTexts.AGGREGATE_PREFIX + "tianshu.respawn", rendered.get(0).key());
+        assertEquals(AXEventTexts.AGGREGATE_PREFIX + "tianshu.damage_taken", rendered.get(0).key());
         assertEquals(List.of(AXEventText.Arg.value("3")), rendered.get(0).args());
     }
 

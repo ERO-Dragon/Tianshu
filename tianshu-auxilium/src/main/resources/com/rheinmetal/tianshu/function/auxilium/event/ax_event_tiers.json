@@ -2,7 +2,6 @@
   "schemaVersion": 2,
   "kinds": {
     "tianshu:death": "RARE",
-    "tianshu:respawn": "NORMAL",
     "tianshu:health_critical": "RARE",
     "tianshu:health_change": "FREQUENT",
     "tianshu:hunger_critical": "FREQUENT",

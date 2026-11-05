@@ -10,7 +10,7 @@ import com.rheinmetal.tianshu.protocol.Priority;
  *
  * <p>No new voice protocol: the sentence is submitted through the module's {@link AXSpeechSink}, which is
  * either the bridge to the speech module or the inert stand-in when that module is not installed. Queuing
- * is therefore its job 鈥?this class only picks <em>where</em> in the queue the line joins, and never asks
+ * is therefore its job — this class only picks <em>where</em> in the queue the line joins, and never asks
  * for an interruption.</p>
  *
  * <p>Keyed lines are resolved here, on the platform side, through the client language table

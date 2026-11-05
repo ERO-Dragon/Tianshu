@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.settings;
 
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingSettingsAccess;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
@@ -43,6 +45,7 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -136,22 +139,19 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
-    void theVectorModelIsAFullWidthRowDirectlyAboveTheLaneSelector() throws Exception {
+    void theVectorModelIsAFullWidthRowDirectlyAboveTheColumns() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertEquals(List.of("llm.enabled", EMBEDDING_GROUP, "llm.lane.selector", "llm.panel.layout"),
+            assertEquals(List.of("llm.enabled", EMBEDDING_GROUP, "llm.panel.layout"),
                     harness.topLevelIds(),
-                    "the vector model is the page's second row: everything below it needs an embedding "
-                            + "file, so it outranks the lane and spans the page");
+                    "the vector model is the page's second row: everything below it needs an embedding file");
         }
     }
 
     @Test
-    void anUnreadyVectorModelHidesTheLaneAndBothColumns() throws Exception {
+    void anUnreadyVectorModelHidesBothColumns() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
             assertTrue(harness.template(EMBEDDING_GROUP).visible().getAsBoolean(),
                     "the download row itself stays on screen");
-            assertFalse(harness.template("llm.lane.selector").visible().getAsBoolean(),
-                    "an unready page does not offer a lane");
             assertFalse(harness.template("llm.panel.layout").visible().getAsBoolean(),
                     "and it does not draw the provider columns: the gate is visibility, not a grey-out");
 
@@ -227,6 +227,44 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
+    void theFormWritesTheModelCapacityAndACustomLadder() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://api.deepseek.com/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.setEditorSelect("llm.editor.context_tier", Integer.valueOf(204_800));
+            harness.setEditorSelect("llm.editor.reasoning_wire", LlmReasoningWire.OPENAI_EFFORT);
+            harness.typeEditorText("llm.editor.reasoning_levels", "minimal, standard, deep");
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+
+            WeavingModelEntry alpha = harness.access().getLlmModels().get(0);
+            assertEquals(204_800, alpha.activeModel().contextWindowTokens(),
+                    "the capacity chosen in the form belongs to the model in use");
+
+            LlmReasoningProfile ladder = harness.access().getLlmReasoningProfile("alpha");
+            assertNotNull(ladder, "a ladder that differs from the shipped profile is stored on the entry");
+            assertEquals(LlmReasoningWire.OPENAI_EFFORT, ladder.wire());
+            assertEquals(List.of("minimal", "standard", "deep"), ladder.levels());
+        }
+    }
+
+    @Test
+    void anUntouchedFormStoresNoLadderOverride() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://api.deepseek.com/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.typeEditorText("llm.editor.api_key", TYPED_KEY);
+
+            assertTrue(harness.session().save().success());
+            assertNull(harness.access().getLlmReasoningProfile("alpha"),
+                    "inheriting the profile means no override is written");
+        }
+    }
+
+    @Test
     void theEditorIsTheFormAndOneReadOnlyModelLineWithOneButton() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
             harness.runProviderAction("llm.provider.edit");
@@ -235,8 +273,10 @@ final class LlmProviderEditorPanelTest {
                     .map(SettingsTemplateModel.OptionEntry::id)
                     .toList();
             assertEquals(List.of("llm.editor.mode", "llm.editor.provider", "llm.editor.name",
-                            "llm.editor.base_url", "llm.editor.api_key"), optionIds,
-                    "the editor holds the endpoint form and nothing about the catalog: " + optionIds);
+                            "llm.editor.base_url", "llm.editor.context_tier",
+                            "llm.editor.reasoning_wire", "llm.editor.reasoning_no_thinking",
+                            "llm.editor.reasoning_levels", "llm.editor.api_key"), optionIds,
+                    "the editor holds the endpoint form, the model's own capacity and ladder: " + optionIds);
 
             List<String> actionIds = harness.editor().actions().stream()
                     .map(SettingsTemplateModel.ActionEntry::id)
@@ -833,6 +873,19 @@ final class LlmProviderEditorPanelTest {
             fail("the editor has no text field " + optionId);
         }
 
+        @SuppressWarnings("unchecked")
+        private void setEditorSelect(String optionId, Object value) {
+            SettingsTemplateModel.CompoundGroup editor = editor();
+            assertNotNull(editor, "no editor section to select in");
+            for (SettingsTemplateModel.OptionEntry option : editor.options()) {
+                if (option.id().equals(optionId) && option instanceof SettingsTemplateModel.SelectEntry<?> select) {
+                    ((SettingsTemplateModel.SelectEntry<Object>) select).setter().accept(value);
+                    return;
+                }
+            }
+            fail("the editor has no select " + optionId);
+        }
+
         @Override
         public void close() {
             executors.close();
@@ -870,6 +923,7 @@ final class LlmProviderEditorPanelTest {
     private static final class FakeAccess implements WeavingSettingsAccess {
         private final Path basePath;
         private final Map<String, String> apiKeys = new LinkedHashMap<>();
+        private final Map<String, LlmReasoningProfile> reasoningProfiles = new LinkedHashMap<>();
         private boolean enabled = true;
         private String customName = "";
         private List<WeavingModelEntry> models;
@@ -962,6 +1016,20 @@ final class LlmProviderEditorPanelTest {
                 apiKeys.remove(modelId);
             } else {
                 apiKeys.put(modelId, apiKey);
+            }
+        }
+
+        @Override
+        public LlmReasoningProfile getLlmReasoningProfile(String entryId) {
+            return reasoningProfiles.get(entryId);
+        }
+
+        @Override
+        public void setLlmReasoningProfile(String entryId, LlmReasoningProfile profile) {
+            if (profile == null) {
+                reasoningProfiles.remove(entryId);
+            } else {
+                reasoningProfiles.put(entryId, profile);
             }
         }
 

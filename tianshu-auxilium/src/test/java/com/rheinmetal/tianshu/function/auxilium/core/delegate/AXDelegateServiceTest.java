@@ -55,8 +55,8 @@ class AXDelegateServiceTest {
         fixture.awaitRequest();
 
         LLMPromptRequestPayload request = fixture.lastRequest();
-        assertEquals(AXDelegateService.DELEGATE_LANE, request.lane(), "Complex 跑在 TASK 车道（§3.2）");
-        assertTrue(request.toolsJson().isEmpty(), "本片不含真实工具定义");
+        assertEquals(AXDelegateService.DELEGATE_TEMPERATURE, request.sampling().temperature(),
+                "Complex 请求自带采样温度（§3.2）");
         assertEquals(AXDelegateConclusionParser.MAX_CONCLUSION_TOKENS, request.maxTokens());
         assertTrue(request.requestId().startsWith("ax.delegate."));
         assertEquals(ticket.taskId(), fixture.taskOf(request.requestId()));
@@ -186,7 +186,7 @@ class AXDelegateServiceTest {
 
         private Fixture() {
             this.service = new AXDelegateService(
-                    (payload, handler) -> {
+                    (payload, handler, timeout) -> {
                         // Handler first: a reader that sees the request must also see its handler.
                         handlers.add(handler);
                         requests.add(payload);

@@ -11,6 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CoreLifecycleHostBoundaryTest {
+    /** The 1.21.1 pair is the reference adapter; the other versions mirror its structure. */
+    private static final Path NEOFORGE_ROOT =
+            Path.of("../tianshu-adapter/1.21-1.21.1-neoforge/src/main/java");
+    private static final Path COMMON_ROOT =
+            Path.of("../tianshu-adapter/1.21-1.21.1-common/src/main/java");
+
     @Test
     void coreLifecycleQueueDoesNotBecomeASecondProtocolTaskScheduler() throws Exception {
         String queue = coreSource("com/rheinmetal/tianshu/core/runtime/CoreLifecycleCommandQueue.java");
@@ -38,10 +44,10 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void neoforgeWorldEventsOnlySubmitAsyncCoreLifecycleCommands() throws Exception {
-        Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java");
+        Path neoforgeRoot = NEOFORGE_ROOT;
         // The world-session decisions live in the shared layer; the loader class only forwards.
         String events = Files.readString(
-                Path.of("../tianshu-adapter/common-1.21.1/src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java"),
+                COMMON_ROOT.resolve("com/rheinmetal/tianshu/mc/event/ClientEvents.java"),
                 StandardCharsets.UTF_8
         );
         String runtime = Files.readString(
@@ -77,7 +83,7 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void onnxBootstrapIsAnOptionalLifecycleModuleInsteadOfLoginThreadWork() throws Exception {
-        Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java");
+        Path neoforgeRoot = NEOFORGE_ROOT;
         String bootstrap = Files.readString(
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
                 StandardCharsets.UTF_8
@@ -107,7 +113,7 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void namedObjectIndexBelongsToTheModuleThatReadsSpeech() throws Exception {
-        Path neoforgeRoot = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java/com/rheinmetal/tianshu/neoforge");
+        Path neoforgeRoot = NEOFORGE_ROOT.resolve("com/rheinmetal/tianshu/neoforge");
         Path platformClientRoot = Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
         String bootstrap = Files.readString(
                 neoforgeRoot.resolve("bootstrap/NeoForgeClientBootstrap.java"),
@@ -126,7 +132,7 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String reloadListener = Files.readString(
-                Path.of("../tianshu-adapter/common-1.21.1/src/main/java/com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
+                COMMON_ROOT.resolve("com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
                 StandardCharsets.UTF_8
         );
 

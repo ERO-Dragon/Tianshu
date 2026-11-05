@@ -58,7 +58,7 @@ class AXEventDispatcherTest {
 
     /**
      * The shipped whitelist is the actionable warnings: a player can still act on a drowning or a boss fight. A
-     * respawn stays neutral on purpose — the death of that same moment was the line worth saying.
+     * neutral kind such as taking damage stays neutral on purpose — it is context, not a line worth interrupting for.
      */
     @Test
     void theShippedWhitelistLiftsTheActionableWarnings() {
@@ -69,8 +69,8 @@ class AXEventDispatcherTest {
         assertEquals(AXEventClass.IMMEDIATE, decide(event("tianshu:on_fire", "line.death"), START).eventClass());
         assertEquals(AXEventClass.IMMEDIATE, decide(event("tianshu:boss_engage", "line.death"), START).eventClass());
 
-        assertEquals(AXEventClass.SILENT, decide(event("tianshu:respawn", "line.death"), START).eventClass(),
-                "respawn follows the death that was already said, so it is only a counted history line");
+        assertEquals(AXEventClass.SILENT, decide(event("tianshu:damage_taken", "line.death"), START).eventClass(),
+                "a neutral kind outside the whitelist is only a counted history line");
     }
 
     /** The whitelist is not an exemption from the frequency step: dying three times still quietens the second and third. */

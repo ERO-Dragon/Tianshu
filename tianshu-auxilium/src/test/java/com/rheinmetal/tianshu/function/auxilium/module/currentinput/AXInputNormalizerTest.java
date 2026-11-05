@@ -40,8 +40,7 @@ class AXInputNormalizerTest {
                 new AXPromptOrchestrator(null, null, null))
                 .buildChatRequest(AXRequest.fromNormalizedInput(input), AXContextSnapshot.empty(), AXContextBudget.DEFAULT);
         // system 段落本身要讲标签（否则模型不会用），所以这里只检查非 system 消息里的玩家侧内容。
-        String playerFacing = prompt.chunks().stream()
-                .flatMap(chunk -> chunk.messageContent().stream())
+        String playerFacing = prompt.messages().stream()
                 .filter(message -> !"system".equals(message.role()))
                 .map(LLMPromptRequestPayload.MessageItemPayload::content)
                 .reduce("", (left, right) -> left + "\n" + right);

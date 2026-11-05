@@ -1,5 +1,6 @@
 {
   "key.categories.tianshu": "Tianshu AI",
+  "key.category.tianshu.keys": "Tianshu AI",
   "key.tianshu.activate": "Toggle Voice (Press to Talk)",
   "key.tianshu.text_input": "Text Dialogue (Open Input Bar)",
   "tianshu.gui.text_input.title": "Talk to the assistant",

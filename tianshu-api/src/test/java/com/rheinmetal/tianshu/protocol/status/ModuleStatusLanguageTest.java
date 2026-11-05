@@ -55,29 +55,55 @@ class ModuleStatusLanguageTest {
     );
 
     /**
-     * The in-repo modules that publish a lifecycle row.
+     * The in-repo modules that publish a lifecycle row, and the Gradle module whose shard owns their text.
      *
-     * <p>The list lives in this test, not in the kernel: the host derives a lifecycle key from any id, so it
-     * never needs to know which ids exist. Keeping the sweep list here means api ships no feature ids.</p>
+     * <p>This table lives in the test, not in the kernel: the host derives a lifecycle key from any id, so it
+     * never needs to know which ids exist, and it certainly must not know which jar owns which id. Keeping both
+     * facts here is what turns "the key exists somewhere" into "the key lives with its owner".</p>
      */
-    private static final List<String> LIFECYCLE_MODULES = List.of(
-            "module.ax", "module.ia", "module.llm", "module.asr", "module.tts");
+    private static final Map<String, String> MODULE_SHARDS = Map.of(
+            "module.asr", "tianshu-intake",
+            "module.ia", "tianshu-intake",
+            "module.ax", "tianshu-auxilium",
+            "module.llm", "tianshu-weaving",
+            "module.tts", "tianshu-echo",
+            "module.presence", "tianshu-presence");
+
+    /** The kernel's own shards. Feature vocabulary must never be parked here. */
+    private static final List<String> KERNEL_SHARDS = List.of(
+            "tianshu-api", "tianshu-core", "tianshu-client");
 
     @Test
-    void everyDerivedLifecycleKeyHasTextInBothLanguages() {
-        Set<String> zh = LangShards.keys(LangShards.ZH_CN);
-        Set<String> en = LangShards.keys(LangShards.EN_US);
-
-        Set<String> lifecycle = new java.util.LinkedHashSet<>();
-        for (String moduleId : LIFECYCLE_MODULES) {
-            lifecycle.add(ModuleStatusKeys.starting(moduleId));
-            lifecycle.add(ModuleStatusKeys.ready(moduleId));
-            lifecycle.add(ModuleStatusKeys.stopped(moduleId));
+    void everyDerivedLifecycleKeyHasTextInTheOwningModulesShard() {
+        for (Map.Entry<String, String> owner : MODULE_SHARDS.entrySet()) {
+            String moduleId = owner.getKey();
+            for (String language : List.of(LangShards.ZH_CN, LangShards.EN_US)) {
+                Set<String> shard = LangShards.keysIn(owner.getValue(), language);
+                for (String key : List.of(
+                        ModuleStatusKeys.starting(moduleId),
+                        ModuleStatusKeys.ready(moduleId),
+                        ModuleStatusKeys.stopped(moduleId))) {
+                    assertTrue(shard.contains(key),
+                            "missing in " + owner.getValue() + " " + language + ": " + key);
+                }
+            }
         }
-        assertFalse(lifecycle.isEmpty(), "the lifecycle key set must not be empty");
-        for (String key : lifecycle) {
-            assertTrue(zh.contains(key), "missing in zh_cn: " + key);
-            assertTrue(en.contains(key), "missing in en_us: " + key);
+    }
+
+    @Test
+    void kernelLanguageShardsHoldNoFeatureVocabulary() {
+        for (String kernelShard : KERNEL_SHARDS) {
+            for (String language : List.of(LangShards.ZH_CN, LangShards.EN_US)) {
+                for (String key : LangShards.keysIn(kernelShard, language)) {
+                    for (String moduleId : MODULE_SHARDS.keySet()) {
+                        String feature = moduleId.substring("module.".length());
+                        assertFalse(key.startsWith("tianshu.runtime.module." + feature + "."),
+                                () -> kernelShard + " owns a " + feature + " lifecycle key: " + key);
+                        assertFalse(key.startsWith("tianshu.chat.progress." + feature + "."),
+                                () -> kernelShard + " owns a " + feature + " chat-progress key: " + key);
+                    }
+                }
+            }
         }
     }
 

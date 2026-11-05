@@ -15,11 +15,11 @@ public interface WeavingConfiguration {
     String DEFAULT_LLM_PROVIDER_ID = "deepseek";
 
     /**
-     * Declared context window of the cloud model, in tokens. The cloud endpoint does not report its
-     * window, so it has to be configured; every AX budget value is derived from this single number.
-     * Defaults to the 100K tier.
+     * Declared context capacity of the cloud model, in tokens. The cloud endpoint does not report
+     * its window, so it has to be configured; every caller budget value derives from this single
+     * number. Defaults to the 100K tier.
      */
-    int DEFAULT_LLM_CONTEXT_WINDOW_TOKENS = 102_400;
+    int DEFAULT_LLM_CONTEXT_WINDOW_TOKENS = WeavingContextTiers.TIER_100K;
 
     /**
      * Upper bound of a declared context window; the storage layer clamps to it.
@@ -84,6 +84,14 @@ public interface WeavingConfiguration {
         return "";
     }
 
+    /**
+     * Provider id of the active model entry. It selects the built-in profile's wire quirks (reasoning
+     * fields, endpoint defaults); an entry that does not name a shipped provider is custom.
+     */
+    default String getLlmProviderId() {
+        return WeavingModelEntry.CUSTOM_PROVIDER_ID;
+    }
+
     /** Provider model id of the active model. Same contract as {@link #getLlmRemoteBaseUrl()}. */
     default String getLlmRemoteModel() {
         return DEFAULT_LLM_REMOTE_MODEL;
@@ -143,11 +151,11 @@ public interface WeavingConfiguration {
     }
 
     /**
-     * Selected context budget tier. The window above only says which tiers physically fit; this is
-     * the one the player actually chose, and every budget value derives from it.
+     * Reasoning ladder of the active entry: the one configured for it, otherwise the shipped provider
+     * profile's, otherwise no control. A bare port (tests, tooling) has no ladder.
      */
-    default int getLlmContextTier() {
-        return WeavingContextTiers.DEFAULT_TIER;
+    default LlmReasoningProfile getLlmReasoningProfile() {
+        return LlmReasoningProfile.NONE;
     }
 
     default String getLlmEmbeddingModelName() {
@@ -233,18 +241,6 @@ public interface WeavingConfiguration {
     /** Internal world-session delay before automatic model loading starts. */
     default long getLlmAutoLoadDelayMillis() {
         return 3_000L;
-    }
-
-    default int getLlmTaskAdmissionQueueSize() {
-        return 2;
-    }
-
-    default int getLlmTaskAgingBoostPerRequest() {
-        return 1;
-    }
-
-    default Path getLlmRagRootPath() {
-        return getLlmBasePath().resolve("rag").resolve("root");
     }
 
     default Path getLlmRagCacheRootPath() {

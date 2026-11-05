@@ -201,7 +201,7 @@ class AXGameEventServiceTest {
     void theSilentClassFoldsIntoOneCountedLine() {
         AXGameEventService service = service(false, true);
         for (int occurrence = 0; occurrence < 3; occurrence++) {
-            service.submit(event("tianshu:respawn", "line.death", AXEventFold.COUNT)
+            service.submit(event("tianshu:damage_taken", "line.death", AXEventFold.COUNT)
                     .withTier(AXEventTier.NORMAL), START + occurrence * 100L);
         }
 
@@ -218,8 +218,8 @@ class AXGameEventServiceTest {
     @Test
     void differentSubjectsDoNotShareOneCount() {
         AXGameEventService service = service(false, true);
-        service.submit(event("tianshu:respawn", "line.stone").withTier(AXEventTier.NORMAL), START);
-        service.submit(event("tianshu:respawn", "line.dirt").withTier(AXEventTier.NORMAL), START + 100L);
+        service.submit(event("tianshu:damage_taken", "line.stone").withTier(AXEventTier.NORMAL), START);
+        service.submit(event("tianshu:damage_taken", "line.dirt").withTier(AXEventTier.NORMAL), START + 100L);
 
         service.flush(START + 1_000L);
 

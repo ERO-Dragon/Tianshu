@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -45,20 +44,22 @@ class NativeModelLoadGateCallSiteBoundaryTest {
 
     @Test
     void theGateIsConstructedOnceInTheWholeBuild() throws Exception {
-        List<String> sites = new ArrayList<>();
+        List<Path> sites = new ArrayList<>();
         for (Path source : productionSources()) {
             if (Files.readString(source, StandardCharsets.UTF_8).contains("new NativeModelLoadQueue(")) {
-                sites.add(source.getFileName().toString());
+                sites.add(source.toAbsolutePath().normalize());
             }
         }
 
         // One gate per process. Every loader has its own composition root, so the rule is "the assembly owns
         // the gate and nothing else does": a module or a lane constructing its own would let two lanes load
-        // native models at the same time, which is exactly what this gate exists to prevent.
-        assertEquals(sites.size(), new HashSet<>(sites).size(),
-                "one construction per composition root, never two in the same one: " + sites);
-        for (String site : sites) {
-            assertTrue(site.endsWith("ClientBootstrap.java"),
+        // native models at the same time, which is exactly what this gate exists to prevent. The build ships
+        // one bootstrap per adapter version, so the rule is one construction per root directory, not one
+        // file name in the whole tree.
+        assertEquals(sites.size(), sites.stream().map(Path::getParent).distinct().count(),
+                "one construction per composition root, never two in the same root: " + sites);
+        for (Path site : sites) {
+            assertTrue(site.getFileName().toString().endsWith("ClientBootstrap.java"),
                     site + " is not a composition root; the gate belongs to the assembly, not to a module");
         }
     }
@@ -78,10 +79,11 @@ class NativeModelLoadGateCallSiteBoundaryTest {
         // re-takes it when a restart replaces the engine. Both are the retrieval lane.
         assertEquals(1, occurrences(read(LLM_MODULE), "loadQueue.claimPrimary()"));
         assertEquals(1, occurrences(read(LLM_LANE), "loadQueue.claimPrimary()"));
-        // Two settle sites on purpose, one per way the retrieval load can end without running: no engine
-        // could be prepared, or the gate refused the request. Either way the deferred lane must be freed,
-        // which is what the M6 refusal bug was about.
-        assertEquals(2, occurrences(read(LLM_LANE), "loadQueue.settlePrimary()"),
+        // Three settle sites on purpose, one per way the retrieval load can end without running: no engine
+        // could be prepared, the gate refused the request, or the start path threw before queueing anything
+        // (a declined lane submission or an engine that failed to build). Every one of them must free the
+        // deferred lane, which is what the M6 refusal bug was about.
+        assertEquals(3, occurrences(read(LLM_LANE), "loadQueue.settlePrimary()"),
                 "every exit that cannot load must settle the claim, so the deferred lane is never left waiting");
         assertEquals(1, occurrences(read(LLM_LANE), "loadQueue.abandonPrimary()"));
 

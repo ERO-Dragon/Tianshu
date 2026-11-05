@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.function.weaving.download.LlmModelDownloadCoordina
 import com.rheinmetal.tianshu.function.weaving.model.LlmModelDownloader;
 import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
 import com.rheinmetal.tianshu.function.weaving.model.LlmModelManager;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmFailureText;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
@@ -222,8 +223,18 @@ public final class LlmModelService {
                         .queueCapacity(1)
                         .build(),
                 () -> {
-                    cleanupStaleIncompleteDownloads();
-                    availabilityRefresher.refreshNow();
+                    // Startup housekeeping: a failure here must not look like a module failure, and it
+                    // must not kill the addressability refresh that follows the cleanup.
+                    try {
+                        cleanupStaleIncompleteDownloads();
+                    } catch (RuntimeException cleanupFailure) {
+                        env.warn("LLM model cleanup failed: " + LlmFailureText.of(cleanupFailure));
+                    }
+                    try {
+                        availabilityRefresher.refreshNow();
+                    } catch (RuntimeException refreshFailure) {
+                        env.warn("LLM model availability refresh failed: " + LlmFailureText.of(refreshFailure));
+                    }
                 }
         );
     }

@@ -131,7 +131,7 @@ CoreManager 自身只发起生命周期推进，不解释具体模块的业务�
 
 快速发生的 `start -> stop -> start`、refresh 与 destroy 由同一个命令队列确定顺序；旧会话的迟到 refresh 不得污染新会话，终态 destroy 后不得再次启动。
 
-模块生命周期注册和模块内部的业务注册不是一回事。CoreManager 只负责把模块纳入生命周期托管，不负责模块的语音关键词注册、热词表更新、ASR 热词文件重载或具体协议业务处理。语音关键词应由模块通过协议/语音注册入口主动声明和更新，再由语音资源层与 ASR 模块处理后续热词物化和引擎重载。
+模块生命周期注册和模块内部的业务注册不是一回事。CoreManager 只负责把模块纳入生命周期托管，不负责模块的语音关键词注册、关键词表重载或引擎重载。触发词由模块通过 `TriggerAccess` 自己登记，关键词索引由协议侧维护，ASR 引擎的重载由听澜自己决定。
 
 ## 5. refresh 语义
 
@@ -286,10 +286,10 @@ NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一�
 
 | 内容 | 归属 |
 |---|---|
-| 四个功能模组的设置 | `config/Tianshu/module/<moduleId>.properties`，键名、默认值、路径全部在模块内 |
+| 各功能模组的设置 | `config/Tianshu/module/<moduleId>.properties`，键名、默认值、路径全部在模块内 |
 | 内核设置 | `config/tianshu-client.toml`（只剩 debug）；`ClientConfig` 只实现内核自己的 1 个接口 |
 | 映迹 HUD 设置 | `config/Tianshu/module/module.presence.properties`，键名与默认值在映迹内 |
 | 具名对象索引 | 听澜自建、自持生命周期、缓存到 `<module>/asr/index`；内核只能通过 `NamedObjectIndex` 端口观测 |
 | 模型清单与读取器 | intake / weaving / echo 各自持有；`tianshu-core/model` 只留传输与状态机 |
 
-`VoiceResourceConfiguration` 与 `VoiceResourceManager` 已删除：内核只持有 `TriggerRegistry`，不再写热词文件、不再知道任何模组目录。热词加权链路整体移除（只对部分 ASR 模型有效），唤醒词与指令词改由 IR 的 trigger index 匹配。
+`VoiceResourceConfiguration` 与 `VoiceResourceManager` 已删除：内核只持有 `TriggerRegistry`，不再写热词文件、不再知道任何模组目录。热词加权链路整体移除（只对部分 ASR 模型有效），唤醒词与指令词改由 IR 的 trigger index 匹配（关键词表重载走 `KeywordTableReloadPort`）。

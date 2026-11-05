@@ -31,7 +31,7 @@ public final class AXLlmPrimitiveClient {
     }
 
     public void requestStatus(String requestId, Completion completion) {
-        submit(LLMPrimitiveQueryPayload.status(requestId, true), completion);
+        submit(LLMPrimitiveQueryPayload.status(requestId), completion);
     }
 
     public void requestEmbedding(String requestId, List<String> texts, Completion completion) {
@@ -39,15 +39,14 @@ public final class AXLlmPrimitiveClient {
     }
 
     public void requestTokenCount(String requestId, String text, Completion completion) {
-        submit(LLMPrimitiveQueryPayload.tokenCount(requestId, text == null ? "" : text, List.of(), List.of()), completion);
+        submit(LLMPrimitiveQueryPayload.tokenCount(requestId, text == null ? "" : text, List.of()), completion);
     }
 
     public void requestMessageTokenCount(String requestId, String role, String content, Completion completion) {
         submit(LLMPrimitiveQueryPayload.tokenCount(
                 requestId,
                 "",
-                List.of(new LLMPrimitiveQueryPayload.MessageItemPayload(role, content)),
-                List.of()
+                List.of(new LLMPrimitiveQueryPayload.MessageItemPayload(role, content))
         ), completion);
     }
 

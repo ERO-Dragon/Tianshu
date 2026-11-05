@@ -1,26 +1,31 @@
 package com.rheinmetal.tianshu.architecture;
 
-import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfiguration;
-import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
-import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModuleConfigurationBoundaryTest {
-    private static final Path COMMON_SOURCES = Path.of("src/main/java");
-    private static final Path FUNCTION_SOURCES = COMMON_SOURCES.resolve("com/rheinmetal/tianshu/function");
-    private static final Path NEOFORGE_SOURCES = Path.of("../tianshu-adapter/neoforge-1.21.1/src/main/java");
+    /**
+     * Feature sources live beside the kernel, not inside it. The old root pointed at tianshu-core's own
+     * {@code src/main/java}, so every scan below read an empty tree and the gate could never fail.
+     */
+    private static final Path REPO_ROOT = Path.of("..");
+    private static final Map<String, Path> FUNCTION_SOURCES = functionSources();
+    private static final Path NEOFORGE_SOURCES = REPO_ROOT.resolve(
+            "tianshu-adapter/1.21.4-neoforge/src/main/java");
 
     @Test
     void functionModulesMustNotDependOnAggregateHostConfiguration() throws Exception {
-        List<String> violations = sourcesContaining(FUNCTION_SOURCES, "ITianshuConfig");
+        List<String> violations = FUNCTION_SOURCES.values().stream()
+                .flatMap(root -> violations(root, "ITianshuConfig").stream())
+                .toList();
 
         assertTrue(
                 violations.isEmpty(),
@@ -31,15 +36,27 @@ class ModuleConfigurationBoundaryTest {
 
     @Test
     void modulesMustNotDependOnAnotherModulesConfigurationPort() throws Exception {
-        assertNoConfigurationDependency("asr", "function.llm.settings.WeavingConfiguration", "function.tts.settings.EchoConfiguration", "auxilium.storage.AuxiliumStorageConfiguration");
-        assertNoConfigurationDependency("llm", "function.asr.settings.IntakeConfiguration", "function.tts.settings.EchoConfiguration", "auxilium.storage.AuxiliumStorageConfiguration");
-        assertNoConfigurationDependency("tts", "function.asr.settings.IntakeConfiguration", "function.llm.settings.WeavingConfiguration", "auxilium.storage.AuxiliumStorageConfiguration");
-        assertNoConfigurationDependency("auxilium", "function.asr.settings.IntakeConfiguration", "function.llm.settings.WeavingConfiguration", "function.tts.settings.EchoConfiguration");
+        assertNoConfigurationDependency("tianshu-intake",
+                "function.weaving.settings.WeavingConfiguration",
+                "function.echo.settings.EchoConfiguration",
+                "function.auxilium.storage.AuxiliumStorageConfiguration");
+        assertNoConfigurationDependency("tianshu-weaving",
+                "function.intake.settings.IntakeConfiguration",
+                "function.echo.settings.EchoConfiguration",
+                "function.auxilium.storage.AuxiliumStorageConfiguration");
+        assertNoConfigurationDependency("tianshu-echo",
+                "function.intake.settings.IntakeConfiguration",
+                "function.weaving.settings.WeavingConfiguration",
+                "function.auxilium.storage.AuxiliumStorageConfiguration");
+        assertNoConfigurationDependency("tianshu-auxilium",
+                "function.intake.settings.IntakeConfiguration",
+                "function.weaving.settings.WeavingConfiguration",
+                "function.echo.settings.EchoConfiguration");
     }
 
     @Test
     void neoforgeKeepsOneTomlConfigurationOwnerPerSide() throws Exception {
-        List<String> specOwners = sourcesContaining(NEOFORGE_SOURCES, "new ModConfigSpec.Builder()").stream()
+        List<String> specOwners = violations(NEOFORGE_SOURCES, "new ModConfigSpec.Builder()").stream()
                 .map(owner -> owner.replace('\\', '/'))
                 .toList();
         String bootstrap = read(NEOFORGE_SOURCES.resolve(
@@ -57,15 +74,25 @@ class ModuleConfigurationBoundaryTest {
     }
 
     private static void assertNoConfigurationDependency(String module, String... forbiddenTypes) throws Exception {
-        Path moduleRoot = FUNCTION_SOURCES.resolve(module);
+        Path moduleRoot = FUNCTION_SOURCES.get(module);
+        assertTrue(moduleRoot != null, () -> "unknown feature module: " + module);
         for (String forbiddenType : forbiddenTypes) {
-            List<String> violations = sourcesContaining(moduleRoot, forbiddenType);
+            List<String> violations = violations(moduleRoot, forbiddenType);
             assertTrue(violations.isEmpty(), () -> module + " must not depend on " + forbiddenType + ":\n"
                     + String.join("\n", violations));
         }
     }
 
-    private static List<String> sourcesContaining(Path root, String pattern) throws Exception {
+    private static Map<String, Path> functionSources() {
+        Map<String, Path> roots = new LinkedHashMap<>();
+        for (String module : List.of("tianshu-intake", "tianshu-echo", "tianshu-weaving", "tianshu-auxilium")) {
+            roots.put(module, REPO_ROOT.resolve(module)
+                    .resolve("src/main/java/com/rheinmetal/tianshu/function"));
+        }
+        return Map.copyOf(roots);
+    }
+
+    private static List<String> violations(Path root, String pattern) {
         if (!Files.isDirectory(root)) {
             return List.of();
         }
@@ -76,6 +103,8 @@ class ModuleConfigurationBoundaryTest {
                     .map(path -> root.relativize(path).toString())
                     .sorted()
                     .toList();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to scan " + root, exception);
         }
     }
 

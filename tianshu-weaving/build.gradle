@@ -60,8 +60,17 @@ def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
 def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
 def tianshuModName = providers.gradleProperty('mod_name').get()
 def tianshuMcRangeFabric = providers.gradleProperty('minecraft_version_range_fabric').get()
+def tianshuMcRangeLegacy = providers.gradleProperty('minecraft_version_range_legacy').get()
 
 processResources {
+    // The manifest is generated from gradle.properties; without these the task stays up to date and the old
+    // range keeps shipping after the property changes.
+    inputs.property('tianshuModVersion', tianshuModVersion)
+    inputs.property('tianshuMcRange', tianshuMcRange)
+    inputs.property('tianshuLibsRange', tianshuLibsRange)
+    inputs.property('tianshuModName', tianshuModName)
+    inputs.property('tianshuMcRangeFabric', tianshuMcRangeFabric)
+    inputs.property('tianshuMcRangeLegacy', tianshuMcRangeLegacy)
     filesMatching('META-INF/neoforge.mods.toml') {
         expand(
                 mod_version               : tianshuModVersion,
@@ -75,6 +84,14 @@ processResources {
                 mod_version                  : tianshuModVersion,
                 mod_name                     : tianshuModName,
                 minecraft_version_range_fabric: tianshuMcRangeFabric
+        )
+    }
+    filesMatching('META-INF/mods.toml') {
+        expand(
+                mod_version                   : tianshuModVersion,
+                minecraft_version_range_legacy: tianshuMcRangeLegacy,
+                tianshu_libs_version_range    : tianshuLibsRange,
+                mod_name                      : tianshuModName
         )
     }
 }
@@ -102,6 +119,14 @@ sourceSets {
         compileClasspath += sourceSets.main.output + sourceSets.neoforgeStubs.output
         compileClasspath += project(":tianshu-api").sourceSets.main.output
     }
+    legacyStubs {
+        java.srcDir 'src/legacyStubs'
+    }
+    legacyEntry {
+        java.srcDir 'src/legacyEntry/java'
+        compileClasspath += sourceSets.main.output + sourceSets.legacyStubs.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
+    }
     fabricEntry {
         java.srcDir 'src/fabricEntry/java'
         compileClasspath += sourceSets.main.output
@@ -112,6 +137,7 @@ sourceSets {
 // Resolved here, at configuration time: the jar closure must not touch the project object.
 def neoforgeEntryOutput = sourceSets.neoforgeEntry.output
 def fabricEntryOutput = sourceSets.fabricEntry.output
+def legacyEntryOutput = sourceSets.legacyEntry.output
 
 dependencies {
     fabricEntryCompileOnly "net.fabricmc:fabric-loader:${fabric_loader_version}"
@@ -120,4 +146,5 @@ dependencies {
 jar {
     from neoforgeEntryOutput
     from fabricEntryOutput
+    from legacyEntryOutput
 }

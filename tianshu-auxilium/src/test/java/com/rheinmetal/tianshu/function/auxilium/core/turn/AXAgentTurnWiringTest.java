@@ -124,9 +124,7 @@ class AXAgentTurnWiringTest {
                 .buildChatRequest(
                         request,
                         new AXContextCollector(null, recent).collect(scope, request, List.of()),
-                        AXContextBudget.DEFAULT)
-                .withDialogueIdentity(
-                        delivery.sessionId(), AXModule.MODULE_ID, AXParticipantRegistrar.PARTICIPANT_ID, delivery.turnId());
+                        AXContextBudget.DEFAULT);
         AXTurnOrchestrator orchestrator = orchestrator(
                 adapter, llmClient, recent, scope, null, (taskId, task) -> RUNS.execute(task));
 
@@ -135,8 +133,6 @@ class AXAgentTurnWiringTest {
 
         LLMPromptRequestPayload actual = (LLMPromptRequestPayload) runtime.llmRequest.get().payload();
         assertEquals(expected, actual, "the loop must not change a single field of the prompt request");
-        assertTrue(actual.toolsJson().isEmpty(), "main dialogue declares no tools (A3)");
-        assertEquals("SIMPLE", actual.lane(), "the envelope stays on the CHAT lane; only our wait moves (§12.1)");
     }
 
     @Test
@@ -297,7 +293,7 @@ class AXAgentTurnWiringTest {
         List<AXDelegateDelivery> deliveries = new CopyOnWriteArrayList<>();
         AXDelegateRegistry delegateRegistry = new AXDelegateRegistry();
         AXDelegateService delegateService = new AXDelegateService(
-                (payload, handler) -> {
+                (payload, handler, timeout) -> {
                 },
                 delegateRegistry,
                 null,

@@ -11,12 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LlmProtocolAdapterCleanBoundaryTest {
     @Test
-    void adapterDelegatesPromptMappingAndExecution() {
+    void adapterDelegatesPromptCreationAndExecution() {
         Set<String> collaboratorTypes = Arrays.stream(LlmProtocolAdapter.class.getDeclaredFields())
                 .map(field -> field.getType().getSimpleName())
                 .collect(Collectors.toSet());
 
-        assertTrue(collaboratorTypes.contains("LlmPromptPayloadMapper"), collaboratorTypes.toString());
+        assertTrue(collaboratorTypes.contains("LlmPromptFactory"), collaboratorTypes.toString());
         assertTrue(collaboratorTypes.contains("LlmPromptRequestHandler"), collaboratorTypes.toString());
     }
 
@@ -28,6 +28,7 @@ class LlmProtocolAdapterCleanBoundaryTest {
 
         assertFalse(methodNames.contains("toLLMRequest"), methodNames.toString());
         assertFalse(methodNames.contains("startTaskStreamRequest"), methodNames.toString());
-        assertFalse(methodNames.contains("streamThinkingContent"), methodNames.toString());
+        assertFalse(methodNames.contains("publishInferenceStatus"), methodNames.toString());
+        assertFalse(methodNames.contains("publishTaskActivity"), methodNames.toString());
     }
 }

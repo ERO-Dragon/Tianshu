@@ -102,7 +102,7 @@ def manifestProperties = [
         mod_name           : mod_name,
         mod_version        : mod_version,
         mod_license        : mod_license,
-        minecraft_version  : mcVersion,
+        minecraft_version_predicate : adapterProperties.getProperty('fabric_minecraft_version_range') ?: mcVersion,
         loader_version     : loaderVersion,
 ]
 processResources {

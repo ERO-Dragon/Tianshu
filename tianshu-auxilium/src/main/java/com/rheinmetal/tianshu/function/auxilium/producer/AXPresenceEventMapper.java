@@ -96,9 +96,7 @@ public final class AXPresenceEventMapper {
                             PresenceWorldEventPayload.VALUE_ITEM_NAME,
                             PresenceWorldEventPayload.VALUE_ITEM_ID))),
             Map.entry(PresenceWorldEventPayload.EVENT_BOSS_ENGAGE,
-                    new Rule("tianshu:boss_engage", List.of(PresenceWorldEventPayload.VALUE_ENTITY_NAME))),
-            Map.entry(PresenceWorldEventPayload.EVENT_RESPAWN,
-                    new Rule("tianshu:respawn", List.of(PresenceWorldEventPayload.VALUE_DIMENSION_NAME)))
+                    new Rule("tianshu:boss_engage", List.of(PresenceWorldEventPayload.VALUE_ENTITY_NAME)))
     );
 
     private AXPresenceEventMapper() {
