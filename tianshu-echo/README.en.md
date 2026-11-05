@@ -2,7 +2,7 @@
 
 Echo is the local text-to-speech module for Tianshu. It converts text into speech on the local machine; once a model has been downloaded, it works without an internet connection.
 
-> Echo requires the Tianshu host mod (Beichen) and cannot be used on its own.
+> Echo requires the Tianshu base (Beichen) and cannot be used on its own.
 
 **Game versions**: unrestricted. Echo is distributed as a single jar, and per-version compatibility is handled by Beichen.
 **Loaders**: NeoForge / Fabric
