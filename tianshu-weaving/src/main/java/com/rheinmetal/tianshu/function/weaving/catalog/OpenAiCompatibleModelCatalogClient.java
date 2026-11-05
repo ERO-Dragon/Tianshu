@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.catalog;
 
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmHttpTransport;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -43,7 +45,6 @@ public final class OpenAiCompatibleModelCatalogClient implements LlmModelCatalog
     private static final int HTTP_FORBIDDEN = 403;
     private static final int HTTP_OK = 200;
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
 
     private final Consumer<String> diagnostics;
     private final HttpClient httpClient;
@@ -57,7 +58,7 @@ public final class OpenAiCompatibleModelCatalogClient implements LlmModelCatalog
     OpenAiCompatibleModelCatalogClient(Consumer<String> diagnostics, HttpClient httpClient, Duration timeout) {
         this.diagnostics = diagnostics == null ? message -> { } : diagnostics;
         this.timeout = timeout == null || timeout.isZero() || timeout.isNegative() ? DEFAULT_TIMEOUT : timeout;
-        this.httpClient = httpClient != null ? httpClient : newHttpClient();
+        this.httpClient = httpClient != null ? httpClient : LlmHttpTransport.client();
     }
 
     @Override
@@ -181,12 +182,5 @@ public final class OpenAiCompatibleModelCatalogClient implements LlmModelCatalog
             }
         }
         return true;
-    }
-
-    private static HttpClient newHttpClient() {
-        return HttpClient.newBuilder()
-                .connectTimeout(CONNECT_TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
     }
 }

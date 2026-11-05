@@ -4,14 +4,17 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PersistentRagCacheManagerTest {
@@ -26,7 +29,7 @@ class PersistentRagCacheManagerTest {
 
         cache.upsert("memory", "entry-a", "same memory", null);
 
-        Path vectorsFile = tempDir.resolve("memory.bin");
+        Path vectorsFile = onlyCacheFile();
         assertTrue(Files.isRegularFile(vectorsFile));
         FileTime firstModified = Files.getLastModifiedTime(vectorsFile);
         long firstSize = Files.size(vectorsFile);
@@ -83,6 +86,49 @@ class PersistentRagCacheManagerTest {
         assertEquals("cluster-b", results.get(0).entryId());
     }
 
+    /**
+     * Two different libraries used to collapse onto one file, because the readable part of the name is
+     * sanitized: "mod:a" and "mod_a" both became "mod_a.bin" and the second library silently overwrote
+     * the first one's entries on disk.
+     */
+    @Test
+    void librariesWhoseNamesSanitizeAlikeKeepSeparateStores() throws Exception {
+        CountingEmbeddingService embeddings = new CountingEmbeddingService();
+        PersistentRagCacheManager cache = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
+
+        cache.upsert("mod:a", "entry", "alpha memory", null);
+        cache.upsert("mod_a", "entry", "beta memory", null);
+        cache.flush();
+
+        assertEquals(2, cache.getStats().getUidCount());
+        assertEquals(2, cacheFiles().count(), "each library keeps its own file");
+        assertTrue(cache.search("mod:a", "alpha", 5, 0.1f).stream()
+                .anyMatch(result -> "alpha memory".equals(result.getContent())));
+        assertFalse(cache.search("mod:a", "alpha", 5, 0.1f).stream()
+                .anyMatch(result -> "beta memory".equals(result.getContent())));
+    }
+
+    /**
+     * The pre-digest file name is read once and rewritten under the current one, so an upgrade keeps the
+     * cached vectors instead of rebuilding them on the next launch.
+     */
+    @Test
+    void aLegacyNamedStoreIsReadAndMigratedToTheCurrentName() throws Exception {
+        CountingEmbeddingService embeddings = new CountingEmbeddingService();
+        PersistentRagCacheManager first = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
+        first.upsert("legacy:uid", "entry", "old memory", null);
+        first.flush();
+
+        Path legacyFile = tempDir.resolve("legacy_uid.bin");
+        Files.move(onlyCacheFile(), legacyFile);
+
+        PersistentRagCacheManager reopened = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
+
+        assertTrue(reopened.hasCache("legacy:uid"), "the legacy file must still be readable");
+        assertFalse(Files.exists(legacyFile), "the migration must remove the legacy file once it is rewritten");
+        assertTrue(Files.isRegularFile(onlyCacheFile()), "the store must live under the current name");
+    }
+
     @Test
     void bm25SearchStillWorksWhenQueryEmbeddingFails() {
         CountingEmbeddingService embeddings = new CountingEmbeddingService();
@@ -99,7 +145,7 @@ class PersistentRagCacheManagerTest {
     }
 
     @Test
-    void upsertBatchesDiskWritesUntilScheduledFlushRuns() {
+    void upsertBatchesDiskWritesUntilScheduledFlushRuns() throws Exception {
         CountingEmbeddingService embeddings = new CountingEmbeddingService();
         ManualRagPersistenceScheduler scheduler = new ManualRagPersistenceScheduler();
         PersistentRagCacheManager cache = new PersistentRagCacheManager(
@@ -115,14 +161,33 @@ class PersistentRagCacheManagerTest {
         cache.upsert("memory", "entry-b", "second memory", null);
 
         assertEquals(1, scheduler.scheduledCount);
-        assertEquals(false, Files.exists(tempDir.resolve("memory.bin")));
+        assertFalse(hasCacheFile(), "nothing is written before the scheduled flush runs");
 
         scheduler.runScheduled();
 
-        assertEquals(true, Files.isRegularFile(tempDir.resolve("memory.bin")));
+        assertTrue(hasCacheFile(), "the scheduled flush writes the file");
         PersistentRagCacheManager reloaded = new PersistentRagCacheManager(new FakeGameEnvironment(), embeddings, tempDir, "test");
         assertEquals(true, reloaded.hasEntry("memory", "entry-a"));
         assertEquals(true, reloaded.hasEntry("memory", "entry-b"));
+    }
+
+    /** The store files of this directory; the name is an implementation detail the tests must not pin. */
+    private Stream<Path> cacheFiles() throws IOException {
+        return Files.list(tempDir)
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().endsWith(".bin"));
+    }
+
+    private Path onlyCacheFile() throws IOException {
+        try (Stream<Path> files = cacheFiles()) {
+            return files.findFirst().orElseThrow(() -> new IOException("no cache file was written"));
+        }
+    }
+
+    private boolean hasCacheFile() throws IOException {
+        try (Stream<Path> files = cacheFiles()) {
+            return files.findAny().isPresent();
+        }
     }
 
     private static final class CountingEmbeddingService implements EmbeddingService {

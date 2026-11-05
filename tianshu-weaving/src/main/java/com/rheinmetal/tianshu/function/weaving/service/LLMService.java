@@ -152,14 +152,19 @@ public final class LLMService {
             List<LLMPrimitiveResultPayload.EmbedResultPayload> results = new ArrayList<>();
             if (texts != null && !texts.isEmpty()) {
                 float[][] vectors = embed(texts);
+                // The two flags answer different questions and are independent: "give me the vectors" and
+                // "tell me which model and namespace produced them". ANDing them used to return no vector
+                // at all to a caller that had only asked for vectors.
+                String modelName = includeEmbeddingDetails ? metadata.embeddingModelName() : "";
+                String namespace = includeEmbeddingDetails ? embeddingNamespace() : "";
                 for (int index = 0; index < texts.size(); index++) {
                     float[] vector = vectors != null && index < vectors.length ? vectors[index] : null;
                     results.add(LLMPrimitiveResultPayload.EmbedResultPayload.of(
                             texts.get(index),
                             vector,
-                            includeVector && includeEmbeddingDetails,
-                            metadata.embeddingModelName(),
-                            embeddingNamespace()
+                            includeVector,
+                            modelName,
+                            namespace
                     ));
                 }
             }
