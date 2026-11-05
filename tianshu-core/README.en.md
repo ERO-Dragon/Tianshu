@@ -8,7 +8,7 @@ Tianshu is an extensible AI assistant: Polaris (北辰) is its base, providing t
 
 ---
 
-## What the base provides
+## What the Polaris provides
 
 - **One console** — "Tianshu Console" in the pause menu; feature modules put their settings pages there.
 - **Shared building blocks** — keys, HUD, audio, chat lines and local notices.
