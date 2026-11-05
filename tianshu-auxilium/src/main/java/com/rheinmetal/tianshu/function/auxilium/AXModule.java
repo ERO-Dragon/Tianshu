@@ -330,7 +330,8 @@ public final class AXModule implements TianshuManagedModule {
                 llmClient,
                 maintenancePrimitiveClient,
                 ragClient,
-                memoryTaskPromptRepository
+                memoryTaskPromptRepository,
+                assistantSettings::chatThinkingEnabled
         );
         maintenanceCoordinator = new AXRuntimeMaintenanceCoordinator(memoryMaintenanceService);
         memoryMaintenanceService.observeFailures(new AXMemoryMaintenanceService.MaintenanceObserver() {

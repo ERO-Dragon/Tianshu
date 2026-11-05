@@ -31,7 +31,7 @@ public final class LlmBuiltinProviders {
                     LlmReasoningWire.DEEPSEEK_THINKING,
                     true,
                     List.of("low", "high", "max"),
-                    2
+                    1
             ));
 
     /** Every built-in provider, in the order the form lists them; the first one is the default. */

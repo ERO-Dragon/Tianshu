@@ -102,9 +102,9 @@ class OpenAiCompatibleInferenceClientTest {
     }
 
     private static final LlmReasoningProfile DEEPSEEK_REASONING = new LlmReasoningProfile(
-            LlmReasoningWire.DEEPSEEK_THINKING, true, List.of("low", "high", "max"), 2);
+            LlmReasoningWire.DEEPSEEK_THINKING, true, List.of("low", "high", "max"), 1);
     private static final LlmReasoningProfile OPENAI_REASONING = new LlmReasoningProfile(
-            LlmReasoningWire.OPENAI_EFFORT, false, List.of("low", "medium", "high"), 1);
+            LlmReasoningWire.OPENAI_EFFORT, false, List.of("low", "medium", "high"), 0);
 
     @Test
     void deepSeekTierZeroDisablesThinkingAndOtherTiersSendTheOfficialName() {
@@ -143,8 +143,18 @@ class OpenAiCompatibleInferenceClientTest {
     }
 
     @Test
-    void aMissingTierLeavesTheEndpointDefault() {
+    void aMissingTierUsesTheModelsDefaultTierInsteadOfTheEndpointDefault() {
         JsonObject body = body(DEEPSEEK_REASONING, null);
+
+        // DeepSeek's default tier is 1 = low, so "no override" still pins the documented default
+        // rather than letting the endpoint fall back to its own (higher) default.
+        assertEquals("enabled", body.getAsJsonObject("thinking").get("type").getAsString());
+        assertEquals("low", body.get("reasoning_effort").getAsString());
+    }
+
+    @Test
+    void aModelWithoutReasoningControlStillSendsNothingForAMissingTier() {
+        JsonObject body = body(LlmReasoningProfile.NONE, null);
 
         assertFalse(body.has("thinking"));
         assertFalse(body.has("reasoning_effort"));

@@ -434,14 +434,17 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     /**
      * Encodes the selected tier with the profile's wire shape. {@code tier 0} is the non-thinking
-     * slot when the profile has one; every other tier sends the provider's own level name. A profile
-     * without a ladder, or a request without a tier, leaves the endpoint default untouched.
+     * slot when the profile has one; every other tier sends the provider's own level name. A missing
+     * tier uses the model's default tier, so "no override" still means the documented default
+     * (usually low) rather than whatever the endpoint does by itself. A profile without a ladder
+     * sends nothing.
      */
     private static void applyReasoning(JsonObject root, LlmReasoningProfile profile, Integer tier) {
-        if (profile == null || !profile.hasControl() || tier == null) {
+        if (profile == null || !profile.hasControl()) {
             return;
         }
-        String name = profile.levelName(tier);
+        int applied = tier == null ? profile.defaultTier() : profile.clampTier(tier);
+        String name = profile.levelName(applied);
         switch (profile.wire()) {
             case DEEPSEEK_THINKING -> {
                 JsonObject thinking = new JsonObject();

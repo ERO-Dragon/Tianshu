@@ -27,7 +27,7 @@ public final class AXLlmPromptRequestBuilder {
     public LLMPromptRequestPayload buildChatRequest(AXRequest request, AXContextSnapshot context, AXContextBudget budget) {
         AXContextBudget effectiveBudget = budget == null ? AXContextBudget.DEFAULT : budget;
         AXPromptAssembly assembly = promptOrchestrator.assemble(request, context, effectiveBudget);
-        // 普通对话不需要长思维链：关闭时选最低档（通常是非思考），开启时也只取次低档。
+        // 普通对话不需要长思维链：关闭增强时用最低档（通常就是非思考），开启时才抬到次低档。
         Integer reasoningTier = assistantSettings.chatThinkingEnabled() ? 1 : 0;
         return new LLMPromptRequestPayload(
                 request == null ? "AX.request" : request.requestKey(),

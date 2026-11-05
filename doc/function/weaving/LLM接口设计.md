@@ -41,10 +41,10 @@
 
 调用方只使用**序号**：每个模型有一条从 0 开始的有序档位表，`0` 是模型支持的非思考档，其余序号依次是提供商官方的档位名。表长与名称由提供商 profile 的数据决定，织言不写死 `low/medium/high` 这类字面量。
 
-- 请求：`reasoningTier`，`null` 表示不覆盖；负数按 `null` 处理；
+- 请求：`reasoningTier`；`null` 表示“用这个模型的默认档”，不是“什么都不发”——端点自己的默认往往是高档，所以默认档必须显式编码出去；
 - 能力查询：`LLM.STATUS` 返回 `reasoningTierCount`、`reasoningIncludesNoThinking`、`reasoningDefaultTier`、`reasoningLevels`（index = tier，非思考档在 `levels` 中没有条目）；
 - 越界：请求超出当前梯子时夹到最近档，模型切换后旧序号不会让请求失败；
-- 无控制：`reasoningTierCount=0` 的模型忽略该字段，保持端点默认。
+- 无控制：`reasoningTierCount=0` 的模型（例如没有档位数据的自定义提供商）完全不发送推理字段。
 
 提供商的“线协议形状”仍是代码，档位名称与顺序是数据：
 
@@ -54,7 +54,9 @@
 | `OPENAI_EFFORT` | `reasoning_effort` | 该 tier 的官方名称；没有非思考槽时第一项就是最低档 |
 | `NONE` | 无 | 不发送 |
 
-DeepSeek 内置档位表：`[非思考, low, high, max]`，默认 tier 2（high）。如果官方以后增加 `medium`，只需在数据里插入一项，序号自然变化；不做名称之间的别名折叠。
+DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low）**。如果官方以后增加 `medium`，只需在数据里插入一项，序号自然变化；不做名称之间的别名折叠。
+
+织言**不提供“模型预设”**：模型迭代很快，把某几个模型绑进预设表只会很快过期。内置提供商的梯子是提供商 profile 的数据；没有档位数据的提供商就是“无控制”，调用方按 `reasoningTierCount=0` 处理。
 
 `captureThinkingContent` 与档位正交：前者决定是否把 reasoning 文本回传，后者决定生成多深。DeepSeek 思考模式不接受 `temperature` / `frequency_penalty` / `presence_penalty`，这些字段仍会发送但被端点忽略；`top_p` 的行为随模型而变。
 
