@@ -2,9 +2,9 @@
 
 Echo is the local text-to-speech module for Tianshu. It converts text into speech on the local machine; once a model has been downloaded, it works without an internet connection.
 
-> Echo requires the Tianshu base (Beichen) and cannot be used on its own.
+> Echo requires Tianshu and cannot be used on its own.
 
-**Game versions**: unrestricted. Echo is distributed as a single jar, and per-version compatibility is handled by Beichen.
+**Game versions**: unrestricted. Echo is distributed as a single jar, and per-version compatibility is handled by Tianshu.
 **Loaders**: NeoForge / Fabric
 
 ---
@@ -14,7 +14,7 @@ Echo is the local text-to-speech module for Tianshu. It converts text into speec
 - **Text to speech** — any module that needs text-to-speech can call Echo.
 - **Custom voice** — a WAV recording can be imported as a reference voice, and speech is then read in that voice.
 - **Adjustable parameters** — voice and speed can be adjusted in the settings, with immediate preview.
-- **Selectable playback** — Echo can play directly, or output audio only for the caller to handle. Playback control is provided by Beichen, and both local and server playback are supported.
+- **Selectable playback** — Echo can play directly, or output audio only for the caller to handle. Playback control is provided by Tianshu, and both local and server playback are supported.
 - **Offline use** — after a single model download, no connection is required.
 - **Single distribution** — one jar serves all game versions; no per-version downloads.
 
