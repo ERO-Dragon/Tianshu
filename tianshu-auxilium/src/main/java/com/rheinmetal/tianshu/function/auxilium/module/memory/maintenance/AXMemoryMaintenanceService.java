@@ -25,6 +25,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatusSeverity;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -37,6 +38,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXMemorySystem;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.retrieval.AXMemoryRagProjectionService;
 import com.rheinmetal.tianshu.function.auxilium.module.memory.AXWorldEventMemoryLinker;
@@ -94,8 +96,6 @@ public final class AXMemoryMaintenanceService {
     private static final int COMPACT_MAX_TOKENS = 4096;
     /** 抽取类任务要稳定复述：低温度。 */
     private static final float COMPACT_TEMPERATURE = 0.2F;
-    /** TASK 车道的可抢占优先级。 */
-    private static final int COMPACT_TASK_PRIORITY = 500;
 
     private static final String SOURCE_KIND_COMPACT_EVENT = "compact_event";
 
@@ -106,6 +106,7 @@ public final class AXMemoryMaintenanceService {
     private final AXLlmPrimitiveClient primitiveClient;
     private final AXMemoryRagProjectionService ragProjectionService;
     private final AXMemoryTaskPromptRepository promptRepository;
+    private final BooleanSupplier thinkingEnhancement;
     private final AXMemoryCompressionParser compressionParser = new AXMemoryCompressionParser();
     private final AXWorldEventMemoryLinker worldEventLinker = new AXWorldEventMemoryLinker(null);
     private final AXMemoryDerivedMaintenanceService derivedMaintenanceService;
@@ -143,11 +144,30 @@ public final class AXMemoryMaintenanceService {
             AXLlmRagClient ragClient,
             AXMemoryTaskPromptRepository promptRepository
     ) {
+        this(adapter, memorySystem, recentDialogueSystem, llmClient, primitiveClient, ragClient, promptRepository,
+                () -> false);
+    }
+
+    /**
+     * @param thinkingEnhancement the player's "spend more thinking for better replies" switch; it
+     *                            also lifts compaction from the low tier to the next one
+     */
+    public AXMemoryMaintenanceService(
+            AXProtocolAdapter adapter,
+            AXMemorySystem memorySystem,
+            AXRecentDialogueSystem recentDialogueSystem,
+            AXLlmClient llmClient,
+            AXLlmPrimitiveClient primitiveClient,
+            AXLlmRagClient ragClient,
+            AXMemoryTaskPromptRepository promptRepository,
+            BooleanSupplier thinkingEnhancement
+    ) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.memorySystem = Objects.requireNonNull(memorySystem, "memorySystem");
         this.recentDialogueSystem = recentDialogueSystem;
         this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
         this.primitiveClient = Objects.requireNonNull(primitiveClient, "primitiveClient");
+        this.thinkingEnhancement = thinkingEnhancement == null ? () -> false : thinkingEnhancement;
         this.ragProjectionService = ragClient == null ? null : new AXMemoryRagProjectionService(this.memorySystem, ragClient);
         this.promptRepository = promptRepository == null ? new AXMemoryTaskPromptRepository(null, null) : promptRepository;
         this.derivedMaintenanceService = new AXMemoryDerivedMaintenanceService(this.memorySystem);
@@ -391,7 +411,7 @@ public final class AXMemoryMaintenanceService {
             public void onCancelled(AXTurnCancellation cancellation) {
                 future.complete(null);
             }
-        });
+        }, Duration.ofSeconds(TASK_STAGE_TIMEOUT_SECONDS));
         return withTaskTimeout(future, envelope, null);
     }
 
@@ -416,17 +436,15 @@ public final class AXMemoryMaintenanceService {
         if (!instruction.isBlank()) {
             messages.add(LLMPromptRequestPayload.MessageItemPayload.user(instruction));
         }
+        int reasoningTier = thinkingEnhancement.getAsBoolean() ? 2 : 1;
         return new LLMPromptRequestPayload(
                 "ax.memory.compact." + batch.stmId(),
+                messages,
+                false,
+                false,
                 COMPACT_MAX_TOKENS,
-                COMPACT_TEMPERATURE,
-                false,
-                true,
-                false,
-                "COMPLEX",
-                COMPACT_TASK_PRIORITY,
-                true,
-                List.of(LLMPromptRequestPayload.ChunkPayload.message(messages))
+                reasoningTier,
+                new LLMPromptRequestPayload.SamplingPayload(COMPACT_TEMPERATURE, null, null, null)
         );
     }
 

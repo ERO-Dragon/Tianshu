@@ -1,23 +1,25 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
-
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.function.weaving.account.DeepSeekBalanceProbe;
 import com.rheinmetal.tianshu.function.weaving.catalog.OpenAiCompatibleModelCatalogClient;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmBuiltinProviders;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.function.weaving.settings.WeavingContextTiers;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.core.runtime.RuntimeCapability;
 import com.rheinmetal.tianshu.function.weaving.rag.LlmRagCacheLayout;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudget;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmFailureText;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeRetryPolicy;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmRuntimeState;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingLoadReport;
-import com.rheinmetal.tianshu.function.weaving.service.EmbeddingService;
+import com.rheinmetal.tianshu.function.weaving.service.EmbeddingRuntime;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
+import com.rheinmetal.tianshu.function.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.weaving.service.OpenAiCompatibleInferenceClient;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
@@ -69,6 +71,7 @@ public final class LlmModule implements TianshuManagedModule {
     private final WeavingConfiguration config;
     private final ModuleRuntimeAccess runtime;
     private final LlmRagCacheLayout ragCacheLayout;
+    private final EmbeddingRuntime embeddingRuntime = new EmbeddingRuntime();
     private final LlmRagStorageService ragStorageService;
     private final LlmExecutor llmExecutor;
     private final LlmEngineProvider engineProvider;
@@ -117,9 +120,15 @@ public final class LlmModule implements TianshuManagedModule {
                 ragCacheLayout.cacheNamespace(),
                 true,
                 llmExecutor.cpuExecutor(),
-                llmExecutor.ragPersistenceScheduler()
+                llmExecutor.ragPersistenceScheduler(),
+                embeddingRuntime
         );
-        this.adapter = new LlmProtocolAdapter(runtime, null, LlmTaskAdmissionController.fromConfig(config), usageLedger);
+        this.adapter = new LlmProtocolAdapter(
+                runtime,
+                null,
+                new LlmPromptFactory(config::getLlmRemoteModel),
+                usageLedger
+        );
         this.adapter.setRagStorageService(ragStorageService);
         this.adapter.setUnavailableRuntimeSnapshotSupplier(this::runtimeSnapshotWhenGenerationUnavailable);
         this.engineProvider = new LlmEngineProvider(env, config,
@@ -135,7 +144,6 @@ public final class LlmModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
-        adapter.registerOwnedTopics(context.protocol());
         serviceRegistry = context == null ? null : context.services();
         moduleService = new LlmModuleService(config, usageLedger);
         // The service owns the runtime state; the module owns what the HUD is told about it. Switching the
@@ -331,7 +339,30 @@ public final class LlmModule implements TianshuManagedModule {
         adapter.publishLoadingActivity(true);
         // Cloud is the only chat lane. There is no local fallback: an unconfigured cloud endpoint
         // fails the lane and tells the player what to fill in, instead of quietly loading a GGUF.
-        startRemoteRuntime(generation);
+        try {
+            startRemoteRuntime(generation);
+        } catch (RuntimeException failure) {
+            // A start that throws must not leave the loading notice up for its whole backstop TTL, and
+            // it must not leave the lane marked as "starting" with no retry behind it.
+            reportUnexpectedStartFailure(failure);
+        }
+    }
+
+    /**
+     * Turns an exception thrown by the start path into the same actionable state a refused start
+     * produces: a failure the player can see, storage capabilities still usable, and one retry.
+     */
+    private void reportUnexpectedStartFailure(RuntimeException failure) {
+        String message = LlmFailureText.of(failure);
+        if (moduleService != null && moduleService.snapshot().state() == LlmRuntimeState.RUNNING) {
+            // The lane came up and only the bookkeeping after it failed; retracting the notice is all
+            // that is left to do, and tearing a working lane down here would be worse than the bug.
+            env.warn("[LLM] Cloud lane reported a late start failure: " + message);
+            adapter.publishLoadingActivity(false);
+            return;
+        }
+        env.warn("[LLM] Cloud lane failed to start: " + message);
+        reportStartFailure(STATUS_KEY_REMOTE_INCOMPLETE, "Cloud LLM failed to start: " + message);
     }
 
     /**
@@ -357,6 +388,24 @@ public final class LlmModule implements TianshuManagedModule {
             markRemoteFailure(REMOTE_SETTING_API_KEY);
             return;
         }
+        // From here on the client owns worker threads and an HTTP connection pool: any failure between
+        // building it and handing it to the service releases it instead of leaving it leased to a lane
+        // that never started.
+        try {
+            bindRemoteRuntime(client, generation);
+        } catch (RuntimeException failure) {
+            client.shutdown();
+            throw failure;
+        }
+    }
+
+    /**
+     * Hands a built client to the live service.
+     *
+     * <p>The embedding lane failing is not a start failure: chat works without retrieval, so the lane
+     * starts with vectors unavailable and the RAG data plane reports it through its own status.</p>
+     */
+    private void bindRemoteRuntime(OpenAiCompatibleInferenceClient client, long generation) {
         boolean embeddingReady = engineProvider.startEmbeddingOnly();
         synchronized (lifecycleLock) {
             if (destroyed || generation != lifecycleGeneration.get() || moduleService == null
@@ -369,21 +418,16 @@ public final class LlmModule implements TianshuManagedModule {
             if (replaced != null) {
                 replaced.shutdown();
             }
-            // Only the embedding side of the local engine is live here, so vector RAG keeps writing
-            // and searching while generation itself is remote.
-            EmbeddingService embeddingService = embeddingReady ? engineProvider.embeddingService() : null;
-            ragStorageService.bindEmbeddingService(embeddingService);
+            // The embedding lane is the only local model; binding it here is what makes RAG writes,
+            // the EMBED primitive and the runtime snapshot agree on whether vectors are available.
+            embeddingRuntime.bind(embeddingReady ? engineProvider.embeddingService() : null);
             LLMService service = LLMService.builder()
                     .env(env)
                     .config(config)
                     .inferenceClient(client)
-                    .usePersistentCache(true)
-                    .cacheDirectory(ragCacheLayout.cacheDirectory())
+                    .embeddingRuntime(embeddingRuntime)
+                    .reasoningProfile(resolveReasoningProfile())
                     .cacheNamespace(ragCacheLayout.cacheNamespace())
-                    .embeddingConfigured(embeddingService != null)
-                    .ragStorage(ragStorageService)
-                    .ragSearchExecutor(llmExecutor.cpuExecutor())
-                    .ragPersistenceScheduler(llmExecutor.ragPersistenceScheduler())
                     .build();
             llmService = service;
             if (serviceRegistry != null) {
@@ -420,20 +464,20 @@ public final class LlmModule implements TianshuManagedModule {
         if (isBlank(baseUrl) || isBlank(apiKey) || isBlank(model)) {
             return null;
         }
-        int windowTokens = config.getLlmContextWindowTokens();
-        int tier = WeavingContextTiers.downgradeToLargestAvailable(config.getLlmContextTier(), windowTokens);
-        if (tier != config.getLlmContextTier()) {
-            env.warn("[LLM] Context tier downgraded to fit the declared window: requested="
-                    + config.getLlmContextTier() + " window=" + windowTokens + " effective=" + tier);
-        }
+        LlmReasoningProfile reasoning = resolveReasoningProfile();
         return new OpenAiCompatibleInferenceClient(
                 baseUrl,
                 apiKey,
                 model,
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
                 env::warn,
-                tier
+                reasoning
         );
+    }
+
+    /** The reasoning ladder of the selected model: configured on the entry, else the provider profile. */
+    private LlmReasoningProfile resolveReasoningProfile() {
+        return config.getLlmReasoningProfile();
     }
 
     /**
@@ -449,7 +493,19 @@ public final class LlmModule implements TianshuManagedModule {
                 ? STATUS_KEY_MISSING_API_KEY
                 : STATUS_KEY_REMOTE_INCOMPLETE;
         env.warn("[LLM] Cloud LLM lane is not configured: missing " + missingSetting);
-        markGenerationCapabilityFailed("Cloud LLM is not configured: missing " + missingSetting);
+        reportStartFailure(statusKey, "Cloud LLM is not configured: missing " + missingSetting);
+    }
+
+    /**
+     * The one end state for a start that did not come up, whatever the cause.
+     *
+     * <p>Generation is the only capability a bad start breaks: the RAG data plane does not depend on
+     * the remote endpoint, so storage stays usable and a caller can keep reading what it already
+     * stored. The adapter's loading notice comes down here, not after a timeout, and the retry budget
+     * is spent through {@link #scheduleRuntimeRetry()} like every other start failure.</p>
+     */
+    private void reportStartFailure(String statusKey, String reason) {
+        markGenerationCapabilityFailed(reason);
         markStorageCapabilitiesReady();
         if (moduleService != null) {
             moduleService.markFailed(statusKey);
@@ -562,15 +618,13 @@ public final class LlmModule implements TianshuManagedModule {
             if (serviceRegistry != null && stoppingService != null) {
                 serviceRegistry.unregister(LLMService.class, stoppingService);
             }
-            if (stoppingService != null) {
-                stoppingService.shutdown();
-            }
             OpenAiCompatibleInferenceClient stoppingRemote = remoteClient;
             remoteClient = null;
             if (stoppingRemote != null) {
                 stoppingRemote.shutdown();
             }
             engineProvider.stop();
+            embeddingRuntime.bind(null);
             ragStorageService.shutdown();
             if (moduleService != null) {
                 moduleService.markStopped();
@@ -601,10 +655,16 @@ public final class LlmModule implements TianshuManagedModule {
      */
     private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
         switch (report.outcome()) {
-            case READY -> adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
-            case DEGRADED -> env.warn("[LLM] Embedding lane runs on the CPU; retrieval continues on the reduced backend");
+            case READY -> {
+                embeddingRuntime.bind(engineProvider.embeddingService());
+                adapter.clearRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR);
+            }
+            case DEGRADED -> {
+                embeddingRuntime.bind(engineProvider.embeddingService());
+                env.warn("[LLM] Embedding lane runs on the CPU; retrieval continues on the reduced backend");
+            }
             case UNAVAILABLE -> {
-                ragStorageService.bindEmbeddingService(engineProvider.embeddingService());
+                embeddingRuntime.bind(null);
                 adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }
@@ -621,51 +681,22 @@ public final class LlmModule implements TianshuManagedModule {
         }
     }
 
-    void publishInferenceStatus(com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload status) {
-        if (status == null) {
-            return;
-        }
-        adapter.publishInferenceStatus(status);
-        if (!"COMPLEX".equals(status.taskType()) || status.taskId().isBlank()) {
-            return;
-        }
-        if (com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.STARTED.equals(status.eventType())) {
-            adapter.publishTaskActivity(status.taskId(), true);
-            return;
-        }
-        if (com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.COMPLETED.equals(status.eventType())
-                || com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.CANCELLED.equals(status.eventType())
-                || com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload.FAILED.equals(status.eventType())) {
-            adapter.publishTaskActivity(status.taskId(), false);
-        }
-    }
-
     private LLMRuntimeSnapshotPayload runtimeSnapshotWhenGenerationUnavailable() {
         String failure = moduleService == null ? "" : moduleService.snapshot().failureMessage();
+        int window = config.getLlmContextWindowTokens();
+        LlmReasoningProfile reasoning = resolveReasoningProfile();
         return new LLMRuntimeSnapshotPayload(
                 false,
-                false,
-                ragStorageService.embeddingAvailable(),
-                -1,
-                false,
-                false,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                0,
-                false,
-                false,
-                false,
-                0,
-                0,
-                0,
-                "",
-                "",
+                embeddingRuntime.available(),
+                embeddingRuntime.safeDimension(),
+                window,
+                LlmContextBudget.promptTokenBudget(window),
                 config.getLlmEmbeddingModelName(),
                 ragCacheLayout.cacheNamespace(),
+                reasoning.tierCount(),
+                reasoning.includesNoThinking(),
+                reasoning.defaultTier(),
+                reasoning.levels(),
                 failure,
                 System.currentTimeMillis()
         );

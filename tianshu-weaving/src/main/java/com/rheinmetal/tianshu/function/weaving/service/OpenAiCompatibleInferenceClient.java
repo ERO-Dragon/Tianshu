@@ -4,21 +4,16 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudgetSnapshot;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmEngineCapabilitySnapshot;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationRequest;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationResult;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCapabilitySnapshot;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmTokenEstimator;
-import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
-import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
 import com.rheinmetal.tianshu.libs.llm.StreamFinishType;
-import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -47,14 +42,13 @@ import java.util.function.Consumer;
 /**
  * Inference client for an OpenAI-compatible {@code POST {baseUrl}/chat/completions} endpoint.
  *
- * <p>This is the cloud lane next to the local llama.cpp engine. Every request streams, so the
- * protocol layer keeps receiving incremental tokens and text-to-speech can start before the answer
- * is complete; the blocking entry points assemble that same stream into a whole result instead of
- * issuing a second, non-streaming request.
+ * <p>Every request streams, so the protocol layer keeps receiving incremental tokens and text to
+ * speech can start before the answer is complete; the blocking entry point assembles that same
+ * stream into a whole result instead of issuing a second, non-streaming request.</p>
  *
  * <p>The API key is only ever written into the request's {@code Authorization} header. It is never
  * part of an exception message, a diagnostic message or {@link #toString()}, and provider error
- * bodies are scrubbed before they are reported because a gateway may echo the credential back.
+ * bodies are scrubbed before they are reported because a gateway may echo the credential back.</p>
  */
 public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient {
     /** Timeout bounds: a shorter cap breaks long generations, a longer one can hang a session. */
@@ -81,10 +75,9 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private final HttpClient httpClient;
     private final Executor executor;
     private final ExecutorService ownedExecutor;
+    private final LlmReasoningProfile reasoningProfile;
     private final Set<RemoteStream> activeStreams = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
-    /** Budget derived once from the declared window; the cloud endpoint never reports one. */
-    private final LlmContextBudgetSnapshot contextBudget;
     /** The endpoint ships no tokenizer, so prompt size is estimated and calibrated from usage. */
     private final LlmTokenEstimator tokenEstimator = new LlmTokenEstimator();
 
@@ -95,18 +88,22 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Duration timeout,
             Consumer<String> diagnostics
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS);
+        this(baseUrl, apiKey, model, timeout, diagnostics, LlmReasoningProfile.NONE);
     }
 
+    /**
+     * @param reasoningProfile the provider's ordered reasoning ladder; determined by the provider
+     *                         profile, never guessed from the model id
+     */
     public OpenAiCompatibleInferenceClient(
             String baseUrl,
             String apiKey,
             String model,
             Duration timeout,
             Consumer<String> diagnostics,
-            int contextWindowTokens
+            LlmReasoningProfile reasoningProfile
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, contextWindowTokens, null, null);
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, null, null);
     }
 
     /** Transport seam: tests drive the real stream loop with a stub {@link HttpClient}, no socket. */
@@ -119,8 +116,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             HttpClient httpClient,
             Executor executor
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics,
-                WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS, httpClient, executor);
+        this(baseUrl, apiKey, model, timeout, diagnostics, LlmReasoningProfile.NONE, httpClient, executor);
     }
 
     OpenAiCompatibleInferenceClient(
@@ -129,7 +125,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             String model,
             Duration timeout,
             Consumer<String> diagnostics,
-            int contextWindowTokens,
+            LlmReasoningProfile reasoningProfile,
             HttpClient httpClient,
             Executor executor
     ) {
@@ -138,10 +134,10 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         this.model = requireText(model, "model");
         this.timeout = clampTimeout(timeout);
         this.diagnostics = diagnostics == null ? message -> { } : diagnostics;
+        this.reasoningProfile = reasoningProfile == null ? LlmReasoningProfile.NONE : reasoningProfile;
         this.httpClient = httpClient != null ? httpClient : newHttpClient(this.timeout);
         this.ownedExecutor = executor == null ? newOwnedExecutor() : null;
         this.executor = executor != null ? executor : ownedExecutor;
-        this.contextBudget = LlmContextBudgetSnapshot.ofConfiguredWindow(contextWindowTokens);
     }
 
     /** {@code baseUrl} plus the completions path, with trailing slashes collapsed. */
@@ -161,260 +157,45 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
     }
 
-    // --- blocking entry points -------------------------------------------------------------------
-
     @Override
-    public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens) throws Exception {
-        return chat(messages, sampler, maxTokens, null);
-    }
-
-    @Override
-    public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception {
-        return chatWithUsage(messages, sampler, maxTokens, options).text();
-    }
-
-    @Override
-    public LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) throws Exception {
-        return await(startStream(messages, sampler, maxTokens, options, null, null, null, null));
-    }
-
-    @Override
-    public LlmGenerationResult chatWithUsage(
+    public LlmGenerationResult chat(
             List<ChatMessage> messages,
-            SamplerConfig sampler,
+            LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
-            LlmInferenceOptions options,
+            boolean captureThinkingContent,
+            Integer reasoningTier,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) throws Exception {
-        return await(startStream(messages, sampler, maxTokens, options, null, null, null, cacheSink));
+        return await(startStream(
+                messages, sampling, maxTokens, captureThinkingContent, reasoningTier,
+                null, null, null, cacheSink));
     }
 
     @Override
-    public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) throws Exception {
-        await(startStream(messages, sampler, 0, null, onToken, null, null, null));
-    }
-
-    @Override
-    public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken) throws Exception {
-        await(startStream(messages, sampler, maxTokens, options, onToken, null, null, null));
-    }
-
-    // --- chat lane -------------------------------------------------------------------------------
-
-    @Override
-    public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) throws Exception {
-        return chatStreamWithUsage(messages, sampler, maxTokens, options, onToken, null, onFinish);
-    }
-
-    @Override
-    public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) throws Exception {
-        return textOf(startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, null));
-    }
-
-    @Override
-    public CompletableFuture<String> chatStreamWithUsage(
+    public CompletableFuture<LlmGenerationResult> chatStream(
             List<ChatMessage> messages,
-            SamplerConfig sampler,
+            LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
-            LlmInferenceOptions options,
-            Consumer<String> onToken,
-            Consumer<String> onThinking,
-            Consumer<LlmStreamFinish> onFinish,
-            Consumer<LlmPromptCacheUsage> cacheSink
-    ) throws Exception {
-        return textOf(startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, cacheSink));
-    }
-
-    // --- task lane -------------------------------------------------------------------------------
-
-    /*
-     * The task lane shares the chat lane: priority and preemptibility are admission hints of the
-     * local engine queue, and a remote endpoint has no local queue to schedule. Each call keeps its
-     * own HTTP request, so a task and a chat stream can run concurrently.
-     */
-
-    @Override
-    public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible) {
-        return task(messages, sampler, maxTokens, priority, preemptible, null);
-    }
-
-    @Override
-    public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
-        return textOf(taskWithUsage(messages, sampler, maxTokens, priority, preemptible, options));
-    }
-
-    @Override
-    public CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
-        return startStream(messages, sampler, maxTokens, options, null, null, null, null);
-    }
-
-    @Override
-    public CompletableFuture<LlmGenerationResult> taskWithUsage(
-            List<ChatMessage> messages,
-            SamplerConfig sampler,
-            int maxTokens,
-            int priority,
-            boolean preemptible,
-            LlmInferenceOptions options,
-            Consumer<LlmPromptCacheUsage> cacheSink
-    ) {
-        return startStream(messages, sampler, maxTokens, options, null, null, null, cacheSink);
-    }
-
-    @Override
-    public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken) {
-        return taskStream(messages, sampler, maxTokens, priority, preemptible, null, onToken);
-    }
-
-    @Override
-    public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken) {
-        return textOf(startStream(messages, sampler, maxTokens, options, onToken, null, null, null));
-    }
-
-    @Override
-    public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
-        return taskStreamWithUsage(messages, sampler, maxTokens, priority, preemptible, options, onToken, null, onFinish);
-    }
-
-    @Override
-    public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
-        return startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, null);
-    }
-
-    @Override
-    public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(
-            List<ChatMessage> messages,
-            SamplerConfig sampler,
-            int maxTokens,
-            int priority,
-            boolean preemptible,
-            LlmInferenceOptions options,
+            boolean captureThinkingContent,
+            Integer reasoningTier,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LlmStreamFinish> onFinish,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) {
-        return startStream(messages, sampler, maxTokens, options, onToken, onThinking, onFinish, cacheSink);
-    }
-
-    // --- embeddings and retrieval ----------------------------------------------------------------
-
-    /*
-     * The chat-completions lane offers no embedding model, so vector RAG stays with the local engine.
-     * Inline retrieval is still served, lexically and fully offline, which keeps prompt building
-     * working instead of degrading every request to a failed embedding call.
-     */
-
-    @Override
-    public float[] embed(String text) {
-        throw new UnsupportedOperationException("REMOTE_LLM_EMBEDDING_UNAVAILABLE");
+        return startStream(
+                messages, sampling, maxTokens, captureThinkingContent, reasoningTier,
+                onToken, onThinking, onFinish, cacheSink);
     }
 
     @Override
-    public float[][] embed(List<String> texts) {
-        throw new UnsupportedOperationException("REMOTE_LLM_EMBEDDING_UNAVAILABLE");
-    }
-
-    @Override
-    public List<RagSearchResult> search(String queryText, List<String> texts, int topK, float threshold) {
-        if (texts == null || texts.isEmpty() || queryText == null || queryText.isBlank()) {
-            return List.of();
-        }
-        VectorStore store = new VectorStore("remote-inline");
-        for (int index = 0; index < texts.size(); index++) {
-            String content = texts.get(index);
-            if (content != null && !content.isBlank()) {
-                store.upsert(Integer.toString(index), content, null);
-            }
-        }
-        return store.search(null, queryText, topK, threshold);
-    }
-
-    @Override
-    public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) {
+    public int countChatPromptTokens(List<ChatMessage> messages) {
         return tokenEstimator.estimate(messages);
     }
 
     @Override
-    public boolean supportsTokenCounting() {
-        return true;
-    }
-
-    // --- runtime inspection ----------------------------------------------------------------------
-
-    /**
-     * Readiness is configuration validity only: no probe request is sent, so starting the module
-     * never depends on the network being up.
-     */
-    @Override
     public boolean isReady() {
         return !closed.get() && !apiKey.isEmpty() && !model.isEmpty();
-    }
-
-    @Override
-    public boolean hasChatQueueCapacity() {
-        return isReady();
-    }
-
-    @Override
-    public boolean hasTaskQueueCapacity() {
-        return isReady();
-    }
-
-    @Override
-    public boolean hasQueueCapacity() {
-        return isReady();
-    }
-
-    @Override
-    public int getChatQueueSize() {
-        return activeStreams.size();
-    }
-
-    @Override
-    public int getTaskQueueSize() {
-        return 0;
-    }
-
-    @Override
-    public int getQueueSize() {
-        return activeStreams.size();
-    }
-
-    /** The chat-completions protocol exposes no thinking switch; frames that do carry reasoning are forwarded. */
-    @Override
-    public boolean supportsThinking() {
-        return false;
-    }
-
-    @Override
-    public boolean supportsMtp() {
-        return false;
-    }
-
-    @Override
-    public LlmMtpCapabilitySnapshot getMtpCapability() {
-        return LlmMtpCapabilitySnapshot.unsupported();
-    }
-
-    @Override
-    public LlmEngineCapabilitySnapshot getRuntimeCapabilities() {
-        return new LlmEngineCapabilitySnapshot(isReady(), false, false, false, false, 0);
-    }
-
-    @Override
-    public LlmContextBudgetSnapshot getContextBudgetPlan() {
-        return contextBudget;
-    }
-
-    @Override
-    public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) {
-        return contextBudget;
-    }
-
-    @Override
-    public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) {
-        return CompletableFuture.completedFuture(LlmMtpCalibrationResult.unsupported());
     }
 
     @Override
@@ -428,9 +209,10 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     private CompletableFuture<LlmGenerationResult> startStream(
             List<ChatMessage> messages,
-            SamplerConfig sampler,
+            LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
-            LlmInferenceOptions options,
+            boolean captureThinkingContent,
+            Integer reasoningTier,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LlmStreamFinish> onFinish,
@@ -447,11 +229,13 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             }
         });
         Consumer<String> tokenSink = sink(onToken);
-        Consumer<String> thinkingSink = capturesThinking(options) ? sink(onThinking) : null;
+        Consumer<String> thinkingSink = captureThinkingContent ? sink(onThinking) : null;
         try {
             executor.execute(() -> {
                 try {
-                    LlmGenerationResult result = streamChat(messages, sampler, maxTokens, tokenSink, thinkingSink, stream, cacheSink);
+                    LlmGenerationResult result = streamChat(
+                            messages, sampling, maxTokens, reasoningTier, tokenSink, thinkingSink, stream, cacheSink
+                    );
                     notifyFinish(onFinish, result, null);
                     future.complete(result);
                 } catch (CancellationException cancelled) {
@@ -473,31 +257,11 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         return future;
     }
 
-    /**
-     * Text view of a stream future. Cancelling the view cancels the stream future as well, otherwise
-     * a caller could cancel a chat and leave the HTTP exchange running.
-     */
-    private static CompletableFuture<String> textOf(CompletableFuture<LlmGenerationResult> source) {
-        CompletableFuture<String> text = new CompletableFuture<>();
-        source.whenComplete((result, failure) -> {
-            if (failure != null) {
-                text.completeExceptionally(failure);
-            } else {
-                text.complete(result.text());
-            }
-        });
-        text.whenComplete((result, failure) -> {
-            if (text.isCancelled()) {
-                source.cancel(true);
-            }
-        });
-        return text;
-    }
-
     private LlmGenerationResult streamChat(
             List<ChatMessage> messages,
-            SamplerConfig sampler,
+            LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
+            Integer reasoningTier,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             RemoteStream stream,
@@ -507,7 +271,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             throw new IllegalStateException("REMOTE_LLM_CLIENT_CLOSED");
         }
         try {
-            HttpRequest request = buildRequest(buildChatRequestBody(model, messages, sampler, maxTokens));
+            HttpRequest request = buildRequest(buildChatRequestBody(
+                    model, messages, sampling, maxTokens, reasoningProfile, reasoningTier));
             HttpResponse<InputStream> response;
             try {
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -536,66 +301,6 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             stream.detach();
             activeStreams.remove(stream);
         }
-    }
-
-    /**
-     * Surfaces prefix-cache health. The provider reports how much of the prompt it served from its
-     * cache; a low ratio on a non-trivial prompt means our prefix stopped being byte-stable, which is
-     * the single most expensive regression this prompt layout can suffer.
-     */
-    private void reportCacheHitRatio(int promptTokens, int cacheHitTokens, int cacheMissTokens) {
-        if (cacheHitTokens < 0 || cacheMissTokens < 0 || promptTokens < CACHE_RATIO_MIN_PROMPT_TOKENS) {
-            return;
-        }
-        int total = cacheHitTokens + cacheMissTokens;
-        if (total <= 0) {
-            return;
-        }
-        double ratio = (double) cacheHitTokens / (double) total;
-        if (ratio >= CACHE_RATIO_WARN_THRESHOLD) {
-            return;
-        }
-        diagnostics.accept("[LLM] Prefix cache hit ratio is low: ratio=" + String.format(Locale.ROOT, "%.2f", ratio)
-                + " hit=" + cacheHitTokens + " miss=" + cacheMissTokens + " prompt=" + promptTokens
-                + " — the prompt prefix is drifting, so the cache never warms up.");
-    }
-
-    /**
-     * Hands the provider's prompt-cache split to the caller's accounting hook. This is the only place
-     * the split exists: the token counters travel with the result, but the hit/miss breakdown does
-     * not, so an observer has to be offered it here or it is lost.
-     *
-     * <p>A broken observer must not fail a generation that already streamed its tokens, and a
-     * provider that reported nothing must leave the hook untouched instead of reporting zero hits.
-     */
-    private static void reportPromptCacheUsage(
-            Consumer<LlmPromptCacheUsage> cacheSink,
-            int cacheHitTokens,
-            int cacheMissTokens
-    ) {
-        if (cacheSink == null || cacheHitTokens < 0 || cacheMissTokens < 0) {
-            return;
-        }
-        try {
-            cacheSink.accept(new LlmPromptCacheUsage(cacheHitTokens, cacheMissTokens));
-        } catch (RuntimeException ignored) {
-            // Accounting is strictly an observer of a request that already finished successfully.
-        }
-    }
-
-    /**
-     * Feeds the provider's reported prompt size back into the estimator. The endpoint ships no
-     * tokenizer, so this is the only way the estimate converges on the real number.
-     */
-    private void calibrateUsage(List<ChatMessage> messages, LlmGenerationResult result) {
-        if (result == null || result.usage() == null || messages == null) {
-            return;
-        }
-        int actual = result.usage().promptTokens();
-        if (actual <= 0) {
-            return;
-        }
-        tokenEstimator.calibrate(tokenEstimator.estimate(messages), actual);
     }
 
     private LlmGenerationResult readStream(
@@ -662,10 +367,18 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     // --- request construction --------------------------------------------------------------------
 
     /**
-     * OpenAI-compatible chat-completions body. {@code topK} and {@code minP} have no equivalent in
-     * this protocol and are dropped; the penalties map onto their frequency/presence counterparts.
+     * OpenAI-compatible chat-completions body: the four sampling fields, plus the reasoning field
+     * this provider understands. The tier is an index into the profile's ladder; the name sent on the
+     * wire is the provider's own level name, never an alias.
      */
-    static String buildChatRequestBody(String model, List<ChatMessage> messages, SamplerConfig sampler, int maxTokens) {
+    static String buildChatRequestBody(
+            String model,
+            List<ChatMessage> messages,
+            LLMPromptRequestPayload.SamplingPayload sampling,
+            int maxTokens,
+            LlmReasoningProfile reasoningProfile,
+            Integer reasoningTier
+    ) {
         JsonObject root = new JsonObject();
         root.addProperty("model", model);
         root.add("messages", messageArray(messages));
@@ -673,7 +386,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         JsonObject streamOptions = new JsonObject();
         streamOptions.addProperty("include_usage", true);
         root.add("stream_options", streamOptions);
-        applySampling(root, sampler);
+        applySampling(root, sampling);
+        applyReasoning(root, reasoningProfile, reasoningTier);
         if (maxTokens > 0) {
             root.addProperty("max_tokens", maxTokens);
         }
@@ -708,14 +422,47 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         };
     }
 
-    private static void applySampling(JsonObject root, SamplerConfig sampler) {
-        if (sampler == null) {
+    private static void applySampling(JsonObject root, LLMPromptRequestPayload.SamplingPayload sampling) {
+        if (sampling == null) {
             return;
         }
-        addClamped(root, "temperature", sampler.getTemperature(), 0.0F, 2.0F);
-        addClamped(root, "top_p", sampler.getTopP(), 0.0F, 1.0F);
-        addClamped(root, "frequency_penalty", sampler.getPenaltyFreq(), -2.0F, 2.0F);
-        addClamped(root, "presence_penalty", sampler.getPenaltyPresent(), -2.0F, 2.0F);
+        addClamped(root, "temperature", sampling.temperature(), 0.0F, 2.0F);
+        addClamped(root, "top_p", sampling.topP(), 0.0F, 1.0F);
+        addClamped(root, "frequency_penalty", sampling.frequencyPenalty(), -2.0F, 2.0F);
+        addClamped(root, "presence_penalty", sampling.presencePenalty(), -2.0F, 2.0F);
+    }
+
+    /**
+     * Encodes the selected tier with the profile's wire shape. {@code tier 0} is the non-thinking
+     * slot when the profile has one; every other tier sends the provider's own level name. A missing
+     * tier uses the model's default tier, so "no override" still means the documented default
+     * (usually low) rather than whatever the endpoint does by itself. A profile without a ladder
+     * sends nothing.
+     */
+    private static void applyReasoning(JsonObject root, LlmReasoningProfile profile, Integer tier) {
+        if (profile == null || !profile.hasControl()) {
+            return;
+        }
+        int applied = tier == null ? profile.defaultTier() : profile.clampTier(tier);
+        String name = profile.levelName(applied);
+        switch (profile.wire()) {
+            case DEEPSEEK_THINKING -> {
+                JsonObject thinking = new JsonObject();
+                thinking.addProperty("type", name == null ? "disabled" : "enabled");
+                root.add("thinking", thinking);
+                if (name != null) {
+                    root.addProperty("reasoning_effort", name);
+                }
+            }
+            case OPENAI_EFFORT -> {
+                if (name != null) {
+                    root.addProperty("reasoning_effort", name);
+                }
+            }
+            default -> {
+                // NONE: no reasoning field exists.
+            }
+        }
     }
 
     private static void addClamped(JsonObject root, String field, Float value, float min, float max) {
@@ -726,13 +473,13 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     }
 
     private HttpRequest buildRequest(String body) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(endpoint))
+        return HttpRequest.newBuilder(URI.create(endpoint))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
                 .header("Accept", STREAM_MEDIA_TYPE)
                 .header("Authorization", "Bearer " + apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
-        return builder.build();
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
     }
 
     // --- lifecycle helpers ------------------------------------------------------------------------
@@ -795,10 +542,6 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         return apiKey;
     }
 
-    private static boolean capturesThinking(LlmInferenceOptions options) {
-        return options != null && options.captureThinkingContent();
-    }
-
     private static Consumer<String> sink(Consumer<String> consumer) {
         if (consumer == null) {
             return null;
@@ -810,7 +553,64 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         };
     }
 
-    // --- reporting ----------------------------------------------------------------------------
+    // --- provider reporting ---------------------------------------------------------------------
+
+    /**
+     * Surfaces prefix-cache health. The provider reports how much of the prompt it served from its
+     * cache; a low ratio on a non-trivial prompt means our prefix stopped being byte-stable, which is
+     * the single most expensive regression this prompt layout can suffer.
+     */
+    private void reportCacheHitRatio(int promptTokens, int cacheHitTokens, int cacheMissTokens) {
+        if (cacheHitTokens < 0 || cacheMissTokens < 0 || promptTokens < CACHE_RATIO_MIN_PROMPT_TOKENS) {
+            return;
+        }
+        int total = cacheHitTokens + cacheMissTokens;
+        if (total <= 0) {
+            return;
+        }
+        double ratio = (double) cacheHitTokens / (double) total;
+        if (ratio >= CACHE_RATIO_WARN_THRESHOLD) {
+            return;
+        }
+        diagnostics.accept("[LLM] Prefix cache hit ratio is low: ratio=" + String.format(Locale.ROOT, "%.2f", ratio)
+                + " hit=" + cacheHitTokens + " miss=" + cacheMissTokens + " prompt=" + promptTokens
+                + " — the prompt prefix is drifting, so the cache never warms up.");
+    }
+
+    /**
+     * Hands the provider's prompt-cache split to the caller's accounting hook. This is the only place
+     * the split exists: the token counters travel with the result, but the hit/miss breakdown does
+     * not, so an observer has to be offered it here or it is lost.
+     */
+    private static void reportPromptCacheUsage(
+            Consumer<LlmPromptCacheUsage> cacheSink,
+            int cacheHitTokens,
+            int cacheMissTokens
+    ) {
+        if (cacheSink == null || cacheHitTokens < 0 || cacheMissTokens < 0) {
+            return;
+        }
+        try {
+            cacheSink.accept(new LlmPromptCacheUsage(cacheHitTokens, cacheMissTokens));
+        } catch (RuntimeException ignored) {
+            // Accounting is strictly an observer of a request that already finished successfully.
+        }
+    }
+
+    /**
+     * Feeds the provider's reported prompt size back into the estimator. The endpoint ships no
+     * tokenizer, so this is the only way the estimate converges on the real number.
+     */
+    private void calibrateUsage(List<ChatMessage> messages, LlmGenerationResult result) {
+        if (result == null || result.usage() == null || messages == null) {
+            return;
+        }
+        int actual = result.usage().promptTokens();
+        if (actual <= 0) {
+            return;
+        }
+        tokenEstimator.calibrate(tokenEstimator.estimate(messages), actual);
+    }
 
     private void report(Throwable failure) {
         if (failure instanceof CancellationException) {
@@ -861,9 +661,9 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         LlmStreamFinish finish = failure == null
                 ? new LlmStreamFinish(StreamFinishType.COMPLETED, result.usage(), null, result.thinkingContent())
                 : new LlmStreamFinish(
-                        failure instanceof CancellationException ? StreamFinishType.CANCELLED : StreamFinishType.FAILED,
-                        new LlmTokenUsage(0, 0),
-                        failure);
+                failure instanceof CancellationException ? StreamFinishType.CANCELLED : StreamFinishType.FAILED,
+                new LlmTokenUsage(0, 0),
+                failure);
         try {
             onFinish.accept(finish);
         } catch (RuntimeException ignored) {
@@ -874,6 +674,12 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private static <T> T await(CompletableFuture<T> future) throws Exception {
         try {
             return future.get();
+        } catch (InterruptedException interrupted) {
+            // Cancelling the future closes the response body, so the reader thread stops instead of
+            // streaming an answer the caller already gave up on.
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new CancellationException("REMOTE_LLM_REQUEST_INTERRUPTED");
         } catch (CancellationException cancelled) {
             throw cancelled;
         } catch (ExecutionException failed) {

@@ -3,9 +3,12 @@ package com.rheinmetal.tianshu.function.weaving.service;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
-import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
+import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
@@ -66,15 +69,16 @@ class OpenAiCompatibleInferenceClientTest {
 
     @Test
     void buildsOpenAiCompatibleStreamingBody() {
-        SamplerConfig sampler = SamplerConfig.defaults();
-        sampler.setTemperature(0.3F);
-        sampler.setTopP(0.9F);
+        LLMPromptRequestPayload.SamplingPayload sampling =
+                new LLMPromptRequestPayload.SamplingPayload(0.3F, 0.9F, 0.1F, -0.1F);
 
         String body = OpenAiCompatibleInferenceClient.buildChatRequestBody(
                 MODEL,
                 List.of(ChatMessage.system("sys"), ChatMessage.user("hi"), ChatMessage.assistant("hello")),
-                sampler,
-                128
+                sampling,
+                128,
+                LlmReasoningProfile.NONE,
+                null
         );
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
 
@@ -84,6 +88,8 @@ class OpenAiCompatibleInferenceClientTest {
         assertEquals(128, root.get("max_tokens").getAsInt());
         assertEquals(0.3F, root.get("temperature").getAsFloat());
         assertEquals(0.9F, root.get("top_p").getAsFloat());
+        assertEquals(0.1F, root.get("frequency_penalty").getAsFloat());
+        assertEquals(-0.1F, root.get("presence_penalty").getAsFloat());
 
         JsonArray messages = root.getAsJsonArray("messages");
         assertEquals(3, messages.size());
@@ -93,6 +99,71 @@ class OpenAiCompatibleInferenceClientTest {
         assertEquals("hi", content(messages, 1));
         assertEquals("assistant", role(messages, 2));
         assertEquals("hello", content(messages, 2));
+    }
+
+    private static final LlmReasoningProfile DEEPSEEK_REASONING = new LlmReasoningProfile(
+            LlmReasoningWire.DEEPSEEK_THINKING, true, List.of("low", "high", "max"), 1);
+    private static final LlmReasoningProfile OPENAI_REASONING = new LlmReasoningProfile(
+            LlmReasoningWire.OPENAI_EFFORT, false, List.of("low", "medium", "high"), 0);
+
+    @Test
+    void deepSeekTierZeroDisablesThinkingAndOtherTiersSendTheOfficialName() {
+        JsonObject off = body(DEEPSEEK_REASONING, 0);
+        assertEquals("disabled", off.getAsJsonObject("thinking").get("type").getAsString());
+        assertFalse(off.has("reasoning_effort"), "the non-thinking slot has no effort name");
+
+        JsonObject low = body(DEEPSEEK_REASONING, 1);
+        assertEquals("enabled", low.getAsJsonObject("thinking").get("type").getAsString());
+        assertEquals("low", low.get("reasoning_effort").getAsString());
+
+        JsonObject max = body(DEEPSEEK_REASONING, 3);
+        assertEquals("max", max.get("reasoning_effort").getAsString());
+
+        JsonObject clamped = body(DEEPSEEK_REASONING, 99);
+        assertEquals("max", clamped.get("reasoning_effort").getAsString(),
+                "a stale tier clamps to the model's last level instead of failing the turn");
+    }
+
+    @Test
+    void openAiTierIndexSelectsTheOfficialNameWithoutANonThinkingSlot() {
+        JsonObject low = body(OPENAI_REASONING, 0);
+        assertEquals("low", low.get("reasoning_effort").getAsString());
+        assertFalse(low.has("thinking"));
+
+        JsonObject high = body(OPENAI_REASONING, 2);
+        assertEquals("high", high.get("reasoning_effort").getAsString());
+    }
+
+    @Test
+    void aProviderWithoutReasoningControlSendsNoField() {
+        JsonObject body = body(LlmReasoningProfile.NONE, 2);
+
+        assertFalse(body.has("thinking"));
+        assertFalse(body.has("reasoning_effort"));
+    }
+
+    @Test
+    void aMissingTierUsesTheModelsDefaultTierInsteadOfTheEndpointDefault() {
+        JsonObject body = body(DEEPSEEK_REASONING, null);
+
+        // DeepSeek's default tier is 1 = low, so "no override" still pins the documented default
+        // rather than letting the endpoint fall back to its own (higher) default.
+        assertEquals("enabled", body.getAsJsonObject("thinking").get("type").getAsString());
+        assertEquals("low", body.get("reasoning_effort").getAsString());
+    }
+
+    @Test
+    void aModelWithoutReasoningControlStillSendsNothingForAMissingTier() {
+        JsonObject body = body(LlmReasoningProfile.NONE, null);
+
+        assertFalse(body.has("thinking"));
+        assertFalse(body.has("reasoning_effort"));
+    }
+
+    private static JsonObject body(LlmReasoningProfile profile, Integer tier) {
+        return JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL, messages(), sampling(), 0, profile, tier
+        )).getAsJsonObject();
     }
 
     @Test
@@ -132,10 +203,10 @@ class OpenAiCompatibleInferenceClientTest {
         OpenAiCompatibleInferenceClient client = client(transport, "sk-test", diagnostics::add);
         List<String> tokens = new ArrayList<>();
 
-        CompletableFuture<String> streamed = client.chatStreamWithUsage(
-                messages(), SamplerConfig.defaults(), 0, null, tokens::add, null);
+        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+                messages(), sampling(), 0, false, null, tokens::add, null, null, null);
 
-        assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS));
+        assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).text());
         assertEquals(List.of("Hel", "lo"), tokens);
         assertTrue(diagnostics.isEmpty(), diagnostics.toString());
     }
@@ -148,8 +219,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
 
-        assertEquals("answer", client.chat(messages(), SamplerConfig.defaults(), 64));
-        assertEquals("answer", client.chatWithUsage(messages(), SamplerConfig.defaults(), 64, null).text());
+        assertEquals("answer", client.chat(messages(), sampling(), 64, false, null, null).text());
     }
 
     @Test
@@ -164,7 +234,7 @@ class OpenAiCompatibleInferenceClientTest {
 
         Exception failure = assertThrows(
                 Exception.class,
-                () -> client.chat(messages(), SamplerConfig.defaults(), 0)
+                () -> client.chat(messages(), sampling(), 0, false, null, null)
         );
 
         assertTrue(failure.getMessage().contains("status=401"), failure.getMessage());
@@ -188,8 +258,8 @@ class OpenAiCompatibleInferenceClientTest {
         List<String> diagnostics = new ArrayList<>();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test", diagnostics::add);
 
-        CompletableFuture<String> streamed = client.chatStreamWithUsage(
-                messages(), SamplerConfig.defaults(), 0, null, token -> { }, null);
+        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+                messages(), sampling(), 0, false, null, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         assertTrue(streamed.cancel(true));
@@ -203,7 +273,7 @@ class OpenAiCompatibleInferenceClientTest {
         BlockingSseStream blocking = new BlockingSseStream();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test");
 
-        client.chatStreamWithUsage(messages(), SamplerConfig.defaults(), 0, null, token -> { }, null);
+        client.chatStream(messages(), sampling(), 0, false, null, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         client.shutdown();
@@ -257,6 +327,10 @@ class OpenAiCompatibleInferenceClientTest {
 
     private static List<ChatMessage> messages() {
         return List.of(ChatMessage.system("sys"), ChatMessage.user("hi"));
+    }
+
+    private static LLMPromptRequestPayload.SamplingPayload sampling() {
+        return LLMPromptRequestPayload.SamplingPayload.empty();
     }
 
     private static String role(JsonArray messages, int index) {

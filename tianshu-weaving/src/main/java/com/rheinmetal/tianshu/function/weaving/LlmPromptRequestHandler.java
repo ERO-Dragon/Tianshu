@@ -1,38 +1,43 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.function.weaving.service.LLMRequest;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
+import com.rheinmetal.tianshu.function.weaving.service.LlmPrompt;
+import com.rheinmetal.tianshu.function.weaving.service.LlmPromptFactory;
+import com.rheinmetal.tianshu.function.weaving.service.LlmRequestRejectedException;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+/**
+ * Executes one {@code LLM.REQUEST}: validates the payload, turns it into a prompt, and publishes
+ * either a stream or a single result.
+ *
+ * <p>There is no lane, no admission queue and no background-task variant: a request is independent
+ * of every other request, and concurrency is bounded by the protocol runtime and the provider, not
+ * by this module.</p>
+ */
 final class LlmPromptRequestHandler {
     private final LlmProtocolAdapter adapter;
-    private final LlmTaskAdmissionController taskAdmissionController;
-    private final LlmPromptPayloadMapper payloadMapper;
+    private final LlmPromptFactory promptFactory;
     private final LlmUsageLedger usageLedger;
 
     LlmPromptRequestHandler(
             LlmProtocolAdapter adapter,
-            LlmTaskAdmissionController taskAdmissionController,
-            LlmPromptPayloadMapper payloadMapper,
+            LlmPromptFactory promptFactory,
             LlmUsageLedger usageLedger
     ) {
         this.adapter = adapter;
-        this.taskAdmissionController = taskAdmissionController;
-        this.payloadMapper = payloadMapper;
+        this.promptFactory = promptFactory;
         this.usageLedger = usageLedger;
     }
 
@@ -41,93 +46,50 @@ final class LlmPromptRequestHandler {
             complete(context, envelope);
             return;
         }
-        // One request, one accounting record: the same instance follows the request through every
-        // lane and the dialogue authorization hop, so the ledger sees each finished request once.
-        UsageRecording usage = new UsageRecording(envelope);
-        if (adapter.currentLlmService() == null) {
-            reject(envelope, payload, context, "LLM_SERVICE_NOT_READY", "LLM service is not initialized");
-            return;
-        }
-        handleAuthorized(envelope, payload, context, usage);
-    }
-
-    private void handleAuthorized(
-            TianshuEnvelope envelope,
-            LLMPromptRequestPayload payload,
-            ProtocolContext context,
-            UsageRecording usage
-    ) {
         LLMService service = adapter.currentLlmService();
         if (service == null) {
             reject(envelope, payload, context, "LLM_SERVICE_NOT_READY", "LLM service is not initialized");
             return;
         }
+        UsageRecording usage = new UsageRecording(envelope);
         try {
-            LLMRequest request = payloadMapper.toRequest(payload);
-            boolean stream = Boolean.TRUE.equals(payload.stream());
-            boolean task = "COMPLEX".equalsIgnoreCase(payload.lane());
-            if (task) {
-                admitTaskRequest(service, envelope, request, payload, context, stream, usage);
-            } else if (stream) {
-                if (handleChatStream(service, envelope, request, payload, usage)) {
-                    complete(context, envelope);
-                } else {
-                    fail(context, envelope, "LLM_INFERENCE_FAILED", "LLM stream chat failed", null);
-                }
+            LlmPrompt prompt = promptFactory.create(payload);
+            if (payload.stream()) {
+                handleStream(service, envelope, prompt, payload, context, usage);
             } else {
-                handleChat(service, envelope, request, payload, context, usage);
+                handleBlocking(service, envelope, prompt, payload, context, usage);
             }
+        } catch (LlmRequestRejectedException rejected) {
+            // A refusal has its own code; reporting it as a generic failure would hide the reason.
+            reject(envelope, payload, context, rejected.code(), rejected.getMessage(), null);
         } catch (Exception exception) {
-            reject(envelope, payload, context, "LLM_REQUEST_FAILED", exception.getMessage(), exception);
+            reject(envelope, payload, context, "LLM_REQUEST_FAILED", failureMessage(exception), exception);
         }
     }
 
-    private void admitTaskRequest(
+    private void handleBlocking(
             LLMService service,
             TianshuEnvelope envelope,
-            LLMRequest request,
-            LLMPromptRequestPayload payload,
-            ProtocolContext context,
-            boolean stream,
-            UsageRecording usage
-    ) {
-        taskAdmissionController.submit(
-                payload.taskPriority(),
-                payload.taskPreemptible(),
-                () -> stream
-                        ? startTaskStream(service, envelope, request, payload, context, usage)
-                        : startTask(service, envelope, request, payload, context, usage),
-                (code, message) -> reject(envelope, payload, context, code, message)
-        );
-    }
-
-    private void handleChat(
-            LLMService service,
-            TianshuEnvelope envelope,
-            LLMRequest request,
+            LlmPrompt prompt,
             LLMPromptRequestPayload payload,
             ProtocolContext context,
             UsageRecording usage
     ) {
         try {
-            LLMService.LLMResult result = service.chat(request, usage.cacheSink());
+            LLMService.LLMResult result = service.chat(prompt, usage.cacheSink());
             usage.record(result.usage());
             adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
                     payload.requestId(),
                     result.text(),
                     result.thinkingContent(),
-                    result.ragHits(),
                     result.usage()
             ));
             complete(context, envelope);
         } catch (Exception exception) {
             Throwable cause = unwrapCompletion(exception);
-            if (isTaskCancellation(cause)) {
+            if (isCancellation(cause)) {
                 adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.cancelled(
-                        payload.requestId(),
-                        "",
-                        List.of(),
-                        LLMPromptResultPayload.TokenUsagePayload.empty()
+                        payload.requestId(), "", "", LLMPromptResultPayload.TokenUsagePayload.empty()
                 ));
                 cancel(context, envelope, cancellationReasonCode(cause), failureMessage(cause));
                 return;
@@ -141,22 +103,21 @@ final class LlmPromptRequestHandler {
         }
     }
 
-    private boolean handleChatStream(
+    private void handleStream(
             LLMService service,
             TianshuEnvelope envelope,
-            LLMRequest request,
+            LlmPrompt prompt,
             LLMPromptRequestPayload payload,
+            ProtocolContext context,
             UsageRecording usage
     ) {
-        List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
-        LlmStreamState state = new LlmStreamState(payload.requestId(), ragHits,
+        LlmStreamState state = new LlmStreamState(payload.requestId(),
                 chunk -> adapter.publishLLMPromptStreamChunk(envelope, chunk));
         try {
             LLMService.LLMStreamResult result = service.chatStream(
-                    request,
+                    prompt,
                     state::onVisible,
                     state::onThinking,
-                    ragHits,
                     usage.cacheSink()
             );
             LLMService.LLMStreamFinish finish = result.finish();
@@ -171,10 +132,10 @@ final class LlmPromptRequestHandler {
                     terminal.thinkingContent()
             );
             adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish));
-            return true;
+            complete(context, envelope);
         } catch (Exception exception) {
             Throwable cause = unwrapCompletion(exception);
-            boolean cancelled = isTaskCancellation(cause);
+            boolean cancelled = isCancellation(cause);
             LlmStreamState.TerminalSnapshot terminal = state.terminal("", "");
             adapter.publishLLMPromptStreamEnd(
                     envelope,
@@ -189,10 +150,10 @@ final class LlmPromptRequestHandler {
                         payload.requestId(),
                         terminal.visibleText(),
                         terminal.thinkingContent(),
-                        terminal.ragHits(),
                         LLMPromptResultPayload.TokenUsagePayload.empty()
                 ));
-                return true;
+                cancel(context, envelope, cancellationReasonCode(cause), failureMessage(cause));
+                return;
             }
             adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
                     payload.requestId(),
@@ -200,159 +161,11 @@ final class LlmPromptRequestHandler {
                     failureMessage(cause),
                     terminal.visibleText(),
                     terminal.thinkingContent(),
-                    terminal.ragHits(),
                     LLMPromptResultPayload.TokenUsagePayload.empty()
             ));
-            return false;
+            fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(cause), cause);
         }
     }
-
-    private CompletableFuture<Void> startTask(
-            LLMService service,
-            TianshuEnvelope envelope,
-            LLMRequest request,
-            LLMPromptRequestPayload payload,
-            ProtocolContext context,
-            UsageRecording usage
-    ) {
-        try {
-            List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
-            return service.submitTaskWithUsage(request, ragHits, usage.cacheSink())
-                    .thenAccept(result -> {
-                        LLMPromptResultPayload.TokenUsagePayload tokenUsage =
-                                LLMService.toUsagePayload(result == null ? null : result.usage());
-                        usage.record(tokenUsage);
-                        adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.completed(
-                                payload.requestId(),
-                                result == null ? "" : result.text(),
-                                result == null ? "" : result.thinkingContent(),
-                                ragHits,
-                                tokenUsage
-                        ));
-                        complete(context, envelope);
-                    })
-                    .exceptionally(exception -> {
-                        Throwable cause = unwrapCompletion(exception);
-                        if (isTaskCancellation(cause)) {
-                            adapter.respondLLMPromptResult(
-                                    envelope,
-                                    LLMPromptResultPayload.cancelled(payload.requestId(), "", ragHits)
-                            );
-                            cancel(context, envelope, cancellationReasonCode(cause), failureMessage(cause));
-                        } else {
-                            adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
-                                    payload.requestId(),
-                                    "LLM_INFERENCE_FAILED",
-                                    failureMessage(cause),
-                                    "",
-                                    ragHits
-                            ));
-                            fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(cause), cause);
-                        }
-                        return null;
-                    });
-        } catch (Exception exception) {
-            reject(envelope, payload, context, "LLM_INFERENCE_FAILED", exception.getMessage(), exception);
-            return CompletableFuture.completedFuture(null);
-        }
-    }
-
-    private CompletableFuture<Void> startTaskStream(
-            LLMService service,
-            TianshuEnvelope envelope,
-            LLMRequest request,
-            LLMPromptRequestPayload payload,
-            ProtocolContext context,
-            UsageRecording usage
-    ) {
-        List<LLMPromptResultPayload.RagHitPayload> ragHits = new ArrayList<>();
-        LlmStreamState state = new LlmStreamState(payload.requestId(), ragHits,
-                chunk -> adapter.publishLLMPromptStreamChunk(envelope, chunk));
-        AtomicReference<LLMService.LLMStreamFinish> finishReference = new AtomicReference<>();
-        CompletableFuture<com.rheinmetal.tianshu.libs.llm.LlmGenerationResult> future =
-                service.submitTaskStreamWithUsage(
-                        request,
-                        state::onVisible,
-                        state::onThinking,
-                        finishReference::set,
-                        ragHits,
-                        usage.cacheSink()
-                );
-        state.publishRagHitsIfNeeded();
-
-        return future.thenAccept(result -> {
-            LLMService.LLMStreamFinish finish = finishReference.get();
-            LLMPromptResultPayload.TokenUsagePayload usagePayload = finish == null
-                    ? LLMService.toUsagePayload(result == null ? null : result.usage())
-                    : finish.usage();
-            if (finish == null) {
-                finish = new LLMService.LLMStreamFinish("COMPLETED", usagePayload, null);
-            }
-            usage.record(usagePayload);
-            LlmStreamState.TerminalSnapshot terminal = state.terminal(
-                    result == null ? "" : result.text(),
-                    finish.thinkingContent(),
-                    result == null ? "" : result.thinkingContent()
-            );
-            adapter.publishLLMPromptStreamEnd(
-                    envelope,
-                    terminal.nextIndex(),
-                    finish.type(),
-                    finish.usage(),
-                    failureMessage(finish.error()),
-                    terminal.thinkingContent()
-            );
-            adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish));
-            complete(context, envelope);
-        }).exceptionally(exception -> {
-            Throwable cause = unwrapCompletion(exception);
-            LLMPromptResultPayload.TokenUsagePayload failedUsage = finishReference.get() == null
-                    ? LLMPromptResultPayload.TokenUsagePayload.empty()
-                    : finishReference.get().usage();
-            // A failed or cancelled task can still have consumed prompt tokens; account for them.
-            usage.record(failedUsage);
-            LlmStreamState.TerminalSnapshot terminal = state.terminal("", "");
-            if (isTaskCancellation(cause)) {
-                adapter.publishLLMPromptStreamEnd(
-                        envelope,
-                        terminal.nextIndex(),
-                        "CANCELLED",
-                        failedUsage,
-                        null,
-                        terminal.thinkingContent()
-                );
-                adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.cancelled(
-                        payload.requestId(),
-                        terminal.visibleText(),
-                        terminal.thinkingContent(),
-                        terminal.ragHits(),
-                        failedUsage
-                ));
-                cancel(context, envelope, cancellationReasonCode(cause), failureMessage(cause));
-            } else {
-                adapter.publishLLMPromptStreamEnd(
-                        envelope,
-                        terminal.nextIndex(),
-                        "FAILED",
-                        failedUsage,
-                        failureMessage(cause),
-                        terminal.thinkingContent()
-                );
-                adapter.respondLLMPromptResult(envelope, LLMPromptResultPayload.failed(
-                        payload.requestId(),
-                        "LLM_INFERENCE_FAILED",
-                        failureMessage(cause),
-                        terminal.visibleText(),
-                        terminal.thinkingContent(),
-                        terminal.ragHits(),
-                        failedUsage
-                ));
-                fail(context, envelope, "LLM_INFERENCE_FAILED", failureMessage(cause), cause);
-            }
-            return null;
-        });
-    }
-
 
     private void reject(
             TianshuEnvelope envelope,
@@ -377,10 +190,6 @@ final class LlmPromptRequestHandler {
                 LLMPromptResultPayload.failed(payload.requestId(), code, message)
         );
         fail(context, envelope, code, message, cause);
-    }
-
-    private static String clean(String value) {
-        return value == null ? "" : value.trim();
     }
 
     private static void complete(ProtocolContext context, TianshuEnvelope envelope) {
@@ -409,34 +218,39 @@ final class LlmPromptRequestHandler {
 
     private static Throwable unwrapCompletion(Throwable throwable) {
         Throwable current = throwable;
-        while (current instanceof CompletionException && current.getCause() != null) {
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
+                && current.getCause() != null) {
             current = current.getCause();
         }
         return current;
     }
 
-    private static boolean isTaskCancellation(Throwable throwable) {
+    /**
+     * Cancellation is decided by type, never by wording.
+     *
+     * <p>The transport reports a cancelled exchange as {@link CancellationException} and an
+     * interrupted caller as {@link InterruptedException}; both are preserved up to here by
+     * {@code LLMService}. Sniffing the message for "cancel" made a provider whose error text merely
+     * contained the word look like a cancellation.</p>
+     */
+    private static boolean isCancellation(Throwable throwable) {
         Throwable current = unwrapCompletion(throwable);
-        if (current instanceof CancellationException || current instanceof InterruptedException) {
-            return true;
-        }
-        String message = current == null ? "" : String.valueOf(current.getMessage()).toLowerCase();
-        return message.contains("cancel") || message.contains("preempt") || message.contains("interrupt");
+        return current instanceof CancellationException || current instanceof InterruptedException;
     }
 
     private static String cancellationReasonCode(Throwable throwable) {
         Throwable current = unwrapCompletion(throwable);
         String message = current == null ? "" : String.valueOf(current.getMessage()).toLowerCase();
-        if (message.contains("preempt")) {
-            return "LLM_TASK_PREEMPTED";
-        }
         if (current instanceof InterruptedException || message.contains("interrupt")) {
-            return "LLM_TASK_INTERRUPTED";
+            return "LLM_REQUEST_INTERRUPTED";
         }
-        return "LLM_TASK_CANCELLED";
+        return "LLM_REQUEST_CANCELLED";
     }
 
     private static String failureMessage(Throwable throwable) {
+        if (throwable == null) {
+            return null;
+        }
         Throwable current = unwrapCompletion(throwable);
         String message = current == null ? null : current.getMessage();
         return message == null || message.isBlank() ? "LLM request failed" : message;
@@ -453,11 +267,7 @@ final class LlmPromptRequestHandler {
                 : finish.usage();
         if ("CANCELLED".equals(type)) {
             return LLMPromptResultPayload.cancelled(
-                    requestId,
-                    terminal.visibleText(),
-                    terminal.thinkingContent(),
-                    terminal.ragHits(),
-                    usage
+                    requestId, terminal.visibleText(), terminal.thinkingContent(), usage
             );
         }
         if ("FAILED".equals(type)) {
@@ -467,16 +277,11 @@ final class LlmPromptRequestHandler {
                     failureMessage(finish.error()),
                     terminal.visibleText(),
                     terminal.thinkingContent(),
-                    terminal.ragHits(),
                     usage
             );
         }
         return LLMPromptResultPayload.completed(
-                requestId,
-                terminal.visibleText(),
-                terminal.thinkingContent(),
-                terminal.ragHits(),
-                usage
+                requestId, terminal.visibleText(), terminal.thinkingContent(), usage
         );
     }
 
@@ -484,11 +289,10 @@ final class LlmPromptRequestHandler {
      * Accounts for exactly one finished request.
      *
      * <p>Attribution is the envelope's {@code sourceId}: every request names the module that issued
-     * it, so per-module figures need no separate instrumentation layer.
-     *
-     * <p>The provider reports the prompt-cache split only inside the inference client, so this
-     * instance is handed out as a sink before the call and read back afterwards. A request that
-     * finishes through two callbacks (a cancellation racing a completion) is still recorded once.
+     * it, so per-module figures need no separate instrumentation layer. The provider reports the
+     * prompt-cache split only inside the inference client, so this instance is handed out as a sink
+     * before the call and read back afterwards; a request that finishes through two callbacks is
+     * still recorded once.</p>
      */
     private final class UsageRecording {
         private final String sourceId;
@@ -497,10 +301,11 @@ final class LlmPromptRequestHandler {
         private final AtomicBoolean recorded = new AtomicBoolean();
 
         UsageRecording(TianshuEnvelope envelope) {
-            this.sourceId = clean(envelope.header().sourceId());
+            this.sourceId = envelope == null || envelope.header() == null
+                    ? ""
+                    : clean(envelope.header().sourceId());
         }
 
-        /** Per-request hook the inference client reports this request's cache split through. */
         Consumer<LlmPromptCacheUsage> cacheSink() {
             return cacheUsage::set;
         }
@@ -512,13 +317,13 @@ final class LlmPromptRequestHandler {
             LlmPromptCacheUsage reported = cacheUsage.get();
             boolean known = reported != null && reported.known();
             long input = usage.promptTokens();
-            // An unreported split is passed on as unreported, not as a measured zero: the ledger must
-            // be able to say "no data" instead of rendering a 0% hit rate. Money is unaffected by the
-            // gap — pricing derives the uncached quantity from the input total, so a silent provider
-            // is still billed as a full miss (never below it).
             long cacheHit = known ? reported.cacheHitTokens() : 0L;
             long cacheMiss = known ? reported.cacheMissTokens() : 0L;
             usageLedger.record(sourceId, input, cacheHit, cacheMiss, usage.outputTokens(), known);
         }
+    }
+
+    private static String clean(String value) {
+        return value == null ? "" : value.trim();
     }
 }

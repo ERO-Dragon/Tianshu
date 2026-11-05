@@ -33,7 +33,7 @@ class AXProtocolAdapterTest {
         registerSink(runtime, "LLM.CACHE_MANAGE", PayloadType.of("LLM_CACHE_MANAGE"), LLMCacheManagePayload.class, cache);
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
 
-        adapter.submitLlmPrimitiveQuery(adapter.buildLlmPrimitiveQuery(LLMPrimitiveQueryPayload.status("status", false)));
+        adapter.submitLlmPrimitiveQuery(adapter.buildLlmPrimitiveQuery(LLMPrimitiveQueryPayload.status("status")));
         adapter.submitLlmCacheManage(adapter.buildLlmCacheManage(LLMCacheManagePayload.queryUid("mc.static")));
 
         await(() -> primitive.get() != null && cache.get() != null);

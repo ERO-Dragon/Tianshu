@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.weaving.model.LlmModelPathResolver;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmFailureText;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingLoadReport;
 import com.rheinmetal.tianshu.function.weaving.service.EmbeddingService;
 import com.rheinmetal.tianshu.function.weaving.service.LocalEmbeddingEngine;
@@ -114,6 +115,23 @@ public final class LlmEngineProvider {
      *         read on the caller's thread
      */
     public boolean startEmbeddingOnly() {
+        try {
+            return startEmbeddingOnlyUnguarded();
+        } catch (RuntimeException failure) {
+            reportStartFailure(failure);
+            return false;
+        }
+    }
+
+    /**
+     * Builds and queues the embedding engine.
+     *
+     * <p>Kept separate from the public entry point so a failure anywhere in here — releasing the old
+     * engine, resolving the file, queueing the load — ends as "retrieval is unavailable" instead of
+     * escaping into the module start. Chat does not depend on this lane, and a module that cannot
+     * retrieve must still answer.</p>
+     */
+    private boolean startEmbeddingOnlyUnguarded() {
         String embeddingModelName = config.getLlmEmbeddingModelName();
         Path embeddingPath = modelPaths.resolveEmbeddingModel(embeddingModelName);
         // Released before the new engine exists: a libs server holds the whole GGUF and its context as
@@ -300,6 +318,33 @@ public final class LlmEngineProvider {
 
     private static boolean usable(EmbeddingLoadReport report) {
         return report == null || report.usable();
+    }
+
+    /**
+     * The start path threw: this lane carries no vectors for the session, and nothing else breaks.
+     *
+     * <p>The engine is released first — a half-built one would keep native memory mapped — and the
+     * report travels through the same listener a failed load uses, so the module binds no service and
+     * presence reports the same kind of notice.</p>
+     */
+    private void reportStartFailure(RuntimeException failure) {
+        String reason = LlmFailureText.of(failure);
+        try {
+            stop();
+        } catch (RuntimeException releaseFailure) {
+            reason = reason + "; releasing the previous engine also failed: " + LlmFailureText.of(releaseFailure);
+        }
+        EmbeddingLoadReport report = EmbeddingLoadReport.unavailable(reason);
+        synchronized (this) {
+            embeddingEngine = null;
+            embeddingLoadReport = report;
+        }
+        publishEmbeddingFailure("LLM_EMBEDDING_START_FAILED", reason);
+        loadListener.accept(report);
+        if (loadQueue != null) {
+            // No retrieval load is coming, so the deferred speech load must not keep waiting for one.
+            loadQueue.settlePrimary();
+        }
     }
 
     private static String blankToNull(String value) {

@@ -1,25 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.function.weaving.LlmProtocolAdapter;
-
-import com.rheinmetal.tianshu.function.weaving.protocol.LlmCapabilities;
-
 import com.rheinmetal.tianshu.function.weaving.bridge.LlmPresenceActivityBridge;
-import com.rheinmetal.tianshu.function.weaving.service.LLMService;
-import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
-import com.rheinmetal.tianshu.function.weaving.service.RagCacheManager;
-import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
-import com.rheinmetal.tianshu.protocol.BrokerType;
-import com.rheinmetal.tianshu.protocol.CompletionPolicy;
-import com.rheinmetal.tianshu.protocol.PacketType;
-import com.rheinmetal.tianshu.protocol.PayloadType;
-import com.rheinmetal.tianshu.protocol.Priority;
-import com.rheinmetal.tianshu.function.weaving.protocol.LlmTopics;
-import com.rheinmetal.tianshu.protocol.ProtocolTopics;
-import com.rheinmetal.tianshu.protocol.ThreadPolicy;
-import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
-import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
-import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManagePayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMCacheManageResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveQueryPayload;
@@ -28,40 +9,52 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
-import com.rheinmetal.tianshu.function.weaving.contract.LlmStatusPayload;
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmCapabilities;
+import com.rheinmetal.tianshu.function.weaving.protocol.LlmModuleId;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmFailureText;
+import com.rheinmetal.tianshu.function.weaving.service.LLMService;
+import com.rheinmetal.tianshu.function.weaving.service.LlmPromptFactory;
+import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
+import com.rheinmetal.tianshu.function.weaving.service.RagCacheManager;
+import com.rheinmetal.tianshu.function.weaving.service.RagLibraryRegistry;
+import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
+import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.protocol.BrokerType;
+import com.rheinmetal.tianshu.protocol.CompletionPolicy;
+import com.rheinmetal.tianshu.protocol.PacketType;
+import com.rheinmetal.tianshu.protocol.PayloadType;
+import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.ProtocolTopics;
+import com.rheinmetal.tianshu.protocol.ThreadPolicy;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
+import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
-import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
+/**
+ * Protocol face of the cloud lane: three capabilities, their responses, and the HUD notices that
+ * belong to the lane itself.
+ *
+ * <p>Request execution lives in {@link LlmPromptRequestHandler}; this class only registers
+ * capabilities, publishes responses and keeps the presence activities in sync.</p>
+ */
 public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
-    private static final long TASK_ACTIVITY_TTL_MILLIS = 900_000L;
-    /** Backstop for a crash mid-load; a real start ends the notice explicitly. */
+    /** Backstop for a process that dies mid-load; a real start ends the notice explicitly. */
     private static final long MODEL_LOADING_TTL_MILLIS = 120_000L;
-    public static final String MODULE_ID = "module.llm";
+    public static final String MODULE_ID = LlmModuleId.MODULE;
     public static final String SOURCE_ID = LlmProtocolAdapter.MODULE_ID;
-
-    /**
-     * Registers the status topic this module produces.
-     *
-     * <p>Topic ownership follows payload ownership: the producer declares its own route. The kernel used to
-     * register these for the four original modules, so deleting a module still left its vocabulary behind.</p>
-     */
-    public void registerOwnedTopics(com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess protocol) {
-        if (protocol == null) {
-            return;
-        }
-        protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
-                LlmTopics.LLM_STATUS, PayloadType.of("LLM_STATUS"),
-                com.rheinmetal.tianshu.protocol.DeliveryPolicy.LATEST_ONLY, 40));
-    }
 
     private volatile LLMService llmService;
     private volatile LlmRagStorageService ragStorageService;
@@ -71,33 +64,24 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     /** The optional HUD integration; a no-op when presence is not installed. */
     private final LlmPresenceActivityBridge presenceActivity;
     /** Whether the startup notice is up; a clean start never sends an empty retraction. */
-    private final java.util.concurrent.atomic.AtomicBoolean loadingPublished = new java.util.concurrent.atomic.AtomicBoolean();
-    private final LlmTaskAdmissionController taskAdmissionController;
-    private final LlmPromptPayloadMapper promptPayloadMapper;
+    private final AtomicBoolean loadingPublished = new AtomicBoolean();
+    private final LlmPromptFactory promptFactory;
     private final LlmPromptRequestHandler promptRequestHandler;
 
     public LlmProtocolAdapter(ModuleRuntimeAccess runtime, LLMService llmService) {
-        this(runtime, llmService, new LlmTaskAdmissionController(0));
-    }
-
-    public LlmProtocolAdapter(
-            ModuleRuntimeAccess runtime,
-            LLMService llmService,
-            LlmTaskAdmissionController taskAdmissionController
-    ) {
-        this(runtime, llmService, taskAdmissionController, new LlmUsageLedger());
+        this(runtime, llmService, new LlmPromptFactory(() -> ""), new LlmUsageLedger());
     }
 
     /**
-     * @param usageLedger ledger this adapter's requests are accounted into; the owning module passes
-     *                    the same instance it exposes to readers, so recording and reading agree.
-     *                    An adapter built without one still accounts for itself, it just has no
-     *                    reader.
+     * @param promptFactory turns protocol messages into a sendable prompt; the module passes one
+     *                      that knows the configured model so catalog sampling defaults apply
+     * @param usageLedger   ledger this adapter's requests are accounted into; the owning module
+     *                      passes the same instance it exposes to readers
      */
     public LlmProtocolAdapter(
             ModuleRuntimeAccess runtime,
             LLMService llmService,
-            LlmTaskAdmissionController taskAdmissionController,
+            LlmPromptFactory promptFactory,
             LlmUsageLedger usageLedger
     ) {
         super(
@@ -110,23 +94,16 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         );
         this.llmService = llmService;
         this.presenceActivity = LlmPresenceActivityBridge.of(runtime, SOURCE_ID);
-        this.taskAdmissionController = taskAdmissionController == null
-                ? new LlmTaskAdmissionController(0)
-                : taskAdmissionController;
-        this.promptPayloadMapper = new LlmPromptPayloadMapper();
+        this.promptFactory = promptFactory == null ? new LlmPromptFactory(() -> "") : promptFactory;
         this.promptRequestHandler = new LlmPromptRequestHandler(
                 this,
-                this.taskAdmissionController,
-                promptPayloadMapper,
+                this.promptFactory,
                 usageLedger == null ? new LlmUsageLedger() : usageLedger
         );
     }
 
     public void setLlmService(LLMService llmService) {
         this.llmService = llmService;
-        if (llmService == null) {
-            taskAdmissionController.clearWaitingTasks("LLM_SERVICE_NOT_READY", "LLM service is not initialized");
-        }
     }
 
     public void setRagStorageService(LlmRagStorageService ragStorageService) {
@@ -136,6 +113,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     public void setUnavailableRuntimeSnapshotSupplier(Supplier<LLMRuntimeSnapshotPayload> supplier) {
         this.unavailableRuntimeSnapshotSupplier = supplier;
     }
+
+    // --- capability registration -----------------------------------------------------------------
 
     public void registerLLMRequestCapability(EnvelopeHandler handler) {
         registerCapability(
@@ -179,48 +158,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public TianshuEnvelope requestLLMPrimitiveQuery(LLMPrimitiveQueryPayload payload) {
-        return requestCapability(
-                LlmCapabilities.LLM_PRIMITIVE_QUERY,
-                PayloadType.of("LLM_PRIMITIVE_QUERY"),
-                payload
-        );
-    }
-
-    public TianshuEnvelope requestLLMPrimitiveQuery(TianshuEnvelope parent, LLMPrimitiveQueryPayload payload) {
-        return requestCapability(
-                parent,
-                LlmCapabilities.LLM_PRIMITIVE_QUERY,
-                PayloadType.of("LLM_PRIMITIVE_QUERY"),
-                payload
-        );
-    }
-
-    public void registerLLMPrimitiveResultResponse(String requestEnvelopeId, EnvelopeHandler handler) {
-        registerResponseHandler(
-                requestEnvelopeId,
-                PayloadType.of("LLM_PRIMITIVE_RESULT"),
-                LLMPrimitiveResultPayload.class,
-                BrokerType.BOUNDED_QUEUE,
-                EnumSet.of(PacketType.RESPONSE),
-                Priority.LOW,
-                CompletionPolicy.MANUAL_COMPLETE,
-                handler,
-                defaults()
-        );
-    }
-
-    public TianshuEnvelope respondLLMPrimitiveResult(TianshuEnvelope parent, LLMPrimitiveResultPayload payload) {
-        return respondTo(parent, PayloadType.of("LLM_PRIMITIVE_RESULT"), payload);
-    }
-
-    public TianshuEnvelope requestLLM(LLMPromptRequestPayload payload) {
-        return requestCapability(LlmCapabilities.LLM_REQUEST, PayloadType.of("LLM_PROMPT_REQUEST"), payload);
-    }
-
-    public TianshuEnvelope requestLLM(TianshuEnvelope parent, LLMPromptRequestPayload payload) {
-        return requestCapability(parent, LlmCapabilities.LLM_REQUEST, PayloadType.of("LLM_PROMPT_REQUEST"), payload);
-    }
+    // --- responses and HUD notices ---------------------------------------------------------------
 
     public TianshuEnvelope respondLLMPromptResult(TianshuEnvelope parent, LLMPromptResultPayload payload) {
         return respondTo(parent, PayloadType.of("LLM_PROMPT_RESULT"), payload);
@@ -231,26 +169,6 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             LLMPromptStreamChunkPayload payload
     ) {
         return respondTo(parent, PayloadType.of("LLM_PROMPT_STREAM_CHUNK"), payload);
-    }
-
-    public TianshuEnvelope publishLLMPromptStreamEnd(TianshuEnvelope parent, int index) {
-        return publishLLMPromptStreamEnd(
-                parent,
-                index,
-                "COMPLETED",
-                LLMPromptResultPayload.TokenUsagePayload.empty(),
-                null
-        );
-    }
-
-    public TianshuEnvelope publishLLMPromptStreamEnd(
-            TianshuEnvelope parent,
-            int index,
-            String finishType,
-            LLMPromptResultPayload.TokenUsagePayload usage,
-            String errorMessage
-    ) {
-        return publishLLMPromptStreamEnd(parent, index, finishType, usage, errorMessage, "");
     }
 
     public TianshuEnvelope publishLLMPromptStreamEnd(
@@ -275,31 +193,20 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         );
     }
 
-    public TianshuEnvelope publishInferenceStatus(LlmStatusPayload status) {
-        if (status == null || runtime().topicSubscriberCount(LlmTopics.LLM_STATUS) == 0) {
-            return null;
-        }
-        return publishTopic(LlmTopics.LLM_STATUS, PayloadType.of("LLM_STATUS"), status);
-    }
-
     /**
      * Opens or closes the "starting up" notice of the cloud lane.
      *
-     * <p>The lane has no model file to mmap, but from the player's side it is loading all the same: the request
-     * capability is not usable until the client is built and the embedding engine is brought up. Presence shows it
-     * as {@code LOADING}, and the platform keeps module keys unavailable while it is up.</p>
-     *
-     * <p>Retracting a notice that was never opened sends nothing, so a clean start cannot produce a stray end.</p>
+     * <p>The lane has no model file to mmap, but from the player's side it is loading all the same:
+     * the request capability is not usable until the client is built and the embedding engine is
+     * being brought up. Presence shows it as {@code LOADING}, and the platform keeps module keys
+     * unavailable while it is up.</p>
      */
     public TianshuEnvelope publishLoadingActivity(boolean loading) {
         String activityId = "llm.model.load";
         if (loading) {
             loadingPublished.set(true);
             return presenceActivity.publish(
-                    activityId,
-                    LlmPresenceActivityBridge.Kind.LOADING,
-                    true,
-                    MODEL_LOADING_TTL_MILLIS
+                    activityId, LlmPresenceActivityBridge.Kind.LOADING, true, MODEL_LOADING_TTL_MILLIS
             );
         }
         if (!loadingPublished.compareAndSet(true, false)) {
@@ -308,23 +215,12 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         return presenceActivity.publish(activityId, LlmPresenceActivityBridge.Kind.LOADING, false, 0L);
     }
 
-    public TianshuEnvelope publishTaskActivity(String taskId, boolean active) {
-        return presenceActivity.publish(
-                "llm.task." + taskId,
-                LlmPresenceActivityBridge.Kind.PROCESSING_TASK,
-                active,
-                TASK_ACTIVITY_TTL_MILLIS
-        );
-    }
-
     /**
-     * Tells presence about the lane itself rather than about one request: it is reconnecting, it gave up,
-     * or it kept working on a reduced backend.
+     * Tells presence about the lane itself rather than about one request: it is reconnecting, it gave
+     * up, or it kept working on a reduced backend.
      *
-     * <p>This rides the same activity topic and the same payload as the thinking/responding states, so
-     * presence needs no separate path: the type decides the text. The TTL is a backstop for a process that
-     * dies mid-notice; a lane that recovers or shuts down calls {@link #clearRuntimeActivity} instead of
-     * waiting for it.</p>
+     * <p>The TTL is a backstop for a process that dies mid-notice; a lane that recovers or shuts down
+     * calls {@link #clearRuntimeActivity} instead of waiting for it.</p>
      */
     public TianshuEnvelope publishRuntimeActivity(LlmPresenceActivityBridge.Kind type, long ttlMillis) {
         String activityId = LlmPresenceActivityBridge.runtimeActivityId(type);
@@ -333,14 +229,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
     }
 
     /**
-     * Retracts one runtime notice.
-     *
-     * <p>Ambient lane conditions are true until they stop being true: a notice that only expires by TTL keeps
-     * telling the player the lane is broken long after it recovered, and could outlive the outage it
-     * describes. Recovery and shutdown therefore end the activity explicitly.</p>
-     *
-     * <p>Retracting a notice that was never published sends nothing: a lane that starts cleanly must not
-     * produce a pair of empty end events on every world load.</p>
+     * Retracts one runtime notice. Retracting a notice that was never published sends nothing, so a
+     * lane that starts cleanly produces no stray end events.
      */
     public TianshuEnvelope clearRuntimeActivity(LlmPresenceActivityBridge.Kind type) {
         if (!activeRuntimeActivities.remove(type)) {
@@ -359,6 +249,8 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                 );
     }
 
+    // --- handlers --------------------------------------------------------------------------------
+
     public void handleLLMRequest(TianshuEnvelope envelope) {
         handleLLMRequest(envelope, null);
     }
@@ -371,10 +263,6 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         return llmService;
     }
 
-    boolean hasCapability(String capabilityId) {
-        return runtime().capabilityProviderCount(capabilityId) > 0;
-    }
-
     public void handleLLMCacheManage(TianshuEnvelope envelope) {
         handleLLMCacheManage(envelope, null);
     }
@@ -384,209 +272,93 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             complete(context, envelope);
             return;
         }
-        LLMService service = llmService;
         LlmRagStorageService storage = ragStorageService;
-        if (service == null && storage == null) {
+        if (storage == null) {
             respondTo(
                     envelope,
                     PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
-                    LLMCacheManageResultPayload.failed(payload.uid(), "LLM service is not initialized")
+                    LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized")
             );
-            fail(context, envelope, "LLM_SERVICE_NOT_READY", "LLM service is not initialized", null);
+            fail(context, envelope, "LLM_SERVICE_NOT_READY", "RAG storage is not initialized", null);
             return;
         }
-
         try {
             LLMCacheManageResultPayload result = switch (payload.action()) {
                 case LLMCacheManagePayload.ACTION_UPSERT_ENTRY -> {
-                    if (storage == null && service == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    if (storage != null) {
-                        LlmRagStorageService.RagWriteResult write = storage.upsert(payload.uid(), payload.entryId(), payload.content(), payload.vector());
-                        yield write.success()
-                                ? LLMCacheManageResultPayload.upserted(payload.uid(), payload.entryId())
-                                : LLMCacheManageResultPayload.failed(payload.uid(), write.errorCode());
-                    }
-                    service.upsertRagEntry(payload.uid(), payload.entryId(), payload.content(), payload.vector());
-                    yield LLMCacheManageResultPayload.upserted(payload.uid(), payload.entryId());
+                    LlmRagStorageService.RagWriteResult write = storage.upsert(
+                            payload.uid(), payload.entryId(), payload.content(), payload.vector());
+                    yield write.success()
+                            ? LLMCacheManageResultPayload.upserted(payload.uid(), payload.entryId())
+                            : LLMCacheManageResultPayload.failed(payload.uid(), write.errorCode());
                 }
                 case LLMCacheManagePayload.ACTION_PATCH_ENTRY -> {
-                    if (storage == null && service == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    if (storage == null) {
-                        service.patchRagEntry(payload.uid(), payload.entryId(), payload.content(), payload.vector(),
-                                Boolean.TRUE.equals(payload.updateContent()), Boolean.TRUE.equals(payload.updateVector()));
-                        yield LLMCacheManageResultPayload.patched(payload.uid(), payload.entryId(), service.hasRagEntry(payload.uid(), payload.entryId()));
-                    }
-                    LlmRagStorageService.RagWriteResult write = storage.patch(payload.uid(), payload.entryId(), payload.content(), payload.vector(),
-                            Boolean.TRUE.equals(payload.updateContent()), Boolean.TRUE.equals(payload.updateVector()));
+                    LlmRagStorageService.RagWriteResult write = storage.patch(
+                            payload.uid(),
+                            payload.entryId(),
+                            payload.content(),
+                            payload.vector(),
+                            Boolean.TRUE.equals(payload.updateContent()),
+                            Boolean.TRUE.equals(payload.updateVector())
+                    );
                     yield LLMCacheManageResultPayload.patched(
                             payload.uid(),
                             payload.entryId(),
                             write.success() && storage.hasEntry(payload.uid(), payload.entryId())
                     );
                 }
-                case LLMCacheManagePayload.ACTION_DELETE_ENTRY -> {
-                    if (storage == null && service == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    if (storage == null) {
-                        service.deleteRagEntry(payload.uid(), payload.entryId());
-                        yield LLMCacheManageResultPayload.deleted(payload.uid(), payload.entryId());
-                    }
-                    yield storage.delete(payload.uid(), payload.entryId())
-                            ? LLMCacheManageResultPayload.deleted(payload.uid(), payload.entryId())
-                            : LLMCacheManageResultPayload.failed(payload.uid(), "RAG_DELETE_FAILED");
-                }
-                case LLMCacheManagePayload.ACTION_CLEAR_UID -> {
-                    if (storage == null && service == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    if (storage == null) {
-                        service.clearRagUid(payload.uid());
-                        yield LLMCacheManageResultPayload.cleared(payload.uid());
-                    }
-                    yield storage.clear(payload.uid())
-                            ? LLMCacheManageResultPayload.cleared(payload.uid())
-                            : LLMCacheManageResultPayload.failed(payload.uid(), "RAG_CLEAR_FAILED");
-                }
-                case LLMCacheManagePayload.ACTION_REGISTER_LIBRARY -> {
-                    if (storage == null && service == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    if (storage == null) {
-                        var library = service.registerRagLibrary(payload.uid(), payload.modid(), payload.visibility(), payload.tags());
-                        yield LLMCacheManageResultPayload.registered(toLibraryPayload(library));
-                    }
-                    var library = storage.registerLibrary(
-                            payload.uid(),
-                            payload.modid(),
-                            payload.visibility(),
-                            payload.tags()
-                    );
-                    yield LLMCacheManageResultPayload.registered(toLibraryPayload(library));
-                }
+                case LLMCacheManagePayload.ACTION_DELETE_ENTRY -> storage.delete(payload.uid(), payload.entryId())
+                        ? LLMCacheManageResultPayload.deleted(payload.uid(), payload.entryId())
+                        : LLMCacheManageResultPayload.failed(payload.uid(), "RAG_DELETE_FAILED");
+                case LLMCacheManagePayload.ACTION_CLEAR_UID -> storage.clear(payload.uid())
+                        ? LLMCacheManageResultPayload.cleared(payload.uid())
+                        : LLMCacheManageResultPayload.failed(payload.uid(), "RAG_CLEAR_FAILED");
+                case LLMCacheManagePayload.ACTION_REGISTER_LIBRARY -> LLMCacheManageResultPayload.registered(
+                        toLibraryPayload(storage.registerLibrary(
+                                payload.uid(), payload.modid(), payload.visibility(), payload.tags()))
+                );
                 case LLMCacheManagePayload.ACTION_UNREGISTER_LIBRARY -> {
-                    if (storage == null && service == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    if (storage == null) {
-                        service.unregisterRagLibrary(payload.uid());
-                        yield LLMCacheManageResultPayload.unregistered(payload.uid());
-                    }
                     storage.unregisterLibrary(payload.uid());
                     yield LLMCacheManageResultPayload.unregistered(payload.uid());
                 }
-                case LLMCacheManagePayload.ACTION_QUERY_UID -> {
-                    if (storage == null && service == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    if (storage == null) {
-                        yield LLMCacheManageResultPayload.queried(payload.uid(), service.hasRagUid(payload.uid()), toLibraryPayload(service.ragLibrary(payload.uid())));
-                    }
-                    boolean exists = storage.hasCache(payload.uid());
-                    yield LLMCacheManageResultPayload.queried(
-                            payload.uid(),
-                            exists,
-                            storage.library(payload.uid()) == null
-                                    ? null
-                                    : toLibraryPayload(storage.library(payload.uid()))
-                    );
-                }
+                case LLMCacheManagePayload.ACTION_QUERY_UID -> LLMCacheManageResultPayload.queried(
+                        payload.uid(),
+                        storage.hasCache(payload.uid()),
+                        toLibraryPayload(storage.library(payload.uid()))
+                );
                 case LLMCacheManagePayload.ACTION_SEARCH_UID -> {
-                    if (storage == null) {
-                        yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                    }
-                    List<RagCacheManager.RagEntrySearchResult> entries = storage.searchEntries(payload.uid(), payload.queryText(), payload.topK(), payload.threshold());
+                    List<RagCacheManager.RagEntrySearchResult> entries = storage.searchEntries(
+                            payload.uid(), payload.queryText(), payload.topK(), payload.threshold());
                     yield LLMCacheManageResultPayload.searched(
                             payload.action(),
                             payload.uid(),
                             entries.isEmpty() ? List.of() : List.of(toHitGroup(payload.uid(), entries)),
-                            storage.library(payload.uid()) == null
-                                    ? List.of()
-                                    : List.of(toLibraryPayload(storage.library(payload.uid())))
+                            toLibraryList(storage.library(payload.uid()))
                     );
                 }
                 case LLMCacheManagePayload.ACTION_SEARCH_MODID -> {
-                    if (service == null) {
-                        if (storage == null) {
-                            yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                        }
-                        List<LlmRagStorageService.LibrarySearchResult> results = storage.searchSharedByModid(
-                                payload.modid(), payload.queryText(), payload.topK(), payload.threshold());
-                        yield LLMCacheManageResultPayload.searched(
-                                payload.action(), "", toStorageHitGroups(results), toStorageLibraryPayloads(results));
-                    }
-                    List<LLMService.RagLibrarySearchResult> results = service.searchSharedRagLibrariesByModid(
-                            payload.modid(),
-                            payload.queryText(),
-                            payload.topK(),
-                            payload.threshold()
-                    );
+                    List<LlmRagStorageService.LibrarySearchResult> results = storage.searchSharedByModid(
+                            payload.modid(), payload.queryText(), payload.topK(), payload.threshold());
                     yield LLMCacheManageResultPayload.searched(
-                            payload.action(),
-                            "",
-                            toHitGroups(results),
-                            toLibraryPayloads(results)
-                    );
+                            payload.action(), "", toStorageHitGroups(results), toStorageLibraryPayloads(results));
                 }
                 case LLMCacheManagePayload.ACTION_SEARCH_TAGS -> {
-                    if (service == null) {
-                        if (storage == null) {
-                            yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                        }
-                        List<LlmRagStorageService.LibrarySearchResult> results = storage.searchSharedByTags(
-                                payload.tags(), payload.queryText(), payload.topK(), payload.threshold());
-                        yield LLMCacheManageResultPayload.searched(
-                                payload.action(), "", toStorageHitGroups(results), toStorageLibraryPayloads(results));
-                    }
-                    List<LLMService.RagLibrarySearchResult> results = service.searchSharedRagLibrariesByTags(
-                            payload.tags(),
-                            payload.queryText(),
-                            payload.topK(),
-                            payload.threshold()
-                    );
+                    List<LlmRagStorageService.LibrarySearchResult> results = storage.searchSharedByTags(
+                            payload.tags(), payload.queryText(), payload.topK(), payload.threshold());
                     yield LLMCacheManageResultPayload.searched(
-                            payload.action(),
-                            "",
-                            toHitGroups(results),
-                            toLibraryPayloads(results)
-                    );
+                            payload.action(), "", toStorageHitGroups(results), toStorageLibraryPayloads(results));
                 }
                 case LLMCacheManagePayload.ACTION_SEARCH_INLINE_CONTENTS -> {
-                    if (service == null) {
-                        if (storage == null) {
-                            yield LLMCacheManageResultPayload.failed(payload.uid(), "RAG storage is not initialized");
-                        }
-                        List<RagCacheManager.RagEntrySearchResult> entries = storage.searchInline(
-                                payload.contents(), payload.queryText(), payload.topK(), payload.threshold());
-                        List<LLMCacheManageResultPayload.HitGroupPayload> hits = entries.isEmpty()
-                                ? List.of()
-                                : List.of(toHitGroup(payload.uid(), entries));
-                        yield LLMCacheManageResultPayload.searched(payload.action(), payload.uid(), hits, List.of());
-                    }
-                    List<RagCacheManager.RagEntrySearchResult> entries = service.searchInlineRagContents(
-                            payload.contents(),
-                            payload.queryText(),
-                            payload.topK(),
-                            payload.threshold()
-                    );
-                    List<LLMCacheManageResultPayload.HitGroupPayload> hits = entries.isEmpty()
-                            ? List.of()
-                            : List.of(toHitGroup(payload.uid(), entries));
+                    List<RagCacheManager.RagEntrySearchResult> entries = storage.searchInline(
+                            payload.contents(), payload.queryText(), payload.topK(), payload.threshold());
                     yield LLMCacheManageResultPayload.searched(
                             payload.action(),
                             payload.uid(),
-                            hits,
+                            entries.isEmpty() ? List.of() : List.of(toHitGroup(payload.uid(), entries)),
                             List.of()
                     );
                 }
                 default -> LLMCacheManageResultPayload.failed(
-                        payload.uid(),
-                        "Unknown action: " + payload.action()
-                );
+                        payload.uid(), "Unknown action: " + payload.action());
             };
             respondTo(envelope, PayloadType.of("LLM_CACHE_MANAGE_RESULT"), result);
             complete(context, envelope);
@@ -594,9 +366,9 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             respondTo(
                     envelope,
                     PayloadType.of("LLM_CACHE_MANAGE_RESULT"),
-                    LLMCacheManageResultPayload.failed(payload.uid(), exception.getMessage())
+                    LLMCacheManageResultPayload.failed(payload.uid(), LlmFailureText.of(exception))
             );
-            fail(context, envelope, "LLM_CACHE_MANAGE_FAILED", exception.getMessage(), exception);
+            fail(context, envelope, "LLM_CACHE_MANAGE_FAILED", LlmFailureText.of(exception), exception);
         }
     }
 
@@ -609,10 +381,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
             LLMService service = llmService;
             LLMPrimitiveResultPayload result = switch (payload.queryType()) {
                 case LLMPrimitiveQueryPayload.QUERY_TYPE_TOKEN_COUNT -> service != null
-                        ? service.tokenCountResponse(
-                                payload.requestId(),
-                                promptPayloadMapper.toTokenCountRequest(payload)
-                        )
+                        ? service.tokenCountResponse(payload.requestId(), toChatMessages(payload))
                         : LLMPrimitiveResultPayload.failed(
                                 payload.requestId(),
                                 payload.queryType(),
@@ -633,10 +402,7 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                                 "LLM service is not initialized"
                         );
                 case LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS -> service != null
-                        ? service.runtimeSnapshotResponse(
-                                payload.requestId(),
-                                Boolean.TRUE.equals(payload.includeRuntimeDetails())
-                        )
+                        ? service.runtimeSnapshotResponse(payload.requestId())
                         : LLMPrimitiveResultPayload.runtime(payload.requestId(), unavailableRuntimeSnapshot());
                 default -> LLMPrimitiveResultPayload.failed(
                         payload.requestId(),
@@ -655,10 +421,10 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                             payload.requestId(),
                             payload.queryType(),
                             "LLM_PRIMITIVE_QUERY_FAILED",
-                            exception.getMessage()
+                            LlmFailureText.of(exception)
                     )
             );
-            fail(context, envelope, "LLM_PRIMITIVE_QUERY_FAILED", exception.getMessage(), exception);
+            fail(context, envelope, "LLM_PRIMITIVE_QUERY_FAILED", LlmFailureText.of(exception), exception);
         }
     }
 
@@ -673,23 +439,17 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         return LLMRuntimeSnapshotPayload.unavailable();
     }
 
-    private List<LLMCacheManageResultPayload.HitGroupPayload> toHitGroups(
-            List<LLMService.RagLibrarySearchResult> results
-    ) {
-        return results == null || results.isEmpty()
-                ? List.of()
-                : results.stream()
-                        .map(result -> LLMCacheManageResultPayload.HitGroupPayload.of(
-                                result.uid(),
-                                result.entries().stream()
-                                        .map(hit -> LLMCacheManageResultPayload.HitEntryPayload.of(
-                                                hit.entryId(),
-                                                hit.content(),
-                                                hit.score()
-                                        ))
-                                        .toList()
-                        ))
-                        .toList();
+    private static List<ChatMessage> toChatMessages(LLMPrimitiveQueryPayload payload) {
+        List<ChatMessage> messages = new ArrayList<>();
+        if (payload.text() != null && !payload.text().isBlank()) {
+            messages.add(new ChatMessage("user", payload.text()));
+        }
+        for (LLMPrimitiveQueryPayload.MessageItemPayload item : payload.messages()) {
+            if (item != null) {
+                messages.add(new ChatMessage(item.role(), item.content()));
+            }
+        }
+        return messages;
     }
 
     private List<LLMCacheManageResultPayload.HitGroupPayload> toStorageHitGroups(
@@ -718,37 +478,23 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
                         ? List.of()
                         : entries.stream()
                                 .map(hit -> LLMCacheManageResultPayload.HitEntryPayload.of(
-                                        hit.entryId(),
-                                        hit.content(),
-                                        hit.score()
-                                ))
+                                        hit.entryId(), hit.content(), hit.score()))
                                 .toList()
         );
     }
 
-    private List<LLMCacheManageResultPayload.LibraryPayload> toLibraryPayloads(
-            List<LLMService.RagLibrarySearchResult> results
+    private List<LLMCacheManageResultPayload.LibraryPayload> toLibraryList(
+            RagLibraryRegistry.RagLibraryMeta meta
     ) {
-        return results == null || results.isEmpty()
-                ? List.of()
-                : results.stream()
-                        .map(LLMService.RagLibrarySearchResult::library)
-                        .filter(java.util.Objects::nonNull)
-                        .map(this::toLibraryPayload)
-                        .toList();
+        LLMCacheManageResultPayload.LibraryPayload payload = toLibraryPayload(meta);
+        return payload == null ? List.of() : List.of(payload);
     }
 
-    private LLMCacheManageResultPayload.LibraryPayload toLibraryPayload(
-            com.rheinmetal.tianshu.function.weaving.service.RagLibraryRegistry.RagLibraryMeta meta
-    ) {
+    private LLMCacheManageResultPayload.LibraryPayload toLibraryPayload(RagLibraryRegistry.RagLibraryMeta meta) {
         return meta == null
                 ? null
                 : LLMCacheManageResultPayload.LibraryPayload.of(
-                        meta.uid(),
-                        meta.modid(),
-                        meta.visibility(),
-                        meta.tags()
-                );
+                        meta.uid(), meta.modid(), meta.visibility(), meta.tags());
     }
 
     private static String streamRequestId(TianshuEnvelope parent) {

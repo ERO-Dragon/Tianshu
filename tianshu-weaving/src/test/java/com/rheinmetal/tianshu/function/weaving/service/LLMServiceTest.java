@@ -1,538 +1,283 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
-import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudgetSnapshot;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmEngineCapabilitySnapshot;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationRequest;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCalibrationResult;
-import com.rheinmetal.tianshu.function.weaving.runtime.LlmMtpCapabilitySnapshot;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPrimitiveResultPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudget;
+import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.libs.llm.StreamFinishType;
-import com.rheinmetal.tianshu.libs.llm.SamplerConfig;
-import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
+import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
+import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * The service is a transport: send a prompt, report the answer, answer the three measurement
+ * queries. Nothing here assembles prompts or runs RAG.
+ */
 class LLMServiceTest {
+    private static final String NAMESPACE = "test:namespace";
+
+    @TempDir
+    Path tempDir;
 
     @Test
-    void chatDisablesThinkingWhenRequestThinkingIsFalse() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        LLMRequest request = LLMRequest.ofMessage(MessageItem.user("hello"));
-        request.setThinking(false);
+    void chatForwardsThePromptAndReturnsTheProviderAnswer() {
+        StubInferenceClient client = new StubInferenceClient();
+        client.text = "answer";
+        client.thinking = "reasoning";
+        client.usage = new LlmTokenUsage(10, 4);
+        LLMService service = service(client, new EmbeddingRuntime());
 
-        service.chat(request);
+        LLMService.LLMResult result = service.chat(prompt("hello"), null);
 
-        assertNotNull(client.lastSampler);
-        assertEquals(Boolean.FALSE, client.lastSampler.getEnableThinking());
+        assertEquals("answer", result.text());
+        assertEquals("reasoning", result.thinkingContent());
+        assertEquals(10, result.usage().promptTokens());
+        assertEquals(4, result.usage().completionTokens());
+        assertEquals(List.of("user:hello"), client.lastMessages);
+        assertTrue(client.lastCaptureThinking);
+        assertEquals(1, client.lastReasoningTier);
     }
 
     @Test
-    void ragPromptAndHitsRemainWholeWhenTheyFitTokenBudget() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        service.upsertRagEntry("memory", "entry-1", "abcdefghijklmnop", new float[]{1f, 0f});
-        LLMRequest request = LLMRequest.of(
-                Chunk.message(MessageItem.user("where")),
-                Chunk.rag("memory", "RAG:", List.of("abcdefghijklmnop"), true, true, 1)
-        );
-
-        LLMService.LLMResult result = service.chat(request);
-
-        assertTrue(client.lastMessages.stream().anyMatch(message ->
-                "system".equals(message.role) && message.content.contains("abcdefghijklmnop")));
-        assertEquals(1, result.ragHits().size());
-        assertEquals("abcdefghijklmnop", result.ragHits().get(0).hits().get(0).content());
-    }
-
-    @Test
-    void ragTokenBudgetKeepsOnlyWholeResultsThatFitTokenizerCount() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        client.countMessageCharacters = true;
-        LLMService service = service(client);
-
-        LLMService.LLMResult result = service.chat(LLMRequest.of(
-                Chunk.message(MessageItem.user("query")),
-                Chunk.rag("memory", "", List.of("1234", "5678"), false, true, 4)
-        ));
-
-        assertEquals("1. 1234", client.lastMessages.get(0).content.trim());
-        assertEquals(1, result.ragHits().get(0).hits().size());
-        assertEquals("1234", result.ragHits().get(0).hits().get(0).content());
-    }
-
-    @Test
-    void leadingSystemMessagesAreMergedIntoSingleInitialSystemMessage() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-
-        service.chat(LLMRequest.ofMessage(
-                MessageItem.system("system one"),
-                MessageItem.system("system two"),
-                MessageItem.user("hello")
-        ));
-
-        assertEquals(2, client.lastMessages.size());
-        assertEquals("system", client.lastMessages.get(0).role);
-        assertTrue(client.lastMessages.get(0).content.contains("system one"));
-        assertTrue(client.lastMessages.get(0).content.contains("system two"));
-        assertEquals("user", client.lastMessages.get(1).role);
-        assertEquals("hello", client.lastMessages.get(1).content);
-    }
-
-    @Test
-    void systemMessageAfterDialogueStartsIsRejected() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.chat(LLMRequest.ofMessage(
-                MessageItem.system("system"),
-                MessageItem.user("hello"),
-                MessageItem.system("late system")
-        )));
-
-        assertEquals("LLM_UNSUPPORTED_SYSTEM_POSITION", error.getMessage());
-    }
-
-    @Test
-    void submitTaskStreamReturnsUnderlyingFuture() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        CompletableFuture<String> future = new CompletableFuture<>();
-        client.taskStreamFuture = future;
+    void streamForwardsVisibleAndThinkingTokens() {
+        StubInferenceClient client = new StubInferenceClient();
+        client.tokens = List.of("Hel", "lo");
+        client.thinking = "why";
+        LLMService service = service(client, new EmbeddingRuntime());
         List<String> tokens = new ArrayList<>();
+        List<String> reasoning = new ArrayList<>();
 
-        CompletableFuture<String> returned = service.submitTaskStream(
-                LLMRequest.ofMessage(MessageItem.user("hello")),
-                tokens::add,
-                new ArrayList<>()
+        LLMService.LLMStreamResult result = service.chatStream(
+                prompt("hello"), tokens::add, reasoning::add, null
         );
 
-        assertFalse(returned.isDone());
-        client.taskStreamTokenConsumer.accept("a");
-        future.complete("answer");
-        assertEquals("answer", returned.join());
-        assertEquals(List.of("a"), tokens);
+        assertEquals(List.of("Hel", "lo"), tokens);
+        assertEquals(List.of("why"), reasoning);
+        assertEquals("Hello", result.text());
+        assertEquals("COMPLETED", result.finish().type());
+        assertEquals("why", result.finish().thinkingContent());
     }
 
     @Test
-    void messagesAreNormalizedAndBlankMessagesAreSkipped() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
+    void embeddingQueryUsesTheBoundLocalEngine() {
+        EmbeddingRuntime embedding = new EmbeddingRuntime();
+        embedding.bind(new FixedEmbeddingService());
+        LLMService service = service(new StubInferenceClient(), embedding);
 
-        service.chat(LLMRequest.ofMessage(
-                MessageItem.of("tool", "use default role"),
-                MessageItem.of(" ASSISTANT ", "assistant reply"),
-                MessageItem.user("   "),
-                MessageItem.system(null)
-        ));
-
-        assertEquals(2, client.lastMessages.size());
-        assertEquals("user", client.lastMessages.get(0).role);
-        assertEquals("use default role", client.lastMessages.get(0).content);
-        assertEquals("assistant", client.lastMessages.get(1).role);
-        assertEquals("assistant reply", client.lastMessages.get(1).content);
-    }
-
-    @Test
-    void ragWithoutCacheUsesInferenceSearchDirectly() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        LLMRequest request = LLMRequest.of(
-                Chunk.message(MessageItem.user("query text")),
-                Chunk.rag("dynamic", "RAG:", List.of("one", "one", " ", "two"), false, true, 1000)
+        LLMPrimitiveResultPayload result = service.embedResponse(
+                "embed-1", List.of("a", "b"), true, true
         );
 
-        LLMService.LLMResult result = service.chat(request);
-
-        assertEquals(1, client.searchCalls);
-        assertEquals("query text", client.lastSearchQuery);
-        assertEquals(List.of("one", "two"), client.lastSearchTexts);
-        assertEquals(1, result.ragHits().size());
-        assertTrue(client.lastMessages.stream().anyMatch(message ->
-                "system".equals(message.role) && message.content.contains("one")));
+        assertEquals(LLMPrimitiveResultPayload.STATUS_COMPLETED, result.status());
+        assertEquals(2, result.embedResults().size());
+        assertEquals(2, result.embedResults().get(0).dimension());
+        assertEquals(NAMESPACE, result.embedResults().get(0).embeddingNamespace());
     }
 
     @Test
-    void blankRagPromptAddsOnlyRetrievedContents() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
+    void embeddingQueryFailsWithoutABoundEngine() {
+        LLMService service = service(new StubInferenceClient(), new EmbeddingRuntime());
 
-        service.chat(LLMRequest.of(
-                Chunk.message(MessageItem.user("query text")),
-                Chunk.rag("dynamic", "", List.of("first fact", "second fact"), false, false, 1000)
-        ));
-
-        assertEquals("1. first fact\n2. second fact", client.lastMessages.get(0).content.trim());
-    }
-
-    @Test
-    void explicitRagPromptRemainsTheCallerOwnedPrefix() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-
-        service.chat(LLMRequest.of(
-                Chunk.message(MessageItem.user("query text")),
-                Chunk.rag("dynamic", "Caller prompt:", List.of("fact"), false, false, 1000)
-        ));
-
-        assertEquals("Caller prompt:\n1. fact", client.lastMessages.get(0).content.trim());
-    }
-
-    @Test
-    void sharedTagSearchEmbedsQueryOnceAcrossMultipleLibraries() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        service.registerRagLibrary("library-a", "moda", "SHARED", List.of("main"));
-        service.registerRagLibrary("library-b", "modb", "SHARED", List.of("main"));
-        service.upsertRagEntry("library-a", "entry-a", "diamond pickaxe in chest", new float[]{1f, 0f});
-        service.upsertRagEntry("library-b", "entry-b", "diamond ore near cave", new float[]{1f, 0f});
-        client.embedCalls = 0;
-
-        List<LLMService.RagLibrarySearchResult> results = service.searchSharedRagLibrariesByTags(List.of("main"), "diamond", 2, 0.1f);
-
-        assertEquals(1, client.embedCalls);
-        assertEquals(2, results.size());
-    }
-
-    @Test
-    void tokenCountRejectsRagChunksWithoutSearchOrCacheMutation() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        LLMRequest request = LLMRequest.of(
-                Chunk.message(MessageItem.user("query text")),
-                Chunk.rag("dynamic", "RAG:", List.of("one"), false, true, 1000)
+        LLMPrimitiveResultPayload result = service.embedResponse(
+                "embed-1", List.of("a"), true, true
         );
 
-        var result = service.tokenCountResponse("count-rag", request);
-
-        assertEquals("FAILED", result.status());
-        assertEquals("LLM_TOKEN_COUNT_UNSUPPORTED_INPUT", result.errorCode());
-        assertEquals(0, client.searchCalls);
-        assertEquals(0, client.tokenCountCalls);
+        assertEquals(LLMPrimitiveResultPayload.STATUS_FAILED, result.status());
+        assertEquals("LLM_EMBEDDING_UNAVAILABLE", result.errorCode());
     }
 
     @Test
-    void tokenCountIsDisabledWhenGenerationBackendHasNoTokenizer() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        client.tokenCountingSupported = false;
-        LLMService service = service(client);
+    void tokenCountIsDelegatedToTheEstimator() {
+        StubInferenceClient client = new StubInferenceClient();
+        client.tokenCount = 42;
+        LLMService service = service(client, new EmbeddingRuntime());
 
-        var result = service.tokenCountResponse("count-unavailable", LLMRequest.ofMessage(MessageItem.user("hello")));
-
-        assertEquals("FAILED", result.status());
-        assertEquals("LLM_TOKENIZER_UNAVAILABLE", result.errorCode());
-    }
-
-    @Test
-    void embedAndRuntimeExposeEmbeddingIdentity() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-
-        var embed = service.embedResponse("embed-id", List.of("memory"), false, true);
-        var runtime = service.toRuntimeSnapshot(true);
-
-        assertEquals("test-embedding", embed.embedResults().get(0).embeddingModelName());
-        assertEquals("5c13d660:fb945ffb", embed.embedResults().get(0).embeddingNamespace());
-        assertEquals("test-embedding", runtime.embeddingModelName());
-        assertEquals("5c13d660:fb945ffb", runtime.embeddingNamespace());
-        assertEquals(2, runtime.embeddingDimension());
-        assertTrue(runtime.embeddingAvailable());
-    }
-
-    @Test
-    void runtimeSnapshotKeepsEmbeddingAvailableSeparateFromChatReady() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        client.ready = false;
-        LLMService service = service(client, true);
-
-        var runtime = service.toRuntimeSnapshot(true);
-
-        assertFalse(runtime.modelLoaded());
-        assertTrue(runtime.embeddingAvailable());
-        assertEquals(0, runtime.embeddingDimension());
-        assertEquals("test-embedding", runtime.embeddingModelName());
-    }
-
-    @Test
-    void ragHitsKeepUidForMultipleRagChunks() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        LLMRequest request = LLMRequest.of(
-                Chunk.message(MessageItem.user("query text")),
-                Chunk.rag("world-memory", "World:", List.of("world hit"), false, true, 1000),
-                Chunk.rag("global-lore", "Global:", List.of("global hit"), false, true, 1000)
+        LLMPrimitiveResultPayload result = service.tokenCountResponse(
+                "count-1", List.of(new ChatMessage("user", "hello"))
         );
 
-        LLMService.LLMResult result = service.chat(request);
-
-        assertEquals(2, result.ragHits().size());
-        assertEquals("world-memory", result.ragHits().get(0).uid());
-        assertEquals("global-lore", result.ragHits().get(1).uid());
+        assertEquals(42, result.tokenCount());
+        assertEquals(1, client.countCalls);
     }
 
     @Test
-    void submitTaskPassesTaskPriorityPreemptibleMaxTokensAndSampler() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        LLMService service = service(client);
-        LLMRequest request = LLMRequest.ofMessage(MessageItem.user("task"));
-        request.setTaskPriority(42);
-        request.setTaskPreemptible(true);
-        request.setMaxTokens(64);
-        request.setTemperature(0.2f);
-        request.setThinking(true);
+    void snapshotReportsDeclaredCapacityBudgetAndEmbeddingFacts() {
+        EmbeddingRuntime embedding = new EmbeddingRuntime();
+        embedding.bind(new FixedEmbeddingService());
+        LLMService service = service(new StubInferenceClient(), embedding);
 
-        String text = service.submitTask(request).join();
+        LLMRuntimeSnapshotPayload snapshot = service.runtimeSnapshot();
 
-        assertEquals("task", text);
-        assertEquals(42, client.lastTaskPriority);
-        assertTrue(client.lastTaskPreemptible);
-        assertEquals(64, client.lastMaxTokens);
-        assertEquals(0.2f, client.lastSampler.getTemperature(), 0.0001f);
-        assertEquals(Boolean.TRUE, client.lastSampler.getEnableThinking());
+        assertTrue(snapshot.ready());
+        assertTrue(snapshot.embeddingAvailable());
+        assertEquals(2, snapshot.embeddingDimension());
+        assertEquals(102_400, snapshot.contextSize());
+        assertEquals(LlmContextBudget.promptTokenBudget(102_400), snapshot.contextTokenBudget());
+        assertEquals(NAMESPACE, snapshot.embeddingNamespace());
+        assertFalse(snapshot.embeddingModelName().isBlank());
     }
 
     @Test
-    void taskPriorityIsClampedToPublicRange() {
-        LLMRequest request = LLMRequest.ofMessage(MessageItem.user("task"));
+    void snapshotWithoutAnEmbeddingLaneReportsUnavailable() {
+        LLMService service = service(new StubInferenceClient(), new EmbeddingRuntime());
 
-        request.setTaskPriority(-1);
-        assertEquals(LLMRequest.MIN_TASK_PRIORITY, request.getTaskPriority());
+        LLMRuntimeSnapshotPayload snapshot = service.runtimeSnapshot();
 
-        request.setTaskPriority(1001);
-        assertEquals(LLMRequest.MAX_TASK_PRIORITY, request.getTaskPriority());
+        assertFalse(snapshot.embeddingAvailable());
+        assertEquals(-1, snapshot.embeddingDimension());
     }
 
     @Test
-    void readinessAndQueueCapabilitiesDelegateToInferenceClient() {
-        FakeInferenceClient client = new FakeInferenceClient();
-        client.ready = false;
-        client.chatQueueCapacity = false;
-        client.taskQueueCapacity = true;
-        client.thinkingSupported = false;
-        LLMService service = service(client);
+    void aPromptIsRequired() {
+        LLMService service = service(new StubInferenceClient(), new EmbeddingRuntime());
 
-        assertFalse(service.isReady());
-        assertFalse(service.hasChatQueueCapacity());
-        assertTrue(service.hasTaskQueueCapacity());
-        assertFalse(service.supportsThinking());
+        assertThrows(IllegalArgumentException.class, () -> service.chat(null, null));
     }
 
-    private static LLMService service(FakeInferenceClient client) {
-        return service(client, false);
+    /**
+     * A cancelled stream stays cancelled. It used to be wrapped in a generic runtime failure, which
+     * left the request handler matching the word "cancel" in a message to tell the two apart.
+     */
+    @Test
+    void cancellationKeepsItsTypeInsteadOfBecomingAGenericFailure() {
+        StubInferenceClient client = new StubInferenceClient();
+        client.streamFailure = new CancellationException("REMOTE_LLM_REQUEST_CANCELLED");
+        LLMService service = service(client, new EmbeddingRuntime());
+
+        assertThrows(
+                CancellationException.class,
+                () -> service.chatStream(prompt("hello"), token -> { }, token -> { }, null)
+        );
     }
 
-    private static LLMService service(FakeInferenceClient client, boolean embeddingConfigured) {
+    private LLMService service(LlmInferenceClient client, EmbeddingRuntime embedding) {
         return LLMService.builder()
-            .env(new FakeGameEnvironment())
-                .config(new FakeConfig())
+                .env(new FakeGameEnvironment())
+                .config(new TestLlmSupport.FakeConfig(tempDir).embeddingModelName("bge-m3"))
                 .inferenceClient(client)
-                .embeddingConfigured(embeddingConfigured)
-                .usePersistentCache(false)
+                .embeddingRuntime(embedding)
+                .cacheNamespace(NAMESPACE)
                 .build();
     }
 
-    private static final class FakeInferenceClient implements LlmInferenceClient {
-        private List<ChatMessage> lastMessages = List.of();
-        private SamplerConfig lastSampler;
-        private int lastMaxTokens;
-        private int lastTaskPriority;
-        private boolean lastTaskPreemptible;
-        private int searchCalls;
-        private int tokenCountCalls;
-        private int embedCalls;
-        private String lastSearchQuery;
-        private List<String> lastSearchTexts = List.of();
-        private boolean ready = true;
-        private boolean chatQueueCapacity = true;
-        private boolean taskQueueCapacity = true;
-        private boolean thinkingSupported = true;
-        private boolean countMessageCharacters;
-        private boolean tokenCountingSupported = true;
-        private CompletableFuture<String> taskStreamFuture = CompletableFuture.completedFuture("streamed");
-        private Consumer<String> taskStreamTokenConsumer = ignored -> {};
+    private static LlmPrompt prompt(String userMessage) {
+        return new LlmPrompt(
+                List.of(new ChatMessage("user", userMessage)),
+                LLMPromptRequestPayload.SamplingPayload.empty(),
+                0,
+                true,
+                1
+        );
+    }
 
-        @Override
-        public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens) {
-            lastMessages = List.copyOf(messages);
-            lastSampler = sampler;
-            lastMaxTokens = maxTokens;
-            return "ok";
-        }
-
-        @Override
-        public String chat(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) {
-            return chat(messages, sampler, maxTokens);
-        }
-
-        @Override
-        public LlmGenerationResult chatWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options) {
-            return new LlmGenerationResult(chat(messages, sampler, maxTokens), new LlmTokenUsage(messages.size(), 1));
-        }
-
-        @Override
-        public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, Consumer<String> onToken) {
-            lastMessages = List.copyOf(messages);
-            lastSampler = sampler;
-            onToken.accept("ok");
-        }
-
-        @Override
-        public void chatStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken) {
-            chatStream(messages, sampler, onToken);
-        }
-
-        @Override
-        public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
-            chatStream(messages, sampler, onToken);
-            if (onFinish != null) {
-                onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(messages.size(), 1), null));
-            }
-            return CompletableFuture.completedFuture("ok");
-        }
-
-        @Override
-        public CompletableFuture<String> chatStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
-            return chatStreamWithUsage(messages, sampler, maxTokens, options, onToken, onFinish);
-        }
-
-        @Override
-        public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible) {
-            lastMessages = List.copyOf(messages);
-            lastSampler = sampler;
-            lastMaxTokens = maxTokens;
-            lastTaskPriority = priority;
-            lastTaskPreemptible = preemptible;
-            return CompletableFuture.completedFuture("task");
-        }
-
-        @Override
-        public CompletableFuture<String> task(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
-            return task(messages, sampler, maxTokens, priority, preemptible);
-        }
-
-        @Override
-        public CompletableFuture<LlmGenerationResult> taskWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options) {
-            return task(messages, sampler, maxTokens, priority, preemptible)
-                    .thenApply(text -> new LlmGenerationResult(text, new LlmTokenUsage(messages.size(), 1)));
-        }
-
-        @Override
-        public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, Consumer<String> onToken) {
-            lastMessages = List.copyOf(messages);
-            lastSampler = sampler;
-            lastMaxTokens = maxTokens;
-            lastTaskPriority = priority;
-            lastTaskPreemptible = preemptible;
-            taskStreamTokenConsumer = onToken;
-            return taskStreamFuture;
-        }
-
-        @Override
-        public CompletableFuture<String> taskStream(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken) {
-            return taskStream(messages, sampler, maxTokens, priority, preemptible, onToken);
-        }
-
-        @Override
-        public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<LlmStreamFinish> onFinish) {
-            taskStream(messages, sampler, maxTokens, priority, preemptible, onToken);
-            return taskStreamFuture.thenApply(text -> {
-                if (onFinish != null) {
-                    onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, new LlmTokenUsage(messages.size(), 1), null));
-                }
-                return new LlmGenerationResult(text, new LlmTokenUsage(messages.size(), 1));
-            });
-        }
-
-        @Override
-        public CompletableFuture<LlmGenerationResult> taskStreamWithUsage(List<ChatMessage> messages, SamplerConfig sampler, int maxTokens, int priority, boolean preemptible, LlmInferenceOptions options, Consumer<String> onToken, Consumer<String> onThinking, Consumer<LlmStreamFinish> onFinish) {
-            return taskStreamWithUsage(messages, sampler, maxTokens, priority, preemptible, options, onToken, onFinish);
-        }
-
+    private static final class FixedEmbeddingService implements EmbeddingService {
         @Override
         public float[] embed(String text) {
-            embedCalls++;
             return new float[]{1f, 0f};
         }
 
         @Override
         public float[][] embed(List<String> texts) {
-            float[][] vectors = new float[texts.size()][];
-            for (int i = 0; i < texts.size(); i++) {
-                vectors[i] = new float[]{1f, 0f};
-            }
-            return vectors;
+            return texts.stream().map(ignored -> new float[]{1f, 0f}).toArray(float[][]::new);
         }
 
         @Override
-        public List<RagSearchResult> search(String queryText, List<String> texts, int topK, float threshold) {
-            searchCalls++;
-            lastSearchQuery = queryText;
-            lastSearchTexts = List.copyOf(texts);
-            return texts.stream().map(text -> new RagSearchResult(text, 1.0)).toList();
+        public int getEmbeddingDimension() {
+            return 2;
         }
-
-        @Override
-        public int countChatPromptTokens(List<ChatMessage> messages, SamplerConfig sampler) {
-            tokenCountCalls++;
-            if (countMessageCharacters) {
-                return messages == null ? 0 : messages.stream().mapToInt(message -> message.content.length()).sum();
-            }
-            return messages == null ? 0 : messages.size();
-        }
-
-        @Override
-        public boolean supportsTokenCounting() {
-            return tokenCountingSupported;
-        }
-
-        @Override public boolean isReady() { return ready; }
-        @Override public boolean hasChatQueueCapacity() { return chatQueueCapacity; }
-        @Override public boolean hasTaskQueueCapacity() { return taskQueueCapacity; }
-        @Override public boolean hasQueueCapacity() { return chatQueueCapacity; }
-        @Override public int getChatQueueSize() { return 0; }
-        @Override public int getTaskQueueSize() { return 0; }
-        @Override public int getQueueSize() { return 0; }
-        @Override public boolean supportsThinking() { return thinkingSupported; }
-        @Override public boolean supportsMtp() { return false; }
-        @Override public LlmMtpCapabilitySnapshot getMtpCapability() { return LlmMtpCapabilitySnapshot.unsupported(); }
-        @Override public LlmEngineCapabilitySnapshot getRuntimeCapabilities() { return new LlmEngineCapabilitySnapshot(ready, thinkingSupported, false, false, false, 0); }
-        @Override public LlmContextBudgetSnapshot getContextBudgetPlan() { return new LlmContextBudgetSnapshot(4096, 4096, 4096, 4096, 3000, 64, 0L, true, ""); }
-        @Override public LlmContextBudgetSnapshot getContextBudgetPlan(String lane) { return getContextBudgetPlan(); }
-        @Override public CompletableFuture<LlmMtpCalibrationResult> calibrateMtpAsync(LlmMtpCalibrationRequest request) { return CompletableFuture.completedFuture(LlmMtpCalibrationResult.unsupported()); }
     }
 
-    private static final class FakeGameEnvironment implements IGameEnvironment {
-        @Override public void executeOnMainThread(Runnable task) { task.run(); }
-        @Override public Path getGameDirectory() { return Path.of("."); }
-        @Override public boolean isClientSide() { return true; }
-        @Override public void openFolder(Path dir) {}
-        @Override public void info(String msg) {}
-        @Override public void warn(String msg) {}
-        @Override public void error(String msg, Throwable t) {}
-        @Override public com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics() { return com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP; }
-    }
+    private static final class StubInferenceClient implements LlmInferenceClient {
+        private String text = "answer";
+        private String thinking = "";
+        private List<String> tokens = List.of("answer");
+        private LlmTokenUsage usage = new LlmTokenUsage(1, 1);
+        private int tokenCount = 1;
+        private int chatCalls;
+        private int streamCalls;
+        private int countCalls;
+        private List<String> lastMessages = List.of();
+        private boolean lastCaptureThinking;
+        private Integer lastReasoningTier;
+        private boolean ready = true;
+        /** Failure the next streamed call reports instead of an answer. */
+        private RuntimeException streamFailure;
 
-    private static final class FakeConfig implements WeavingConfiguration {
-        @Override public boolean isLlmEnabled() { return true; }
-        @Override public String getCustomLlmName() { return ""; }
-        @Override public Path getLlmBasePath() { return Path.of("."); }
-        @Override public String getLlmEmbeddingModelName() { return "test-embedding"; }
+        @Override
+        public LlmGenerationResult chat(
+                List<ChatMessage> messages,
+                LLMPromptRequestPayload.SamplingPayload sampling,
+                int maxTokens,
+                boolean captureThinkingContent,
+                Integer reasoningTier,
+                Consumer<LlmPromptCacheUsage> cacheSink
+        ) {
+            chatCalls++;
+            lastMessages = messages.stream().map(message -> message.role + ":" + message.content).toList();
+            lastCaptureThinking = captureThinkingContent;
+            lastReasoningTier = reasoningTier;
+            return new LlmGenerationResult(text, usage, captureThinkingContent ? thinking : "");
+        }
+
+        @Override
+        public CompletableFuture<LlmGenerationResult> chatStream(
+                List<ChatMessage> messages,
+                LLMPromptRequestPayload.SamplingPayload sampling,
+                int maxTokens,
+                boolean captureThinkingContent,
+                Integer reasoningTier,
+                Consumer<String> onToken,
+                Consumer<String> onThinking,
+                Consumer<LlmStreamFinish> onFinish,
+                Consumer<LlmPromptCacheUsage> cacheSink
+        ) {
+            streamCalls++;
+            if (streamFailure != null) {
+                return CompletableFuture.failedFuture(streamFailure);
+            }
+            if (onThinking != null && captureThinkingContent && !thinking.isEmpty()) {
+                onThinking.accept(thinking);
+            }
+            for (String token : tokens) {
+                if (onToken != null) {
+                    onToken.accept(token);
+                }
+            }
+            if (onFinish != null) {
+                onFinish.accept(new LlmStreamFinish(
+                        StreamFinishType.COMPLETED, usage, null, captureThinkingContent ? thinking : ""));
+            }
+            return CompletableFuture.completedFuture(new LlmGenerationResult(
+                    String.join("", tokens), usage, captureThinkingContent ? thinking : ""));
+        }
+
+        @Override
+        public int countChatPromptTokens(List<ChatMessage> messages) {
+            countCalls++;
+            return tokenCount;
+        }
+
+        @Override
+        public boolean isReady() {
+            return ready;
+        }
     }
 }

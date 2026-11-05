@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.function.weaving;
 
-import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptStreamChunkPayload;
 import org.junit.jupiter.api.Test;
 
@@ -14,10 +13,7 @@ class LlmStreamStateTest {
     @Test
     void serializesVisibleThinkingAndTerminalStateAcrossCallbacks() {
         List<LLMPromptStreamChunkPayload> published = new ArrayList<>();
-        List<LLMPromptResultPayload.RagHitPayload> ragHits = List.of(
-                LLMPromptResultPayload.RagHitPayload.of("memory", List.of())
-        );
-        LlmStreamState state = new LlmStreamState("request", ragHits, published::add);
+        LlmStreamState state = new LlmStreamState("request", published::add);
 
         CompletableFuture<Void> visible = CompletableFuture.runAsync(() -> state.onVisible("answer"));
         CompletableFuture<Void> thinking = CompletableFuture.runAsync(() -> state.onThinking("reasoning"));
@@ -26,8 +22,20 @@ class LlmStreamStateTest {
 
         assertEquals("answer", terminal.visibleText());
         assertEquals("reasoning", terminal.thinkingContent());
-        assertEquals(ragHits, terminal.ragHits());
-        assertEquals(3, terminal.nextIndex());
-        assertEquals(3, published.size());
+        assertEquals(2, terminal.nextIndex());
+        assertEquals(2, published.size());
+    }
+
+    @Test
+    void terminalFallsBackToReportedTextAndIgnoresLaterTokens() {
+        List<LLMPromptStreamChunkPayload> published = new ArrayList<>();
+        LlmStreamState state = new LlmStreamState("request", published::add);
+
+        LlmStreamState.TerminalSnapshot terminal = state.terminal("whole answer", "late reasoning");
+        state.onVisible("after-terminal");
+
+        assertEquals("whole answer", terminal.visibleText());
+        assertEquals("late reasoning", terminal.thinkingContent());
+        assertEquals(0, published.size(), "the terminal frame belongs to the handler, not to the token state");
     }
 }
