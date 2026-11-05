@@ -3,7 +3,7 @@
   "id": "${mod_id}",
   "version": "${mod_version}",
   "name": "${mod_name}",
-  "description": "Tianshu AI for Fabric. The kernel, the feature modules and the console run on the client; the optional authoritative server component is NeoForge-only for now.",
+  "description": "Tianshu AI for Fabric. The kernel, the feature modules and the console run on the client; the optional authoritative server component ships with this adapter.",
   "license": "${mod_license}",
   "environment": "*",
   "entrypoints": {
@@ -20,7 +20,7 @@
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
-    "minecraft": "~${minecraft_version}",
+    "minecraft": "${minecraft_version_predicate}",
     "java": ">=21",
     "fabric-api": "*",
     "tianshu_libs": ">=1.0.0"

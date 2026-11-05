@@ -42,7 +42,8 @@ final class ServerFactCoverageTest {
             "EVENT_TAMED",
             "EVENT_EFFECT_GAINED",
             "EVENT_EFFECT_EXPIRED",
-            "EVENT_TRADE");
+            "EVENT_TRADE",
+            "EVENT_BOSS_ENGAGE");
 
     @Test
     void producedAndAbsentFactsAreExactlyWhatThisLoaderClaims() throws Exception {

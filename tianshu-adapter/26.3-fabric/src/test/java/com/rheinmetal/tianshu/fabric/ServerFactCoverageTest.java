@@ -44,7 +44,8 @@ final class ServerFactCoverageTest {
             "EVENT_ITEM_CRAFTED",
             "EVENT_FISHING_CATCH",
             "EVENT_TAMED",
-            "EVENT_TRADE");
+            "EVENT_TRADE",
+            "EVENT_BOSS_ENGAGE");
 
     @Test
     void producedAndAbsentFactsAreExactlyWhatThisLoaderClaims() throws Exception {

@@ -140,8 +140,29 @@ class ModuleEntrypointRegistrationTest {
     void theScanFindsBothLoaders() throws Exception {
         List<Path> modules = featureModules();
         assertFalse(modules.isEmpty(), "the check above is vacuous if the module scan found nothing");
-        assertTrue(modules.stream().allMatch(module -> loadersOf(module).size() == 2),
-                "every feature module ships both shells; a missing one is a loader silently unsupported");
+        assertTrue(modules.stream().allMatch(module -> loadersOf(module).size() == 3),
+                "every feature module ships three shells — modern NeoForge, legacy Forge and Fabric; a missing one "
+                        + "is a loader line silently unsupported");
+    }
+
+    /**
+     * One jar reaches NeoForge 1.20.1-1.20.3 through the legacy {@code mods.toml} and the {@code net.minecraftforge}
+     * shell, and 1.20.4+ through {@code neoforge.mods.toml} and the {@code net.neoforged} shell. Both manifests must
+     * name the same mod id, or one of the two lines installs a different mod than the other.
+     */
+    @Test
+    void theLegacyShellAndManifestNameTheSameMod() throws Exception {
+        for (Path module : featureModules()) {
+            Path shell = loaderShellOf(module, "legacy");
+            Path manifest = module.resolve("src/main/resources/META-INF/mods.toml");
+            assertTrue(Files.isRegularFile(manifest), () -> module.getFileName() + " ships no legacy mods.toml");
+
+            assertEquals(firstMatch(NEOFORGE_MOD_ID, read(manifest)), firstMatch(MOD_ANNOTATION, read(shell)),
+                    () -> shell + " declares a different mod id than " + manifest);
+            assertEquals(firstMatch(NEOFORGE_MOD_ID, read(neoForgeManifestOf(module))),
+                    firstMatch(NEOFORGE_MOD_ID, read(manifest)),
+                    () -> module.getFileName() + " uses one mod id per loader; both NeoForge manifests ship together");
+        }
     }
 
     /**
@@ -190,6 +211,7 @@ class ModuleEntrypointRegistrationTest {
 
     private static boolean shipsALoaderShell(Path module) {
         return Files.isDirectory(module.resolve("src/neoforgeEntry"))
+                || Files.isDirectory(module.resolve("src/legacyEntry"))
                 || Files.isDirectory(module.resolve("src/fabricEntry"));
     }
 
@@ -199,6 +221,9 @@ class ModuleEntrypointRegistrationTest {
         if (Files.isDirectory(module.resolve("src/neoforgeEntry"))) {
             loaders.add("neoforge");
         }
+        if (Files.isDirectory(module.resolve("src/legacyEntry"))) {
+            loaders.add("legacy");
+        }
         if (Files.isDirectory(module.resolve("src/fabricEntry"))) {
             loaders.add("fabric");
         }
@@ -207,7 +232,11 @@ class ModuleEntrypointRegistrationTest {
 
     private static Path loaderShellOf(Path module, String loader) throws IOException {
         Path root = module.resolve("src/" + loader + "Entry");
-        String suffix = "neoforge".equals(loader) ? "NeoForgeMod.java" : "FabricMod.java";
+        String suffix = switch (loader) {
+            case "neoforge" -> "NeoForgeMod.java";
+            case "legacy" -> "ForgeMod.java";
+            default -> "FabricMod.java";
+        };
         try (Stream<Path> files = Files.walk(root)) {
             return files
                     .filter(path -> path.getFileName().toString().endsWith(suffix))

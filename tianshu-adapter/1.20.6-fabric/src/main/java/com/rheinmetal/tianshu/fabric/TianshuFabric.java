@@ -5,8 +5,9 @@ import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.mc.host.ServerActionClient;
 import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
-import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -14,15 +15,16 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * The Fabric entry point, loaded on the client only.
+ * The Fabric entry point, loaded on both sides.
  *
  * <p>Two jobs belong here rather than to the client initializer: answering "is that mod installed?" — which every
  * module asks before it touches an optional partner — and registering the one network channel, which has to be
  * known before any world connects.</p>
  *
- * <p>There is no server component in this adapter yet. The action channel is still registered on the client so a
- * module can request an action and receive the honest {@code FAILED} answer, instead of a promise the platform
- * cannot keep.</p>
+ * <p>The optional server component is {@link FabricGameFactCollector} plus {@link FabricServerActionHandler}: it
+ * collects this loader's server facts and answers action requests, off by default and operator-only. The action
+ * channel is registered on the client too, so a module can request an action and receive the honest
+ * {@code FAILED} answer instead of a promise the platform cannot keep.</p>
  *
  * <p>1.20.5 replaced channel-plus-buffer networking with typed payloads: each payload declares a type and a codec,
  * both sides register that pair up front, and a receiver is handed the decoded record. This class registers the
@@ -32,7 +34,7 @@ import net.fabricmc.loader.api.FabricLoader;
 public final class TianshuFabric implements ModInitializer {
 
     /** The wire protocol epoch, matching the NeoForge adapter's channel version. */
-    public static final String PROTOCOL_VERSION = "3";
+    public static final String PROTOCOL_VERSION = ProtocolWireVersion.VERSION;
 
     /** The action channel client: one per process, shared by the network registration and the event layer. */
     private static ServerActionClient actionClient;

@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
@@ -28,7 +29,7 @@ import net.neoforged.neoforge.network.registration.IPayloadRegistrar;
 public final class TianshuNetwork {
 
     /** Bumped when a payload changes shape; an older peer simply refuses the channel. */
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = ProtocolWireVersion.VERSION;
 
     private TianshuNetwork() {
     }

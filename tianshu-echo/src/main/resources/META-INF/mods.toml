@@ -1,0 +1,44 @@
+# Read by NeoForge 1.20.1-1.20.3 (legacy FML). FML 10+ reads META-INF/neoforge.mods.toml instead.
+# The loader dependency is deliberately absent: this single file is read by 1.20.1's `forge` and by
+# 1.20.2/1.20.3's `neoforge`, so naming either one would fail on the other line.
+
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+[[mods]]
+modId="tianshu_echo"
+version="${mod_version}"
+displayName="${mod_name} - Echo"
+description='''
+Speech synthesis and playback for Tianshu.
+'''
+displayTest="IGNORE_SERVER_VERSION"
+
+[[dependencies.tianshu_echo]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range_legacy}"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.tianshu_echo]]
+    modId="tianshu"
+    type="required"
+    versionRange="[1.0.0,2.0.0)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.tianshu_echo]]
+    modId="tianshu_libs"
+    type="required"
+    versionRange="${tianshu_libs_version_range}"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.tianshu_echo]]
+    modId="tianshu_presence"
+    type="optional"
+    versionRange="[${mod_version},)"
+    ordering="NONE"
+    side="CLIENT"

@@ -108,7 +108,7 @@ final class ClientDiagnosticRouterTest {
         router.close();
 
         assertEquals(1, messages.size());
-        assertEquals("tianshu.chat.progress.thinking", messages.get(0).translationKey());
+        assertEquals("tianshu.test.progress.thinking", messages.get(0).translationKey());
         assertTrue(messages.get(0).arguments().isEmpty());
     }
 
@@ -124,7 +124,7 @@ final class ClientDiagnosticRouterTest {
         router.close();
 
         assertEquals(1, messages.size());
-        assertEquals("tianshu.chat.progress.asr.recognition", messages.get(0).translationKey());
+        assertEquals("tianshu.test.progress.recognition", messages.get(0).translationKey());
         assertEquals(java.util.List.of("hello"), messages.get(0).arguments());
     }
 
@@ -140,7 +140,7 @@ final class ClientDiagnosticRouterTest {
         router.close();
 
         assertEquals(1, messages.size());
-        assertEquals("tianshu.chat.progress.llm.reply", messages.get(0).translationKey());
+        assertEquals("tianshu.test.progress.reply", messages.get(0).translationKey());
         assertEquals(java.util.List.of("player input", "assistant output"), messages.get(0).arguments());
     }
 
@@ -217,11 +217,11 @@ final class ClientDiagnosticRouterTest {
      */
     private static ClientDiagnosticChatCatalogue catalogue() {
         ClientDiagnosticChatCatalogue catalogue = new ClientDiagnosticChatCatalogue();
-        catalogue.register("LLM_SUBMITTED", new DiagnosticChatNotice("tianshu.chat.progress.thinking", java.util.List.of()));
+        catalogue.register("LLM_SUBMITTED", new DiagnosticChatNotice("tianshu.test.progress.thinking", java.util.List.of()));
         catalogue.register("STREAM_RESULT", DiagnosticChatNotice.single(
-                "tianshu.chat.progress.asr.recognition", "text", "output", "input"));
+                "tianshu.test.progress.recognition", "text", "output", "input"));
         catalogue.register("CHAT_COMPLETED", new DiagnosticChatNotice(
-                "tianshu.chat.progress.llm.reply",
+                "tianshu.test.progress.reply",
                 java.util.List.of(java.util.List.of("input"), java.util.List.of("output"))));
         return catalogue;
     }

@@ -148,5 +148,6 @@
   "tianshu.runtime.module.llm.download_failed": "LLM model download failed",
   "tianshu.runtime.module.llm.download_busy": "LLM model download is already running",
   "tianshu.runtime.module.llm.download_queue_full": "LLM model download queue is full",
-  "tianshu.runtime.module.llm.stopped": "Weaving stopped"
+  "tianshu.runtime.module.llm.stopped": "Weaving stopped",
+  "tianshu.chat.progress.llm.reply": "LLM input: %s; output: %s"
 }
