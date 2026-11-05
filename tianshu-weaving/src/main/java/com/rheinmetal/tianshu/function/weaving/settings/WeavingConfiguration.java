@@ -150,6 +150,14 @@ public interface WeavingConfiguration {
         return activeModelId != null && activeModelId.equals(modelId) ? getLlmRemoteApiKey() : "";
     }
 
+    /**
+     * Reasoning ladder of the active entry: the one configured for it, otherwise the shipped provider
+     * profile's, otherwise no control. A bare port (tests, tooling) has no ladder.
+     */
+    default LlmReasoningProfile getLlmReasoningProfile() {
+        return LlmReasoningProfile.NONE;
+    }
+
     default String getLlmEmbeddingModelName() {
         return "";
     }

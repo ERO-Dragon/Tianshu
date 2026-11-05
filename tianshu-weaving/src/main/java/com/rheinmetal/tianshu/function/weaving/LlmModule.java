@@ -433,10 +433,9 @@ public final class LlmModule implements TianshuManagedModule {
         );
     }
 
-    /** The reasoning ladder of the selected provider; a custom entry has no control. */
+    /** The reasoning ladder of the selected model: configured on the entry, else the provider profile. */
     private LlmReasoningProfile resolveReasoningProfile() {
-        LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(config.getLlmProviderId());
-        return profile == null ? LlmReasoningProfile.NONE : profile.reasoning();
+        return config.getLlmReasoningProfile();
     }
 
     /**

@@ -70,4 +70,66 @@ public record LlmReasoningProfile(
         }
         return levels.get(applied);
     }
+
+    // --- persistence ------------------------------------------------------------------------------
+    /*
+     * A ladder is stored as one escaped field, the same way a credential is: wire;noThinking;levels;default
+     * with levels comma separated. Level names are provider words (letters, digits, '-' and '_'), so the
+     * two separators cannot appear inside one. Anything unreadable decodes to null, which the caller
+     * reads as "no explicit ladder" — a hand-edited file may never crash the settings page.
+     */
+
+    private static final char FIELD = ';';
+    private static final char LEVEL = ',';
+    private static final int FIELD_COUNT = 4;
+
+    public String encode() {
+        StringBuilder builder = new StringBuilder();
+        builder.append(wire.name()).append(FIELD)
+                .append(includesNoThinking ? '1' : '0').append(FIELD)
+                .append(String.join(String.valueOf(LEVEL), levels)).append(FIELD)
+                .append(defaultTier);
+        return builder.toString();
+    }
+
+    /** @return the decoded ladder, or {@code null} when the text is not one this build understands */
+    public static LlmReasoningProfile decode(String encoded) {
+        if (encoded == null || encoded.isBlank()) {
+            return null;
+        }
+        String[] fields = encoded.split(String.valueOf(FIELD), -1);
+        if (fields.length != FIELD_COUNT) {
+            return null;
+        }
+        LlmReasoningWire wire = parseWire(fields[0]);
+        if (wire == null) {
+            return null;
+        }
+        Integer defaultTier = parseTier(fields[3]);
+        if (defaultTier == null) {
+            return null;
+        }
+        List<String> levels = fields[2].isBlank()
+                ? List.of()
+                : List.of(fields[2].split(String.valueOf(LEVEL), -1));
+        return new LlmReasoningProfile(wire, "1".equals(fields[1].trim()), levels, defaultTier);
+    }
+
+    private static LlmReasoningWire parseWire(String raw) {
+        String normalized = raw == null ? "" : raw.trim();
+        for (LlmReasoningWire candidate : LlmReasoningWire.values()) {
+            if (candidate.name().equals(normalized)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static Integer parseTier(String raw) {
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException unreadableTier) {
+            return null;
+        }
+    }
 }

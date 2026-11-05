@@ -26,6 +26,16 @@ public interface WeavingSettingsAccess extends WeavingConfiguration {
      */
     void setLlmApiKey(String modelId, String apiKey);
 
+    /**
+     * Stores the reasoning ladder of one entry, or removes it when {@code profile} is null so the
+     * shipped provider profile applies again. Like the credential it lives in its own key: a ladder is
+     * endpoint data, not part of the cached model list.
+     */
+    void setLlmReasoningProfile(String entryId, LlmReasoningProfile profile);
+
+    /** The ladder stored for one entry, or {@code null} when that entry inherits the profile. */
+    LlmReasoningProfile getLlmReasoningProfile(String entryId);
+
     /*
      * Embedding position. The same model runs either on the card or on the CPU, so this is one value
      * rather than a model property; the read side stays on the configuration port.

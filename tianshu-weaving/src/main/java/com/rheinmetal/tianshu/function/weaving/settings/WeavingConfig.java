@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.weaving.model.LlmModelInfo;
 import com.rheinmetal.tianshu.function.weaving.model.LlmModelManager;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -28,6 +29,9 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     private static final String KEY_MODELS = "models";
     private static final String KEY_ACTIVE_MODEL_ID = "activeModelId";
     private static final String KEY_CREDENTIALS = "credentials";
+    /** One line per entry that overrides the shipped provider's reasoning ladder: {@code id=encoded}. */
+    private static final String KEY_REASONING_PROFILES = "reasoningProfiles";
+    private static final char REASONING_SEPARATOR = '=';
     private static final String KEY_EMBEDDING_GPU_LAYERS = "embeddingGpuLayers";
     private static final String KEY_EMBEDDING_CONTEXT_SIZE = "embeddingContextSize";
     private static final String KEY_PRICE_CACHE_MISS = "usageCacheMissInputPricePerMillion";
@@ -219,6 +223,57 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     @Override
     public void save() {
         store.save();
+    }
+
+    // --- reasoning ladder -------------------------------------------------------------------------
+
+    @Override
+    public LlmReasoningProfile getLlmReasoningProfile() {
+        LlmReasoningProfile configured = getLlmReasoningProfile(getLlmActiveModelId());
+        if (configured != null) {
+            return configured;
+        }
+        LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(getLlmProviderId());
+        return provider == null ? LlmReasoningProfile.NONE : provider.reasoning();
+    }
+
+    /** The ladder explicitly configured for one entry, or {@code null} when it inherits the profile. */
+    @Override
+    public LlmReasoningProfile getLlmReasoningProfile(String entryId) {
+        String id = entryId == null ? "" : entryId.trim();
+        if (id.isEmpty()) {
+            return null;
+        }
+        for (String line : store.getStringList(KEY_REASONING_PROFILES, List.of())) {
+            int separator = line == null ? -1 : line.indexOf(REASONING_SEPARATOR);
+            if (separator <= 0) {
+                continue;
+            }
+            if (line.substring(0, separator).trim().equals(id)) {
+                return LlmReasoningProfile.decode(line.substring(separator + 1));
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public void setLlmReasoningProfile(String entryId, LlmReasoningProfile profile) {
+        String id = entryId == null ? "" : entryId.trim();
+        if (id.isEmpty()) {
+            return;
+        }
+        List<String> lines = new ArrayList<>();
+        for (String line : store.getStringList(KEY_REASONING_PROFILES, List.of())) {
+            int separator = line == null ? -1 : line.indexOf(REASONING_SEPARATOR);
+            if (separator <= 0 || line.substring(0, separator).trim().equals(id)) {
+                continue;
+            }
+            lines.add(line);
+        }
+        if (profile != null) {
+            lines.add(id + REASONING_SEPARATOR + profile.encode());
+        }
+        store.setStringList(KEY_REASONING_PROFILES, lines);
     }
 
     /**

@@ -237,6 +237,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          * on save and are never read back into a widget, so a blank field keeps the stored key.
          */
         private final Map<String, String> pendingApiKeys = new LinkedHashMap<>();
+        /** Ladders staged by the form, keyed by entry id; {@code null} value = inherit the profile. */
+        private final Map<String, LlmReasoningProfile> pendingReasoning = new LinkedHashMap<>();
         /** Credentials of deleted models, cleared on save so no orphan secret stays behind. */
         private final Set<String> retiredApiKeyIds = new LinkedHashSet<>();
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
@@ -377,6 +379,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             models.set(next);
             pendingApiKeys.remove(entry.id());
             retiredApiKeyIds.add(entry.id());
+            // A deleted entry takes its staged ladder with it, so no override outlives the entry.
+            pendingReasoning.put(entry.id(), null);
             if (entry.id().equals(activeModelId.get())) {
                 activeModelId.set(next.get(0).id());
             }
@@ -403,8 +407,19 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     ? EditorMode.BUILTIN
                     : EditorMode.CUSTOM;
             modelEditor = new ModelEditorBuffer(entry.id(), mode, entry.providerId(), entry.displayName(),
-                    entry.baseUrl(), entry.models(), entry.activeModelId(), "");
+                    entry.baseUrl(), entry.models(), entry.activeModelId(), "",
+                    reasoningFor(entry));
             refreshSettingsScreen();
+        }
+
+        /** The ladder the entry runs on today: what it stores, or else its provider profile's. */
+        private LlmReasoningProfile reasoningFor(WeavingModelEntry entry) {
+            LlmReasoningProfile stored = config.getLlmReasoningProfile(entry.id());
+            if (stored != null) {
+                return stored;
+            }
+            LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(entry.providerId());
+            return provider == null ? LlmReasoningProfile.NONE : provider.reasoning();
         }
 
         /** A new entry starts from the shipped default provider; custom API is one switch away. */
@@ -414,7 +429,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             }
             LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.defaultProvider();
             modelEditor = new ModelEditorBuffer(null, EditorMode.BUILTIN, provider.id(), provider.id(),
-                    provider.baseUrl(), provider.defaultCatalog(), provider.defaultModelId(), "");
+                    provider.baseUrl(), provider.defaultCatalog(), provider.defaultModelId(), "",
+                    provider.reasoning());
             refreshSettingsScreen();
         }
 
@@ -462,10 +478,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         }
 
         /**
-         * The add/edit form: what identifies the endpoint, and nothing about its models. Which models the
-         * provider serves is the picker's business, so no model id, context window or catalog control is
-         * typed here — a provider has several models and exactly one of them is in use, which a single
-         * field cannot express.
+         * The add/edit form: what identifies the endpoint, plus the two facts that belong to the model
+         * in use rather than to the provider — its declared capacity and, for a custom endpoint, the
+         * reasoning ladder it accepts.
          *
          * <p>Both modes share this buffer and the commit path, so a value is validated once and written
          * by one code path; the mode switch only decides which fields exist. The framework has no
@@ -489,9 +504,63 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                             editor::displayName, editor::setDisplayName, () -> true, editor::customMode)
                     .text("llm.editor.base_url", llm("option.remote_base_url"),
                             editor::baseUrl, editor::setBaseUrl, () -> true, editor::customMode)
+                    // Capacity of the model in use. Hidden in built-in mode because the shipped profile
+                    // defines that entry entirely: a different window is a custom configuration, and
+                    // switching to custom API is how the player says so.
+                    .select("llm.editor.context_tier", llm("option.context_tier"),
+                            contextTierChoices(editor.activeWindowTokens()),
+                            editor::activeWindowTokens, this::contextTierLabel,
+                            editor::setActiveWindowTokens, () -> true, editor::customMode)
+                    // Reasoning ladder of a custom endpoint. The shipped profiles already carry theirs,
+                    // and a built-in entry is defined by its profile, so this belongs to custom mode.
+                    .select("llm.editor.reasoning_wire", llm("option.reasoning_wire"),
+                            List.of(LlmReasoningWire.values()), editor::reasoningWire,
+                            this::reasoningWireLabel, editor::setReasoningWire,
+                            () -> true, editor::customMode)
+                    .select("llm.editor.reasoning_no_thinking", llm("option.reasoning_no_thinking"),
+                            List.of(Boolean.TRUE, Boolean.FALSE),
+                            editor::reasoningIncludesNoThinking,
+                            this::booleanOptionLabel,
+                            editor::setReasoningIncludesNoThinking,
+                            editor::reasoningHasControl, editor::customMode)
+                    .text("llm.editor.reasoning_levels", llm("option.reasoning_levels"),
+                            editor::reasoningLevels, editor::setReasoningLevels,
+                            editor::reasoningHasControl, editor::customMode)
                     // Last and write-only. The widget is always empty: only the fact that a credential is
                     // stored is read back, so a blank field keeps the key and a typed value replaces it.
                     .text("llm.editor.api_key", apiKeyLabel, editor::apiKey, editor::setApiKey);
+        }
+
+        /**
+         * The selectable capacities, plus whatever the entry already declares so a hand-set or legacy
+         * window still renders instead of silently snapping to the nearest tier when the form opens.
+         */
+        private List<Integer> contextTierChoices(int currentWindow) {
+            List<Integer> choices = new ArrayList<>();
+            for (int tier : WeavingContextTiers.values()) {
+                choices.add(tier);
+            }
+            if (currentWindow > 0 && !choices.contains(currentWindow)) {
+                choices.add(currentWindow);
+                choices.sort(Integer::compareTo);
+            }
+            return List.copyOf(choices);
+        }
+
+        private UiText contextTierLabel(int windowTokens) {
+            return LlmUsageValueFormat.tokens(windowTokens);
+        }
+
+        private UiText reasoningWireLabel(LlmReasoningWire wire) {
+            return switch (wire == null ? LlmReasoningWire.NONE : wire) {
+                case NONE -> llm("option.reasoning_wire.none");
+                case OPENAI_EFFORT -> llm("option.reasoning_wire.openai");
+                case DEEPSEEK_THINKING -> llm("option.reasoning_wire.deepseek");
+            };
+        }
+
+        private UiText booleanOptionLabel(Boolean value) {
+            return Boolean.TRUE.equals(value) ? common("yes") : common("no");
         }
 
         private UiText providerOptionLabel(String providerId) {
@@ -584,7 +653,22 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     baseUrl,
                     catalog.specs(),
                     editor.activeModelId()
-            ), trimmed(editor.apiKey()));
+            ), trimmed(editor.apiKey()), reasoningPlan(editor, providerId));
+        }
+
+        /**
+         * The ladder the form describes, or {@code null} when the entry should inherit the shipped
+         * profile: an untouched form never writes an override that just restates the profile.
+         *
+         * <p>A custom endpoint with no levels is stored as an explicit "no control", because that is a
+         * decision the player made — the provider's own default is then left alone instead of having a
+         * guessed ladder applied to it.
+         */
+        private LlmReasoningProfile reasoningPlan(ModelEditorBuffer editor, String providerId) {
+            LlmReasoningProfile ladder = editor.reasoningProfile();
+            LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(providerId);
+            LlmReasoningProfile inherited = profile == null ? LlmReasoningProfile.NONE : profile.reasoning();
+            return ladder.equals(inherited) ? null : ladder;
         }
 
         /**
@@ -610,6 +694,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             if (!plan.apiKey().isEmpty()) {
                 pendingApiKeys.put(entry.id(), plan.apiKey());
             }
+            // Null means "inherit the shipped profile", which is a write too: it clears any earlier
+            // override instead of leaving a stale ladder behind.
+            pendingReasoning.put(entry.id(), plan.reasoning());
             // A closed form has no catalog to pick from, so any window on it ends with the form.
             modelEditor = null;
             modelPicker = null;
@@ -618,9 +705,10 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         /**
          * The edited catalog in the shape the storage layer wants.
          *
-         * <p>The declared window is not part of the form any more: a row carries the window it was
-         * created with (the shipped profile's, or the one already stored), so only the identity of the
-         * model is still the player's input here.
+         * <p>Every row keeps the window it was created with, except the model in use: that one carries the
+         * capacity the form shows, which is how a custom endpoint declares something other than the
+         * shipped default. The capacity floor itself is checked once, on the provider that ends up in
+         * use ({@link #validate()}), so a legacy row another row still carries cannot block the form.
          */
         private CatalogPlan catalogPlan(ModelEditorBuffer editor) {
             if (editor.rowCount() == 0) {
@@ -1023,12 +1111,13 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     || modelEditor != null;
         }
 
-        /** The cloud profile half of the draft: providers, the active one and their credentials. */
+        /** The cloud profile half of the draft: providers, the active one, their credentials and ladders. */
         private boolean cloudSettingsDirty() {
             return models.dirty()
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
-                    || !retiredApiKeyIds.isEmpty();
+                    || !retiredApiKeyIds.isEmpty()
+                    || !pendingReasoning.isEmpty();
         }
 
         @Override
@@ -1115,7 +1204,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             boolean cloudSettingsChanged = models.dirty()
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
-                    || !retiredApiKeyIds.isEmpty();
+                    || !retiredApiKeyIds.isEmpty()
+                    || !pendingReasoning.isEmpty();
             // Only a staged position is written. A save that never touched the button must not rewrite the
             // key from whatever this page happened to read first, which is what turned a stale page into a
             // stale file. The value is read before the transaction writes, so this is the change about to be
@@ -1139,12 +1229,19 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 transaction.write(() -> config.getLlmApiKey(modelId),
                         value -> config.setLlmApiKey(modelId, value), apiKey);
             }
+            for (Map.Entry<String, LlmReasoningProfile> pending : pendingReasoning.entrySet()) {
+                String entryId = pending.getKey();
+                LlmReasoningProfile profile = pending.getValue();
+                transaction.write(() -> config.getLlmReasoningProfile(entryId),
+                        value -> config.setLlmReasoningProfile(entryId, value), profile);
+            }
             transaction.commit(config::save);
             // Accepted only after persistence succeeded: a failed save keeps the staged position so the
             // player can retry it instead of finding the button silently back at the stored value.
             pendingGpuLayers = null;
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
+            pendingReasoning.clear();
             if (!enabled.get()) {
                 moduleService.unload();
             } else if (cloudSettingsChanged || embeddingPositionChanged) {
@@ -1162,6 +1259,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             pendingGpuLayers = null;
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
+            pendingReasoning.clear();
             modelEditor = null;
             modelPicker = null;
             catalogFetching = false;
@@ -1435,13 +1533,17 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          * @param apiKey  credential typed into the form, empty when none was typed
          * @param failure why the form cannot be applied, {@code null} when it can
          */
-        private record EditorPlan(WeavingModelEntry entry, String apiKey, UiText failure) {
-            private static EditorPlan applied(WeavingModelEntry entry, String apiKey) {
-                return new EditorPlan(entry, apiKey == null ? "" : apiKey, null);
+        private record EditorPlan(WeavingModelEntry entry, String apiKey, LlmReasoningProfile reasoning, UiText failure) {
+            private static EditorPlan applied(
+                    WeavingModelEntry entry,
+                    String apiKey,
+                    LlmReasoningProfile reasoning
+            ) {
+                return new EditorPlan(entry, apiKey == null ? "" : apiKey, reasoning, null);
             }
 
             private static EditorPlan rejected(UiText failure) {
-                return new EditorPlan(null, "", failure);
+                return new EditorPlan(null, "", null, failure);
             }
 
             private boolean applicable() {
@@ -1526,9 +1628,15 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         /** The model id this provider would use if the form were applied now. */
         private String activeModelId;
         private String apiKey;
+        /** Reasoning ladder as the form shows it; {@link LlmReasoningWire#NONE} means no control. */
+        private LlmReasoningWire reasoningWire;
+        private boolean reasoningIncludesNoThinking;
+        private String reasoningLevels;
+        private int reasoningDefaultTier;
 
         private ModelEditorBuffer(String entryId, EditorMode mode, String providerId, String displayName,
-                                  String baseUrl, List<WeavingModelSpec> models, String activeModelId, String apiKey) {
+                                  String baseUrl, List<WeavingModelSpec> models, String activeModelId, String apiKey,
+                                  LlmReasoningProfile reasoning) {
             this.entryId = entryId;
             this.mode = mode == null ? EditorMode.BUILTIN : mode;
             this.providerId = providerId;
@@ -1537,6 +1645,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             this.rows = catalogRowsOf(models);
             this.activeModelId = activeModelId;
             this.apiKey = apiKey;
+            applyReasoning(reasoning);
         }
 
         private static List<CatalogRowBuffer> catalogRowsOf(List<WeavingModelSpec> models) {
@@ -1605,6 +1714,60 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             // The profile is the definition of a built-in provider, its model catalog included.
             this.rows = catalogRowsOf(provider.defaultCatalog());
             this.activeModelId = provider.defaultModelId();
+            applyReasoning(provider.reasoning());
+        }
+
+        // --- reasoning ladder -------------------------------------------------------------------
+
+        private void applyReasoning(LlmReasoningProfile reasoning) {
+            LlmReasoningProfile effective = reasoning == null ? LlmReasoningProfile.NONE : reasoning;
+            this.reasoningWire = effective.wire();
+            this.reasoningIncludesNoThinking = effective.includesNoThinking();
+            this.reasoningLevels = String.join(", ", effective.levels());
+            this.reasoningDefaultTier = effective.defaultTier();
+        }
+
+        private LlmReasoningWire reasoningWire() {
+            return reasoningWire;
+        }
+
+        private void setReasoningWire(LlmReasoningWire wire) {
+            this.reasoningWire = wire == null ? LlmReasoningWire.NONE : wire;
+        }
+
+        private boolean reasoningIncludesNoThinking() {
+            return reasoningIncludesNoThinking;
+        }
+
+        private void setReasoningIncludesNoThinking(boolean includesNoThinking) {
+            this.reasoningIncludesNoThinking = includesNoThinking;
+        }
+
+        private String reasoningLevels() {
+            return reasoningLevels;
+        }
+
+        private void setReasoningLevels(String levels) {
+            this.reasoningLevels = levels;
+        }
+
+        private boolean reasoningHasControl() {
+            return reasoningWire != LlmReasoningWire.NONE;
+        }
+
+        /** The ladder the form currently describes, in the shape the configuration stores. */
+        private LlmReasoningProfile reasoningProfile() {
+            if (!reasoningHasControl()) {
+                return LlmReasoningProfile.NONE;
+            }
+            List<String> levels = new ArrayList<>();
+            for (String level : reasoningLevels == null ? new String[0] : reasoningLevels.split(",")) {
+                String trimmedLevel = trimmed(level);
+                if (!trimmedLevel.isEmpty()) {
+                    levels.add(trimmedLevel);
+                }
+            }
+            return new LlmReasoningProfile(reasoningWire, reasoningIncludesNoThinking, levels, reasoningDefaultTier);
         }
 
         private String providerId() {
@@ -1641,9 +1804,29 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return rows.get(index).displayName();
         }
 
-        /** Declared window this row stores; it comes from a preset, so it is read, not typed. */
+        /** Declared window this row stores. The form edits only the model in use. */
         private int windowTokensAt(int index) {
             return rows.get(index).windowTokens();
+        }
+
+        /** Declared capacity of the model in use, read from its row so the two cannot disagree. */
+        private int activeWindowTokens() {
+            String active = activeModelId();
+            for (CatalogRowBuffer row : rows) {
+                if (trimmed(row.modelId()).equals(active)) {
+                    return row.windowTokens();
+                }
+            }
+            return WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
+        }
+
+        private void setActiveWindowTokens(int windowTokens) {
+            String active = activeModelId();
+            List<CatalogRowBuffer> next = new ArrayList<>(rows.size());
+            for (CatalogRowBuffer row : rows) {
+                next.add(trimmed(row.modelId()).equals(active) ? row.withWindowTokens(windowTokens) : row);
+            }
+            rows = next;
         }
 
         /**
@@ -1710,8 +1893,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
      * the id the player typed into the picker, so a row without an id cannot exist and the catalog stays a
      * list of models instead of a list of blocks to fill in.
      *
-     * <p>The declared window is not edited anywhere. A row keeps the window it was created with — the
-     * shipped profile's, or the one already stored — so the value moves through the form unchanged.
+     * <p>The declared window belongs to the model in use and is edited in the form; every other row
+     * keeps the window it was created with — the shipped profile's, or the one already stored — so the
+     * value only ever moves when the player changes it for the model they are actually using.
      */
     private static final class CatalogRowBuffer {
         private final String modelId;
@@ -1730,6 +1914,10 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         private CatalogRowBuffer copy() {
             return new CatalogRowBuffer(modelId, displayName, contextWindowTokens);
+        }
+
+        private CatalogRowBuffer withWindowTokens(int windowTokens) {
+            return new CatalogRowBuffer(modelId, displayName, windowTokens);
         }
 
         private String modelId() {
