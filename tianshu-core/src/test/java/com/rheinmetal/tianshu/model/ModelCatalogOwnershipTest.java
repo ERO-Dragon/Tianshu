@@ -102,8 +102,10 @@ class ModelCatalogOwnershipTest {
         String loader = Files.readString(REPO.resolve(
                 "tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/repair/core/IntentKeywordLoader.java"),
                 StandardCharsets.UTF_8);
-        assertTrue(loader.contains("\"ir_intent_keywords.json\""),
-                "the loader has to name the bundled file it ships next to itself");
+        assertTrue(loader.contains(
+                        "\"/com/rheinmetal/tianshu/function/intake/repair/ir_intent_keywords.json\""),
+                "the loader has to name the bundled file by absolute path: a relative name resolves against"
+                        + " the loader's own package and reads nothing");
         assertTrue(loader.contains("getResourceAsStream("),
                 "and it has to read that file itself: a table that only arrives from the platform is empty"
                         + " until the first resource reload");

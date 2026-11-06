@@ -25,19 +25,20 @@ import java.util.Objects;
 /**
  * Repairs one recognised speech turn and publishes what it actually meant.
  *
- * <p>Two steps of a single operation: the recogniser reports what it heard, this component corrects
- * misheard words against the registered voice triggers and game terms, and then reports both the
- * corrected text and what matched. It used to be a standalone module subscribing to the raw text
- * topic and asking the HUD layer for the player's held item before it could answer; it is now a
- * synchronous component owned by the speech module.</p>
+ * <p>Two views of one utterance travel together. The <em>sentence</em> ({@link IrPreparedInput#voiceText()})
+ * keeps every word the player said and is what the payload shows: it is healed for misheard object names
+ * and misheard wake words. The <em>matching view</em> ({@link IrPreparedInput#filteredText()}) has fillers
+ * and boundary words removed and is only used to resolve objects, so removing a filler can never remove
+ * it from the text a prompt or the arbiter reads.</p>
+ *
+ * <p>Object matches are built as pairs and published through {@code IR.RESULT}; the corrected sentence and
+ * the matches are therefore two independent facts instead of one rewritten string that both sides have to
+ * interpret.</p>
  *
  * <p>Dropping the presence-context query removed the only asynchronous hop in this lane. The cost is
  * narrow: a bare pronoun ("use this") no longer resolves against the held item. Everything that
  * names the object outright still repairs exactly as before. The dialogue brain collects game
  * context of its own, so the information is not lost, only not duplicated here.</p>
- *
- * <p>The result still leaves through the public {@code IR.RESULT} topic: consumers that only want
- * the corrected text stay independent of who produced it.</p>
  */
 public final class AsrTextRepairer {
 
@@ -104,9 +105,10 @@ public final class AsrTextRepairer {
         IrPreparedInput prepared = preprocessor.prepare(input);
         IrNamedObjectEnhancementResult namedObjectEnhancement = namedObjectEnhancer.enhance(prepared);
         List<IrCompiledTrigger> index = ensureTriggerIndex();
-        IrInputText voiceInput = wakeWordEnhancer.enhance(inputWithNamedObjectRepair(prepared, namedObjectEnhancement), index);
+        IrInputText healedSentence = prepared.voiceInput().withText(repairedTextOf(namedObjectEnhancement, prepared));
+        IrInputText voiceInput = wakeWordEnhancer.enhance(healedSentence, index);
         IrMatchBatch batch = matcher.match(voiceInput, index);
-        List<IrObjectMatch> objectMatches = objectMatches(namedObjectEnhancement);
+        List<IrObjectMatch> objectMatches = namedObjectEnhancement == null ? List.of() : namedObjectEnhancement.matches();
         adapter.publishIrResult(parent, new IrResultPayload(
                 voiceInput.text(),
                 prepared.filteredText(),
@@ -125,16 +127,9 @@ public final class AsrTextRepairer {
         ));
     }
 
-    private IrInputText inputWithNamedObjectRepair(IrPreparedInput prepared, IrNamedObjectEnhancementResult namedObjectEnhancement) {
-        IrInputText voiceInput = prepared == null ? null : prepared.voiceInput();
-        if (voiceInput == null) {
-            return new IrInputText("", "", 0, 0L, "", System.currentTimeMillis());
-        }
-        String repaired = namedObjectEnhancement == null ? "" : namedObjectEnhancement.repairedText();
-        if (repaired == null || repaired.isBlank()) {
-            return voiceInput;
-        }
-        return new IrInputText(repaired, voiceInput.rawText(), voiceInput.turnId(), voiceInput.sessionId(), voiceInput.source(), voiceInput.createdAt());
+    private static String repairedTextOf(IrNamedObjectEnhancementResult enhancement, IrPreparedInput prepared) {
+        String repaired = enhancement == null ? "" : enhancement.repairedText();
+        return repaired.isBlank() ? prepared.voiceText() : repaired;
     }
 
     private List<IrCompiledTrigger> ensureTriggerIndex() {
@@ -158,39 +153,6 @@ public final class AsrTextRepairer {
     private List<TriggerRegistration> currentTriggerRegistrations() {
         TriggerRegistry current = triggers;
         return current == null ? List.of() : current.registrations();
-    }
-
-    /**
-     * Turns the enhancer's parallel id/name lists into one entry per matched object.
-     *
-     * <p>The spoken word is the name the matching word list carried — that is the word the utterance was matched
-     * against, not the canonical display name invented afterwards. The language key is derived from the registry
-     * kind and the id, so a consumer holding a language can render it without knowing our conventions.</p>
-     */
-    private static List<IrObjectMatch> objectMatches(IrNamedObjectEnhancementResult enhancement) {
-        if (enhancement == null) {
-            return List.of();
-        }
-        List<IrObjectMatch> matches = new java.util.ArrayList<>();
-        addObjectMatches(matches, enhancement.matchedItemIds(), enhancement.matchedItemNames(), IrObjectMatch.KIND_ITEM);
-        addObjectMatches(matches, enhancement.matchedEntityTypeIds(), enhancement.matchedEntityNames(),
-                IrObjectMatch.KIND_ENTITY);
-        return List.copyOf(matches);
-    }
-
-    private static void addObjectMatches(List<IrObjectMatch> output, List<String> ids, List<String> names, String kind) {
-        if (ids == null || names == null) {
-            return;
-        }
-        int size = Math.min(ids.size(), names.size());
-        for (int index = 0; index < size; index++) {
-            String id = ids.get(index) == null ? "" : ids.get(index).trim();
-            String spoken = names.get(index) == null ? "" : names.get(index).trim();
-            if (id.isEmpty() || spoken.isEmpty()) {
-                continue;
-            }
-            output.add(new IrObjectMatch(spoken, id, kind, kind + "." + id.replace(':', '.').replace('/', '.')));
-        }
     }
 
     private void publishDiagnostic(String code, DiagnosticSeverity severity, Map<String, String> attributes) {

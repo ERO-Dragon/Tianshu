@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.function.intake.repair.core.IRCommandService;
 import com.rheinmetal.tianshu.api.game.GameObjectId;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrInputText;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrPreparedInput;
+import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -26,10 +27,10 @@ class DefaultIrNamedObjectEnhancerTest {
 
         assertTrue(result.matched());
         assertEquals("\u6a61\u6728\u95e8\u548c\u82e6\u529b\u6015\u5728\u54ea\u91cc", result.repairedText());
-        assertEquals(List.of("\u6a61\u6728\u95e8"), result.matchedItemNames());
-        assertEquals(List.of("minecraft:oak_door"), result.matchedItemIds());
-        assertEquals(List.of("\u82e6\u529b\u6015"), result.matchedEntityNames());
-        assertEquals(List.of("minecraft:creeper"), result.matchedEntityTypeIds());
+        assertEquals(List.of(
+                IrObjectMatch.item("\u6a61\u6728\u95e8", "minecraft:oak_door"),
+                IrObjectMatch.entity("\u82e6\u529b\u6015", "minecraft:creeper")
+        ), result.matches());
     }
 
     @Test
@@ -39,13 +40,10 @@ class DefaultIrNamedObjectEnhancerTest {
         IrNamedObjectEnhancementResult itemResult = enhancer.enhance(input("\u77ff\u8f66\u7269\u54c1\u600e\u4e48\u505a"));
         IrNamedObjectEnhancementResult entityResult = enhancer.enhance(input("\u77ff\u8f66\u5b9e\u4f53\u5728\u54ea\u91cc"));
 
-        assertEquals(List.of("\u77ff\u8f66\u7269\u54c1"), itemResult.matchedItemNames());
-        assertEquals(List.of("minecraft:minecart"), itemResult.matchedItemIds());
-        assertTrue(itemResult.matchedEntityTypeIds().isEmpty());
-
-        assertEquals(List.of("\u77ff\u8f66\u5b9e\u4f53"), entityResult.matchedEntityNames());
-        assertEquals(List.of("minecraft:minecart"), entityResult.matchedEntityTypeIds());
-        assertTrue(entityResult.matchedItemIds().isEmpty());
+        assertEquals(List.of(IrObjectMatch.item("\u77ff\u8f66\u7269\u54c1", "minecraft:minecart")),
+                itemResult.matches());
+        assertEquals(List.of(IrObjectMatch.entity("\u77ff\u8f66\u5b9e\u4f53", "minecraft:minecart")),
+                entityResult.matches());
     }
 
     @Test
@@ -54,8 +52,7 @@ class DefaultIrNamedObjectEnhancerTest {
 
         assertFalse(result.matched());
         assertEquals("\u9879\u76ee\u4eec", result.repairedText());
-        assertTrue(result.matchedItemIds().isEmpty());
-        assertTrue(result.matchedEntityTypeIds().isEmpty());
+        assertTrue(result.matches().isEmpty());
     }
 
     private IrPreparedInput input(String text) {

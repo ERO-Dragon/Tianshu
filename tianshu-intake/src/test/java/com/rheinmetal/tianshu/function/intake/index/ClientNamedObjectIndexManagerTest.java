@@ -123,6 +123,22 @@ class ClientNamedObjectIndexManagerTest {
         }
     }
 
+    @Test
+    void corruptCacheIsDiscardedAndRebuilt() throws Exception {
+        Path cacheRoot = Files.createTempDirectory("tianshu-ir-corrupt-test");
+        Path cacheFile = cacheRoot.resolve("named-object-ir-cache.bin");
+        Files.writeString(cacheFile, "this is not an ir snapshot");
+
+        try (ClientNamedObjectIndexManager manager = new ClientNamedObjectIndexManager(
+                () -> Map.of("item:minecraft:stone", List.of("stone")),
+                cacheRoot,
+                () -> "en_us"
+        )) {
+            assertTrue(manager.initializeAsync("corrupt cache").get(5, TimeUnit.SECONDS));
+        }
+        assertTrue(Files.size(cacheFile) > 0, "the rebuild must replace the corrupt cache with a valid one");
+    }
+
     private static ClientNamedObjectIndexManager manager(Path cacheRoot) {
         return new ClientNamedObjectIndexManager(
                 () -> Map.of("item:minecraft:stone", List.of("stone")),

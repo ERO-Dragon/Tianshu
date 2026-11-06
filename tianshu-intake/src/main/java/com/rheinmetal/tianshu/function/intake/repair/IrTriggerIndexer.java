@@ -29,9 +29,9 @@ final class IrTriggerIndexer {
         }
         List<IrCompiledVoiceWord> compiled = new ArrayList<>(words.size());
         for (String word : words) {
-            String normalized = IRBaseUtils.joinTokens(IRBaseUtils.tokenize(word));
-            if (!normalized.isBlank()) {
-                compiled.add(new IrCompiledVoiceWord(word, normalized));
+            String[] tokens = IRBaseUtils.tokenize(word);
+            if (tokens.length > 0) {
+                compiled.add(new IrCompiledVoiceWord(word, tokens));
             }
         }
         return List.copyOf(compiled);

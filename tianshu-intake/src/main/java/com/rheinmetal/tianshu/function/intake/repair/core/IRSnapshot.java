@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/** The serialized form of one {@link IRIndex}, plus the fingerprint it was built for. */
 public final class IRSnapshot {
     private static final int MAGIC = 0x54495231;
     private static final int VERSION = 1;
@@ -54,7 +55,18 @@ public final class IRSnapshot {
         writeLongArray(output, directoryValues);
     }
 
-    public static IRSnapshot readFrom(DataInputStream input) throws IOException {
+    /**
+     * Reads one snapshot.
+     *
+     * <p>Every array length is checked against the file size before it is allocated: a truncated or
+     * corrupted cache then fails as an ordinary {@link IOException} on the cache path, instead of
+     * allocating gigabytes from a garbage length or letting an out-of-range posting surface much later
+     * inside matching. The deeper consistency checks (parallel array lengths, posting ranges) happen when
+     * the snapshot is turned into an index.</p>
+     *
+     * @param maxBytes the size of the file the stream reads from, used as the upper bound of any length
+     */
+    public static IRSnapshot readFrom(DataInputStream input, long maxBytes) throws IOException {
         int magic = input.readInt();
         if (magic != MAGIC) {
             throw new IOException("Invalid IR snapshot magic: " + magic);
@@ -65,15 +77,16 @@ public final class IRSnapshot {
         }
         return new IRSnapshot(
                 input.readUTF(),
-                readStringArray(input),
-                readStringArray(input),
-                readNestedStringArray(input),
-                readNestedStringArray(input),
-                readIntArray(input),
-                readLongArray(input),
-                readLongArray(input)
+                readStringArray(input, maxBytes),
+                readStringArray(input, maxBytes),
+                readNestedStringArray(input, maxBytes),
+                readNestedStringArray(input, maxBytes),
+                readIntArray(input, maxBytes),
+                readLongArray(input, maxBytes),
+                readLongArray(input, maxBytes)
         );
     }
+
     public Map<String, List<String>> rebuildRawDictionary() {
         LinkedHashMap<String, List<String>> rawDict = new LinkedHashMap<>(reverseLookupArray.length);
         for (int i = 0; i < reverseLookupArray.length; i++) {
@@ -86,6 +99,7 @@ public final class IRSnapshot {
         }
         return rawDict;
     }
+
     private static void writeStringArray(DataOutputStream output, String[] values) throws IOException {
         output.writeInt(values.length);
         for (String value : values) {
@@ -93,8 +107,8 @@ public final class IRSnapshot {
         }
     }
 
-    private static String[] readStringArray(DataInputStream input) throws IOException {
-        int size = input.readInt();
+    private static String[] readStringArray(DataInputStream input, long maxBytes) throws IOException {
+        int size = readSize(input, maxBytes);
         String[] values = new String[size];
         for (int i = 0; i < size; i++) {
             values[i] = input.readUTF();
@@ -109,11 +123,11 @@ public final class IRSnapshot {
         }
     }
 
-    private static String[][] readNestedStringArray(DataInputStream input) throws IOException {
-        int size = input.readInt();
+    private static String[][] readNestedStringArray(DataInputStream input, long maxBytes) throws IOException {
+        int size = readSize(input, maxBytes);
         String[][] values = new String[size][];
         for (int i = 0; i < size; i++) {
-            values[i] = readStringArray(input);
+            values[i] = readStringArray(input, maxBytes);
         }
         return values;
     }
@@ -125,8 +139,8 @@ public final class IRSnapshot {
         }
     }
 
-    private static int[] readIntArray(DataInputStream input) throws IOException {
-        int size = input.readInt();
+    private static int[] readIntArray(DataInputStream input, long maxBytes) throws IOException {
+        int size = readSize(input, maxBytes);
         int[] values = new int[size];
         for (int i = 0; i < size; i++) {
             values[i] = input.readInt();
@@ -141,8 +155,8 @@ public final class IRSnapshot {
         }
     }
 
-    private static long[] readLongArray(DataInputStream input) throws IOException {
-        int size = input.readInt();
+    private static long[] readLongArray(DataInputStream input, long maxBytes) throws IOException {
+        int size = readSize(input, maxBytes);
         long[] values = new long[size];
         for (int i = 0; i < size; i++) {
             values[i] = input.readLong();
@@ -150,4 +164,11 @@ public final class IRSnapshot {
         return values;
     }
 
+    private static int readSize(DataInputStream input, long maxBytes) throws IOException {
+        int size = input.readInt();
+        if (size < 0 || size > maxBytes) {
+            throw new IOException("Invalid IR snapshot array size: " + size);
+        }
+        return size;
+    }
 }

@@ -13,14 +13,14 @@ final class IrTriggerMatcher {
         if (input == null || input.blank()) {
             return new IrMatchBatch(input, List.of());
         }
-        String tokenText = IRBaseUtils.joinTokens(IRBaseUtils.tokenize(input.text()));
-        if (tokenText.isBlank() || index == null || index.isEmpty()) {
+        String[] tokens = IRBaseUtils.tokenize(input.text());
+        if (tokens.length == 0 || index == null || index.isEmpty()) {
             return new IrMatchBatch(input, List.of());
         }
         List<TriggerHits> hits = new ArrayList<>();
         for (IrCompiledTrigger trigger : index) {
-            List<String> wakeWords = collectTokenMatches(tokenText, trigger.wakeWords());
-            List<String> extraWords = collectTokenMatches(tokenText, trigger.extraWords());
+            List<String> wakeWords = collectTokenMatches(tokens, trigger.wakeWords());
+            List<String> extraWords = collectTokenMatches(tokens, trigger.extraWords());
             if (wakeWords.isEmpty() && extraWords.isEmpty()) {
                 continue;
             }
@@ -47,17 +47,38 @@ final class IrTriggerMatcher {
         return new IrMatchBatch(input, matches);
     }
 
-    private List<String> collectTokenMatches(String tokenText, List<IrCompiledVoiceWord> words) {
+    private List<String> collectTokenMatches(String[] tokens, List<IrCompiledVoiceWord> words) {
         if (words == null || words.isEmpty()) {
             return List.of();
         }
         List<String> matches = new ArrayList<>();
         for (IrCompiledVoiceWord word : words) {
-            if (!word.normalizedText().isBlank() && tokenText.contains(word.normalizedText())) {
+            if (!word.isEmpty() && containsSequence(tokens, word.tokens())) {
                 matches.add(word.rawText());
             }
         }
         return matches;
+    }
+
+    /** Whether {@code needle} appears as a contiguous run of tokens inside {@code haystack}. */
+    private static boolean containsSequence(String[] haystack, String[] needle) {
+        if (needle.length == 0 || needle.length > haystack.length) {
+            return false;
+        }
+        int lastStart = haystack.length - needle.length;
+        for (int start = 0; start <= lastStart; start++) {
+            boolean matched = true;
+            for (int offset = 0; offset < needle.length; offset++) {
+                if (!haystack[start + offset].equals(needle[offset])) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private double triggerConfidence(IrCompiledTrigger trigger, int matchedWords) {

@@ -9,8 +9,10 @@ import java.util.List;
 /** Applies conservative named-object repairs to user text from already-ranked candidates. */
 final class CommandTextRepairer {
     private final CommandParserPolicy policy;
+    private final IRIndex irIndex;
 
-    CommandTextRepairer(CommandParserPolicy policy) {
+    CommandTextRepairer(IRIndex index, CommandParserPolicy policy) {
+        this.irIndex = index == null ? IRIndex.EMPTY : index;
         this.policy = policy;
     }
 
@@ -45,7 +47,7 @@ final class CommandTextRepairer {
                 repaired.append(rawText, cursor, proposal.start);
             }
             repaired.append(proposal.target);
-            matchedIds.add(IRBaseUtils.reverseLookupArray[proposal.internalId]);
+            matchedIds.add(irIndex.realId(proposal.internalId));
             cursor = proposal.end;
         }
         if (cursor < rawText.length()) {
@@ -78,7 +80,7 @@ final class CommandTextRepairer {
         int limit = Math.min(policy.healMaxCandidates(), ranked.length);
         for (int index = 0; index < limit; index++) {
             CommandCandidateRanker.ScoredCandidate candidate = ranked[index];
-            String target = IRBaseUtils.localizedNameArray[candidate.internalId];
+            String target = irIndex.displayName(candidate.internalId);
             if (target == null || target.isEmpty()) {
                 continue;
             }

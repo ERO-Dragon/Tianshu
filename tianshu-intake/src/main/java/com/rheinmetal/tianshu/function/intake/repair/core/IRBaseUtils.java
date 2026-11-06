@@ -1,62 +1,21 @@
 package com.rheinmetal.tianshu.function.intake.repair.core;
 
 import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
+/**
+ * Pure text utilities of the IR index: tokenizing a name, building gram keys, hashing.
+ *
+ * <p>This class no longer holds the dictionary. The mapping, aliases and inverted pool live in one
+ * {@link IRIndex} owned by {@link IRCommandService}, which is what makes a rebuild a single reference
+ * swap instead of a set of static fields a second instance could observe half-written.</p>
+ */
 public final class IRBaseUtils {
 
     private static final int FNV_OFFSET_BASIS = 0x811c9dc5;
     private static final int FNV_PRIME = 0x01000193;
-
     private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
-    public static String[] reverseLookupArray = EMPTY_STRING_ARRAY;
-    public static String[] localizedNameArray = EMPTY_STRING_ARRAY;
-    public static Map<String, Integer> forwardLookupMap = Map.of();
-
-    public static String[][] primaryAliasTokensArray = new String[0][];
-    public static String[][] fallbackAliasTokensArray = new String[0][];
-
     private IRBaseUtils() {
-    }
-
-    public static int buildMapping(Map<String, List<String>> rawDict) {
-        LinkedHashMap<String, Integer> idMap = new LinkedHashMap<>(Math.max(16, rawDict.size()));
-        int itemCount = rawDict.size();
-        String[] reverse = new String[itemCount];
-        String[] names = new String[itemCount];
-        String[][] primaryTokens = new String[itemCount][];
-        String[][] fallbackTokens = new String[itemCount][];
-        int index = 0;
-        for (Map.Entry<String, List<String>> entry : rawDict.entrySet()) {
-            idMap.put(entry.getKey(), index);
-            reverse[index] = entry.getKey();
-            List<String> aliases = entry.getValue();
-            
-            if (aliases == null || aliases.isEmpty()) {
-                names[index] = "";
-                primaryTokens[index] = EMPTY_STRING_ARRAY;
-                fallbackTokens[index] = EMPTY_STRING_ARRAY;
-            } else {
-                names[index] = aliases.get(0);
-                primaryTokens[index] = tokenize(aliases.get(0));
-
-                if (aliases.size() > 1) {
-                    fallbackTokens[index] = tokenize(aliases.get(1));
-                } else {
-                    fallbackTokens[index] = EMPTY_STRING_ARRAY;
-                }
-            }
-            index++;
-        }
-        reverseLookupArray = reverse;
-        localizedNameArray = names;
-        forwardLookupMap = idMap;
-        primaryAliasTokensArray = primaryTokens;
-        fallbackAliasTokensArray = fallbackTokens;
-        return index;
     }
 
     public static int fnv1a32(String str) {
