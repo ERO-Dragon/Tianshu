@@ -92,7 +92,8 @@ public final class DialogueClaimEngine {
             return java.util.Optional.empty();
         }
         String reasonText = reason.length() == 0 ? "hard_claim" : "hard_claim:" + reason;
-        return java.util.Optional.of(new DialogueClaim(participant.participantId(), source, participant.priority(), reasonText));
+        return java.util.Optional.of(new DialogueClaim(
+                participant.moduleId(), participant.participantId(), source, participant.priority(), reasonText));
     }
 
     /**

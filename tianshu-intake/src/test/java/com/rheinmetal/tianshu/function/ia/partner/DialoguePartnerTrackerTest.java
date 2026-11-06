@@ -23,7 +23,7 @@ class DialoguePartnerTrackerTest {
         assertEquals(10_000L, tracker.leaseDurationMillis(1_000L));
         assertTrue(tracker.leaseAlive(10_999L));
         assertFalse(tracker.leaseAlive(11_000L));
-        assertEquals("", tracker.holderParticipantId(11_000L));
+        assertTrue(tracker.holder(11_000L).isEmpty());
     }
 
     @Test
@@ -47,7 +47,28 @@ class DialoguePartnerTrackerTest {
         tracker.grant(participant(DialogueHoldTier.NONE), 2_000L);
 
         assertFalse(tracker.leaseAlive(2_000L));
-        assertEquals("", tracker.holderParticipantId(2_000L));
+        assertTrue(tracker.holder(2_000L).isEmpty());
+    }
+
+    @Test
+    void holdsComparesTheModuleAsWellAsTheParticipantId() {
+        DialoguePartnerTracker tracker = new DialoguePartnerTracker();
+        DialogueParticipantDescriptor holder = participant(DialogueHoldTier.TEN_SECONDS);
+        tracker.grant(holder, 1_000L);
+
+        assertTrue(tracker.holds(holder, 1_000L));
+        assertFalse(tracker.holds(new DialogueParticipantDescriptor(
+                holder.participantId(),
+                "module.other",
+                holder.displayName(),
+                holder.priority(),
+                holder.claimProfile(),
+                holder.triggerGroup(),
+                "OTHER.DIALOGUE_INPUT",
+                holder.turnProcessingPolicy(),
+                holder.icon(),
+                holder.holdTier()
+        ), 1_000L), "the same participant id in another module does not hold this lease");
     }
 
     @Test

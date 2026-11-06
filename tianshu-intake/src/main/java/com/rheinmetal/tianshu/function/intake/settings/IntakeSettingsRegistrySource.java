@@ -273,19 +273,35 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private List<String> defaultOwnerValues() {
             List<String> values = new ArrayList<>();
             values.add(NOBODY);
-            defaultOwnerCandidates().forEach(participant -> values.add(participant.participantId()));
+            defaultOwnerCandidates().forEach(participant -> values.add(defaultOwnerSelection(participant)));
             return values;
         }
 
-        private UiText defaultOwnerLabel(String participantId) {
-            if (participantId == null || participantId.isBlank()) {
+        /** The select value is the module-qualified participant; a participant id alone is not unique. */
+        private static String defaultOwnerSelection(DialogueParticipantDescriptor participant) {
+            return participant.moduleId() + ":" + participant.participantId();
+        }
+
+        private UiText defaultOwnerLabel(String selection) {
+            if (selection == null || selection.isBlank()) {
                 return asr("default_owner.none");
             }
-            return defaultOwnerCandidates().stream()
-                    .filter(participant -> participantId.equals(participant.participantId()))
-                    .findFirst()
-                    .map(this::participantLabel)
-                    .orElseGet(() -> asr("default_owner.none"));
+            List<DialogueParticipantDescriptor> candidates = defaultOwnerCandidates();
+            if (selection.indexOf(':') > 0) {
+                return candidates.stream()
+                        .filter(participant -> selection.equals(defaultOwnerSelection(participant)))
+                        .findFirst()
+                        .map(this::participantLabel)
+                        .orElseGet(() -> asr("default_owner.none"));
+            }
+            // A choice saved before selections carried the module: printable only when it is unambiguous.
+            List<DialogueParticipantDescriptor> legacyMatches = candidates.stream()
+                    .filter(participant -> selection.equals(participant.participantId()))
+                    .limit(2)
+                    .toList();
+            return legacyMatches.size() == 1
+                    ? participantLabel(legacyMatches.get(0))
+                    : asr("default_owner.none");
         }
 
         private UiText participantLabel(DialogueParticipantDescriptor participant) {
@@ -300,7 +316,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             }
             return new DialogueDefaultOwnerResolver()
                     .resolve(defaultOwnerCandidates(), defaultOwnerConfig)
-                    .map(DialogueParticipantDescriptor::participantId)
+                    .map(participant -> defaultOwnerSelection(participant))
                     .orElse(NOBODY);
         }
 

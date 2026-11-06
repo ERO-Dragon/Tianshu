@@ -348,7 +348,7 @@ class IaModuleProtocolFlowTest {
             }
 
             @Override
-            public String participantId() {
+            public String selection() {
                 return "";
             }
         });

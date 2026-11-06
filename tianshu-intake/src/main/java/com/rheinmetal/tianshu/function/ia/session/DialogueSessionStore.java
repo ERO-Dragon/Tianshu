@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 /**
  * The sessions the arbiter has created in this runtime, and the one active session per player.
@@ -22,6 +23,11 @@ import java.util.UUID;
  * The maps are insertion ordered so eviction removes the oldest records first, and the whole store is guarded
  * by one monitor — a turn is a low-frequency event, and one lock is what keeps "session map + player index +
  * eviction" a single consistent step.</p>
+ *
+ * <p><b>State transitions are checked here.</b> A session that already reached a terminal state can never be
+ * activated again, and a control that arrives after the session was released answers "already gone" instead
+ * of rewriting history: the controller may still process a release while the arbiter is between claiming and
+ * activating its own turn.</p>
  */
 public final class DialogueSessionStore {
     /** How many terminal sessions are kept for diagnostics; active sessions are never evicted. */
@@ -56,46 +62,50 @@ public final class DialogueSessionStore {
         return Optional.of(session);
     }
 
-    public synchronized DialogueSession activate(String sessionId, long nowMillis) {
-        return update(sessionId, session -> session.activate(nowMillis));
+    /** Marks a claimed session active; a session that is already terminal or not yet claimed is left alone. */
+    public synchronized Optional<DialogueSession> activate(String sessionId, long nowMillis) {
+        return updateActive(sessionId, session -> session.activate(nowMillis),
+                session -> session.state() == DialogueSessionState.CLAIMED);
     }
 
-    public synchronized DialogueSession extendProcessing(String sessionId, long nowMillis, long processingDeadlineMillis) {
-        return update(sessionId, session -> session.extendProcessing(nowMillis, processingDeadlineMillis));
+    public synchronized Optional<DialogueSession> extendProcessing(String sessionId, long nowMillis, long processingDeadlineMillis) {
+        return updateActive(sessionId, session -> session.extendProcessing(nowMillis, processingDeadlineMillis),
+                session -> activeState(session.state()));
     }
 
-    public synchronized DialogueSession interrupting(String sessionId, long nowMillis) {
-        return update(sessionId, session -> session.interrupting(nowMillis));
+    public synchronized Optional<DialogueSession> interrupting(String sessionId, long nowMillis) {
+        return updateActive(sessionId, session -> session.interrupting(nowMillis),
+                session -> activeState(session.state()));
     }
 
-    public synchronized DialogueSession release(String sessionId, DialogueReleaseReason reason, long nowMillis) {
-        DialogueSession released = update(sessionId, session -> session.terminal(DialogueSessionState.RELEASED, reason, nowMillis));
-        activeSessionByPlayer.remove(released.playerId(), released.sessionId());
-        pruneTerminalSessions();
+    public synchronized Optional<DialogueSession> release(String sessionId, DialogueReleaseReason reason, long nowMillis) {
+        Optional<DialogueSession> released = updateActive(sessionId,
+                session -> session.terminal(DialogueSessionState.RELEASED, reason, nowMillis),
+                session -> !isTerminal(session.state()));
+        released.ifPresent(session -> {
+            activeSessionByPlayer.remove(session.playerId(), session.sessionId());
+            pruneTerminalSessions();
+        });
         return released;
     }
 
     public synchronized Optional<DialogueSession> releaseIfPresent(String sessionId, DialogueReleaseReason reason, long nowMillis) {
-        return updateIfPresent(sessionId, session -> session.terminal(DialogueSessionState.RELEASED, reason, nowMillis))
-                .map(released -> {
-                    activeSessionByPlayer.remove(released.playerId(), released.sessionId());
-                    return released;
-                });
+        return release(sessionId, reason, nowMillis);
     }
 
-    public synchronized DialogueSession expire(String sessionId, long nowMillis) {
-        DialogueSession expired = update(sessionId, session -> session.terminal(DialogueSessionState.EXPIRED, DialogueReleaseReason.EXPIRED, nowMillis));
-        activeSessionByPlayer.remove(expired.playerId(), expired.sessionId());
-        pruneTerminalSessions();
+    public synchronized Optional<DialogueSession> expire(String sessionId, long nowMillis) {
+        Optional<DialogueSession> expired = updateActive(sessionId,
+                session -> session.terminal(DialogueSessionState.EXPIRED, DialogueReleaseReason.EXPIRED, nowMillis),
+                session -> activeState(session.state()));
+        expired.ifPresent(session -> {
+            activeSessionByPlayer.remove(session.playerId(), session.sessionId());
+            pruneTerminalSessions();
+        });
         return expired;
     }
 
     public synchronized Optional<DialogueSession> expireIfPresent(String sessionId, long nowMillis) {
-        return updateIfPresent(sessionId, session -> session.terminal(DialogueSessionState.EXPIRED, DialogueReleaseReason.EXPIRED, nowMillis))
-                .map(expired -> {
-                    activeSessionByPlayer.remove(expired.playerId(), expired.sessionId());
-                    return expired;
-                });
+        return expire(sessionId, nowMillis);
     }
 
     public synchronized List<DialogueSession> releaseByOwnerModule(String moduleId, DialogueReleaseReason reason, long nowMillis) {
@@ -103,13 +113,17 @@ public final class DialogueSessionStore {
         if (normalized.isBlank()) {
             return List.of();
         }
-        List<DialogueSession> released = sessions.values().stream()
+        // Collect first, then transition: releasing can evict terminal records, which would mutate the map
+        // the collection was iterating.
+        List<String> targets = sessions.values().stream()
                 .filter(session -> session.ownerModuleId().equals(normalized) && activeState(session.state()))
-                .map(session -> releaseIfPresent(session.sessionId(), reason, nowMillis))
-                .flatMap(Optional::stream)
+                .map(DialogueSession::sessionId)
                 .toList();
-        pruneTerminalSessions();
-        return released;
+        List<DialogueSession> released = new java.util.ArrayList<>(targets.size());
+        for (String sessionId : targets) {
+            release(sessionId, reason, nowMillis).ifPresent(released::add);
+        }
+        return List.copyOf(released);
     }
 
     public synchronized List<DialogueSession> releaseByOwnerParticipant(String moduleId, String participantId, DialogueReleaseReason reason, long nowMillis) {
@@ -118,13 +132,15 @@ public final class DialogueSessionStore {
         if (normalizedModule.isBlank() || normalizedParticipant.isBlank()) {
             return List.of();
         }
-        List<DialogueSession> released = sessions.values().stream()
+        List<String> targets = sessions.values().stream()
                 .filter(session -> session.ownedBy(normalizedModule, normalizedParticipant) && activeState(session.state()))
-                .map(session -> releaseIfPresent(session.sessionId(), reason, nowMillis))
-                .flatMap(Optional::stream)
+                .map(DialogueSession::sessionId)
                 .toList();
-        pruneTerminalSessions();
-        return released;
+        List<DialogueSession> released = new java.util.ArrayList<>(targets.size());
+        for (String sessionId : targets) {
+            release(sessionId, reason, nowMillis).ifPresent(released::add);
+        }
+        return List.copyOf(released);
     }
 
     public synchronized DialogueSession reject(String playerId, String turnId, long nowMillis) {
@@ -143,14 +159,33 @@ public final class DialogueSessionStore {
                 .toList();
     }
 
+    /**
+     * Makes an already active session the player's active one again.
+     *
+     * <p>Used when a turn claims a new session and then fails before it could preempt the previous one:
+     * claiming moved the player index, releasing the failed session removed it, and the running turn has to
+     * get its index entry back or it becomes unreachable until it expires.</p>
+     */
+    public synchronized void restoreActiveSession(DialogueSession session) {
+        if (session == null) {
+            return;
+        }
+        DialogueSession stored = sessions.get(sanitize(session.sessionId()));
+        if (stored != null && activeState(stored.state())) {
+            activeSessionByPlayer.put(stored.playerId(), stored.sessionId());
+        }
+    }
+
     public synchronized List<DialogueSession> expireOverdue(long nowMillis) {
-        List<DialogueSession> expired = sessions.values().stream()
+        List<String> targets = sessions.values().stream()
                 .filter(session -> activeState(session.state()) && session.processingDeadlineMillis() <= nowMillis)
-                .map(session -> expireIfPresent(session.sessionId(), nowMillis))
-                .flatMap(Optional::stream)
+                .map(DialogueSession::sessionId)
                 .toList();
-        pruneTerminalSessions();
-        return expired;
+        List<DialogueSession> expired = new java.util.ArrayList<>(targets.size());
+        for (String sessionId : targets) {
+            expire(sessionId, nowMillis).ifPresent(expired::add);
+        }
+        return List.copyOf(expired);
     }
 
     public synchronized void clear() {
@@ -158,22 +193,31 @@ public final class DialogueSessionStore {
         activeSessionByPlayer.clear();
     }
 
-    private Optional<DialogueSession> updateIfPresent(String sessionId, java.util.function.Function<DialogueSession, DialogueSession> updater) {
-        String normalized = sanitize(sessionId);
-        DialogueSession existing = sessions.get(normalized);
-        if (existing == null) {
+    private Optional<DialogueSession> updateActive(
+            String sessionId,
+            UnaryOperator<DialogueSession> updater,
+            java.util.function.Predicate<DialogueSession> allowed
+    ) {
+        DialogueSession existing = sessions.get(sanitize(sessionId));
+        if (existing == null || !allowed.test(existing)) {
             return Optional.empty();
         }
         DialogueSession updated = updater.apply(existing);
-        sessions.put(normalized, updated);
+        sessions.put(updated.sessionId(), updated);
         return Optional.of(updated);
     }
 
-    private static boolean activeState(DialogueSessionState state) {
+    static boolean activeState(DialogueSessionState state) {
         return state != null
                 && state != DialogueSessionState.RELEASED
                 && state != DialogueSessionState.EXPIRED
                 && state != DialogueSessionState.REJECTED;
+    }
+
+    private static boolean isTerminal(DialogueSessionState state) {
+        return state == DialogueSessionState.RELEASED
+                || state == DialogueSessionState.EXPIRED
+                || state == DialogueSessionState.REJECTED;
     }
 
     /**
@@ -201,17 +245,6 @@ public final class DialogueSessionStore {
             iterator.remove();
             terminal--;
         }
-    }
-
-    private DialogueSession update(String sessionId, java.util.function.Function<DialogueSession, DialogueSession> updater) {
-        String normalized = sanitize(sessionId);
-        DialogueSession existing = sessions.get(normalized);
-        if (existing == null) {
-            throw new IllegalArgumentException("session not found: " + normalized);
-        }
-        DialogueSession updated = updater.apply(existing);
-        sessions.put(normalized, updated);
-        return updated;
     }
 
     private static String sanitize(String value) {

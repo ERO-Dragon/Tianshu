@@ -117,8 +117,9 @@ public final class IaModule implements TianshuManagedModule {
      * the arbiter is ever hosted for several players at once, this has to become a per-player map first.</p>
      */
     private volatile PresenceInteractionContextPayload interactionContext;
-    private ProtocolTaskHandle partnerExpiryHandle;
-    private volatile long partnerExpiryGeneration;
+    private volatile ProtocolTaskHandle partnerExpiryHandle;
+    private final AtomicLong partnerExpiryGeneration = new AtomicLong();
+    private final Object partnerExpiryLock = new Object();
     private ModuleRuntimeContext runtimeContext;
     private volatile boolean runtimeAccepting = true;
     private volatile long lifecycleStatusGeneration;
@@ -388,7 +389,7 @@ public final class IaModule implements TianshuManagedModule {
             long now
     ) {
         DialogueArbitrationDecision decision = arbitrationPolicy.decide(
-                participants, hardClaims, partnerTracker.holderParticipantId(now), resolveDefaultOwner(participants));
+                participants, hardClaims, partnerTracker.holder(now), resolveDefaultOwner(participants));
         diagnostics.publish(DiagnosticEvent.now(
                 moduleId(),
                 decision.accepted() ? "ARBITRATION_ACCEPTED" : "ARBITRATION_REJECTED",
@@ -410,28 +411,61 @@ public final class IaModule implements TianshuManagedModule {
             context.complete(envelope.envelopeId());
             return;
         }
-        boolean leaseContinued = DialogueArbitrationPolicy.REASON_LEASE_CONTINUED.equals(decision.reason());
-        if (decision.claim() != null || leaseContinued) {
-            partnerTracker.grant(decision.owner(), now);
-        } else {
-            partnerTracker.clear();
-        }
-        publishPartner(partnerFor(payload.playerId(), decision.owner(), decision.claim() == null && !leaseContinued, now));
-        schedulePartnerExpiry(now);
-        DialogueSession session = claimSession(payload, decision.owner(), now);
-        releasePreviousTurnIfPresent(envelope, activeSession, session, now);
-        arbitrationEventOrchestrator.publishAccepted(envelope, session, ownerChanged(activeSession, decision.owner()), decision.reason(), now);
-        DialogueAccessDecision deliveryDecision = messageGateway.deliverToOwner(envelope, session, decision.owner(), input);
+        DialogueParticipantDescriptor owner = decision.owner();
+        DialogueSession session = claimSession(payload, owner, now);
+        // Authorization first: a turn that cannot be delivered must not grant a lease, repaint the partner
+        // marker, or preempt the turn that is still running. The claimed session is the only thing created
+        // before this point, and releasing it restores the previous player index entry.
+        DialogueAccessDecision deliveryDecision = messageGateway.authorizeToOwner(session, owner);
         if (!deliveryDecision.allowed()) {
-            DialogueSession released = sessionStore.release(session.sessionId(), DialogueReleaseReason.ACCESS_DENIED, now);
-            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.ACCESS_DENIED, deliveryDecision.reasonCode(), now);
-            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.ACCESS_DENIED, deliveryDecision.reasonCode(), now);
+            releaseClaimedSession(envelope, session, activeSession, deliveryDecision.reasonCode(), now);
             context.fail(envelope.envelopeId(), deliveryDecision.reasonCode(), deliveryDecision.message(), null);
             return;
         }
-        DialogueSession active = sessionStore.activate(session.sessionId(), now);
-        respondArbitrationResultIfRequested(envelope, acceptedResult(payload, active, decision.owner(), decision.reason()));
+        boolean leaseContinued = DialogueArbitrationPolicy.REASON_LEASE_CONTINUED.equals(decision.reason());
+        if (decision.claim() != null || leaseContinued) {
+            partnerTracker.grant(owner, now);
+        } else {
+            partnerTracker.clear();
+        }
+        publishPartner(partnerFor(payload.playerId(), owner, decision.claim() == null && !leaseContinued, now));
+        schedulePartnerExpiry(now);
+        releasePreviousTurnIfPresent(envelope, activeSession, session, now);
+        arbitrationEventOrchestrator.publishAccepted(envelope, session, ownerChanged(activeSession, owner), decision.reason(), now);
+        DialogueAccessDecision delivered = messageGateway.deliverToOwner(envelope, session, owner, input);
+        if (!delivered.allowed()) {
+            // The provider disappeared between the check and the delivery; undo what this turn did.
+            partnerTracker.clear();
+            releaseClaimedSession(envelope, session, Optional.empty(), delivered.reasonCode(), now);
+            context.fail(envelope.envelopeId(), delivered.reasonCode(), delivered.message(), null);
+            return;
+        }
+        sessionStore.activate(session.sessionId(), now);
+        respondArbitrationResultIfRequested(envelope, acceptedResult(payload, session, owner, decision.reason()));
         context.complete(envelope.envelopeId());
+    }
+
+    /**
+     * Releases the session a failed turn created and announces it.
+     *
+     * <p>A failed turn never preempted anything, but claiming the session moved the player's active index
+     * onto it. Releasing it removes that index entry, so the previous turn — which is still running — is put
+     * back where it was instead of becoming an active session nothing can reach.</p>
+     */
+    private void releaseClaimedSession(
+            TianshuEnvelope envelope,
+            DialogueSession session,
+            Optional<DialogueSession> previous,
+            String reasonCode,
+            long now
+    ) {
+        sessionStore.release(session.sessionId(), DialogueReleaseReason.ACCESS_DENIED, now)
+                .ifPresent(released -> {
+                    eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.ACCESS_DENIED, reasonCode, now);
+                    eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.ACCESS_DENIED, reasonCode, now);
+                });
+        previous.filter(candidate -> !candidate.sessionId().equals(session.sessionId()))
+                .ifPresent(sessionStore::restoreActiveSession);
     }
 
     private void handleAsrSpeechActivity(TianshuEnvelope envelope, ProtocolContext context) {
@@ -443,6 +477,9 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         long now = payload.occurredAtMillis() > 0L ? payload.occurredAtMillis() : System.currentTimeMillis();
+        // A frozen frame belongs to one speech turn; sweeping here is what keeps failed, expired and
+        // participant-less turns from leaving their frames behind until the next arbitration.
+        contextFreezeStore.sweep(now);
         if (payload.speaking()) {
             contextFreezeStore.freeze(payload.sessionId(), currentInteractionFrame(), now);
         } else {
@@ -524,10 +561,15 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void handleInteractionContext(TianshuEnvelope envelope, ProtocolContext context) {
-        if (envelope.payload() instanceof PresenceInteractionContextPayload payload) {
-            interactionContext = payload;
-            refreshPartner(payload.playerId(), System.currentTimeMillis());
+        if (rejectWhenInactive(envelope, context)) {
+            return;
         }
+        if (!(envelope.payload() instanceof PresenceInteractionContextPayload payload)) {
+            context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Interaction context payload is invalid", null);
+            return;
+        }
+        interactionContext = payload;
+        refreshPartner(payload.playerId(), System.currentTimeMillis());
         context.complete(envelope.envelopeId());
     }
 
@@ -549,7 +591,7 @@ public final class IaModule implements TianshuManagedModule {
                 participants, frame.interactionHints(), frame.contextSnapshot());
         Optional<DialogueParticipantDescriptor> defaultOwner = resolveDefaultOwner(participants);
         return arbitrationPolicy.decide(
-                participants, contextClaims, partnerTracker.holderParticipantId(now), defaultOwner);
+                participants, contextClaims, partnerTracker.holder(now), defaultOwner);
     }
 
     /**
@@ -592,7 +634,7 @@ public final class IaModule implements TianshuManagedModule {
                     "Only the speech input module may request a dialogue interrupt", null);
             return;
         }
-        long now = payload.occurredAtMillis();
+        long now = Math.max(payload.occurredAtMillis(), System.currentTimeMillis());
         String playerId = currentPlayerId();
         DialogueArbitrationDecision decision = decideCurrentTarget(playerId, now);
         if (!decision.accepted()) {
@@ -623,8 +665,7 @@ public final class IaModule implements TianshuManagedModule {
             return PresencePartnerPayload.empty(playerId, now);
         }
         boolean showLease = !defaultOwner
-                && partnerTracker.leaseAlive(now)
-                && owner.participantId().equals(partnerTracker.holderParticipantId(now));
+                && partnerTracker.holds(owner, now);
         return new PresencePartnerPayload(
                 playerId,
                 owner.moduleId(),
@@ -652,7 +693,8 @@ public final class IaModule implements TianshuManagedModule {
     private void pruneLease(List<DialogueParticipantDescriptor> participants, long now) {
         partnerTracker.holder(now).ifPresent(holder -> {
             boolean registered = participants.stream()
-                    .anyMatch(participant -> holder.participantId().equals(participant.participantId()));
+                    .anyMatch(participant -> holder.moduleId().equals(participant.moduleId())
+                            && holder.participantId().equals(participant.participantId()));
             if (!registered) {
                 partnerTracker.clear();
             }
@@ -694,33 +736,48 @@ public final class IaModule implements TianshuManagedModule {
     }
 
     private void schedulePartnerExpiry(long now) {
-        cancelPartnerExpiry();
-        if (runtimeContext == null || !partnerTracker.leaseAlive(now)) {
-            return;
+        synchronized (partnerExpiryLock) {
+            cancelPartnerExpiryLocked();
+            if (runtimeContext == null || !partnerTracker.leaseAlive(now)) {
+                return;
+            }
+            long delay = Math.max(1L, partnerTracker.leaseUntilMillis(now) - now);
+            long generation = partnerExpiryGeneration.incrementAndGet();
+            partnerExpiryHandle = runtime.schedule(
+                    ProtocolTaskSpec.builder()
+                            .moduleId(moduleId())
+                            .lane(ExecutionLane.SCHEDULED)
+                            .taskId("ia.partner-lease-expiry")
+                            .build(),
+                    () -> onPartnerLeaseExpired(generation),
+                    Duration.ofMillis(delay)
+            );
         }
-        long delay = Math.max(1L, partnerTracker.leaseUntilMillis(now) - now);
-        long generation = ++partnerExpiryGeneration;
-        partnerExpiryHandle = runtime.schedule(
-                ProtocolTaskSpec.builder()
-                        .moduleId(moduleId())
-                        .lane(ExecutionLane.SCHEDULED)
-                        .taskId("ia.partner-lease-expiry")
-                        .build(),
-                () -> onPartnerLeaseExpired(generation),
-                Duration.ofMillis(delay)
-        );
     }
 
     private void cancelPartnerExpiry() {
+        synchronized (partnerExpiryLock) {
+            cancelPartnerExpiryLocked();
+        }
+    }
+
+    /**
+     * Cancels the pending expiry and invalidates the generation.
+     *
+     * <p>The generation bump covers a task that is already running: cancelling its handle does not stop a
+     * body that has started, and that body must not repaint a marker after a newer lease was scheduled.</p>
+     */
+    private void cancelPartnerExpiryLocked() {
         ProtocolTaskHandle handle = partnerExpiryHandle;
         partnerExpiryHandle = null;
+        partnerExpiryGeneration.incrementAndGet();
         if (handle != null && !handle.isDone()) {
             handle.cancel("IA_PARTNER_LEASE_RENEWED");
         }
     }
 
     private void onPartnerLeaseExpired(long generation) {
-        if (generation != partnerExpiryGeneration || !runtimeAccepting) {
+        if (generation != partnerExpiryGeneration.get() || !runtimeAccepting) {
             return;
         }
         refreshPartner(currentPlayerId(), System.currentTimeMillis());
@@ -762,22 +819,40 @@ public final class IaModule implements TianshuManagedModule {
                 context.fail(envelope.envelopeId(), "SESSION_PROCESSING_EXTENSION_NOT_ALLOWED", "Dialogue session owner does not allow processing extension", null);
                 return;
             }
-            DialogueSession extended = sessionStore.extendProcessing(
+            Optional<DialogueSession> extended = sessionStore.extendProcessing(
                     session.sessionId(),
                     now,
                     owner.get().turnProcessingPolicy().extendDeadlineAt(session.createdAtMillis(), now, payload.requestedProcessingMillis())
             );
-            eventPublisher.publish(envelope, extended, DialogueSessionEventType.CONVERSATION_CLAIMED, null, "PROCESSING_EXTENDED", now);
+            if (extended.isEmpty()) {
+                failSessionChangedState(context, envelope);
+                return;
+            }
+            eventPublisher.publish(envelope, extended.get(), DialogueSessionEventType.CONVERSATION_CLAIMED, null, "PROCESSING_EXTENDED", now);
         } else if (payload.action() == DialogueSessionControlAction.INTERRUPT_ACK) {
-            DialogueSession interrupted = sessionStore.interrupting(session.sessionId(), now);
-            eventPublisher.publish(envelope, interrupted, DialogueSessionEventType.CONVERSATION_INTERRUPTED, null, "INTERRUPT_ACK", now);
+            Optional<DialogueSession> interrupted = sessionStore.interrupting(session.sessionId(), now);
+            if (interrupted.isEmpty()) {
+                failSessionChangedState(context, envelope);
+                return;
+            }
+            eventPublisher.publish(envelope, interrupted.get(), DialogueSessionEventType.CONVERSATION_INTERRUPTED, null, "INTERRUPT_ACK", now);
         } else {
             DialogueReleaseReason reason = payload.reason() == null ? DialogueReleaseReason.OWNER_COMPLETED : payload.reason();
-            DialogueSession released = sessionStore.release(session.sessionId(), reason, now);
-            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, reason, payload.action().name(), now);
-            eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, reason, payload.action().name(), now);
+            Optional<DialogueSession> released = sessionStore.release(session.sessionId(), reason, now);
+            if (released.isEmpty()) {
+                failSessionChangedState(context, envelope);
+                return;
+            }
+            eventPublisher.publish(envelope, released.get(), DialogueSessionEventType.CONVERSATION_RELEASED, reason, payload.action().name(), now);
+            eventPublisher.publish(envelope, released.get(), DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, reason, payload.action().name(), now);
         }
         context.complete(envelope.envelopeId());
+    }
+
+    /** The control was authorized but the session reached another state first; the caller gets a reason. */
+    private void failSessionChangedState(ProtocolContext context, TianshuEnvelope envelope) {
+        context.fail(envelope.envelopeId(), "SESSION_STATE_CHANGED",
+                "Dialogue session changed state before the control was applied", null);
     }
 
     private DialogueSession claimSession(DialogueArbitrationRequestPayload payload, DialogueParticipantDescriptor owner, long now) {
@@ -796,9 +871,11 @@ public final class IaModule implements TianshuManagedModule {
         if (previous.sessionId().equals(currentSession.sessionId())) {
             return;
         }
-        DialogueSession released = sessionStore.release(previous.sessionId(), DialogueReleaseReason.PREEMPTED, now);
-        eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.PREEMPTED, "TURN_SUPERSEDED", now);
-        eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.PREEMPTED, "TURN_SUPERSEDED", now);
+        sessionStore.release(previous.sessionId(), DialogueReleaseReason.PREEMPTED, now)
+                .ifPresent(released -> {
+                    eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_RELEASED, DialogueReleaseReason.PREEMPTED, "TURN_SUPERSEDED", now);
+                    eventPublisher.publish(envelope, released, DialogueSessionEventType.CONVERSATION_SESSION_FINISHED, DialogueReleaseReason.PREEMPTED, "TURN_SUPERSEDED", now);
+                });
     }
 
     private DialogueArbitrationResultPayload acceptedResult(DialogueArbitrationRequestPayload request, DialogueSession session, DialogueParticipantDescriptor owner, String reason) {

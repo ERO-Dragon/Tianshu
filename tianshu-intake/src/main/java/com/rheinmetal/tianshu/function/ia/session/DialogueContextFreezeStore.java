@@ -3,11 +3,23 @@ package com.rheinmetal.tianshu.function.ia.session;
 import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueContextFrame;
 
 import java.time.Duration;
+import java.util.Comparator;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * The interaction frame frozen when one speech turn started.
+ *
+ * <p>One entry per speech session, consumed by the arbitration that resolves that turn. Entries expire on
+ * their own retention and the store is capped, so a turn that never reaches arbitration — a failed
+ * recognition, an expired request, a round with no participant — cannot turn into unbounded memory.</p>
+ */
 public final class DialogueContextFreezeStore {
+    /** Upper bound of retained frames; a speech turn is consumed within seconds, so this is generous. */
+    private static final int MAX_CONTEXTS = 64;
+
     private final ConcurrentMap<Long, FrozenContext> contexts = new ConcurrentHashMap<>();
     private final long retentionMillis;
 
@@ -23,6 +35,9 @@ public final class DialogueContextFreezeStore {
             return;
         }
         contexts.put(sourceSessionId, new FrozenContext(frame, Math.max(0L, nowMillis), 0L));
+        if (contexts.size() > MAX_CONTEXTS) {
+            evictOldest();
+        }
     }
 
     public void markEnded(long sourceSessionId, long nowMillis) {
@@ -56,13 +71,28 @@ public final class DialogueContextFreezeStore {
         contexts.clear();
     }
 
+    private void evictOldest() {
+        while (contexts.size() > MAX_CONTEXTS) {
+            Optional<Long> oldest = contexts.entrySet().stream()
+                    .min(Comparator.comparingLong(entry -> entry.getValue().baseMillis()))
+                    .map(Map.Entry::getKey);
+            if (oldest.isEmpty() || contexts.remove(oldest.get()) == null) {
+                return;
+            }
+        }
+    }
+
     private record FrozenContext(DialogueContextFrame frame, long frozenAtMillis, long endedAtMillis) {
         FrozenContext endAt(long nowMillis) {
             return endedAtMillis > 0L ? this : new FrozenContext(frame, frozenAtMillis, nowMillis);
         }
 
+        long baseMillis() {
+            return endedAtMillis > 0L ? endedAtMillis : frozenAtMillis;
+        }
+
         boolean expiredAt(long nowMillis, long retentionMillis) {
-            long base = endedAtMillis > 0L ? endedAtMillis : frozenAtMillis;
+            long base = baseMillis();
             return base > 0L && nowMillis - base > retentionMillis;
         }
     }

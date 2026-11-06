@@ -33,7 +33,12 @@ public final class DialogueEventPublisher {
                 nowMillis
         );
         DialogueAccessDecision accessDecision = accessPolicy.authorizePublicEvent(payload);
-        if (accessDecision.allowed()) {
+        if (!accessDecision.allowed()) {
+            return;
+        }
+        if (parent == null) {
+            protocolPort.publishSessionEvent(payload);
+        } else {
             protocolPort.publishSessionEvent(parent, payload);
         }
     }

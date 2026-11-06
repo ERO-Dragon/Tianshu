@@ -43,9 +43,18 @@ public final class DialoguePartnerTracker {
         return Optional.ofNullable(holder);
     }
 
-    public synchronized String holderParticipantId(long nowMillis) {
+    /**
+     * Whether the participant that holds the lease right now is the given one.
+     *
+     * <p>Compared by both coordinates: two modules may use the same participant id, and showing the lease
+     * countdown on the wrong one would say the other module holds a turn it never won.</p>
+     */
+    public synchronized boolean holds(DialogueParticipantDescriptor participant, long nowMillis) {
         prune(nowMillis);
-        return holder == null ? "" : holder.participantId();
+        return holder != null
+                && participant != null
+                && holder.moduleId().equals(participant.moduleId())
+                && holder.participantId().equals(participant.participantId());
     }
 
     public synchronized long leaseUntilMillis(long nowMillis) {

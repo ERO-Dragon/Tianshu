@@ -72,6 +72,12 @@ class DialogueEventPublisherTest {
         }
 
         @Override
+        public TianshuEnvelope publishSessionEvent(DialogueSessionEventPayload payload) {
+            eventCount++;
+            return null;
+        }
+
+        @Override
         public TianshuEnvelope deliverToCapability(TianshuEnvelope parent, String capabilityId, DialogueDeliveryPayload payload) {
             return null;
         }

@@ -196,6 +196,11 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
         return publishTopic(parent, IaTopics.DIALOGUE_SESSION_EVENTS, PayloadType.of("DIALOGUE_SESSION_EVENT"), payload);
     }
 
+    @Override
+    public TianshuEnvelope publishSessionEvent(DialogueSessionEventPayload payload) {
+        return publishTopic(IaTopics.DIALOGUE_SESSION_EVENTS, PayloadType.of("DIALOGUE_SESSION_EVENT"), payload);
+    }
+
     /**
      * Broadcasts one user interrupt request, addressed to the participant the arbiter resolved.
      *

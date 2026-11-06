@@ -39,4 +39,15 @@ class DialogueContextFreezeStoreTest {
 
         assertTrue(store.consume(42L, 13_001L).isEmpty());
     }
+
+    @Test
+    void retainedFramesAreCappedSoAFailedTurnCannotGrowTheStoreForever() {
+        DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(30));
+        for (long sessionId = 1L; sessionId <= 100L; sessionId++) {
+            store.freeze(sessionId, DialogueContextFrame.empty("player"), 1_000L + sessionId);
+        }
+
+        assertTrue(store.consume(1L, 2_000L).isEmpty(), "the oldest frame is evicted once the cap is reached");
+        assertTrue(store.consume(100L, 2_000L).isPresent(), "the newest frame is still available");
+    }
 }

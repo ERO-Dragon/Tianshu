@@ -33,11 +33,16 @@ public final class DialogueParticipantRegistry {
         if (normalized.isBlank()) {
             return List.of();
         }
-        List<DialogueParticipantDescriptor> removed = participants.values().stream()
-                .filter(descriptor -> descriptor.moduleId().equals(normalized))
-                .toList();
-        participants.entrySet().removeIf(entry -> entry.getValue().moduleId().equals(normalized));
-        return removed;
+        // One pass, so the removed list and the registry cannot disagree about who was removed.
+        List<DialogueParticipantDescriptor> removed = new java.util.ArrayList<>();
+        participants.entrySet().removeIf(entry -> {
+            if (!entry.getValue().moduleId().equals(normalized)) {
+                return false;
+            }
+            removed.add(entry.getValue());
+            return true;
+        });
+        return List.copyOf(removed);
     }
 
     public void clear() {
