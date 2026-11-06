@@ -37,11 +37,6 @@ public final class AsrInputGateway implements AsrInputService {
     }
 
     @Override
-    public void commitVoiceInput() {
-        handle(AsrInputIntent.COMMIT);
-    }
-
-    @Override
     public void cancelVoiceInput() {
         handle(AsrInputIntent.CANCEL);
     }
@@ -49,7 +44,7 @@ public final class AsrInputGateway implements AsrInputService {
     private void handle(AsrInputIntent intent) {
         AsrController boundController = controller;
         if (boundController != null) {
-            boundController.handle(intent, 0L);
+            boundController.handle(intent);
         }
     }
 }

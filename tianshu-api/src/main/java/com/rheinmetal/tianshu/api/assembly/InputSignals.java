@@ -27,9 +27,6 @@ public final class InputSignals {
     /** The push-to-talk key came up. */
     public static final String PUSH_TO_TALK_UP = "push_to_talk.up";
 
-    /** The gesture was abandoned (screen opened, key cancelled). */
-    public static final String PUSH_TO_TALK_CANCEL = "push_to_talk.cancel";
-
     /** The player submitted a line of text; the text travels with the signal. */
     public static final String TEXT_SUBMITTED = "text.submitted";
 

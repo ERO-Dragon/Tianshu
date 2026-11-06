@@ -11,6 +11,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+/**
+ * The microphone boundary: one capture generation at a time, and the processed audio of that generation.
+ *
+ * <p><b>Sealed:</b> the runtime only starts push-to-talk capture. The streaming entry points
+ * ({@link #startStreamCapture}, {@link #setSpeechSegmenter}, {@link #resetStreamSegmentBoundary}) exist for the
+ * continuous-input extension point; their only current callers are tests, and no setting can reach them.</p>
+ */
 public final class AudioCaptureService {
     private final IAudioBridge audioBridge;
     private final IGameEnvironment env;
@@ -51,7 +58,13 @@ public final class AudioCaptureService {
         this.frameProcessor = frameProcessor == null ? AudioFrameProcessor.identity() : frameProcessor;
     }
 
-    public void startPttCapture(long sessionId) {
+    /**
+     * Starts one push-to-talk capture.
+     *
+     * <p>The turn id stays in the controller: capture only needs a generation counter to drop late chunks, so it
+     * does not take an id it would never use.</p>
+     */
+    public void startPttCapture() {
         stopStreamCapture();
         speechSegmenter.reset();
         frameProcessor.reset();
@@ -123,15 +136,15 @@ public final class AudioCaptureService {
     public void stopAll() {
         captureGeneration.incrementAndGet();
         activeStreamSessionId = 0L;
-        attemptCleanup("tianshu.asr.audio.ptt_stop_failed", audioBridge::stopRecording);
-        attemptCleanup("tianshu.asr.audio.stream_stop_failed", audioBridge::stopStreamRecording);
+        attemptCleanup("asr.audio.ptt_stop_failed", audioBridge::stopRecording);
+        attemptCleanup("asr.audio.stream_stop_failed", audioBridge::stopStreamRecording);
         speechSegmenter.reset();
         pttBuffer = null;
     }
 
     public void releaseHardware() {
         stopAll();
-        attemptCleanup("tianshu.asr.audio.hardware_release_failed", audioBridge::releaseCaptureHardware);
+        attemptCleanup("asr.audio.hardware_release_failed", audioBridge::releaseCaptureHardware);
     }
 
     private void attemptCleanup(String diagnosticCode, Runnable cleanup) {

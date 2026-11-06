@@ -60,7 +60,7 @@ class DefaultIrNamedObjectEnhancerTest {
 
     private IrPreparedInput input(String text) {
         IrInputText source = new IrInputText(text, text, 1, 1L, "test", 100L);
-        return new IrPreparedInput(source, text, text, List.of(), List.of());
+        return new IrPreparedInput(source, text, text);
     }
 
     private Map<String, List<String>> namedObjectDictionary() {

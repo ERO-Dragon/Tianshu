@@ -101,7 +101,7 @@ IR 不再包含独立 routing policy，也不包含 IA request mapper。发布�
 客户端索引由 `TianshuClientRuntime` 在客户端启动阶段异步初始化：
 
 - 单独使用 `Tianshu-IR-Index` worker；
-- 缓存位于 `config/Tianshu/cache`；
+- 缓存位于 `config/Tianshu/module/asr/index`；
 - 世界退出和重新进入不重建索引；
 - resource reload 通过同一 worker 串行重建；
 - 客户端关闭时释放 worker；
@@ -119,6 +119,7 @@ IR 从共享 `TriggerRegistry` 读取各模块注册的词组。
 moduleId
 spokenWord
 registeredWord
+kind
 ```
 
 一个模块命中多个词就是多条。匹配质量（命中词数 / 注册词数）只用于给多条命中排序——命中更多的模块排在前面——不进入 payload，也不替代 IA 的 claim 来源档或 participant priority。
@@ -126,7 +127,7 @@ registeredWord
 语义边界：
 
 - 触发词命中是 IA 可用的仲裁证据之一；
-- extra word 命中同样会出现在 `moduleMatches` 里，但只有当它与 claim 条件声明的词相同时才形成 claim；
+- `kind` 区分 wake（能唤醒模块的词）与 extra（只辅助识别的词）；extra word 命中同样会出现在 `moduleMatches` 里，但 IA 的唤醒词条件只接受 `kind=wake`，因此 extra word 不会形成 claim；
 - IR 不根据 participant priority 排序或选择目标；priority 只由 IA 在有效 claim 之间使用。
 
 ## 7. IR_RESULT 契约

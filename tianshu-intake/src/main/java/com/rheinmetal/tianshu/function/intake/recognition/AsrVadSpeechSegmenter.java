@@ -4,7 +4,12 @@ import com.rheinmetal.tianshu.function.intake.audio.AsrSpeechActivityDetector;
 import com.rheinmetal.tianshu.function.intake.audio.AsrSpeechActivityListener;
 import com.rheinmetal.tianshu.function.intake.audio.AsrSpeechActivitySnapshot;
 
-/** Reuses the ASR activity detector to produce one-shot segment boundaries. */
+/**
+ * Reuses the ASR activity detector to produce one-shot segment boundaries.
+ *
+ * <p><b>Sealed:</b> only the continuous-input extension point creates this segmenter; push-to-talk never does.
+ * Kept with {@link AsrSpeechSegmenter} so re-enabling continuous input does not have to rebuild the VAD bridge.</p>
+ */
 public final class AsrVadSpeechSegmenter implements AsrSpeechSegmenter {
     private final AsrSpeechActivityDetector detector;
     private boolean speechStarted;

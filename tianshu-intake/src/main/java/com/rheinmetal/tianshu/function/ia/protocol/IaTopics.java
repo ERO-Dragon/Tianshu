@@ -10,6 +10,14 @@ public final class IaTopics {
 
     public static final String DIALOGUE_SESSION_EVENTS = "DIALOGUE.SESSION_EVENTS";
 
+    /**
+     * One user interrupt request, already resolved to the current arbitration target.
+     *
+     * <p>Kept beside the session events rather than folded into them: the request changes no session state,
+     * and it may name a target that has no session at all (the default owner, a pre-winner).</p>
+     */
+    public static final String DIALOGUE_INTERRUPT_REQUESTED = "DIALOGUE.INTERRUPT_REQUESTED";
+
     private IaTopics() {
     }
 }

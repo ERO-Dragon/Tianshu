@@ -22,6 +22,17 @@ import java.util.stream.Collectors;
  * the player's settings; with no default owner the turn is rejected instead of being guessed.</p>
  */
 public final class DialogueArbitrationPolicy {
+    /** The winning reason a hard claim produced; also the value carried by {@code DialogueArbitrationDecision.reason()}. */
+    public static final String REASON_HARD_CLAIM = "HARD_CLAIM";
+    /** The winning reason a still-live lease produced. */
+    public static final String REASON_LEASE_CONTINUED = "LEASE_CONTINUED";
+    /** The winning reason the configured out-of-box/picked default owner produced. */
+    public static final String REASON_DEFAULT_OWNER = "DEFAULT_OWNER";
+    /** No participant was registered at all. */
+    public static final String REASON_NO_PARTICIPANT = "NO_PARTICIPANT";
+    /** Participants existed, but none claimed the turn and no default owner resolved. */
+    public static final String REASON_NO_OWNER = "NO_OWNER";
+
     public DialogueArbitrationDecision decide(
             List<DialogueParticipantDescriptor> participants,
             List<DialogueClaim> claims,
@@ -41,7 +52,7 @@ public final class DialogueArbitrationPolicy {
             Optional<DialogueParticipantDescriptor> defaultOwner
     ) {
         if (participants == null || participants.isEmpty()) {
-            return DialogueArbitrationDecision.rejected("NO_PARTICIPANT");
+            return DialogueArbitrationDecision.rejected(REASON_NO_PARTICIPANT);
         }
         Map<String, DialogueParticipantDescriptor> participantById = participants.stream()
                 .filter(Objects::nonNull)
@@ -51,15 +62,15 @@ public final class DialogueArbitrationPolicy {
                 .max(claimComparator());
         if (bestClaim.isPresent()) {
             DialogueClaim claim = bestClaim.get();
-            return DialogueArbitrationDecision.accepted(participantById.get(claim.participantId()), claim, "HARD_CLAIM");
+            return DialogueArbitrationDecision.accepted(participantById.get(claim.participantId()), claim, REASON_HARD_CLAIM);
         }
         if (leaseHolderId != null && !leaseHolderId.isBlank() && participantById.containsKey(leaseHolderId)) {
-            return DialogueArbitrationDecision.accepted(participantById.get(leaseHolderId), null, "LEASE_CONTINUED");
+            return DialogueArbitrationDecision.accepted(participantById.get(leaseHolderId), null, REASON_LEASE_CONTINUED);
         }
         return defaultOwner
                 .filter(owner -> owner != null && participantById.containsKey(owner.participantId()))
-                .map(owner -> DialogueArbitrationDecision.accepted(participantById.get(owner.participantId()), null, "DEFAULT_OWNER"))
-                .orElseGet(() -> DialogueArbitrationDecision.rejected("NO_OWNER"));
+                .map(owner -> DialogueArbitrationDecision.accepted(participantById.get(owner.participantId()), null, REASON_DEFAULT_OWNER))
+                .orElseGet(() -> DialogueArbitrationDecision.rejected(REASON_NO_OWNER));
     }
 
     private Comparator<DialogueClaim> claimComparator() {

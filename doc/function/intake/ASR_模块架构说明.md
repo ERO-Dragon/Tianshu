@@ -70,7 +70,6 @@ ASR 模块当前主要由以下部分组成：
 
 它不再承担：
 
-- hotword 路径选择
 - 模型信息解析
 - 引擎初始化细节
 - 模型类型适配的具体决策
@@ -115,7 +114,6 @@ ASR 的运行时能力定义在模块本地。
 
 - 判断模型路径是否存在
 - 解析模型目录对应的模型信息
-- 选择 hotwords 文件
 - 初始化 `AsrEngine`
 - 标记 capability ready / failed
 - 处理模型缺失与引擎异常
@@ -132,11 +130,13 @@ ASR 的运行时能力定义在模块本地。
 
 - 开始输入
 - 结束输入
-- 提交输入
-- 取消输入
-- 响应运行时中断
+- 停止手势（短按 ≤250ms）：丢弃本轮录音并请求中断，不进入识别
+- 取消输入（模块释放麦克风时由宿主调用，不是平台手势）
+- 响应运行时中断（经协议中心直接调用，不走输入意图）
 
 当前控制器固定使用 PTT（按键说话）：按下语音开关开始采集，松开后提交一次完整识别；未就绪时拒绝输入并发布等待状态。原连续识别入口已封存，不再由客户端运行时或设置页暴露。
+
+短按是停止手势：控制器丢弃本次录音、关闭聆听标记，不提交识别；随后模块通过 IA 的 `DIALOGUE.INTERRUPT` capability 请求中断广播，由 IA 用与伙伴标记相同的当前目标计算重新裁定目标。阈值固定为模块常量，不进入设置；短按不产生 `ASR_TEXT` 或 `IR_RESULT`。
 
 ### 3.6 AsrRecognitionService
 
@@ -176,14 +176,14 @@ ASR 不再做唤醒词截断或归属判断。识别层只输出完整文本，w
 
 预览生命周期遵守：
 
-- prepare 与识别运行在单并发 `ASR_STREAM` lane。
+- prepare 与识别运行在单并发 `AUDIO_INPUT_STREAM` lane。
 - 约 5 秒录音窗口由 scheduled timer 计时；timer 只回投 finish task，不执行音频或推理。
-- 录音窗口期间不占用 `ASR_STREAM` lane。
+- 录音窗口期间不占用 `AUDIO_INPUT_STREAM` lane。
 - `stopPreview()` 只请求取消并投递后台 finish，不在 GUI 或 Minecraft 调用线程直接停止音频桥。
 - stop、timer、executor rejection 和模块关闭共享一次性 finish gate，临时预览引擎只关闭一次。
 - 普通采集、识别和 native linkage failure 会保留 cause；严重 JVM error 不会被 `catch (Throwable)` 降级。
-- common 只向 `PreviewCallback.onError` 提交稳定资源键；NeoForge ASR 页面负责按当前语言本地化，底层 cause 只进入技术日志。
-- 使用当前共享引擎时预览不拥有引擎；使用指定模型时，临时引擎由 preview operation 创建并在 session 结束时关闭。
+- common 只向 `PreviewCallback.onError` 提交稳定资源键；设置页负责按当前语言本地化，底层 cause 只进入技术日志。
+- 预览始终为所选模型创建临时引擎：由 preview operation 创建并在 session 结束时关闭，共享识别引擎不参与试听。
 
 ### 3.10 下载与运行时失败边界
 
@@ -233,10 +233,10 @@ ASR 运行时只把普通 `RuntimeException` 和 native `LinkageError` 当作可
 ```text
 GUI preview intent
   -> AsrModelService
-  -> AsrPreviewCoordinator start task (ASR_STREAM)
+  -> AsrPreviewCoordinator start task (AUDIO_INPUT_STREAM)
   -> startRecording
-  -> scheduled 5s window (ASR_STREAM free)
-  -> finish task (ASR_STREAM)
+  -> scheduled 5s window (AUDIO_INPUT_STREAM free)
+  -> finish task (AUDIO_INPUT_STREAM)
   -> stopRecording -> recognizeComplete -> callback
 ```
 
@@ -244,11 +244,11 @@ GUI preview intent
 
 ## 5. 协议输出
 
-ASR 的结构化结果会发布到协议中心的 final text 主题，供 IR / LLM / UI 等后续模块消费。
+ASR 的识别文本会发布到 `INPUT.ASR_FINAL_TEXT`；文本修复后的结构化分析由同模块的 IR 发布到 `IR.RESULT`，供 IA 等后续模块消费。
 
 ASR 不是协议中心本身，它只是协议中心中的一个上游生产者。
 
-当前稳定协议还包括 speech activity、`module.asr` 模块状态和 `PRESENCE.ACTIVITY` 产品活动。PTT 按下开始采集时发布 `speaking=true` 与 `LISTENING`，松开、取消或停止时发布 `speaking=false` 与结束；思衡据此在开口时冻结情境。这只表示按键边界，不代表启用 VAD 自动分段。ASR 不提供公共请求 capability；`AsrInputService` 与 `AsrModelService` 是同一宿主内的窄端口，不应被外部模块当作跨模块协议。完整 topic、payload、字段和订阅示例见 [ASR 协议中心使用文档](ASR_协议中心使用文档.md)。
+当前稳定协议还包括 speech activity、`module.asr` 模块状态和 `PRESENCE.ACTIVITY` 产品活动。PTT 按下开始采集时发布 `speaking=true` 与 `LISTENING`；本轮产生文本时，`LISTENING` 由思衡在仲裁给出结果时结束，只有没录到音频、识别失败、取消、运行时打断和模块停止才由 ASR 发布 `speaking=false` 与结束。思衡据此在开口时冻结情境。这只表示按键边界，不代表启用 VAD 自动分段。ASR 不提供公共请求 capability；`AsrInputService` 与 `AsrModelService` 是同一宿主内的窄端口，不应被外部模块当作跨模块协议。完整 topic、payload、字段和订阅示例见 [ASR 协议中心使用文档](ASR_协议中心使用文档.md)。
 
 ## 6. 运行时能力语义
 
@@ -304,6 +304,6 @@ ASR 模块现在已经从“旧控制流残留 + 散乱耦合”进入到“宿�
 
 ## 10. 配置边界
 
-ASR common 只依赖只读 `AsrConfiguration`，读取启用状态、麦克风、音频预处理开关、模型标识和 ASR 模块根。PTT 是固定输入方式，不再通过配置保存触发模式。配置值仍由 NeoForge 的单一 `config/tianshu-client.toml` 提供；ASR 不创建配置文件，也不保存 GUI 状态。模型标识解析和模型文件检查留在 ASR/model 域，其他模块不能通过 ASR 配置端口读取或修改设置。
+ASR common 只依赖只读 `AsrConfiguration`，读取启用状态、麦克风、音频预处理开关、模型标识和 ASR 模块根。PTT 是固定输入方式，不通过配置保存触发模式。功能设置由模块自己的 `ModuleConfigStore` 提供，落在 `config/Tianshu/module/module.asr.properties`；模型目录与 IR 索引缓存位于同级的 `config/Tianshu/module/asr/`（`model/`、`index/`）。ASR 不读写宿主 TOML，也不保存 GUI 状态。模型标识解析和模型文件检查留在 ASR/model 域，其他模块不能通过 ASR 配置端口读取或修改设置。
 
 启用 ASR 时，设置页必须同时存在有效且已完整下载的模型；未选择模型或模型未安装时保存失败并提示先下载、选择模型。禁用 ASR 时可以保留空模型选择。

@@ -14,7 +14,7 @@ ASR 当前通过协议中心公开四个事件 topic，不提供公共请求 cap
 | ASR 发布 | `PresenceTopics.ACTIVITY` | `PRESENCE_ACTIVITY` | `PresenceActivityPayload` | 模型加载、识别任务和真实说话活动的产品状态。 |
 | ASR 订阅 | `ProtocolTopics.SYSTEM_RUNTIME_INTERRUPT` | `CUSTOM` | `RuntimeInterruptPayload` | 运行时会话中断；不是普通录音控制入口。 |
 
-topic 的信封类型均为 `PacketType.EVENT`。ASR 不通过公共 topic 接收 `BEGIN / END / COMMIT / CANCEL`，也没有可供外部模块发送 `REQUEST` 的 ASR capability。
+topic 的信封类型均为 `PacketType.EVENT`。ASR 不通过公共 topic 接收输入控制（开始 / 结束 / 取消），也没有可供外部模块发送 `REQUEST` 的 ASR capability。
 
 调用方应先作为天枢托管模块完成装配，并在模块装配阶段使用 `TianshuModuleAssemblyContext.moduleRuntime()` 提供的 `ModuleRuntimeAccess` 创建自己的 `AbstractProtocolAdapter`。不要从 `TianshuCoreManager` 获取完整协议运行时，也不要长期缓存其他模块的 adapter；订阅与清理应跟随调用方自己的模块生命周期。
 
@@ -94,7 +94,7 @@ public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
 | `sessionId` | `long` | 对应的输入 session。 |
 | `occurredAtMillis` | `long` | 状态变化时间；传入非正值时 payload 会使用当前时间。 |
 
-该事件在 PTT 链路中随按键边界发布：按下开始采集时 `speaking=true`，松开、取消或停止时 `speaking=false`；它用于让思衡在开口时冻结世界情境，不代表最终文本已经产生，也不代表启用 VAD 自动分段。需要识别结果时应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
+该事件在 PTT 链路中随按键边界发布：按下开始采集时 `speaking=true`。本轮产生文本时，结束信号由思衡在仲裁给出结果时发布；只有没录到音频、识别失败、取消、运行时打断和模块停止才由 ASR 发布 `speaking=false`。它用于让思衡在开口时冻结世界情境，不代表最终文本已经产生，也不代表启用 VAD 自动分段。需要识别结果时应订阅 `INPUT_ASR_FINAL_TEXT`。topic 使用 `LATEST_ONLY` delivery policy；慢订阅者可能只看到最新状态，不应依靠它统计每一次音频边沿。
 
 ## 5. 订阅 ASR 模块状态
 
@@ -156,7 +156,7 @@ ASR 使用 `sessionId` 区分当前输入代次和外部中断：收到不同于
 - 下载 pause 使用条件等待；resume/cancel 主动唤醒，不进行固定周期轮询。
 - ASR 停止时可能不再发布当前 session 的最终文本；调用方不能假设每个 `speaking=true` 都必然对应 final text。
 - 模块 destroy 后公开 topic 不再产生新 ASR 事件，订阅者应清理自己的 pending 状态。
-- 外部模块不得依赖 `ASR_STREAM` 队列容量、内部 recognizer 类型或模型目录结构。
+- 外部模块不得依赖 `AUDIO_INPUT_STREAM` 队列容量、内部 recognizer 类型或模型目录结构。
 
 ## 9. 最小接入检查表
 

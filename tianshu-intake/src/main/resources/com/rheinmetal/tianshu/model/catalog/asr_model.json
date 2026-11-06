@@ -8,9 +8,6 @@
         "lang":  [
                      "ru"
                  ],
-        "tags":  [
-                     "hotwords"
-                 ],
         "fileRoles":  {
                           "encoder":  "encoder.int8.onnx",
                           "decoder":  "decoder.onnx",
@@ -34,8 +31,7 @@
                      "zh"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder.int8.onnx",
@@ -59,8 +55,7 @@
                      "zh"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder.int8.onnx",
@@ -85,8 +80,7 @@
                      "fr"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder.onnx",
@@ -110,8 +104,7 @@
                      "en"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder.onnx",
@@ -212,8 +205,7 @@
                      "de"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder.onnx",
@@ -237,8 +229,7 @@
                      "ru"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder.int8.onnx",
@@ -263,8 +254,7 @@
                      "ru"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder.onnx",
@@ -296,8 +286,7 @@
                      "zh"
                  ],
         "tags":  [
-                     "streaming",
-                     "hotwords"
+                     "streaming"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder-epoch-75-avg-11-chunk-16-left-128.int8.onnx",
@@ -321,9 +310,6 @@
         "lang":  [
                      "ru"
                  ],
-        "tags":  [
-                     "hotwords"
-                 ],
         "fileRoles":  {
                           "encoder":  "encoder.int8.onnx",
                           "decoder":  "decoder.onnx",
@@ -346,9 +332,6 @@
                      "en",
                      "ja"
                  ],
-        "tags":  [
-                     "hotwords"
-                 ],
         "fileRoles":  {
                           "encoder":  "encoder.onnx",
                           "decoder":  "decoder.onnx",
@@ -370,9 +353,6 @@
         "lang":  [
                      "zh",
                      "en"
-                 ],
-        "tags":  [
-                     "hotwords"
                  ],
         "fileRoles":  {
                           "encoder":  "encoder-epoch-99-avg-1.int8.onnx",

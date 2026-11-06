@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.ia;
 
-import com.rheinmetal.tianshu.function.ia.IaProtocolAdapter;
-
 import com.rheinmetal.tianshu.function.ia.protocol.IaCapabilities;
 
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
@@ -13,6 +11,8 @@ import com.rheinmetal.tianshu.function.ia.gateway.DialogueProtocolPort;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestedPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionControlPayload;
@@ -48,8 +48,8 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
     /**
      * Registers the topics this module produces.
      *
-     * <p>Topic ownership follows payload ownership: the producer declares its own route. The kernel used to
-     * register these for the four original modules, so deleting a module still left its vocabulary behind.</p>
+     * <p>Topic ownership follows payload ownership: the producer declares its own route, so deleting the
+     * module deletes its vocabulary with it instead of leaving registered topic names behind.</p>
      */
     public void registerOwnedTopics(com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess protocol) {
         if (protocol == null) {
@@ -58,6 +58,9 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
         protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
                 IaTopics.DIALOGUE_SESSION_EVENTS, PayloadType.of("DIALOGUE_SESSION_EVENT"),
                 com.rheinmetal.tianshu.protocol.DeliveryPolicy.WAIT_IN_QUEUE, 40));
+        protocol.registerTopic(new com.rheinmetal.tianshu.protocol.registry.TopicDescriptor(
+                IaTopics.DIALOGUE_INTERRUPT_REQUESTED, PayloadType.of("DIALOGUE_INTERRUPT_REQUESTED"),
+                com.rheinmetal.tianshu.protocol.DeliveryPolicy.LATEST_ONLY, 20));
     }
 
     public IaProtocolAdapter(ModuleRuntimeAccess runtime) {
@@ -120,6 +123,20 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
         );
     }
 
+    public void registerInterruptCapability(EnvelopeHandler handler) {
+        registerCapability(
+                IaCapabilities.DIALOGUE_INTERRUPT,
+                PayloadType.of("DIALOGUE_INTERRUPT_REQUEST"),
+                DialogueInterruptRequestPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
     public void subscribeAsrSpeechActivity(EnvelopeHandler handler) {
         subscribeTopic(
                 IntakeTopics.INPUT_ASR_SPEECH_ACTIVITY,
@@ -177,6 +194,17 @@ public final class IaProtocolAdapter extends AbstractProtocolAdapter implements 
     @Override
     public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, DialogueSessionEventPayload payload) {
         return publishTopic(parent, IaTopics.DIALOGUE_SESSION_EVENTS, PayloadType.of("DIALOGUE_SESSION_EVENT"), payload);
+    }
+
+    /**
+     * Broadcasts one user interrupt request, addressed to the participant the arbiter resolved.
+     *
+     * <p>This is not a session event: the request changes no session state and may target a participant that
+     * has no session at all. Receivers act on it only when {@link DialogueInterruptRequestedPayload#addresses}
+     * names them.</p>
+     */
+    public TianshuEnvelope publishInterruptRequested(DialogueInterruptRequestedPayload payload) {
+        return publishTopic(IaTopics.DIALOGUE_INTERRUPT_REQUESTED, PayloadType.of("DIALOGUE_INTERRUPT_REQUESTED"), payload);
     }
 
     /**

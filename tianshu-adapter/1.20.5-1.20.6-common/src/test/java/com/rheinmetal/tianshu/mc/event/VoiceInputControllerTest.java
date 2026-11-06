@@ -106,8 +106,7 @@ final class VoiceInputControllerTest {
     private static void subscribeAll(List<String> sink) {
         for (String channel : List.of(
                 InputSignals.PUSH_TO_TALK_DOWN,
-                InputSignals.PUSH_TO_TALK_UP,
-                InputSignals.PUSH_TO_TALK_CANCEL)) {
+                InputSignals.PUSH_TO_TALK_UP)) {
             InputSignals.subscribe(channel, text -> sink.add(channel));
         }
     }

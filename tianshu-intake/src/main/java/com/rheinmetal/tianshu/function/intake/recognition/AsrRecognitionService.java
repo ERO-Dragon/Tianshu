@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.intake.engine.AsrEngine;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 
 import java.io.ByteArrayOutputStream;
 import java.util.concurrent.BlockingQueue;
@@ -16,6 +17,14 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.Map;
 
+/**
+ * Turns processed audio into text, on the ASR lane.
+ *
+ * <p><b>Sealed:</b> the runtime only issues complete recognitions after push-to-talk. The streaming entry
+ * points ({@code startStreaming} / {@code acceptAudioChunk} / {@code forceFlush} / {@code stopStreaming})
+ * belong to the continuous-input extension point; their only current callers are tests, and no client input
+ * or setting can reach them.</p>
+ */
 public final class AsrRecognitionService {
     private final IGameEnvironment env;
     private final Supplier<AsrEngine> engineSupplier;
@@ -50,6 +59,12 @@ public final class AsrRecognitionService {
                 onComplete.run();
             }
         });
+        if (completeTask.state() == ProtocolTaskState.REJECTED) {
+            // No lane slot means the turn never runs; the caller still has to close the turn it opened.
+            env.warn("asr.recognition.complete.rejected");
+            completeTask = null;
+            onComplete.run();
+        }
     }
 
     public boolean startStreaming(long sessionId, Consumer<AsrRecognitionResult> onResult) {

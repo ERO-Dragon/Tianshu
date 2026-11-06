@@ -189,7 +189,9 @@ TTS 是输出能力，不是仲裁方。
 ```text
 "DIALOGUE.ARBITRATE"
 "DIALOGUE.PARTICIPANT_REGISTER"
+"DIALOGUE.PARTICIPANT_UNREGISTER"
 "DIALOGUE.SESSION_CONTROL"
+"DIALOGUE.INTERRUPT"
 ```
 
 语义：
@@ -198,7 +200,9 @@ TTS 是输出能力，不是仲裁方。
 |---|---|
 | `DIALOGUE_ARBITRATE` | 受信模块显式请求仲裁机关对一次对话输入进行 owner 仲裁；标准 IR 链路不使用该 capability。 |
 | `DIALOGUE_PARTICIPANT_REGISTER` | 模块注册自己为可参与对话的候选方。 |
+| `DIALOGUE_PARTICIPANT_UNREGISTER` | 参与方或整个模块退出时撤销注册。 |
 | `DIALOGUE_SESSION_CONTROL` | 当前 owner 对会话进行处理期限延长、释放、打断确认等控制。 |
+| `DIALOGUE_INTERRUPT` | 受信语音输入端口：只接受 `module.asr`，请求 IA 重新计算当前目标并广播中断请求；不改会话状态、不替接收方 cancel。 |
 
 标准语音链路由 IA 订阅 `IntakeTopics.IR_RESULT` 接收 `IrResultPayload`。IR 发布后即完成职责；IA 负责创建/更新 session、选择 owner、定向 delivery，并发布不含正文的 session 事件。
 
@@ -206,6 +210,8 @@ TTS 是输出能力，不是仲裁方。
 
 - `COMMAND` 用于无需同步结论的显式仲裁调用。
 - `REQUEST` 用于确实需要同步获知仲裁结论的诊断、测试或受信模块查询场景。调用方必须为原请求 `envelopeId` 注册 `DIALOGUE_ARBITRATION_RESULT` 响应处理器，并在最终响应、过期、取消或模块停止时清理。
+
+`DIALOGUE_INTERRUPT` 是另一个受信端口，只接受 `module.asr` 的 `COMMAND`，不需要响应，也不产生会话副作用：IA 收到后重新计算当前仲裁目标并广播请求（见 §5.3）。拒绝其他来源，是为了让"用户按下停止"只能由语音输入链路产生，而不是任意模块伪造。
 
 仲裁机关的对外协议不应追求“先能跑”的临时收敛，而应从一开始建立稳定边界：仲裁、参与方注册、会话控制、状态事件、归属校验都属于同一套体系。即使某些能力在代码实现中分阶段完成，协议模型也应按成熟形态设计，避免后续反复破坏 payload、capability 和 session 语义。
 
@@ -217,18 +223,20 @@ TTS 是输出能力，不是仲裁方。
 PayloadType.of("DIALOGUE_ARBITRATION_REQUEST")
 PayloadType.of("DIALOGUE_ARBITRATION_RESULT")
 PayloadType.of("DIALOGUE_PARTICIPANT_REGISTER")
+PayloadType.of("DIALOGUE_PARTICIPANT_UNREGISTER")
 PayloadType.of("DIALOGUE_SESSION_CONTROL")
 PayloadType.of("DIALOGUE_SESSION_EVENT")
+PayloadType.of("DIALOGUE_INTERRUPT_REQUEST")
+PayloadType.of("DIALOGUE_INTERRUPT_REQUESTED")
 ```
 
 ### 5.3 topic
 
-仲裁机关可以有自己的 topic，但只用于状态观测。
-
-建议新增：
+仲裁机关可以有自己的 topic：会话事件用于状态观测，中断请求用于把用户的停止意图广播给当前目标。
 
 ```text
 IaTopics.DIALOGUE_SESSION_EVENTS
+IaTopics.DIALOGUE_INTERRUPT_REQUESTED
 ```
 
 `DIALOGUE_SESSION_EVENTS` 只发布会话状态事件，不发布对话正文。伙伴标记不走 IA 的 topic：那条广播是映迹自己的 `PRESENCE.PARTNER`，IA 只是它的写入方（见 §5.4），载荷也由映迹定义。
@@ -243,6 +251,8 @@ IaTopics.DIALOGUE_SESSION_EVENTS
 - `conversation.session_finished`
 - `conversation.rejected`
 - `conversation.expired`
+
+`DIALOGUE_INTERRUPT_REQUESTED` 只广播中断请求：不改会话状态，也不代替接收方 cancel。载荷 `DialogueInterruptRequestedPayload` 的字段是 `playerId` / `targetModuleId` / `targetParticipantId` / `occurredAtMillis`，接收方用 `addresses(moduleId, participantId)` 判断是否点名自己。IA 收到 `DIALOGUE.INTERRUPT` 后，用与伙伴标记相同的当前目标计算（上下文 claim > 未过期租期 > 默认承接者）重新裁定目标：目标存在才广播，不存在就不广播；请求与是否存在活跃 session 无关，默认承接者同样可以被点名。topic 使用 `LATEST_ONLY`，重复请求只保留最新一条。
 
 写 `PRESENCE.PARTNER` 时只在显示状态变化时写：预中标人变化、中标（含续租）、租期到期回默认。没有固定刷新周期，没有事件就没有流量。
 
@@ -324,7 +334,7 @@ IrResultPayload(
 )
 ```
 
-`objectMatches` 是 `List<IrObjectMatch>`（`spokenWord` / `registryId` / `registryKind` / `languageKey`），`moduleMatches` 是 `List<IrModuleMatch>`（`moduleId` / `spokenWord` / `registeredWord`）。IA 的 `WAKE_WORD` claim 比较 `moduleMatches.spokenWord`；`MENTIONED_ENTITY` claim 只取 `objectMatches` 里 `entity()` 为真的 `registryId`，不按 id 形状猜类别。IR 的匹配排序不替代 IA 的 claim 来源档或 participant priority。
+`objectMatches` 是 `List<IrObjectMatch>`（`spokenWord` / `registryId` / `registryKind` / `languageKey`），`moduleMatches` 是 `List<IrModuleMatch>`（`moduleId` / `spokenWord` / `registeredWord` / `kind`）。IA 的 `WAKE_WORD` claim 只比较 `kind=wake` 的 `moduleMatches.spokenWord`（`extra` 只辅助识别，不产生 claim）；`MENTIONED_ENTITY` claim 只取 `objectMatches` 里 `entity()` 为真的 `registryId`，不按 id 形状猜类别。IR 的匹配排序不替代 IA 的 claim 来源档或 participant priority。
 
 受信 `DIALOGUE_ARBITRATE` capability 输入：
 
@@ -350,7 +360,7 @@ DialogueArbitrationRequestPayload(
 |---|---|
 | `requestId` | 本次仲裁请求 ID。 |
 | `sourceModuleId` | 显式请求来源模块。 |
-| `playerId` | 玩家标识。 |
+| `playerId` | 玩家标识。IR 链路取映迹摘要里的游戏账号 id；摘要尚未到达时用 `local` 作为本机单玩家作用域兜底。 |
 | `turnId` | 上游 turn 编号。 |
 | `sourceSessionId` | 上游 ASR/输入会话 ID，用于关联“开始说话时冻结的上下文摘要”。 |
 | `repairedText` | IR 修复后的自然语言文本，例如同音错词修正；不携带物品资源 ID，仅允许进入仲裁机关和候选 owner 判断，不做公共广播。 |
@@ -437,7 +447,7 @@ voice trigger group：模块启动或配置变化时注册，说明该 moduleId 
 - 参与方 ID
 - 显示名称
 - 兼容字段中的 wake word、实体类型、物品 ID
-- `triggerGroup` 中的 wakeWords / extraWords。wakeWords 可与 claim profile 的 `WAKE_WORD` 条件保持一致；extraWords 只用于 ASR 热词和 IR 辅助修复，不进入 IA 仲裁。
+- `triggerGroup` 中的 wakeWords / extraWords。wakeWords 可与 claim profile 的 `WAKE_WORD` 条件保持一致；extraWords 只用于 IR 的辅助修复与匹配，不进入 IA 仲裁。
 - 基础优先级
 - route capability
 - 当前轮处理期限策略
@@ -479,7 +489,7 @@ claim 的来源档由**实际命中的条件**决定，不由规则声明：`WAK
 
 claim profile 是 participant 对“什么情况下希望承接输入”的主观声明，`ANY` 相当于条件 OR，`ALL` 相当于条件 AND。IR 和 Presence 提供命中词、物品、实体、交互状态等客观输入，IA 只负责用这些客观输入计算 participant 声明的谓词，不替模块推断业务意图。
 
-IA 会把 participant 中的 `WAKE_WORD` claim 条件与 `triggerGroup.wakeWords` 汇总为共享 wakeWords，并把 `triggerGroup.extraWords` 作为共享 extraWords 同步到语音资源层。同步结果按 `moduleId` 覆盖旧组，因此当前约定一个模块只维护一组 wake/extra 热词。`extraWords` 可以提升 ASR/IR 对专有名词的识别和修复，但不会让该模块在 IA 中产生 claim。
+IA 会把 participant 中的 `WAKE_WORD` claim 条件与 `triggerGroup.wakeWords` 汇总为共享 wakeWords，并把 `triggerGroup.extraWords` 作为共享 extraWords 同步到语音资源层。同步结果按 `moduleId` 覆盖旧组，因此当前约定一个模块只维护一组 wake/extra 热词。`extraWords` 可以提升 IR 对专有名词的修复与匹配，但不会让该模块在 IA 中产生 claim。
 
 原本还有四条条件：`NEAREST_ENTITY_WITHIN`（附近白名单实体）、`INTERACTION_TAG`（交互 tag）、`CROSSHAIR_HIT`（准星命中任意实体）、`CONTEXT_FACT`（平台 fact）。前两条映迹没有产出者；`CROSSHAIR_HIT` 与 `CROSSHAIR_ENTITY` 空参重复；`CONTEXT_FACT` 没有生产模块使用。四条都已从契约删除——不再保留“声明了但永远不命中”的条件；将来要加，连同产出者和文档一起加。
 
@@ -511,6 +521,8 @@ RELEASED
 EXPIRED
 REJECTED
 ```
+
+终态会话（`RELEASED` / `EXPIRED` / `REJECTED`）只保留最近 256 条供诊断使用，更早的记录随新会话创建被回收；仍在进行中的会话不参与回收。
 
 ### 10.1 owner 权限
 
@@ -570,7 +582,7 @@ session 可以因为以下原因释放：
 
 预中标人和租期都不向玩家暴露数值；对外只有映迹的伙伴广播（`PRESENCE.PARTNER`：预中标人或中标人，中标时带租期截止时间）。
 
-**默认承接者是一个设置项**：听澜设置页（【听澜】ASR语音识别）里的"默认承接者"一组，选项是"无"加上当前注册的 `DEFAULT_OWNER` 参与者。两个选项时按钮直接互相切换，三个以上打开选择面板；没有候选时整组不出现。选择写进 `module.ia` 的配置（`defaultOwnerDisabled` + `defaultOwnerParticipantId` 两个键），思衡在每次仲裁时实时读取，所以改完立刻生效并刷新伙伴标记。从未配置过时用出厂默认；选中的模块当前不在注册表时视为"无"，界面不提示、也不回退到别人——选择是玩家的，不替他换人。
+**默认承接者是一个设置项**：听澜设置页（【听澜】ASR语音识别）里的"默认承接者"一组，选项是"无"加上当前注册的 `DEFAULT_OWNER` 参与者，用同一个下拉选择切换；没有候选时整组不出现。选择写进 `module.ia` 的配置（`defaultOwnerDisabled` + `defaultOwnerParticipantId` 两个键），思衡在每次仲裁时实时读取，所以改完立刻生效并刷新伙伴标记。从未配置过时用出厂默认；选中的模块当前不在注册表时视为"无"，界面不提示、也不回退到别人——选择是玩家的，不替他换人。
 
 ## 12. 线程与调度策略
 

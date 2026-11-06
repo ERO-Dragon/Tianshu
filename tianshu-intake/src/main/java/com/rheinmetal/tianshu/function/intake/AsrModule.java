@@ -27,6 +27,7 @@ import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
 import com.rheinmetal.tianshu.function.intake.recognition.AsrRecognitionService;
 import com.rheinmetal.tianshu.function.intake.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.intake.state.AsrStateMachine;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -45,7 +46,7 @@ import java.util.function.LongSupplier;
 public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeControl {
     /** Queue action name; also what the native-load gate reports to its observers while we are parked. */
     private static final String LOAD_ACTION = "asr-model";
-    /** The concurrency key of the lane the speech model is read on, next to the telemetry reload. */
+    /** The concurrency key of the lane the speech model is read on. */
     private static final String ENGINE_LOAD_KEY_SUFFIX = ":engine.load";
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess moduleRuntime;
@@ -132,7 +133,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     @Override
     public void register(ModuleRegistrationContext context) {
         adapter.registerOwnedTopics(context.protocol());
-        modelService = new AsrModelService(env, config, audioBridge, moduleRuntime, this::asrEngine, this::isAsrReady, this::publishModuleStatus);
+        modelService = new AsrModelService(env, config, audioBridge, moduleRuntime, this::publishModuleStatus);
         context.services().register(AsrModelService.class, modelService);
         context.services().register(AsrModuleRuntimeControl.class, this);
         inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
@@ -161,6 +162,9 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             // Same call stack as recognition: the repaired analysis is published right after the raw text,
             // instead of being routed through a subscription into a module that had to ask for context first.
             controller.bindTextRepair(textRepairer::process);
+            // A short press is a stop gesture: the controller discards the turn and this module asks the
+            // arbiter to broadcast the request to whoever is addressed right now.
+            controller.bindTapHandler(this::requestDialogueInterrupt);
             if (inputGateway == null) {
                 inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
             }
@@ -195,11 +199,23 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
                 ignored -> withAcceptableInput(AsrInputService::beginVoiceInput)));
         subscriptions.add(InputSignals.subscribe(InputSignals.PUSH_TO_TALK_UP,
                 ignored -> withAcceptableInput(AsrInputService::endVoiceInput)));
-        subscriptions.add(InputSignals.subscribe(InputSignals.PUSH_TO_TALK_CANCEL,
-                ignored -> withAcceptableInput(AsrInputService::cancelVoiceInput)));
         return () -> subscriptions.forEach(InputSignals.Subscription::close);
     }
 
+    /**
+     * A short press asks the arbiter to broadcast a stop request; it is not a dialogue turn.
+     *
+     * <p>The request is fire-and-forget: the arbiter resolves the current target and nobody answers the
+     * gesture. When no arbiter is assembled the tap has already discarded its turn, so there is nothing left
+     * to do but say so in the log.</p>
+     */
+    private void requestDialogueInterrupt() {
+        if (!adapter.dialogueInterruptAvailable()) {
+            env.warn("asr.interrupt.unavailable");
+            return;
+        }
+        adapter.requestDialogueInterrupt(new DialogueInterruptRequestPayload(System.currentTimeMillis()));
+    }
     private void withAcceptableInput(java.util.function.Consumer<AsrInputService> action) {
         AsrInputGateway gateway = inputGateway;
         if (gateway == null || !gateway.canAcceptVoiceInput()) {
@@ -230,7 +246,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     public void destroy() {
         destroyed = true;
         textRepairer.destroy();
-        // Covers the initial read and a hotword refresh alike: they share one latch and one lane task.
+        // Stops a read that is queued or still running before the module stops holding any resources.
         cancelEngineLoad();
         stop();
         if (modelService != null) {
@@ -272,7 +288,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         try {
             audioBridge.releaseCaptureHardware();
         } catch (RuntimeException | LinkageError failure) {
-            env.error("tianshu.asr.audio.hardware_release_failed", failure);
+            env.error("asr.audio.hardware_release_failed", failure);
         }
     }
 
@@ -392,17 +408,14 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
      * The one place the model is read. Every exit path — success, early return, throwable — runs the
      * {@code finally}, which is what guarantees the permit goes back to the gate.
      *
-     * <p>A hotword reload swaps only after the replacement is up: the engine that is already serving stays
-     * alive until then, so a refresh never opens a window with no engine. A failed reload therefore leaves
-     * the lane exactly as it was, and the MODEL dimension is put back to ready, because the bootstrap's
-     * failure marking describes the replacement that failed, not the engine still running.
+     * <p>The read happens once per module preparation: there is no reload path today, so a failure leaves the
+     * MODEL dimension failed and the next key press explains why instead of pretending to be starting up.</p>
      */
     private void runEngineLoad(ModuleRuntimeContext context) {
         try {
             if (destroyed) {
                 return;
             }
-            AsrEngine previous = engine;
             AsrEngine loaded = createEngine(context);
             if (destroyed) {
                 shutdownQuietly(loaded);
@@ -411,25 +424,17 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             engine = loaded;
         } catch (RuntimeException | LinkageError failure) {
             env.error("asr.engine.load_failed", failure);
+            ModuleRuntimeState state = runtimeState;
+            if (state != null) {
+                state.capabilities().markFailed(AsrRuntimeCapabilities.MODEL, moduleId(),
+                        "ASR engine load failed: " + failure.getMessage());
+            }
             publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.asr.exception"));
         } finally {
             engineLoadInFlight.set(false);
             adapter.publishLoadingActivity(false);
             releaseEnginePermit();
         }
-    }
-
-    /** The replacement failed but the engine that was serving is still up: the lane keeps working. */
-    private void restoreModelReadyIfServing(AsrEngine serving) {
-        if (serving == null) {
-            return;
-        }
-        ModuleRuntimeState state = runtimeState;
-        if (state != null) {
-            state.capabilities().install(AsrRuntimeCapabilities.MODEL, moduleId());
-            state.capabilities().markReady(AsrRuntimeCapabilities.MODEL, moduleId());
-        }
-        engineStatus = ModuleStatuses.readyKeyed(moduleId(), "tianshu.runtime.module.asr.ready");
     }
 
     private void shutdownQuietly(AsrEngine target) {
@@ -444,11 +449,8 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     /**
-     * A load that never queued must not be silent: it reports itself and, when no engine exists yet, leaves
-     * the MODEL dimension failed so the key press explains "could not queue" instead of "not installed".
-     *
-     * <p>A rejected hotword refresh is different: the engine that is already serving is untouched, so the
-     * refresh is reported as failed without downgrading a lane that still works.
+     * A load that never queued must not be silent: it reports itself and leaves the MODEL dimension failed, so
+     * the key press explains "could not queue" instead of "not installed".
      */
     private void failEngineLoad(ModuleRuntimeContext context, String detail) {
         engineLoadInFlight.set(false);

@@ -19,11 +19,14 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionEventType;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestedPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -584,6 +587,116 @@ class IaModuleProtocolFlowTest {
     }
 
     @Test
+    void anInterruptRequestTargetsTheParticipantThePartnerMarkerShows() {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        registerInteractionContextTopic();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler partnerEvents = new RecordingHandler();
+        subscribePartner(partnerEvents);
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "maid.crosshair",
+                        DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
+                ))
+        ));
+        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        publishInteractionContext("player", "minecraft:overworld", "", "", "maid-uuid",
+                "touhou_little_maid:maid", "", 0.0D);
+        PresencePartnerPayload partner = partnerEvents.awaitPayload(PresencePartnerPayload.class);
+
+        // The speech adapter is the real sender: it owns the module id the arbiter trusts.
+        new AsrProtocolAdapter(runtime).requestDialogueInterrupt(
+                new DialogueInterruptRequestPayload(System.currentTimeMillis()));
+
+        DialogueInterruptRequestedPayload interrupt = interruptEvents.awaitPayload(DialogueInterruptRequestedPayload.class);
+        assertEquals("player", interrupt.playerId());
+        assertEquals(partner.moduleId(), interrupt.targetModuleId(),
+                "the request names the participant the marker shows");
+        assertEquals(partner.participantId(), interrupt.targetParticipantId());
+        assertTrue(interrupt.addresses("module.maid", "maid"));
+    }
+
+    @Test
+    void anInterruptWithoutAnyTargetIsNotBroadcast() throws InterruptedException {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(participant("maid", "module.maid", "MAID.DIALOGUE_INPUT", 10, DialogueClaimProfile.DISABLED));
+
+        submitInterruptRequest("module.asr");
+        Thread.sleep(200L);
+
+        assertTrue(interruptEvents.envelopes().isEmpty(),
+                "a gesture with no addressable participant must stay silent");
+    }
+
+    @Test
+    void anInterruptRequestDoesNotReleaseOrChangeTheActiveSession() throws InterruptedException {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler sessionEvents = new RecordingHandler();
+        subscribeSessionEvents(sessionEvents);
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+
+        runtime.submit(EnvelopeBuilder.commandToCapability(
+                "module.ir",
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
+                request("req-session", "player", "turn-session", 0L, "帮我记一下", List.of(), List.of())
+        ).build());
+        await(() -> !sessionEvents.envelopes().isEmpty());
+
+        submitInterruptRequest("module.asr");
+        DialogueInterruptRequestedPayload interrupt = interruptEvents.awaitPayload(DialogueInterruptRequestedPayload.class);
+        assertEquals("module.ax", interrupt.targetModuleId());
+        Thread.sleep(200L);
+
+        for (TianshuEnvelope envelope : sessionEvents.envelopes()) {
+            DialogueSessionEventPayload event = (DialogueSessionEventPayload) envelope.payload();
+            assertFalse(event.eventType() == DialogueSessionEventType.CONVERSATION_INTERRUPTED
+                            || event.eventType() == DialogueSessionEventType.CONVERSATION_RELEASED
+                            || event.eventType() == DialogueSessionEventType.CONVERSATION_SESSION_FINISHED,
+                    "an interrupt request must not change the session; only the owner may");
+        }
+    }
+
+    @Test
+    void onlyTheSpeechModuleMayRequestAnInterrupt() throws InterruptedException {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+
+        submitInterruptRequest("module.evil");
+        Thread.sleep(200L);
+
+        assertTrue(interruptEvents.envelopes().isEmpty(), "only module.asr may raise the user's stop gesture");
+    }
+
+    @Test
     void aTurnWithoutAFrozenSpeechContextArbitratesAgainstTheNewestDigest() {
         runtime = ProtocolBootstrap.create(Runnable::run);
         installPresence(runtime);
@@ -642,6 +755,31 @@ class IaModuleProtocolFlowTest {
                 ),
                 handler
         );
+    }
+
+    private void subscribeInterruptRequested(RecordingHandler handler) {
+        runtime.subscribeTopic(
+                descriptor("test.interrupt." + System.nanoTime(), List.of()),
+                new TopicSubscriptionDescriptor(
+                        IaTopics.DIALOGUE_INTERRUPT_REQUESTED,
+                        PayloadType.of("DIALOGUE_INTERRUPT_REQUESTED"),
+                        DialogueInterruptRequestedPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.EVENT),
+                        Priority.LOW,
+                        CompletionPolicy.AUTO_COMPLETE_ON_RETURN
+                ),
+                handler
+        );
+    }
+
+    private void submitInterruptRequest(String sourceId) {
+        runtime.submit(EnvelopeBuilder.commandToCapability(
+                sourceId,
+                IaCapabilities.DIALOGUE_INTERRUPT,
+                PayloadType.of("DIALOGUE_INTERRUPT_REQUEST"),
+                new DialogueInterruptRequestPayload(System.currentTimeMillis())
+        ).build());
     }
 
     private void subscribeSessionEvents(RecordingHandler handler) {

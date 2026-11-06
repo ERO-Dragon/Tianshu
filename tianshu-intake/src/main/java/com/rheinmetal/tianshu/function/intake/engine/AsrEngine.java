@@ -194,9 +194,9 @@ public class AsrEngine {
         offline = false;
         configKind = "uninitialized";
         boolean onlineReleased = online == null
-                || releaseRecognizer("tianshu.asr.engine.online_release_failed", online::release);
+                || releaseRecognizer("asr.engine.online_release_failed", online::release);
         boolean offlineReleased = offlineRecognizerToRelease == null
-                || releaseRecognizer("tianshu.asr.engine.offline_release_failed", offlineRecognizerToRelease::release);
+                || releaseRecognizer("asr.engine.offline_release_failed", offlineRecognizerToRelease::release);
         if (onlineReleased && offlineReleased) {
             env.info("ASR engine closed safely");
         }

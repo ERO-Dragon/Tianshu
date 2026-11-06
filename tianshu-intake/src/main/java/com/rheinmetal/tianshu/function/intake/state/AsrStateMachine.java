@@ -7,18 +7,6 @@ public final class AsrStateMachine {
         return state;
     }
 
-    public synchronized boolean is(AsrState expected) {
-        return state == expected;
-    }
-
-    public synchronized boolean transition(AsrState expected, AsrState next) {
-        if (state != expected) {
-            return false;
-        }
-        state = next;
-        return true;
-    }
-
     public synchronized void moveTo(AsrState next) {
         state = next;
     }

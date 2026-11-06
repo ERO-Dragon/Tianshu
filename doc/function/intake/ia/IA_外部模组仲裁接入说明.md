@@ -92,7 +92,7 @@ DialogueParticipantDescriptor(
 | `displayName` | 面向诊断的显示名；HUD 不显示它，伙伴标记只画图标。 |
 | `priority` | participant 基础优先级，只在同一 claim 来源档内参与比较。 |
 | `claimProfile` | 参与 IA 仲裁的硬命中规则。只有 `WAKE_WORD` 条件会作为仲裁 wake word；`extraWords` 不参与 IA claim。 |
-| `triggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只进入 ASR 热词与 IR 修复/匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
+| `triggerGroup` | 该模块的共享语音触发词组，包含 `wakeWords` 与 `extraWords`。`wakeWords` 会进入 ASR/IR 并可参与 IA wake claim；`extraWords` 只用于 IR 的修复与匹配，不参与 IA 仲裁。一个模块当前只应维护一组。 |
 | `routeCapability` | IA 选中该 participant 后投递正文的 capability。能力名由模块自定义，但能力契约必须接收标准 `DialogueDeliveryPayload`。 |
 | `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理，不决定下一轮归属。默认初始窗口为 10 秒，默认绝对上限为 session 创建后 180 秒。 |
 | `icon` | 伙伴标记贴图（`namespace:textures/...`）。`.RULES` 参与者必须提供；`DEFAULT_OWNER` 参与者建议提供——玩家把它选成默认承接者时，映迹按"有图标就画"显示它。资源包缺图只记诊断、不画破图。 |
@@ -130,6 +130,8 @@ PacketType.COMMAND
 标准语音主链路由 IR 发布 `IntakeTopics.IR_RESULT / PayloadType.of("IR_RESULT") / IrResultPayload`，IA 订阅该 topic 后完成 owner 判定、session 创建/更新、正文 delivery 和 session 状态事件发布。IR 不定向调用 IA，也不等待仲裁结果。
 
 `DIALOGUE_ARBITRATE` 是 IA 保留给诊断、测试和受信模块的显式服务端口，不是标准 IR 链路。只有确实需要同步获知本次仲裁结论时，才应使用 `REQUEST`，并为原请求 `envelopeId` 注册 `PayloadType.of("DIALOGUE_ARBITRATION_RESULT")` 响应处理器。外部对话参与方通常只需要注册 participant 和 delivery capability，不需要主动提交仲裁请求或消费仲裁结果。
+
+`DIALOGUE.INTERRUPT` 是语音输入专用的受信端口，只接受 `module.asr`；外部模组不应调用它，只需按 §9.1 订阅 IA 广播的中断请求。
 
 IA capability ready 只表示仲裁服务可响应，不表示已经注册了 owner。当前没有 participant 时，`REQUEST` 返回 `accepted=false / reason=NO_PARTICIPANT`；普通 COMMAND 同样结束为拒绝，不产生玩家提示、Presence 查询、对话 delivery、LLM 或 TTS 请求。IA 内部可以为诊断保留终态 `REJECTED` 审计记录，但不会形成 active session。
 
@@ -174,7 +176,7 @@ owner 可以读取 `repairedText` / `normalizedText` 并结合上下文决定如
 
 非 owner 不会收到该 payload。
 
-其中 `repairedText`、`normalizedText`、`objectMatches`、`moduleMatches` 来自 IR 的文本侧结果：`objectMatches` 每个命中对象一条，`moduleMatches` 每个命中触发词一条。`matchedEntityRefs`、`interactionHints`、`contextSnapshot`、`displayNames` 全部来自同一份冻结摘要（映迹 `PRESENCE.INTERACTION_CONTEXT` 最近一次推送），不再有第二次采集，所以仲裁不等待上下文，也不会与画面上的预中标人错开。摘要里带着显示名与准星距离，正是为了让 delivery 的措辞仍然说"僵尸"而不是 `minecraft:zombie`；`contextSnapshot.facts` 为空，因为摘要不携带事实行。`matchedEntityRefs` 使用 `DialogueEntityRef`，包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
+其中 `repairedText`、`normalizedText`、`objectMatches`、`moduleMatches` 来自 IR 的文本侧结果：`objectMatches` 每个命中对象一条，`moduleMatches` 每个命中触发词一条（带 `kind`：`wake` 满足唤醒词条件，`extra` 只辅助识别）。`matchedEntityRefs`、`interactionHints`、`contextSnapshot`、`displayNames` 全部来自同一份冻结摘要（映迹 `PRESENCE.INTERACTION_CONTEXT` 最近一次推送），不再有第二次采集，所以仲裁不等待上下文，也不会与画面上的预中标人错开。摘要里带着显示名与准星距离，正是为了让 delivery 的措辞仍然说"僵尸"而不是 `minecraft:zombie`；`contextSnapshot.facts` 为空，因为摘要不携带事实行。`matchedEntityRefs` 使用 `DialogueEntityRef`，包含实体 UUID/ref id、实体类型 ID、显示名、距离和是否为准星目标。外部模组不要假设 IR 会在仲裁请求 payload 里提供手持物、身上装备、准星实体、维度或按键状态。
 
 ## 5. 处理 delivery
 
@@ -342,6 +344,21 @@ PresencePayloadTypes.PARTNER
 - `holdUntilMillis = 0` 表示这是预中标（上下文命中但还没中标），没有租期，也不画环。
 
 IA 只在显示状态变化时发布：预中标人变化、中标（含续租）、租期到期回默认；没有固定刷新周期。
+
+### 9.1 中断请求
+
+用户短按语音键时，IA 会广播一条中断请求：
+
+```text
+IaTopics.DIALOGUE_INTERRUPT_REQUESTED
+PayloadType.of("DIALOGUE_INTERRUPT_REQUESTED")
+DialogueInterruptRequestedPayload(playerId, targetModuleId, targetParticipantId, occurredAtMillis)
+```
+
+- 它是请求，不是状态：IA 不释放会话、不调用任何模块的 cancel；
+- `target` 是 IA 用和伙伴广播相同的当前目标计算重新裁定的（上下文 claim > 未过期租期 > 默认承接者），与是否存在活跃 session 无关；没有可点名目标时不会广播；
+- 只有 `addresses(moduleId, participantId)` 为真的接收方应响应，其他模块忽略；
+- 被点名的 owner 自行决定停 LLM/TTS/动作，并按 §8 自行 release；不响应时会话仍按 processing deadline 过期。
 
 ## 10. 参与仲裁的推荐流程
 

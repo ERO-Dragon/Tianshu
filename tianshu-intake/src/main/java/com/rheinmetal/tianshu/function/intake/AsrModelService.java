@@ -31,9 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 public class AsrModelService {
 
@@ -55,8 +53,6 @@ public class AsrModelService {
     private final ModuleExecutionAccess executorManager;
     private final AsrModelDownloadCoordinator downloadCoordinator;
     private final AsrPreviewCoordinator previewCoordinator;
-    private final Supplier<AsrEngine> engineSupplier;
-    private final BooleanSupplier readySupplier;
     private final Consumer<ModuleStatus> moduleStatusSink;
     private final ModelDeletionRunner deletionRunner;
     private final ModelAvailabilityRefresher availabilityRefresher;
@@ -64,24 +60,16 @@ public class AsrModelService {
     private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
     private final AtomicReference<ProtocolTaskHandle> activeDownloadHandle = new AtomicReference<>();
 
-    public AsrModelService(IGameEnvironment env, IntakeConfiguration config, IAudioBridge audioBridge, ModuleExecutionAccess executorManager, Supplier<AsrEngine> engineSupplier, BooleanSupplier readySupplier) {
-        this(env, config, audioBridge, executorManager, engineSupplier, readySupplier, null);
-    }
-
     public AsrModelService(
             IGameEnvironment env,
             IntakeConfiguration config,
             IAudioBridge audioBridge,
             ModuleExecutionAccess executorManager,
-            Supplier<AsrEngine> engineSupplier,
-            BooleanSupplier readySupplier,
             Consumer<ModuleStatus> moduleStatusSink
     ) {
         this.env = env;
         this.config = config;
         this.executorManager = executorManager;
-        this.engineSupplier = engineSupplier;
-        this.readySupplier = readySupplier;
         this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
         this.downloadCoordinator = new AsrModelDownloadCoordinator(env);
         this.availabilityRefresher = new ModelAvailabilityRefresher(
@@ -401,16 +389,6 @@ public class AsrModelService {
         return true;
     }
 
-    public void preview(PreviewCallback callback) {
-        AsrEngine engine = engineSupplier.get();
-        if (!readySupplier.getAsBoolean() || engine == null) {
-            callback.onError("tianshu.gui.asr.failure.engine_not_ready");
-            callback.onFinish();
-            return;
-        }
-        previewCoordinator.start(new SharedEnginePreviewOperation(engine), previewListener(callback));
-    }
-
     public void preview(AsrModelInfo info, PreviewCallback callback) {
         if (info == null) {
             callback.onError("tianshu.gui.asr.failure.model_empty");
@@ -474,27 +452,6 @@ public class AsrModelService {
             case RECOGNITION_FAILED -> "tianshu.gui.asr.failure.recognition";
             case EMPTY_RESULT -> "tianshu.gui.asr.failure.no_speech";
         };
-    }
-
-    private static final class SharedEnginePreviewOperation implements AsrPreviewCoordinator.RecognitionOperation {
-        private final AsrEngine engine;
-
-        private SharedEnginePreviewOperation(AsrEngine engine) {
-            this.engine = engine;
-        }
-
-        @Override
-        public void prepare() {
-        }
-
-        @Override
-        public String recognize(byte[] audio) {
-            return engine.recognizeComplete(audio);
-        }
-
-        @Override
-        public void close() {
-        }
     }
 
     private final class SelectedModelPreviewOperation implements AsrPreviewCoordinator.RecognitionOperation {
