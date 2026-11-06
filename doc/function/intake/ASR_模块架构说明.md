@@ -198,6 +198,23 @@ ASR 运行时只把普通 `RuntimeException` 和 native `LinkageError` 当作可
 
 这些规则属于内部健壮性边界，不改变 ASR 的 topic、payload、宿主服务方法或玩家操作流程。
 
+### 3.11 模型目录
+
+`asr_model.json` 是模块随包发布的模型目录，和回响的 TTS 目录一样按角色收口：每个角色只留一个当前最优的条目，而不是把上游仓库的模型全列出来。目录现在有三个条目：
+
+| 条目 | 架构 / 模式 | 语言 | 质量 / 性能 | 定位 |
+| --- | --- | --- | --- | --- |
+| `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09` | SenseVoice / 离线 | zh、en、ja、ko、yue | 9 / 8 | 默认模型，带 ITN，适合 PTT 整句识别 |
+| `sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10` | Transducer / 流式 | ar、en、id、ja、ru、th、vi、zh | 8 / 7 | 唯一的流式条目，服务封存的连续输入扩展位 |
+| `sherpa-onnx-whisper-turbo` | Whisper / 离线 | zh、en、ja、ko、fr、de、ru、es | 9 / 5 | 法语/德语/俄语/西班牙语等目录内唯一覆盖 |
+
+维护规则：
+
+- 新条目必须补上它独占的语言族或模式；同语言族、同模式、质量与性能都不占优的条目不再加入目录（此前俄语 6 个、语义重复的 whisper 与 sensevoice 条目就是这一类）。
+- 目录顺序有意义：`IntakeConfig.defaultModelName()` 在玩家从未选过模型时先找已下载模型，再取「当前界面语言对应的第一个目录项」。第一条是 SenseVoice，所以中文与英文客户端默认落到它；PTT 只做整句识别，默认项必须是离线模型。
+- 卡片上的「流式」「Int8 量化」标签由目录字段推导（`isStreaming`、displayName/文件名里的 int8），目录不再声明 tags。
+- `fileRoles` 决定下载哪些文件；`downloadUrl` 为空时按 Hugging Face 仓库逐文件下载。
+
 ## 4. 当前链路
 
 ### 4.1 输入链路

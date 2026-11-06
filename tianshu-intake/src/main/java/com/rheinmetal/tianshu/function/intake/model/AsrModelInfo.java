@@ -28,7 +28,6 @@ public class AsrModelInfo {
     public Integer recommendationScore;
     public String downloadUrl;
     public String displayName;
-    public List<String> tags;
     public Map<String, String> fileRoles;
 
     public String getDisplayName() {
@@ -78,15 +77,6 @@ public class AsrModelInfo {
 
     public List<String> getLang() {
         return lang != null ? lang : Collections.singletonList("zh");
-    }
-
-    public List<String> getTags() {
-        if (tags == null || tags.isEmpty()) return Collections.emptyList();
-        return tags.stream()
-                .filter(tag -> tag != null && !tag.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList();
     }
 
     public Map<String, String> getFileRoles() {

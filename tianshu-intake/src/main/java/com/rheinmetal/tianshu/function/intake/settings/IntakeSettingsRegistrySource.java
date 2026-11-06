@@ -833,12 +833,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                 return List.of();
             }
             LinkedHashSet<String> tags = new LinkedHashSet<>();
-            for (String tag : info.getTags()) {
-                String normalized = normalizeTag(tag);
-                if (!normalized.isBlank()) {
-                    tags.add(normalized);
-                }
-            }
             if (info.isStreamingModel() || containsToken(info.localKey(), "streaming") || containsToken(info.remoteRepoId(), "streaming")) {
                 tags.add("streaming");
             }

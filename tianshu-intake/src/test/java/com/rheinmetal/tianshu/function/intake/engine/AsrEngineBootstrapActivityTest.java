@@ -19,7 +19,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class AsrEngineBootstrapActivityTest {
-    private static final String MODEL_KEY = "sherpa-onnx-sense-voice-funasr-nano-int8-2025-12-17";
+    private static final String MODEL_KEY = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09";
 
     @TempDir
     Path tempDir;
