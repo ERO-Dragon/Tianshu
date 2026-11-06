@@ -81,7 +81,6 @@ class AsrEngineBootstrapActivityTest {
     private record FakeConfiguration(boolean enabled, Path basePath, String modelName) implements IntakeConfiguration {
         @Override public boolean isAsrEnabled() { return enabled; }
         @Override public String getSelectedMicName() { return ""; }
-        @Override public boolean isAsrRnnoiseEnabled() { return false; }
         @Override public boolean isAsrHighPassFilterEnabled() { return true; }
         @Override public String getCustomAsrName() { return modelName; }
         @Override public Path getAsrBasePath() { return basePath; }

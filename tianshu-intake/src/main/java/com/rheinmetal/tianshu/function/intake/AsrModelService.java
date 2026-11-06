@@ -33,6 +33,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+/**
+ * The speech model's public service face: catalog availability, download, delete and preview.
+ *
+ * <p><b>Download lifetime.</b> A download belongs to the IO lane, not to the module instance that started
+ * it: leaving the world must not throw away a 1.3 GB model transfer. The task therefore keeps running
+ * after {@link #close()}, and the downloader cleans the artifacts of a model before it starts a new
+ * transfer of that same model — which is what makes a crash leftover self-healing without a startup sweep
+ * deleting a staging directory another task is still writing.
+ */
 public class AsrModelService {
 
     public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelKey, ModelDownloadProgress progress) {
@@ -81,15 +90,7 @@ public class AsrModelService {
                 executorManager,
                 AsrPreviewCoordinator.DEFAULT_RECORDING_WINDOW
         );
-        scheduleStartupCleanup();
-    }
-
-    public AsrModelInfo resolveCurrentModelInfo() {
-        String configured = config.getCustomAsrName();
-        if (configured == null || configured.isBlank()) {
-            return null;
-        }
-        return AsrModelManager.getModelByLocalKey(configured.trim());
+        refreshAvailabilityAsync();
     }
 
     public Path resolveModelDir(AsrModelInfo info) {
@@ -101,45 +102,23 @@ public class AsrModelService {
         return config.getAsrBasePath().resolve("model");
     }
 
-    private void scheduleStartupCleanup() {
+    /**
+     * Publishes one availability snapshot without blocking the caller that constructed the service.
+     *
+     * <p>This is a read of the model directory, so it belongs to the IO lane; the settings page reads the
+     * last snapshot and refreshes it again when it opens.
+     */
+    private void refreshAvailabilityAsync() {
         executorManager.submit(
                 ProtocolTaskSpec.builder()
                         .moduleId(AsrProtocolAdapter.MODULE_ID)
                         .lane(ExecutionLane.IO)
-                        .concurrencyKey("module.asr:model.cleanup")
+                        .concurrencyKey("module.asr:model.availability")
                         .maxConcurrency(1)
                         .queueCapacity(1)
                         .build(),
-                () -> {
-                    cleanupStaleDownloadArtifacts();
-                    availabilityRefresher.refreshNow();
-                }
+                availabilityRefresher::refreshNow
         );
-    }
-
-    private void cleanupStaleDownloadArtifacts() {
-        Path base = modelBasePath();
-        if (!Files.isDirectory(base)) {
-            return;
-        }
-        try (var stream = Files.list(base)) {
-            for (Path path : stream.toList()) {
-                String name = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
-                if (Files.isDirectory(path) && (name.endsWith("-staging") || name.endsWith("-extract"))) {
-                    deleteRecursively(path);
-                } else if (Files.isRegularFile(path) && (name.endsWith(".tmp") || name.endsWith(".downloading"))) {
-                    Files.deleteIfExists(path);
-                }
-            }
-        } catch (IOException e) {
-            env.warn("Failed to clean stale ASR download artifacts: " + e.getMessage());
-        }
-    }
-
-    public boolean hasModelContent(AsrModelInfo info) {
-        Path modelDir = resolveModelDir(info);
-        if (modelDir == null || !Files.exists(modelDir)) return false;
-        return AsrModelManager.isModelDownloaded(info, config.getAsrBasePath().resolve("model"));
     }
 
     public ModelAvailabilitySnapshot modelAvailability() {
@@ -214,113 +193,115 @@ public class AsrModelService {
         }
         task.updateStatus(new DownloadStatus(true, false, false, task.modelKey(), ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "download.prepare")));
         publishWaiting("tianshu.runtime.module.asr.download_started");
-        ProtocolTaskHandle handle = executorManager.submit(
-                ProtocolTaskSpec.builder()
-                        .moduleId(AsrProtocolAdapter.MODULE_ID)
-                        .lane(ExecutionLane.IO)
-                        .concurrencyKey("module.asr:model.download")
-                        .maxConcurrency(1)
-                        .queueCapacity(1)
-                        .build(),
-                () -> {
-                    try {
-                        task.session().download(info, resolveModelDir(info), githubProxyUrl, new ModelDownloadCallback() {
-                            @Override
-                            public void onProgress(ModelDownloadProgress progress) {
-                                if (!isCurrentTask(task)) {
-                                    return;
-                                }
-                                task.updateStatus(new DownloadStatus(true, task.session().isPaused(), task.session().isCancelled(), task.modelKey(), progress));
-                                if (callback != null) {
-                                    callback.onProgress(progress);
-                                }
-                            }
-
-                            @Override
-                            public void onComplete() {
-                                if (!finishTask(task)) {
-                                    return;
-                                }
-                                availabilityRefresher.refreshNow();
-                                publishWaiting("tianshu.runtime.module.asr.download_complete");
-                                if (callback != null) {
-                                    callback.onComplete();
-                                }
-                            }
-
-                            @Override
-                            public void onError(String message) {
-                                if (!finishTask(task)) {
-                                    return;
-                                }
-                                availabilityRefresher.refreshNow();
-                                if (callback == null) {
-                                    return;
-                                }
-                                if (task.session().isCancelled()) {
-                                    publishWaiting("tianshu.runtime.module.asr.download_cancelled");
-                                    callback.onCancelled();
-                                } else {
-                                    publishFailed("tianshu.runtime.module.asr.download_failed");
-                                    callback.onError(message);
-                                }
-                            }
-                        });
-                    } catch (Exception e) {
-                        if (!finishTask(task)) {
-                            return;
-                        }
-                        availabilityRefresher.refreshNow();
-                        if (callback == null) {
-                            return;
-                        }
-                        if (task.session().isCancelled()) {
-                            publishWaiting("tianshu.runtime.module.asr.download_cancelled");
-                            callback.onCancelled();
-                        } else {
-                            publishFailed("tianshu.runtime.module.asr.download_failed");
-                            callback.onError("tianshu.gui.asr.error.download_failed");
-                        }
-                    }
-                }
-        );
-        if (activeDownload.get() == task) {
-            activeDownloadHandle.set(handle);
-            if (task.session().isCancelled()) {
-                handle.cancel("model_download_cancelled");
-            }
-        } else {
-            handle.cancel("model_download_already_finished");
-        }
+        ProtocolTaskHandle handle = executorManager.submit(downloadTaskSpec(), () -> runDownload(task, info, githubProxyUrl, callback));
+        activeDownloadHandle.set(handle);
         if (handle.state() == ProtocolTaskState.REJECTED) {
-            activeDownload.compareAndSet(task, null);
+            finishTask(task);
             publishFailed("tianshu.runtime.module.asr.download_queue_full");
             notifyDownloadError(callback, "ASR model download queue is full");
+            return;
+        }
+        if (task.session().isCancelled()) {
+            // The GUI cancelled between the permit being requested and the task being queued.
+            handle.cancel("model_download_cancelled");
+        }
+    }
+
+    private static ProtocolTaskSpec downloadTaskSpec() {
+        return ProtocolTaskSpec.builder()
+                .moduleId(AsrProtocolAdapter.MODULE_ID)
+                .lane(ExecutionLane.IO)
+                .concurrencyKey("module.asr:model.download")
+                .maxConcurrency(1)
+                .queueCapacity(1)
+                .build();
+    }
+
+    /**
+     * Runs one transfer and reports its outcome exactly once.
+     *
+     * <p>The {@code finally} is the single cleanup point, so an exit the callback path cannot represent —
+     * a fatal JVM {@code Error} — still clears {@link #activeDownload} and leaves the next download usable.
+     * A cancelled transfer and a failed one are told apart here rather than by asking the session after the
+     * fact.
+     */
+    private void runDownload(DownloadTask task, AsrModelInfo info, String githubProxyUrl, ModelDownloadCallback callback) {
+        boolean succeeded = false;
+        boolean cancelled = false;
+        Exception failure = null;
+        try {
+            task.session().download(info, resolveModelDir(info), githubProxyUrl, progressForwarder(task, callback));
+            succeeded = true;
+        } catch (Exception downloadFailure) {
+            // Cancellation reaches this point as an ordinary IOException from whichever layer noticed it
+            // (gate, HTTP transport or archive), so the session flag — not the exception type — is the
+            // thing that tells "the player cancelled" apart from "the transfer failed".
+            if (task.session().isCancelled()) {
+                cancelled = true;
+            } else {
+                failure = downloadFailure;
+            }
+        } finally {
+            completeDownload(task, succeeded, cancelled, failure, callback);
+        }
+    }
+
+    private ModelDownloadCallback progressForwarder(DownloadTask task, ModelDownloadCallback callback) {
+        return new ModelDownloadCallback() {
+            @Override
+            public void onProgress(ModelDownloadProgress progress) {
+                if (!isCurrentTask(task)) {
+                    return;
+                }
+                task.updateStatus(new DownloadStatus(true, task.session().isPaused(), task.session().isCancelled(), task.modelKey(), progress));
+                if (callback != null) {
+                    callback.onProgress(progress);
+                }
+            }
+
+            @Override
+            public void onComplete() {
+                // Completion is decided by the transfer returning, not by the last callback it fires.
+            }
+
+            @Override
+            public void onError(String message) {
+                // Failures arrive as an exception from the transfer; see runDownload.
+            }
+        };
+    }
+
+    private void completeDownload(DownloadTask task, boolean succeeded, boolean cancelled, Exception failure, ModelDownloadCallback callback) {
+        if (!finishTask(task)) {
+            return;
+        }
+        availabilityRefresher.refreshNow();
+        if (cancelled) {
+            publishWaiting("tianshu.runtime.module.asr.download_cancelled");
+            if (callback != null) {
+                callback.onCancelled();
+            }
+            return;
+        }
+        if (failure != null) {
+            env.error("asr.model.download.failed", failure);
+        }
+        if (!succeeded) {
+            publishFailed("tianshu.runtime.module.asr.download_failed");
+            if (callback != null) {
+                callback.onError("tianshu.gui.asr.error.download_failed");
+            }
+            return;
+        }
+        publishWaiting("tianshu.runtime.module.asr.download_complete");
+        if (callback != null) {
+            callback.onComplete();
         }
     }
 
     public DownloadStatus downloadStatus() {
         DownloadTask task = activeDownload.get();
         return task == null ? DownloadStatus.idle() : task.status();
-    }
-
-    public void downloadModelSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback) throws Exception {
-        downloadCoordinator.newSession().download(info, targetDir, githubProxyUrl, new ModelDownloadCallback() {
-            @Override
-            public void onProgress(ModelDownloadProgress progress) {
-                callback.onProgress(progress);
-            }
-
-            @Override
-            public void onComplete() {
-                callback.onComplete();
-            }
-
-            @Override
-            public void onError(String message) {
-                callback.onError(message);
-            }
-        });
     }
 
     public boolean isDownloadPaused() {
@@ -412,6 +393,7 @@ public class AsrModelService {
         previewCoordinator.stop();
     }
 
+    /** Releases the preview engine; an active download deliberately keeps running, see the class doc. */
     void close() {
         previewCoordinator.close();
     }
@@ -584,5 +566,3 @@ public class AsrModelService {
         }
     }
 }
-
-

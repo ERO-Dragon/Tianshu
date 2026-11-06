@@ -90,18 +90,6 @@ public class AsrModelDownloader {
         this.githubReachable = Objects.requireNonNull(githubReachable, "githubReachable");
     }
 
-    public void download(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback) {
-        try {
-            downloadSync(info, targetDir, githubProxyUrl, callback, () -> {});
-        } catch (Exception e) {
-            callback.onError("tianshu.gui.asr.error.download_failed");
-        }
-    }
-
-    public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback) throws Exception {
-        downloadSync(info, targetDir, githubProxyUrl, callback, () -> {});
-    }
-
     public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         doDownload(info, targetDir, githubProxyUrl, callback, control == null ? () -> {} : control);
     }

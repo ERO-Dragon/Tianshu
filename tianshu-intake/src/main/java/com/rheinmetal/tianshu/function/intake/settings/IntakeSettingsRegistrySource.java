@@ -590,6 +590,10 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                     runOnClient(() -> {
                         availabilitySnapshot = asrModelService().modelAvailability();
                         context.showStatus(asr("message.download_complete"), 3000);
+                        // The speech lane reads its model once per runtime preparation. Without this refresh
+                        // the model the player just downloaded would only become usable after re-entering
+                        // the world, while the key press still explained "not installed".
+                        services.requestRefresh(RuntimeRefreshReason.RESOURCE_CHANGED);
                         queueDownloadRefresh();
                     });
                 }
