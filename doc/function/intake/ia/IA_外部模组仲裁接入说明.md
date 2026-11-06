@@ -87,7 +87,7 @@ DialogueParticipantDescriptor(
 
 | 字段 | 说明 |
 |---|---|
-| `participantId` | 模组内部稳定参与方 ID，例如 `maid.default`、`npc.villager_chat`。 |
+| `participantId` | 模组内部稳定参与方 ID，例如 `maid.default`、`npc.villager_chat`。只在模组内唯一：两个模组可以同名，IA 用 `(moduleId, participantId)` 识别参与方。 |
 | `moduleId` | 模组 ID，必须和后续 LLM 请求中的 requester module 一致。 |
 | `displayName` | 面向诊断的显示名；HUD 不显示它，伙伴标记只画图标。 |
 | `priority` | participant 基础优先级，只在同一 claim 来源档内参与比较。 |
@@ -299,7 +299,7 @@ reason
 requestedProcessingMillis
 ```
 
-IA 会校验 requester 是否为当前 session owner。非 owner 控制请求会被拒绝。
+IA 会校验 requester 是否为当前 session owner。非 owner 控制请求会被拒绝。会话状态迁移由 IA 存储层校验：控制请求若在授权后、应用前被并发终结，会收到 `SESSION_STATE_CHANGED` 失败码；重复 `RELEASE` 只产生一次终结事件。
 
 建议：
 

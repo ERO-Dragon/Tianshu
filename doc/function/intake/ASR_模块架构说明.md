@@ -166,7 +166,7 @@ ASR 不再做唤醒词截断或归属判断。识别层只输出完整文本，w
 
 - 封装 `IAudioBridge`
 - 采集按键按住期间的 PTT 音频
-- 在高通滤波 / RNNoise 等 `AudioFrameProcessor` 之后累计处理后的音频
+- 在高通滤波 `AudioFrameProcessor` 之后累计处理后的音频
 - 统一清理录音状态
 - 连续输入与 VAD 采集接口保留在封存实现中，不属于当前运行时链路
 
@@ -185,6 +185,13 @@ ASR 不再做唤醒词截断或归属判断。识别层只输出完整文本，w
 - common 只向 `PreviewCallback.onError` 提交稳定资源键；设置页负责按当前语言本地化，底层 cause 只进入技术日志。
 - 预览始终为所选模型创建临时引擎：由 preview operation 创建并在 session 结束时关闭，共享识别引擎不参与试听。
 
+下载与模型生效遵守：
+
+- 一次下载只有一条完成路径：成功、取消、失败（含 fatal `Error`）都在同一个 `finally` 里结算，`activeDownload` 不会因为异常路径残留导致后续下载永远 busy。
+- 下载属于 IO lane，不随模块实例销毁而中止；离开世界不会丢弃正在传输的模型。每个模型开始前由 downloader 自行清理自己的 staging/解压产物，因此不再有“启动时扫描并删除 staging”的步骤，也就不会删到另一实例正在写的目录。
+- 下载成功后设置页请求一次 runtime 刷新。模型只在 prepare 阶段读取一次，没有这次刷新，新下载的模型要重进世界才会生效，而按键提示仍会说“未安装”。
+- 预览与下载共享 `AsrModelService`，但预览引擎在预览 session 内独立创建/释放，不参与共享识别引擎。
+
 ### 3.10 下载与运行时失败边界
 
 `AsrModelDownloadCoordinator.DownloadSession` 是单次下载的 pause/cancel owner。暂停使用 session 私有 condition monitor；resume 和 cancel 主动唤醒 waiter，不再通过固定 `Thread.sleep` 轮询。底层 Hugging Face、HF Mirror、GitHub 与 proxy 降级链仍由 downloader 负责，coordinator 不复制下载策略。
@@ -192,6 +199,8 @@ ASR 不再做唤醒词截断或归属判断。识别层只输出完整文本，w
 ASR 运行时只把普通 `RuntimeException` 和 native `LinkageError` 当作可恢复的模块失败或资源关闭失败：
 
 - 音频 stop/release 会记录原 cause，并继续尝试其余独立资源。
+- recognizer 的每次原生调用和 release 都在同一把锁内完成：销毁或换模型时若还有整句识别在跑，释放会等这次解码结束，而不是在解码中途释放原生内存。
+- 整句识别创建的临时 stream 在 `finally` 中释放；解码或取结果抛异常不会漏掉一个原生 stream。
 - recognizer shutdown 先清空 Java ownership，再分别尝试释放 online/offline handle，避免一个 release 失败阻断另一个。
 - 引擎初始化失败继续映射到原有 capability 和 module status 语义。
 - 其他严重 JVM `Error` 不会被宽泛捕获和伪装成普通 ASR failure。
@@ -297,7 +306,7 @@ ASR 能力状态当前是模块可观测、可管理的。
    - 识别结果走协议中心，而不是直接耦合下游模块。
 
 5. **保留音频管线扩展位**
-   - 高通和可用的 RNNoise 后端位于采集到识别之间；RNNoise 当前仍是预留接口。当前 PTT 路径不启用 VAD，避免底噪波动影响输入边界。
+   - 高通滤波位于采集到识别之间。当前 PTT 路径不启用 VAD，避免底噪波动影响输入边界。
 
 6. **流式会话必须可隔离**
    - 不能让旧 command、旧 session、旧结果串到新流里。
@@ -309,7 +318,6 @@ ASR 能力状态当前是模块可观测、可管理的。
 
 ASR 模块后续最值得继续做的方向有：
 
-- 为 RNNoise 接入实际后端；若未来重新启用连续输入，再评估 VAD 后端的实测效果
 - 检查 ASR final text 到 IR / LLM / TTS 的端到端时序语义
 - 当 client / GUI 重构完成后，再把新的输入语义接上去
 

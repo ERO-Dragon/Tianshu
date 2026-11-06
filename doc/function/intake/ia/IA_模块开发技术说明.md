@@ -429,6 +429,10 @@ DialogueParticipantDescriptor(
 
 参与方注册时，仲裁机关会校验 `routeCapability` 对应的能力是否已经注册，且是否满足统一对话投递契约。IA 只投递 `DialogueDeliveryPayload`，不识别也不适配各模组内部 payload；外部模组需要在自己的 adapter 内把 `DialogueDeliveryPayload` 转换成内部业务模型。
 
+`participantId` 只在模组内部稳定：两个模组可以同时使用同名 participant。仲裁、租期、默认承接者解析和成员索引一律以 `(moduleId, participantId)` 为准；`participantId` 单独出现时不能作为全局身份使用。默认承接者的设置值也保存为 `moduleId:participantId`；旧版本留下的裸 participantId 只有在唯一候选时才会被采用，同名冲突按“未配置”处理。
+
+**一轮仲裁的副作用顺序**：决定 owner → 创建 claimed session → 检查投递归属（能力是否仍在线）→ 通过后才授予租期、刷新伙伴标记、抢占上一轮 → 投递正文 → 会话转 ACTIVE。授权失败时释放新会话、恢复上一轮的活动索引，不产生租期或标记变更；会话状态迁移本身也在存储层校验，已终结的会话不会被重新激活，重复 `RELEASE` 只产生一次终结事件。
+
 参与方声明自己在什么条件下应该接管，以及中标后自己的租期档位（`20s` / `10s` / `5s` / `0s`）。IA 只用 IR 文本结果和冻结的上下文摘要做命中判断，不做动态评分，也不向参与方索取数值。
 
 参与方模型由两层组成：
