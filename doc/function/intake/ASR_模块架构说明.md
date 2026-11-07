@@ -332,3 +332,12 @@ ASR 模块现在已经从“旧控制流残留 + 散乱耦合”进入到“宿�
 ASR common 只依赖只读 `AsrConfiguration`，读取启用状态、麦克风、音频预处理开关、模型标识和 ASR 模块根。PTT 是固定输入方式，不通过配置保存触发模式。功能设置由模块自己的 `ModuleConfigStore` 提供，落在 `config/Tianshu/module/module.asr.properties`；模型目录与 IR 索引缓存位于同级的 `config/Tianshu/module/asr/`（`model/`、`index/`）。ASR 不读写宿主 TOML，也不保存 GUI 状态。模型标识解析和模型文件检查留在 ASR/model 域，其他模块不能通过 ASR 配置端口读取或修改设置。
 
 启用 ASR 时，设置页必须同时存在有效且已完整下载的模型；未选择模型或模型未安装时保存失败并提示先下载、选择模型。禁用 ASR 时可以保留空模型选择。
+
+## 11. 游戏内调试出口
+
+开发构建有两条只对调试开关（`config/tianshu-client.toml` 的 `debug.enabled`，且必须是 debug 构建）开放的测试通路。它们都不是产品功能，但都走产品自己的契约：
+
+- **聊天回显**：模块把自己的诊断事件注册进 `DiagnosticChatCatalogue`，宿主只在调试开关打开时把事件转成聊天行。当前覆盖 ASR 识别原文、IR 修复结果与命中证据、IA 仲裁（owner / claims / reason）、会话生命周期（开始、认领、释放、拒绝、过期）以及 participant 注册结果。模块不直接调用聊天接口，因此回显的措辞归 lang shard 所有，开关关闭时一行都不会出现。
+- **文本注入**：设置页的“调试（文本注入）”分组把一段文本按 `INPUT.ASR_FINAL_TEXT` 的同一路径发布出去，再由 IR 与 IA 正常消费；它不打开麦克风、不经过 ASR 引擎、不进入 listening 状态。这样可以在没有录音设备时确定性地测试修复与仲裁，注入的 turn 带 `inputMode=debug`，消费方可以据此区分。
+
+两条通路都只在 debug 开关打开时构建/发送（注入控件本身在开关关闭时不渲染）。调试行可能包含正文，所以只存在于 debug 会话；诊断日志仍按原有隐私级别落盘。

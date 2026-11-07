@@ -796,3 +796,16 @@ owner 释放或 session 超时
 8. **默认拒绝旁路访问，所有正文链路必须定向投递。**
 9. **内部消息不做无关扩散，只在需要它的组件之间流转。**
 10. **对外状态事件只表达状态变化，不携带正文和完整上下文。**
+
+## 19. 调试观测与测试台
+
+IA 自身不产生聊天文案，但它把所有对测试有价值的事实都挂在诊断事件上，由模块注册的 chat notice 决定是否显示（只在调试开关打开时）：
+
+- `ARBITRATION_ACCEPTED` / `ARBITRATION_REJECTED`：`owner`、`claims`、`defaultOwner`、`leaseHolder`、修复与规范化正文、拒绝原因。`claims` 是 `module:participant(source,priority)` 列表，能看出仲裁到底比较了谁。
+- `DIALOGUE_SESSION_EVENT`：由 `DialogueEventPublisher` 在所有会话迁移上统一发出（开始、认领、owner 变更、释放、拒绝、过期），带 `event`、`state`、`owner`、`releaseReason`、`reason`。生命周期清扫器也走这个入口，因此超时迁移同样可见。
+- `DIALOGUE_DELIVERED`：真正投递成功后才发，带 session、owner、turn 与正文。
+- `PARTICIPANT_REGISTERED` / `PARTICIPANT_REGISTER_REJECTED` / `PARTICIPANT_UNREGISTERED`：注册成功、契约校验拒绝（带拒绝码）与注销。没有这一条时，“参与者没出现”只能表现为若干秒后的 `NO_PARTICIPANT`。
+
+这些事件都是 REDACTED 或仅调试可读；发布器在事件被访问策略拒绝时不发诊断，避免把“没发生”的迁移报成一次迁移。
+
+`tianshu-lab` 是伴随着的 dev-only 测试模组（不在 `featureModules` 里，任何 adapter 打包都不会带上它）：它像第三方模组一样通过 `DIALOGUE.PARTICIPANT_REGISTER` 注册两个带唤醒词的 participant，各自注册一个 `DIALOGUE_DELIVERY` capability，并能在设置页里注册/注销、自动或手动释放会话、延长处理期。它只依赖公开契约，不读 IA 的 registry，因此仲裁链路上的每次改动都能用它做端到端验证。
