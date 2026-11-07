@@ -171,7 +171,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
-                .compound("as.main", asr("section.main"), draft::buildMainOptions, null, draft::buildMainStatus);
+                .compound("as.main", asr("section.main"), draft::buildMainOptions, draft::buildMainActions, draft::buildMainStatus);
         // The arbiter owns this setting; the page only renders it. With no candidate registered there is nothing
         // to choose, so the group disappears instead of showing a one-option control.
         if (draft.hasDefaultOwnerCandidates()) {
@@ -411,6 +411,13 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
         private Optional<IaModuleService> iaService() {
             return services == null ? Optional.empty() : services.findService(IaModuleService.class);
+        }
+
+        private void buildMainActions(com.rheinmetal.tianshu.client.api.settings.ActionTemplate actions) {
+            // The host owns the key-binding screen; a platform without one does not get a dead button.
+            if (uiHost != null && uiHost.supportsKeyBindings()) {
+                actions.button("asr.voice_key.open", asr("action.set_key"), uiHost::openKeyBindings, enabled::get);
+            }
         }
 
         private void buildMainStatus(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
