@@ -60,6 +60,7 @@ import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -189,6 +190,7 @@ public final class IaModule implements TianshuManagedModule {
         runtimeContext = nextContext;
         runtimeAccepting = true;
         diagnostics = nextContext.diagnostics();
+        eventPublisher.bindDiagnostics(diagnostics);
         triggerSynchronizer.bind(nextContext.triggers(), participantRegistry.snapshot());
         nextContext.runtimeState().capabilities().markReady(IaRuntimeCapabilities.ARBITRATION, moduleId());
         adapter.publishModuleStatus(ModuleStatuses.lifecycleReady(moduleId(), lifecycleStatusGeneration));
@@ -229,6 +231,9 @@ public final class IaModule implements TianshuManagedModule {
             runtimeContext.runtimeState().capabilities().remove(IaRuntimeCapabilities.ARBITRATION);
         }
         diagnostics = com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
+        // The publisher is used by the lifecycle sweepers after stop as well; releasing its sink here keeps
+        // a stopped session from writing into a log whose owner has moved on.
+        eventPublisher.bindDiagnostics(com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP);
     }
 
     private void handleParticipantRegister(TianshuEnvelope envelope, ProtocolContext context) {
@@ -241,10 +246,32 @@ public final class IaModule implements TianshuManagedModule {
         }
         ValidationResult validation = participantContractValidator.validate(payload.descriptor());
         if (!validation.accepted()) {
+            diagnostics.publish(DiagnosticEvent.now(
+                    moduleId(),
+                    "PARTICIPANT_REGISTER_REJECTED",
+                    DiagnosticSeverity.WARN,
+                    DiagnosticPrivacy.REDACTED,
+                    Map.of(
+                            "module", payload.descriptor().moduleId(),
+                            "participant", payload.descriptor().participantId(),
+                            "code", validation.code()
+                    )
+            ));
             context.fail(envelope.envelopeId(), validation.code(), validation.message(), null);
             return;
         }
         participantRegistry.register(payload.descriptor());
+        diagnostics.publish(DiagnosticEvent.now(
+                moduleId(),
+                "PARTICIPANT_REGISTERED",
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "module", payload.descriptor().moduleId(),
+                        "participant", payload.descriptor().participantId(),
+                        "priority", Integer.toString(payload.descriptor().priority())
+                )
+        ));
         handleParticipantsChanged();
         context.complete(envelope.envelopeId());
     }
@@ -263,6 +290,17 @@ public final class IaModule implements TianshuManagedModule {
         } else {
             participantLifecycleCoordinator.unregisterParticipant(envelope, payload.moduleId(), payload.participantId(), now);
         }
+        diagnostics.publish(DiagnosticEvent.now(
+                moduleId(),
+                "PARTICIPANT_UNREGISTERED",
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "module", payload.moduleId(),
+                        "participant", payload.allParticipants() ? "" : payload.participantId(),
+                        "all", Boolean.toString(payload.allParticipants())
+                )
+        ));
         handleParticipantsChanged();
         context.complete(envelope.envelopeId());
     }
@@ -388,19 +426,27 @@ public final class IaModule implements TianshuManagedModule {
             List<DialogueClaim> hardClaims,
             long now
     ) {
+        Optional<DialogueParticipantDescriptor> defaultOwner = resolveDefaultOwner(participants);
+        Optional<DialogueParticipantDescriptor> leaseHolder = partnerTracker.holder(now);
         DialogueArbitrationDecision decision = arbitrationPolicy.decide(
-                participants, hardClaims, partnerTracker.holder(now), resolveDefaultOwner(participants));
+                participants, hardClaims, leaseHolder, defaultOwner);
+        Map<String, String> arbitrationAttributes = new LinkedHashMap<>();
+        arbitrationAttributes.put("requestId", payload.requestId());
+        arbitrationAttributes.put("playerId", payload.playerId());
+        arbitrationAttributes.put("turnId", payload.turnId());
+        arbitrationAttributes.put("repairedText", payload.repairedText());
+        arbitrationAttributes.put("normalizedText", payload.normalizedText());
+        arbitrationAttributes.put("owner", participantKey(decision.owner()));
+        arbitrationAttributes.put("claims", formatClaims(hardClaims));
+        arbitrationAttributes.put("defaultOwner", participantKey(defaultOwner.orElse(null)));
+        arbitrationAttributes.put("leaseHolder", participantKey(leaseHolder.orElse(null)));
+        arbitrationAttributes.put("reason", decision.reason() == null ? "" : decision.reason());
         diagnostics.publish(DiagnosticEvent.now(
                 moduleId(),
                 decision.accepted() ? "ARBITRATION_ACCEPTED" : "ARBITRATION_REJECTED",
                 decision.accepted() ? DiagnosticSeverity.INFO : DiagnosticSeverity.DEBUG,
                 DiagnosticPrivacy.REDACTED,
-                Map.of(
-                        "requestId", payload.requestId(),
-                        "playerId", payload.playerId(),
-                        "owner", decision.owner() == null ? "" : decision.owner().participantId(),
-                        "reason", decision.reason() == null ? "" : decision.reason()
-                )
+                arbitrationAttributes
         ));
         if (!decision.accepted()) {
             publishPartner(PresencePartnerPayload.empty(payload.playerId(), now));
@@ -441,8 +487,32 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         sessionStore.activate(session.sessionId(), now);
+        diagnostics.publish(DiagnosticEvent.now(
+                moduleId(),
+                "DIALOGUE_DELIVERED",
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.RAW_CONTENT,
+                Map.of(
+                        "sessionId", session.sessionId(),
+                        "owner", participantKey(owner),
+                        "turnId", input.turnId(),
+                        "text", input.repairedText()
+                )
+        ));
         respondArbitrationResultIfRequested(envelope, acceptedResult(payload, session, owner, decision.reason()));
         context.complete(envelope.envelopeId());
+    }
+
+    /** {@code module:participant}; the empty string when there is no participant to name. */
+    private static String participantKey(DialogueParticipantDescriptor participant) {
+        return participant == null ? "" : participant.moduleId() + ":" + participant.participantId();
+    }
+
+    /** One compact claim list: {@code module:participant(source,priority)}, which is what the decision weighed. */
+    private static String formatClaims(List<DialogueClaim> claims) {
+        return claims.stream()
+                .map(claim -> claim.qualifiedKey() + "(" + claim.source() + "," + claim.priority() + ")")
+                .collect(java.util.stream.Collectors.joining(","));
     }
 
     /**

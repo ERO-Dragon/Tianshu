@@ -1,0 +1,21 @@
+{
+  "tianshu.gui.lab.title": "[Intake] Arbitration Lab",
+  "tianshu.gui.lab.description": "Register two test participants and watch IA arbitrate, deliver and close sessions",
+  "tianshu.gui.lab.section.behaviour": "Behaviour",
+  "tianshu.gui.lab.option.auto_release": "Release the session right after delivery",
+  "tianshu.gui.lab.section.actions": "Actions",
+  "tianshu.gui.lab.action.register": "Register test participants",
+  "tianshu.gui.lab.action.unregister": "Unregister test participants",
+  "tianshu.gui.lab.action.release": "Release current session",
+  "tianshu.gui.lab.action.extend": "Extend by 10s",
+  "tianshu.gui.lab.section.status": "Current Status",
+  "tianshu.gui.lab.row.participants": "Participants",
+  "tianshu.gui.lab.row.session": "Session",
+  "tianshu.gui.lab.row.owner": "Owner",
+  "tianshu.gui.lab.row.delivery": "Last delivered text",
+  "tianshu.gui.lab.row.error": "Last error",
+  "tianshu.gui.lab.message.saved": "The lab persists no settings",
+  "tianshu.lab.participant.alpha": "Lab Alpha",
+  "tianshu.lab.participant.beta": "Lab Beta",
+  "tianshu.chat.progress.lab.delivery": "LAB delivered to %s: %s (session %s)"
+}

@@ -48,6 +48,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 public final class IntakeSettingsRegistrySource implements TianshuSettingsRegistrySource {
@@ -88,6 +89,8 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     private final ClientAudioDeviceCatalog audioDeviceCatalog;
     private final Supplier<UiText> voiceKeyDisplay;
     private final IaDefaultOwnerConfig defaultOwnerConfig;
+    /** Whether the debug switch is on; the injection controls do not exist without it. */
+    private final BooleanSupplier debugEnabled;
 
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider) {
@@ -113,6 +116,18 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
                                      ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
                                      IaDefaultOwnerConfig defaultOwnerConfig) {
+        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, voiceKeyDisplay,
+                defaultOwnerConfig, () -> false);
+    }
+
+    /**
+     * @param debugEnabled the kernel's debug switch; the injection controls are built only while it is on,
+     *                     so a release build cannot reach a text path that bypasses the microphone
+     */
+    public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
+                                     ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
+                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
+                                     IaDefaultOwnerConfig defaultOwnerConfig, BooleanSupplier debugEnabled) {
         this.services = services;
         this.config = config;
         this.audioBridge = audioBridge;
@@ -122,6 +137,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         this.audioDeviceCatalog = audioDeviceCatalog;
         this.voiceKeyDisplay = voiceKeyDisplay == null ? () -> UiText.key("key.tianshu.activate") : voiceKeyDisplay;
         this.defaultOwnerConfig = defaultOwnerConfig;
+        this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
     }
 
     @Override
@@ -136,7 +152,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         }
         AsrSettingsDraft draft = new AsrSettingsDraft(
                 config, audioBridge, services, context, scheduler, uiHost, textProvider, audioDeviceCatalog,
-                voiceKeyDisplay, defaultOwnerConfig
+                voiceKeyDisplay, defaultOwnerConfig, debugEnabled
         );
         context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
@@ -170,7 +186,15 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                         .row("asr.status.model", asr("row.model"), draft::selectedModelStatus)
                         .row("asr.status.download", asr("row.download_status"), draft::downloadStatus)
                         .row("asr.status.preview.state", asr("row.preview_state"), draft::previewStateStatus)
-                        .row("asr.status.preview.result", asr("row.preview_result"), draft::previewResultStatus));
+                        .row("asr.status.preview.result", asr("row.preview_result"), draft::previewResultStatus))
+                // Debug-only test bench: hidden unless the kernel's debug switch is on, and the text never
+                // touches the microphone. It is the deterministic way to exercise IR and the arbiter.
+                .compound("asr.debug", asr("section.debug"), draft::debugControlsEnabled, draft::debugSwitchOn,
+                        options -> options.text("asr.debug.text", asr("option.debug_text"),
+                                draft::injectText, draft::setInjectText, draft::debugControlsEnabled),
+                        actions -> actions.button("asr.debug.inject", asr("action.debug_inject"),
+                                SettingsButtonStyle.PRIMARY, draft::injectTextNow, draft::canInject),
+                        status -> status.row("asr.debug.inject.status", asr("row.debug_inject"), draft::injectStatus));
     }
 
     private void buildLocalModelResourceColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
@@ -207,12 +231,16 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private final MutableSettingsValue<SortDirection> recommendationDirection;
         private final MutableSettingsValue<String> defaultOwner;
         private final IaDefaultOwnerConfig defaultOwnerConfig;
+        private final BooleanSupplier debugEnabled;
         private final List<AsrModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
         private final AtomicBoolean microphoneRefreshStarted = new AtomicBoolean(false);
         private volatile UiText previewStateText = asr("status.idle");
         private volatile UiText previewResultText = common("dash");
+        /** Debug test bench: the sentence the player wants to inject, and how the last injection ended. */
+        private volatile String injectText = "";
+        private volatile UiText injectStatusText = common("dash");
 
         private final ClientAudioDeviceCatalog audioDeviceCatalog;
         private volatile ModelAvailabilitySnapshot availabilitySnapshot;
@@ -220,7 +248,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private AsrSettingsDraft(IntakeSettingsAccess config, IAudioBridge audioBridge, ModuleRuntimeServices services, ModuleSettingsContext context,
                                  ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
                                  ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
-                                 IaDefaultOwnerConfig defaultOwnerConfig) {
+                                 IaDefaultOwnerConfig defaultOwnerConfig, BooleanSupplier debugEnabled) {
             this.config = config;
             this.audioBridge = audioBridge;
             this.services = services;
@@ -231,6 +259,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             this.voiceKeyDisplay = voiceKeyDisplay;
             this.audioDeviceCatalog = audioDeviceCatalog;
             this.defaultOwnerConfig = defaultOwnerConfig;
+            this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
             this.catalog = AsrModelManager.getAllModels();
             this.availabilitySnapshot = asrModelService().modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
@@ -253,6 +282,56 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             refreshMicrophoneNames();
             options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get);
+        }
+
+        // ------------------------------------------------------------ debug test bench
+
+        /** The kernel's debug switch; without it the injection controls are never built. */
+        boolean debugSwitchOn() {
+            return debugEnabled.getAsBoolean();
+        }
+
+        /** Injection needs a running module, so the controls follow the enabled toggle as well. */
+        boolean debugControlsEnabled() {
+            return enabled.get() && debugSwitchOn();
+        }
+
+        String injectText() {
+            return injectText;
+        }
+
+        void setInjectText(String value) {
+            this.injectText = value == null ? "" : value;
+        }
+
+        boolean canInject() {
+            return debugControlsEnabled() && !injectText.isBlank();
+        }
+
+        UiText injectStatus() {
+            return injectStatusText;
+        }
+
+        /**
+         * Publishes the text as one recognised turn.
+         *
+         * <p>The module owns the lane; this method only reports what happened, because a debug control that
+         * guessed "sent" would be indistinguishable from a module that rejected the turn.</p>
+         */
+        void injectTextNow() {
+            String text = injectText == null ? "" : injectText.trim();
+            if (text.isEmpty()) {
+                injectStatusText = asr("status.debug.inject_blank");
+                refreshSettingsScreen();
+                return;
+            }
+            boolean accepted = services != null && services.findService(AsrModuleRuntimeControl.class)
+                    .map(control -> control.injectRecognizedText(text))
+                    .orElse(false);
+            injectStatusText = accepted
+                    ? asr("status.debug.injected", text)
+                    : asr("status.debug.inject_unavailable");
+            refreshSettingsScreen();
         }
 
         /**

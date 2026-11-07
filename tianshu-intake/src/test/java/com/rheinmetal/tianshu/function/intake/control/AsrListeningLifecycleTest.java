@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -116,6 +117,24 @@ class AsrListeningLifecycleTest {
             List<PresenceActivityPayload> listening = listening(activities);
             assertEquals(List.of(PresenceActivityAction.STARTED, PresenceActivityAction.ENDED),
                     listening.stream().map(PresenceActivityPayload::action).toList());
+        }
+    }
+
+    @Test
+    void anInjectedTextTurnTakesTheRecognitionPublishLane() {
+        try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
+            Harness harness = new Harness(runtime, "");
+            List<com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload> published = new ArrayList<>();
+            harness.controller.bindTextRepair((payload, parent) -> published.add(payload));
+
+            assertTrue(harness.controller.injectRecognizedText("阿尔法，帮我找一个钻石"));
+
+            assertEquals(1, published.size());
+            assertEquals("阿尔法，帮我找一个钻石", published.get(0).text());
+            assertEquals(AsrController.DEBUG_INPUT_MODE, published.get(0).inputMode());
+            assertFalse(harness.controller.injectRecognizedText("   "),
+                    "blank text is the one input an injected turn cannot express");
+            assertEquals(0, harness.recognitionCalls(), "injection must not involve the engine");
         }
     }
 

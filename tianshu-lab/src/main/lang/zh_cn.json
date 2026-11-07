@@ -1,0 +1,21 @@
+{
+  "tianshu.gui.lab.title": "【听澜】仲裁测试台",
+  "tianshu.gui.lab.description": "注册两个测试参与者，观察 IA 仲裁、投递与会话生命周期",
+  "tianshu.gui.lab.section.behaviour": "行为",
+  "tianshu.gui.lab.option.auto_release": "投递后立即释放会话",
+  "tianshu.gui.lab.section.actions": "操作",
+  "tianshu.gui.lab.action.register": "注册测试参与者",
+  "tianshu.gui.lab.action.unregister": "注销测试参与者",
+  "tianshu.gui.lab.action.release": "释放当前会话",
+  "tianshu.gui.lab.action.extend": "延长 10 秒",
+  "tianshu.gui.lab.section.status": "当前状态",
+  "tianshu.gui.lab.row.participants": "参与者",
+  "tianshu.gui.lab.row.session": "会话",
+  "tianshu.gui.lab.row.owner": "持有者",
+  "tianshu.gui.lab.row.delivery": "最近投递正文",
+  "tianshu.gui.lab.row.error": "最近错误",
+  "tianshu.gui.lab.message.saved": "测试台不保存设置",
+  "tianshu.lab.participant.alpha": "测试参与者 Alpha",
+  "tianshu.lab.participant.beta": "测试参与者 Beta",
+  "tianshu.chat.progress.lab.delivery": "LAB 投递 → %s：%s（会话 %s）"
+}

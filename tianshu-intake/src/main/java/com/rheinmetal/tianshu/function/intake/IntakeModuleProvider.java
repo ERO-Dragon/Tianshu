@@ -50,6 +50,17 @@ public final class IntakeModuleProvider implements TianshuModuleProvider {
                 DiagnosticChatNotice.single("tianshu.chat.progress.asr.recognition", "text", "output", "input"));
         ports.diagnosticChat().register("STREAM_RESULT",
                 DiagnosticChatNotice.single("tianshu.chat.progress.asr.recognition", "text", "output", "input"));
+        // The repair lane's own lines: the sentence it produced, and the evidence it matched. Both are only
+        // ever spoken when the debug switch is on; the catalogue just supplies the module's vocabulary.
+        ports.diagnosticChat().register("ANALYSIS_PUBLISHED",
+                new DiagnosticChatNotice("tianshu.chat.progress.ir.analysis", java.util.List.of(
+                        java.util.List.of("rawText"),
+                        java.util.List.of("repairedText"),
+                        java.util.List.of("normalizedText"))));
+        ports.diagnosticChat().register("IR_MATCHES",
+                new DiagnosticChatNotice("tianshu.chat.progress.ir.matches", java.util.List.of(
+                        java.util.List.of("objectMatches"),
+                        java.util.List.of("moduleMatches"))));
         Path moduleDirectory = ports.configStores().moduleDirectory();
         IntakeConfig config = new IntakeConfig(
                 ports.configStores().forModule(AsrProtocolAdapter.MODULE_ID),
@@ -79,7 +90,8 @@ public final class IntakeModuleProvider implements TianshuModuleProvider {
                 ports.texts(),
                 ports.audioDevices(),
                 () -> UiText.key("key.tianshu.activate"),
-                new IaDefaultOwnerConfig(ports.configStores().forModule(IaProtocolAdapter.MODULE_ID))));
+                new IaDefaultOwnerConfig(ports.configStores().forModule(IaProtocolAdapter.MODULE_ID)),
+                ports.debugEnabled()));
     }
 
     /**

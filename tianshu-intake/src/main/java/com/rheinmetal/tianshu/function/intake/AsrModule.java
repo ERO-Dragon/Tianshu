@@ -315,6 +315,22 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
     }
 
+    @Override
+    public boolean injectRecognizedText(String text) {
+        AsrController current = controller;
+        if (destroyed || current == null) {
+            return false;
+        }
+        try {
+            return current.injectRecognizedText(text);
+        } catch (RuntimeException failure) {
+            // The debug control must not take the module down: a bad injected turn is reported where every
+            // other module failure goes, and the controller is left untouched.
+            env.error("asr.debug.text_injection_failed", failure);
+            return false;
+        }
+    }
+
     private AsrEngine asrEngine() {
         return engine;
     }

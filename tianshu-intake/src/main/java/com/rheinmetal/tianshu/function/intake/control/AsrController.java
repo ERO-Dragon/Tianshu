@@ -1,6 +1,9 @@
 package com.rheinmetal.tianshu.function.intake.control;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
 import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
 import com.rheinmetal.tianshu.function.intake.audio.AudioCaptureService;
@@ -28,6 +31,9 @@ public final class AsrController {
      * this long always submits a recognition.</p>
      */
     private static final long TAP_MAX_NANOS = 250_000_000L;
+
+    /** The input mode an injected turn carries, so a diagnostic or a consumer can tell it from speech. */
+    public static final String DEBUG_INPUT_MODE = "debug";
 
     private final IGameEnvironment env;
     private final BooleanSupplier voiceInputAcceptance;
@@ -261,6 +267,44 @@ public final class AsrController {
         long started = pressStartedNanos;
         pressStartedNanos = 0L;
         return started > 0L && System.nanoTime() - started <= TAP_MAX_NANOS;
+    }
+
+    /**
+     * Debug only: feeds one text turn through the same lane a recognition would take.
+     *
+     * <p>It publishes on {@code INPUT.ASR_FINAL_TEXT}, which is exactly where {@link #publishIfCurrent}
+     * puts a recognized sentence, so the repair lane and the arbiter see this turn without knowing where
+     * it came from. Nothing here opens the microphone or the listening mark: the injected turn has no
+     * audio to end, and its outcome is the arbiter's to report. This is what makes IR and IA testable
+     * without a capture device, and deterministic when one exists.</p>
+     *
+     * @return false when the text is blank, which is the only input this path cannot express
+     */
+    public boolean injectRecognizedText(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        long sessionId = sessionManager.activeRecognitionSession();
+        int turnId = sessionManager.nextTurnId();
+        env.diagnostics().publish(DiagnosticEvent.now(
+                AsrProtocolAdapter.MODULE_ID,
+                "RECOGNITION_COMPLETE",
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.RAW_CONTENT,
+                java.util.Map.of(
+                        "text", trimmed,
+                        "inputMode", DEBUG_INPUT_MODE,
+                        "sessionId", Long.toString(sessionId)
+                )
+        ));
+        AsrTextPayload payload = new AsrTextPayload(trimmed, trimmed, turnId, sessionId, DEBUG_INPUT_MODE, System.currentTimeMillis());
+        TianshuEnvelope published = adapter.publishFinalText(payload);
+        if (textRepair != null) {
+            textRepair.accept(payload, published);
+        }
+        env.info("asr.debug.text_injected turnId=" + turnId + " sessionId=" + sessionId);
+        return true;
     }
 
     /**

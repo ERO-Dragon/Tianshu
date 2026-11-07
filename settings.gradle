@@ -27,6 +27,8 @@ include 'tianshu-weaving'
 include 'tianshu-auxilium'
 include 'tianshu-presence'
 include 'tianshu-client'
+// Dev-only arbitration bench; never packaged by an adapter and not part of `featureModules`.
+include 'tianshu-lab'
 include 'tianshu-adapter:1.20.1-fabric'
 include 'tianshu-adapter:1.20-fabric'
 include 'tianshu-adapter:1.20.1-neoforge'

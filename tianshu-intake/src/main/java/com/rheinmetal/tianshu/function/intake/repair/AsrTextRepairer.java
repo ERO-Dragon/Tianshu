@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.function.intake.repair.input.IrInputText;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrPreparedInput;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
+import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
 import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
@@ -122,9 +123,34 @@ public final class AsrTextRepairer {
         publishDiagnostic("ANALYSIS_PUBLISHED", DiagnosticSeverity.INFO, Map.of(
                 "rawText", input.rawText(),
                 "repairedText", voiceInput.text(),
+                "normalizedText", prepared.filteredText(),
                 "moduleMatchCount", Integer.toString(batch.matches().size()),
                 "objectMatchCount", Integer.toString(objectMatches.size())
         ));
+        // A separate event rather than more arguments on the one above: the debug line for the utterance
+        // stays readable when nothing matched, and the match line only appears when there is something to
+        // report. The repair lane owns both events; the chat catalogue decides how they read.
+        if (!objectMatches.isEmpty() || !batch.matches().isEmpty()) {
+            publishDiagnostic("IR_MATCHES", DiagnosticSeverity.INFO, Map.of(
+                    "objectMatches", formatObjectMatches(objectMatches),
+                    "moduleMatches", formatModuleMatches(batch.matches())
+            ));
+        }
+    }
+
+    /** {@code spoken=registryId} per object, which is exactly what a reader needs to check a repair. */
+    private static String formatObjectMatches(List<IrObjectMatch> matches) {
+        return matches.stream()
+                .map(match -> match.spokenWord() + "=" + match.registryId())
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /** {@code module:spoken=registered(kind)} per trigger, so a wake hit is distinguishable from an extra one. */
+    private static String formatModuleMatches(List<IrModuleMatch> matches) {
+        return matches.stream()
+                .map(match -> match.moduleId() + ":" + match.spokenWord() + "=" + match.registeredWord()
+                        + "(" + match.kind() + ")")
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     private static String repairedTextOf(IrNamedObjectEnhancementResult enhancement, IrPreparedInput prepared) {
