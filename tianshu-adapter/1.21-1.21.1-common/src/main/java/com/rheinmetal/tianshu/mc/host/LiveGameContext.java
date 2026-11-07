@@ -31,16 +31,20 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -354,12 +358,58 @@ public final class LiveGameContext implements ClientGameContextPort {
         return key == null ? "" : key.toString();
     }
 
+    /** How far a crosshair entity is looked for, in blocks; four chunks. */
+    private static final double CROSSHAIR_ENTITY_RANGE = 64.0D;
+
     private GameTarget crosshairTarget(Minecraft minecraft, Player player) {
         HitResult hitResult = minecraft.hitResult;
-        if (!(hitResult instanceof EntityHitResult entityHitResult)) {
+        if (hitResult instanceof EntityHitResult entityHitResult) {
+            return targetOf(player, entityHitResult.getEntity());
+        }
+        if (minecraft.level == null) {
             return GameTarget.EMPTY;
         }
-        Entity entity = entityHitResult.getEntity();
+        // The vanilla pick result only reaches the interaction range (a few blocks). The dialogue rules ask
+        // "what is the player pointing at" and need a longer sight line, so the same ray is continued here.
+        Vec3 eye = player.getEyePosition(1.0F);
+        Vec3 look = player.getViewVector(1.0F);
+        Vec3 end = eye.add(look.scale(CROSSHAIR_ENTITY_RANGE));
+        AABB search = player.getBoundingBox().expandTowards(look.scale(CROSSHAIR_ENTITY_RANGE)).inflate(1.0D);
+        Entity best = null;
+        Vec3 bestPoint = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Entity candidate : minecraft.level.getEntities(player, search, this::pickable)) {
+            Optional<Vec3> clip = candidate.getBoundingBox().inflate(candidate.getPickRadius()).clip(eye, end);
+            if (clip.isEmpty()) {
+                continue;
+            }
+            Vec3 point = clip.get();
+            double distance = eye.distanceToSqr(point);
+            if (distance < bestDistance) {
+                best = candidate;
+                bestPoint = point;
+                bestDistance = distance;
+            }
+        }
+        if (best == null || bestPoint == null) {
+            return GameTarget.EMPTY;
+        }
+        // A wall in front of the target means the player is not looking at it; the longer ray must not see
+        // through terrain that the vanilla pick respects.
+        BlockHitResult obstruction = minecraft.level.clip(new ClipContext(
+                eye, bestPoint, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+        if (obstruction.getType() != HitResult.Type.MISS
+                && eye.distanceToSqr(obstruction.getLocation()) < bestDistance) {
+            return GameTarget.EMPTY;
+        }
+        return targetOf(player, best);
+    }
+
+    private boolean pickable(Entity entity) {
+        return entity != null && entity.isPickable() && !entity.isSpectator();
+    }
+
+    private GameTarget targetOf(Player player, Entity entity) {
         ResourceLocation typeKey = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         return new GameTarget(
                 entity.getStringUUID(),
