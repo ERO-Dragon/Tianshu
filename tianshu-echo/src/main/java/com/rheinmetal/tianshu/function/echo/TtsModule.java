@@ -112,6 +112,13 @@ public final class TtsModule implements TianshuManagedModule {
 
     @Override
     public void register(ModuleRegistrationContext context) {
+        if (loadQueue != null) {
+            // Announce the tier at registration, which runs for every installed module before any module is
+            // prepared: the speech-input load must be able to wait for a speech-output load that is still to
+            // come even when the input module prepares first. A kernel without this module never sees the
+            // expectation, so its input load is not parked forever.
+            loadQueue.expect(NativeModelLoadQueue.Tier.DEFERRED);
+        }
         adapter.registerOwnedTopics(context.protocol());
         modelService = new TtsModelService(env, config, runtime, this::publishModuleStatus);
         moduleService = new TtsModuleService();
@@ -162,8 +169,8 @@ public final class TtsModule implements TianshuManagedModule {
         lifecycleActive = true;
         runtimeState = context.runtimeState();
         if (loadQueue != null) {
-            // Re-arms the ordering claim for this session: the queue expects the speech-output tier from
-            // construction, and a stopped-and-restarted module has to say so again.
+            // Re-arms the ordering claim for this session; register() announces it once so the speech-input
+            // load cannot overtake it, and a stopped-and-restarted module has to say so again.
             loadQueue.expect(NativeModelLoadQueue.Tier.DEFERRED);
         }
         publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));

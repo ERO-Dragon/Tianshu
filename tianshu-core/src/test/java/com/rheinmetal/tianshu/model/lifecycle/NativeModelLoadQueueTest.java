@@ -60,9 +60,11 @@ class NativeModelLoadQueueTest {
      */
     @Test
     void voiceInputNeverOvertakesSpeechOutputEvenWhenItAsksFirst() {
+        // The speech-output module announces its tier from register(), before any module prepares.
+        queue.expect(NativeModelLoadQueue.Tier.DEFERRED);
         assertEquals(NativeModelLoadQueue.Outcome.PARKED,
                 queue.request(ASR, "asr-model", submit("asr"), NativeModelLoadQueue.Tier.LAST),
-                "the last tier must wait for the speech-output tier it knows is still to come");
+                "the last tier must wait for the speech-output tier that announced itself");
         assertEquals(List.of(), ran);
 
         assertEquals(NativeModelLoadQueue.Outcome.GRANTED,
@@ -71,6 +73,18 @@ class NativeModelLoadQueueTest {
 
         queue.release(TTS);
         assertEquals(List.of("tts", "asr"), ran);
+    }
+
+    /**
+     * A kernel without the speech-output module must not park voice input behind a tier nobody will load.
+     * This is the intake-only development run: the queue used to pre-expect the tier at construction, so
+     * the ASR model was never loaded and the voice key answered "not ready" forever.
+     */
+    @Test
+    void voiceInputLoadsImmediatelyWhenNoSpeechOutputModuleIsInstalled() {
+        assertEquals(NativeModelLoadQueue.Outcome.GRANTED,
+                queue.request(ASR, "asr-model", submit("asr"), NativeModelLoadQueue.Tier.LAST));
+        assertEquals(List.of("asr"), ran);
     }
 
     @Test
@@ -94,6 +108,7 @@ class NativeModelLoadQueueTest {
 
     @Test
     void voiceInputProceedsWhenSpeechOutputGivesUp() {
+        queue.expect(NativeModelLoadQueue.Tier.DEFERRED);
         assertEquals(NativeModelLoadQueue.Outcome.PARKED,
                 queue.request(ASR, "asr-model", submit("asr"), NativeModelLoadQueue.Tier.LAST));
 
@@ -166,6 +181,7 @@ class NativeModelLoadQueueTest {
     @Test
     void abandoningTheRetrievalClaimLetsTheSpeechLoadsThrough() {
         queue.claimPrimary();
+        queue.expect(NativeModelLoadQueue.Tier.DEFERRED);
         assertEquals(NativeModelLoadQueue.Outcome.PARKED,
                 queue.request(ASR, "asr-model", submit("asr"), NativeModelLoadQueue.Tier.LAST));
         assertEquals(List.of(), ran);
