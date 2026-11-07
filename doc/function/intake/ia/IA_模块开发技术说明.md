@@ -808,4 +808,4 @@ IA 自身不产生聊天文案，但它把所有对测试有价值的事实都�
 
 这些事件都是 REDACTED 或仅调试可读；发布器在事件被访问策略拒绝时不发诊断，避免把“没发生”的迁移报成一次迁移。
 
-`tianshu-lab` 是伴随着的 dev-only 测试模组（不在 `featureModules` 里，任何 adapter 打包都不会带上它）：它像第三方模组一样通过 `DIALOGUE.PARTICIPANT_REGISTER` 注册两个带唤醒词的 participant，各自注册一个 `DIALOGUE_DELIVERY` capability，并能在设置页里注册/注销、自动或手动释放会话、延长处理期。它只依赖公开契约，不读 IA 的 registry，因此仲裁链路上的每次改动都能用它做端到端验证。
+`tianshu-lab` 是伴随着的 dev-only 测试模组（不在 `featureModules` 里，任何 adapter 打包都不会带上它）：它像第三方模组一样通过 `DIALOGUE.PARTICIPANT_REGISTER` 注册三个参与者，分别覆盖三种申请方式——`alpha` 按准星实体（CROSSHAIR_ENTITY，CONTEXT）、`beta` 按手持物品（HELD_ITEM，CONTEXT）、`gamma` 按唤醒词（WAKE_WORD，UTTERANCE），各带一个独立的 `DIALOGUE_DELIVERY` capability，并能在设置页里改条件、注册/注销、自动或手动释放会话、延长处理期。它只依赖公开契约，不读 IA 的 registry，因此仲裁链路上的每次改动都能用它做端到端验证。
