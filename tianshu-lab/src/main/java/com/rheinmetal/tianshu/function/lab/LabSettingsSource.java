@@ -11,11 +11,11 @@ import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
 
 /**
- * The bench's page: register the fake participants, watch what the last delivery carried, and keep or
- * release the session by hand.
+ * The bench's page: choose what each participant looks for, register them, and keep or release the session
+ * by hand.
  *
- * <p>It is hidden while the debug switch is off. That is not cosmetic: without the switch the module does
- * not register its participants either, so showing controls that cannot work would be a lie about the
+ * <p>Hidden while the debug switch is off. That is not cosmetic: without the switch the module does not
+ * register its participants either, so showing controls that cannot work would be a lie about the
  * session.</p>
  */
 public final class LabSettingsSource implements TianshuSettingsRegistrySource {
@@ -40,18 +40,25 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
     }
 
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context) {
-        panel.toggles("lab.behaviour", lab("section.behaviour"), module::debugEnabled, module::debugEnabled, group -> group
+        panel.options("lab.participants", lab("section.participants"), module::debugEnabled, module::debugEnabled, options -> options
+                        .text("lab.crosshair", lab("option.crosshair"), module::crosshairFilter, module::setCrosshairFilter, module::debugEnabled)
+                        .text("lab.held", lab("option.held"), module::heldItemId, module::setHeldItemId, module::debugEnabled)
+                        .text("lab.wake", lab("option.wake"), module::wakeWords, module::setWakeWords, module::debugEnabled))
+                .toggles("lab.behaviour", lab("section.behaviour"), module::debugEnabled, module::debugEnabled, group -> group
                         .toggle("lab.auto_release", lab("option.auto_release"),
                                 module::autoRelease, module::setAutoRelease, module::debugEnabled))
                 .actions("lab.actions", lab("section.actions"), module::debugEnabled, module::debugEnabled, actions -> actions
                         .button("lab.register", lab("action.register"), SettingsButtonStyle.PRIMARY,
-                                module::registerParticipants, () -> !module.participantsRegistered())
+                                module::registerParticipants, () -> true)
                         .button("lab.unregister", lab("action.unregister"), SettingsButtonStyle.DANGER,
                                 module::unregisterParticipants, module::participantsRegistered)
                         .button("lab.release", lab("action.release"), module::releaseCurrentSession, module::sessionHeld)
                         .button("lab.extend", lab("action.extend"), module::extendCurrentSession, module::sessionHeld))
                 .status("lab.status", lab("section.status"), module::debugEnabled, module::debugEnabled, status -> status
-                        .row("lab.status.participants", lab("row.participants"), () -> onOff(module.participantsRegistered()))
+                        .row("lab.status.participants", lab("row.participants"), () -> {
+                            String ids = module.registeredParticipants();
+                            return ids.isBlank() ? common("off") : UiText.literal(ids);
+                        })
                         .row("lab.status.session", lab("row.session"), () -> module.sessionHeld()
                                 ? UiText.literal(module.status().sessionId()) : common("dash"))
                         .row("lab.status.owner", lab("row.owner"), () -> module.sessionHeld()
@@ -64,10 +71,6 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                             String error = module.status().lastError();
                             return error.isBlank() ? common("dash") : UiText.literal(error);
                         }));
-    }
-
-    private static UiText onOff(boolean value) {
-        return common(value ? "on" : "off");
     }
 
     private static UiText lab(String key, Object... args) {

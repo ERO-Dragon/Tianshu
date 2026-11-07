@@ -32,6 +32,7 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = "module.lab";
     public static final String ALPHA_CAPABILITY = "LAB.ALPHA.DIALOGUE_INPUT";
     public static final String BETA_CAPABILITY = "LAB.BETA.DIALOGUE_INPUT";
+    public static final String GAMMA_CAPABILITY = "LAB.GAMMA.DIALOGUE_INPUT";
 
     public LabProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, MODULE_ID, runtime, AdapterDefaults.standard());
@@ -64,6 +65,15 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
                 IaCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER,
                 PayloadType.of("DIALOGUE_PARTICIPANT_UNREGISTER"),
                 new DialogueParticipantUnregisterPayload(MODULE_ID, "", true, System.currentTimeMillis()));
+    }
+
+    /** Removes one participant; used when a page field makes that participant's condition invalid. */
+    public void unregisterParticipant(String participantId) {
+        commandCapability(
+                IaCapabilities.DIALOGUE_PARTICIPANT_UNREGISTER,
+                PayloadType.of("DIALOGUE_PARTICIPANT_UNREGISTER"),
+                new DialogueParticipantUnregisterPayload(
+                        MODULE_ID, participantId, false, System.currentTimeMillis()));
     }
 
     public void releaseSession(String sessionId, String participantId) {

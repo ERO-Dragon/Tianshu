@@ -165,11 +165,15 @@ neoForge {
         if (startedFrom == 'adapter') {
             return []
         }
+        def base
         if (startedFrom == 'root') {
-            return runFeatureNames
+            base = runFeatureNames
+        } else {
+            // A feature run boots its required partners too: without them it cannot assemble at all.
+            base = [startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])
         }
-        // A feature run boots its required partners too: without them it cannot assemble at all.
-        return ([startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])).unique()
+        // Development benches ride along with the feature they exercise; they are not features themselves.
+        return (base + (rootProject.devRunFeatureEdges[startedFrom] ?: [])).unique()
     }()
     if (gradle.startParameter.taskNames.any { name ->
                 name.endsWith('runClient') || name.endsWith('runServer')

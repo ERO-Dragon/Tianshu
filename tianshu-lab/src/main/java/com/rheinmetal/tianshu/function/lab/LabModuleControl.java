@@ -3,20 +3,38 @@ package com.rheinmetal.tianshu.function.lab;
 /**
  * What the bench settings page can see and do.
  *
- * <p>Small on purpose: the page reports whether the fake participants are registered, what the last
- * delivery looked like and whether a session is still held, and it can release or extend that session.
- * Everything else is observed in chat by the debug echo.</p>
+ * <p>Small on purpose: the page reports which participants are registered, what the last delivery looked
+ * like and whether a session is still held, and it can release or extend that session. Everything else is
+ * observed in chat by the debug echo.</p>
  */
 public interface LabModuleControl {
     boolean debugEnabled();
 
     boolean participantsRegistered();
 
+    /** Registered participant ids in registration order, e.g. {@code "alpha,beta,gamma"}. */
+    String registeredParticipants();
+
     boolean sessionHeld();
 
     boolean autoRelease();
 
     void setAutoRelease(boolean autoRelease);
+
+    /** Crosshair entity filter; blank means "any entity the crosshair is on". */
+    String crosshairFilter();
+
+    void setCrosshairFilter(String value);
+
+    /** Held item id that makes beta claim; blank leaves beta unregistered. */
+    String heldItemId();
+
+    void setHeldItemId(String value);
+
+    /** Comma-separated wake words for gamma; blank leaves gamma unregistered. */
+    String wakeWords();
+
+    void setWakeWords(String value);
 
     void registerParticipants();
 
@@ -32,6 +50,7 @@ public interface LabModuleControl {
     record LabStatus(
             boolean debugEnabled,
             boolean participantsRegistered,
+            String registeredParticipants,
             boolean sessionHeld,
             String sessionId,
             String ownerParticipantId,

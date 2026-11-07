@@ -75,6 +75,14 @@ featureModules.each { module ->
 // the dependency truth cannot drift apart.
 ext.requiredFeatureEdges = requiredFeatureEdges
 ext.optionalFeatureEdges = optionalFeatureEdges
+// Development-only modules a run installs on top of its required partners. They are not features: no adapter
+// packages them, nothing depends on them, and they exist so a feature can be exercised with a bench in the
+// development client. `root` means a full-assembly run started from the repository root.
+def devRunFeatureEdges = [
+        'intake': ['lab'],
+        'root'  : ['lab'],
+]
+ext.devRunFeatureEdges = devRunFeatureEdges
 // Shipped kernel modules. tianshu-testkit is not one: it is a dev-only fixtures artifact that never enters
 // a mod jar, so it is allowed to speak the feature modules' vocabulary on purpose.
 def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-adapter']
