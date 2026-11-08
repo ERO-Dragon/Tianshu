@@ -245,34 +245,37 @@ legacyForge {
         // mod declared with only `main` is listed in game (its manifest is on the classpath) while no
         // constructor ever runs — nothing registers, and its settings page never appears. Production jars
         // carry the entry classes; the development run has to include that output explicitly.
+        // This line is the Forge 47 (net.minecraftforge) generation, so the entry is the feature's
+        // `legacyEntry` shell; `neoforgeEntry` belongs to the net.neoforged lines and would leave the
+        // manifest without a matching @Mod class ("has mods that were not found").
         if ('intake' in devFeatureMods) {
             tianshu_intake {
                 sourceSet(project(':tianshu-intake').sourceSets.main)
-                sourceSet(project(':tianshu-intake').sourceSets.neoforgeEntry)
+                sourceSet(project(':tianshu-intake').sourceSets.legacyEntry)
             }
         }
         if ('echo' in devFeatureMods) {
             tianshu_echo {
                 sourceSet(project(':tianshu-echo').sourceSets.main)
-                sourceSet(project(':tianshu-echo').sourceSets.neoforgeEntry)
+                sourceSet(project(':tianshu-echo').sourceSets.legacyEntry)
             }
         }
         if ('weaving' in devFeatureMods) {
             tianshu_weaving {
                 sourceSet(project(':tianshu-weaving').sourceSets.main)
-                sourceSet(project(':tianshu-weaving').sourceSets.neoforgeEntry)
+                sourceSet(project(':tianshu-weaving').sourceSets.legacyEntry)
             }
         }
         if ('auxilium' in devFeatureMods) {
             tianshu_auxilium {
                 sourceSet(project(':tianshu-auxilium').sourceSets.main)
-                sourceSet(project(':tianshu-auxilium').sourceSets.neoforgeEntry)
+                sourceSet(project(':tianshu-auxilium').sourceSets.legacyEntry)
             }
         }
         if ('presence' in devFeatureMods) {
             tianshu_presence {
                 sourceSet(project(':tianshu-presence').sourceSets.main)
-                sourceSet(project(':tianshu-presence').sourceSets.neoforgeEntry)
+                sourceSet(project(':tianshu-presence').sourceSets.legacyEntry)
             }
         }
     }

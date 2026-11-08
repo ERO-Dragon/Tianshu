@@ -28,13 +28,21 @@ def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-c
 // One jar per Minecraft line, and the oldest line the product ships for (1.20.1) runs Java 17: the platform-neutral
 // modules therefore emit 17-compatible bytecode. That is the common denominator — a 21/25 JVM runs 17 bytecode
 // unchanged, while a 17 adapter could not read classes compiled for 21. The adapters are deliberately not covered:
-// each compiles its own Minecraft artifacts, which are compiled for the level of their line. Only the shipped
-// `compileJava` is constrained: test sources never leave the build and may use the build JVM's newer library.
+// each compiles its own Minecraft artifacts, which are compiled for the level of their line.
+//
+// Every shipped source set is constrained, not just `compileJava`: a feature's loader entry lives in its own source
+// set, and a shell left at the build JVM's level cannot be instantiated by a Java 17 game (the adapter then reports
+// "Failed to load class <Entry>" with UnsupportedClassVersionError). Test sources keep the build JVM's level by
+// source-set name, since they never leave the build.
 subprojects {
     if (name in neutralModules) {
-        tasks.withType(JavaCompile).configureEach { compileTask ->
-            if (compileTask.name == 'compileJava') {
-                options.release = 17
+        plugins.withId('java') {
+            sourceSets.configureEach { sourceSet ->
+                if (sourceSet.name != 'test' && !sourceSet.name.endsWith('Test')) {
+                    tasks.named(sourceSet.compileJavaTaskName) {
+                        options.release = 17
+                    }
+                }
             }
         }
     }
