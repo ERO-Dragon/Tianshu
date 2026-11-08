@@ -149,12 +149,42 @@ class DialogueArbitrationPolicyTest {
         assertEquals("NO_OWNER", decision.reason());
     }
 
+    @Test
+    void theSameParticipantIdInTwoModulesResolvesToTheClaimingModule() {
+        DialogueArbitrationPolicy policy = new DialogueArbitrationPolicy();
+        DialogueParticipantDescriptor maid = descriptor("default", "module.maid");
+        DialogueParticipantDescriptor other = descriptor("default", "module.other");
+
+        var decision = policy.decide(
+                List.of(maid, other),
+                List.of(claim("module.other", "default", DialogueClaimSource.CONTEXT, 1)),
+                NOBODY
+        );
+
+        assertTrue(decision.accepted());
+        assertEquals("module.other", decision.owner().moduleId(),
+                "a participant id is module-internal; the claim must carry the module that made it");
+        assertEquals("default", decision.owner().participantId());
+    }
+
     private DialogueClaim claim(String participantId, DialogueClaimSource source, int priority) {
-        return new DialogueClaim(participantId, source, priority, "");
+        return claim("module." + participantId, participantId, source, priority);
+    }
+
+    private DialogueClaim claim(String moduleId, String participantId, DialogueClaimSource source, int priority) {
+        return new DialogueClaim(moduleId, participantId, source, priority, "");
     }
 
     private DialogueParticipantDescriptor descriptor(String participantId, int priority) {
-        return new DialogueParticipantDescriptor(participantId, "module." + participantId, participantId, priority, DialogueClaimProfile.DISABLED, DialogueTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
+        return descriptor(participantId, "module." + participantId, priority);
+    }
+
+    private DialogueParticipantDescriptor descriptor(String participantId, String moduleId) {
+        return descriptor(participantId, moduleId, 1);
+    }
+
+    private DialogueParticipantDescriptor descriptor(String participantId, String moduleId, int priority) {
+        return new DialogueParticipantDescriptor(participantId, moduleId, participantId, priority, DialogueClaimProfile.DISABLED, DialogueTriggerGroup.EMPTY, "ROUTE", DialogueTurnProcessingPolicy.DEFAULT);
     }
 
     private DialogueParticipantDescriptor defaultOwner(String participantId, int priority) {

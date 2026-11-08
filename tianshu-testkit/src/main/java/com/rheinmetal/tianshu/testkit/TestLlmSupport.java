@@ -84,11 +84,6 @@ public final class TestLlmSupport {
         }
 
         @Override
-        public boolean isAsrRnnoiseEnabled() {
-            return false;
-        }
-
-        @Override
         public boolean isAsrHighPassFilterEnabled() {
             return true;
         }

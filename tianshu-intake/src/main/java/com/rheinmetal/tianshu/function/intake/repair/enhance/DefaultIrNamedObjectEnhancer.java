@@ -2,13 +2,10 @@ package com.rheinmetal.tianshu.function.intake.repair.enhance;
 
 import com.rheinmetal.tianshu.function.intake.repair.core.IRCommandService;
 import com.rheinmetal.tianshu.function.intake.repair.core.IRParseResult;
-import com.rheinmetal.tianshu.function.intake.repair.core.ParseUnit;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrPreparedInput;
+import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 public final class DefaultIrNamedObjectEnhancer implements IrNamedObjectEnhancer {
     private final IRCommandService commandService;
@@ -19,46 +16,37 @@ public final class DefaultIrNamedObjectEnhancer implements IrNamedObjectEnhancer
 
     @Override
     public IrNamedObjectEnhancementResult enhance(IrPreparedInput input) {
-        if (input == null || input.filteredText().isBlank() || commandService == null || !commandService.isReady()) {
+        if (input == null || input.voiceText().isBlank()) {
             return IrNamedObjectEnhancementResult.empty(input == null ? "" : input.voiceText());
         }
-        IRParseResult parseResult = commandService.parse(input.filteredText(), null, true);
-        if (parseResult == null) {
-            return IrNamedObjectEnhancementResult.empty(input.filteredText());
+        if (commandService == null || !commandService.isReady() || input.filteredText().isBlank()) {
+            return IrNamedObjectEnhancementResult.empty(input.voiceText());
         }
-        Set<String> matchedIdSet = new LinkedHashSet<>(parseResult.getMatchedItemRealIds());
-        Set<String> matchedEntityTypeSet = new LinkedHashSet<>(parseResult.getMatchedEntityTypeIds());
-        for (ParseUnit unit : parseResult.getUnits()) {
-            if (unit == null || unit.targetRealItemId == null || unit.targetRealItemId.isBlank()) {
-                continue;
-            }
-            matchedIdSet.add(unit.targetRealItemId.trim());
-        }
+        IRParseResult matchParse = commandService.parse(input.filteredText(), null, true);
+        List<IrObjectMatch> matches = IrNamedObjectEnhancementResult.matchesFrom(
+                matchParse,
+                commandService::resolveDisplayName,
+                commandService::resolveEntityDisplayName
+        );
+        return new IrNamedObjectEnhancementResult(repairedSentence(input, matchParse), matches);
+    }
 
-        String repairedText = parseResult.getHealedRawText();
-        if (repairedText == null || repairedText.isBlank()) {
-            repairedText = input.filteredText();
+    /**
+     * Heals the object words in the sentence the player actually said.
+     *
+     * <p>The matching pass runs on the filtered view (fillers and boundary words removed), so its healed
+     * text is that view rather than the sentence. When the two views differ the sentence is repaired by a
+     * second pass over it — the only way to keep the displayed utterance whole and corrected at once.</p>
+     */
+    private String repairedSentence(IrPreparedInput input, IRParseResult matchParse) {
+        if (input.filteredText().equals(input.voiceText())) {
+            return healedOr(matchParse, input.voiceText());
         }
-        if (matchedIdSet.isEmpty() && matchedEntityTypeSet.isEmpty() && repairedText.equals(input.filteredText())) {
-            return IrNamedObjectEnhancementResult.empty(input.filteredText());
-        }
+        return healedOr(commandService.parse(input.voiceText(), null, true), input.voiceText());
+    }
 
-        List<String> matchedIds = new ArrayList<>(matchedIdSet);
-        List<String> matchedNames = new ArrayList<>();
-        for (String itemId : matchedIds) {
-            String displayName = commandService.resolveDisplayName(itemId);
-            if (!displayName.isBlank()) {
-                matchedNames.add(displayName);
-            }
-        }
-        List<String> matchedEntityTypeIds = new ArrayList<>(matchedEntityTypeSet);
-        List<String> matchedEntityNames = new ArrayList<>();
-        for (String entityTypeId : matchedEntityTypeIds) {
-            String displayName = commandService.resolveEntityDisplayName(entityTypeId);
-            if (!displayName.isBlank()) {
-                matchedEntityNames.add(displayName);
-            }
-        }
-        return new IrNamedObjectEnhancementResult(repairedText, matchedNames, matchedIds, matchedEntityNames, matchedEntityTypeIds, !matchedIds.isEmpty() || !matchedEntityTypeIds.isEmpty());
+    private static String healedOr(IRParseResult result, String fallback) {
+        String healed = result == null ? null : result.getHealedRawText();
+        return healed == null || healed.isBlank() ? fallback : healed;
     }
 }

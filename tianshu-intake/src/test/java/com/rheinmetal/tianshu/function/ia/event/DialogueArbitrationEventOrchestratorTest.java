@@ -69,6 +69,12 @@ class DialogueArbitrationEventOrchestratorTest {
         }
 
         @Override
+        public TianshuEnvelope publishSessionEvent(DialogueSessionEventPayload payload) {
+            events.add(payload);
+            return null;
+        }
+
+        @Override
         public TianshuEnvelope deliverToCapability(TianshuEnvelope parent, String capabilityId, DialogueDeliveryPayload payload) {
             return null;
         }

@@ -57,7 +57,7 @@ public sealed interface SettingsTemplateModel permits
 
     record Separator(String id, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
-    sealed interface OptionEntry permits SelectEntry, TextEntry, SliderEntry {
+    sealed interface OptionEntry permits SelectEntry, TextEntry, SliderEntry, KeyBindingEntry {
         String id();
 
         UiText label();
@@ -74,6 +74,12 @@ public sealed interface SettingsTemplateModel permits
     record TextEntry(String id, UiText label, Supplier<String> getter, Consumer<String> setter, BooleanSupplier enabled, BooleanSupplier visible) implements OptionEntry {}
 
     record SliderEntry(String id, UiText label, Supplier<Double> getter, double min, double max, Consumer<Double> setter, BooleanSupplier enabled, BooleanSupplier visible) implements OptionEntry {}
+
+    /**
+     * One key mapping edited in place: the row shows the mapping's current key and turns the control into
+     * "waiting for input" until the next key press, without leaving the page.
+     */
+    record KeyBindingEntry(String id, UiText label, String keyMappingName, BooleanSupplier enabled, BooleanSupplier visible) implements OptionEntry {}
 
     record StatusEntry(String id, UiText label, Supplier<UiText> value, BooleanSupplier enabled, BooleanSupplier visible) {}
 

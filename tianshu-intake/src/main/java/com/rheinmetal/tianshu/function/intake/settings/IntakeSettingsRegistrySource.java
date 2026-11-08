@@ -48,7 +48,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 
 public final class IntakeSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = AsrProtocolAdapter.MODULE_ID;
@@ -86,33 +86,37 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     private final ClientUiHost uiHost;
     private final ClientTextProvider textProvider;
     private final ClientAudioDeviceCatalog audioDeviceCatalog;
-    private final Supplier<UiText> voiceKeyDisplay;
     private final IaDefaultOwnerConfig defaultOwnerConfig;
+    /** Whether the debug switch is on; the injection controls do not exist without it. */
+    private final BooleanSupplier debugEnabled;
 
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider) {
         this(services, config, audioBridge, scheduler, uiHost, textProvider,
-                audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null,
-                () -> UiText.key("key.tianshu.activate"), null);
+                audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null, () -> false);
     }
 
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
                                      ClientAudioDeviceCatalog audioDeviceCatalog) {
-        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog,
-                () -> UiText.key("key.tianshu.activate"), null);
+        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, () -> false);
     }
 
+    /**
+     * @param debugEnabled the kernel's debug switch; the injection controls are built only while it is on,
+     *                     so a release build cannot reach a text path that bypasses the microphone
+     */
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay) {
-        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, voiceKeyDisplay, null);
+                                     ClientAudioDeviceCatalog audioDeviceCatalog, BooleanSupplier debugEnabled) {
+        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, null, debugEnabled);
     }
 
+    /** Full shape, including the IA default-owner settings shared with the arbiter. */
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
-                                     IaDefaultOwnerConfig defaultOwnerConfig) {
+                                     ClientAudioDeviceCatalog audioDeviceCatalog, IaDefaultOwnerConfig defaultOwnerConfig,
+                                     BooleanSupplier debugEnabled) {
         this.services = services;
         this.config = config;
         this.audioBridge = audioBridge;
@@ -120,8 +124,8 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         this.uiHost = uiHost;
         this.textProvider = textProvider == null ? ClientTextProvider.NOOP : textProvider;
         this.audioDeviceCatalog = audioDeviceCatalog;
-        this.voiceKeyDisplay = voiceKeyDisplay == null ? () -> UiText.key("key.tianshu.activate") : voiceKeyDisplay;
         this.defaultOwnerConfig = defaultOwnerConfig;
+        this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
     }
 
     @Override
@@ -136,7 +140,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         }
         AsrSettingsDraft draft = new AsrSettingsDraft(
                 config, audioBridge, services, context, scheduler, uiHost, textProvider, audioDeviceCatalog,
-                voiceKeyDisplay, defaultOwnerConfig
+                defaultOwnerConfig, debugEnabled
         );
         context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
@@ -155,7 +159,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
-                .compound("as.main", asr("section.main"), draft::buildMainOptions, null, draft::buildMainStatus);
+                .compound("as.main", asr("section.main"), draft::buildMainOptions, null, null);
         // The arbiter owns this setting; the page only renders it. With no candidate registered there is nothing
         // to choose, so the group disappears instead of showing a one-option control.
         if (draft.hasDefaultOwnerCandidates()) {
@@ -170,7 +174,15 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                         .row("asr.status.model", asr("row.model"), draft::selectedModelStatus)
                         .row("asr.status.download", asr("row.download_status"), draft::downloadStatus)
                         .row("asr.status.preview.state", asr("row.preview_state"), draft::previewStateStatus)
-                        .row("asr.status.preview.result", asr("row.preview_result"), draft::previewResultStatus));
+                        .row("asr.status.preview.result", asr("row.preview_result"), draft::previewResultStatus))
+                // Debug-only test bench: hidden unless the kernel's debug switch is on, and the text never
+                // touches the microphone. It is the deterministic way to exercise IR and the arbiter.
+                .compound("asr.debug", asr("section.debug"), draft::debugControlsEnabled, draft::debugSwitchOn,
+                        options -> options.text("asr.debug.text", asr("option.debug_text"),
+                                draft::injectText, draft::setInjectText, draft::debugControlsEnabled),
+                        actions -> actions.button("asr.debug.inject", asr("action.debug_inject"),
+                                SettingsButtonStyle.PRIMARY, draft::injectTextNow, draft::canInject),
+                        status -> status.row("asr.debug.inject.status", asr("row.debug_inject"), draft::injectStatus));
     }
 
     private void buildLocalModelResourceColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
@@ -195,7 +207,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private final ClientScheduler scheduler;
         private final ClientUiHost uiHost;
         private final ClientTextProvider textProvider;
-        private final Supplier<UiText> voiceKeyDisplay;
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedMic;
         private final MutableSettingsValue<String> selectedModelName;
@@ -207,20 +218,24 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private final MutableSettingsValue<SortDirection> recommendationDirection;
         private final MutableSettingsValue<String> defaultOwner;
         private final IaDefaultOwnerConfig defaultOwnerConfig;
+        private final BooleanSupplier debugEnabled;
         private final List<AsrModelInfo> catalog;
         private final AtomicBoolean previewRunning = new AtomicBoolean(false);
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
         private final AtomicBoolean microphoneRefreshStarted = new AtomicBoolean(false);
         private volatile UiText previewStateText = asr("status.idle");
         private volatile UiText previewResultText = common("dash");
+        /** Debug test bench: the sentence the player wants to inject, and how the last injection ended. */
+        private volatile String injectText = "";
+        private volatile UiText injectStatusText = common("dash");
 
         private final ClientAudioDeviceCatalog audioDeviceCatalog;
         private volatile ModelAvailabilitySnapshot availabilitySnapshot;
 
         private AsrSettingsDraft(IntakeSettingsAccess config, IAudioBridge audioBridge, ModuleRuntimeServices services, ModuleSettingsContext context,
                                  ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                 ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
-                                 IaDefaultOwnerConfig defaultOwnerConfig) {
+                                 ClientAudioDeviceCatalog audioDeviceCatalog,
+                                 IaDefaultOwnerConfig defaultOwnerConfig, BooleanSupplier debugEnabled) {
             this.config = config;
             this.audioBridge = audioBridge;
             this.services = services;
@@ -228,9 +243,9 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             this.scheduler = scheduler;
             this.uiHost = uiHost;
             this.textProvider = textProvider;
-            this.voiceKeyDisplay = voiceKeyDisplay;
             this.audioDeviceCatalog = audioDeviceCatalog;
             this.defaultOwnerConfig = defaultOwnerConfig;
+            this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
             this.catalog = AsrModelManager.getAllModels();
             this.availabilitySnapshot = asrModelService().modelAvailability();
             this.enabled = new MutableSettingsValue<>(config::isAsrEnabled, config::setAsrEnabled);
@@ -252,7 +267,58 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
             refreshMicrophoneNames();
             options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
-                    .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get);
+                    .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get)
+                    .keyBinding("asr.voice_key", asr("option.voice_switch"), "key.tianshu.activate", enabled::get);
+        }
+
+        // ------------------------------------------------------------ debug test bench
+
+        /** The kernel's debug switch; without it the injection controls are never built. */
+        boolean debugSwitchOn() {
+            return debugEnabled.getAsBoolean();
+        }
+
+        /** Injection needs a running module, so the controls follow the enabled toggle as well. */
+        boolean debugControlsEnabled() {
+            return enabled.get() && debugSwitchOn();
+        }
+
+        String injectText() {
+            return injectText;
+        }
+
+        void setInjectText(String value) {
+            this.injectText = value == null ? "" : value;
+        }
+
+        boolean canInject() {
+            return debugControlsEnabled() && !injectText.isBlank();
+        }
+
+        UiText injectStatus() {
+            return injectStatusText;
+        }
+
+        /**
+         * Publishes the text as one recognised turn.
+         *
+         * <p>The module owns the lane; this method only reports what happened, because a debug control that
+         * guessed "sent" would be indistinguishable from a module that rejected the turn.</p>
+         */
+        void injectTextNow() {
+            String text = injectText == null ? "" : injectText.trim();
+            if (text.isEmpty()) {
+                injectStatusText = asr("status.debug.inject_blank");
+                refreshSettingsScreen();
+                return;
+            }
+            boolean accepted = services != null && services.findService(AsrModuleRuntimeControl.class)
+                    .map(control -> control.injectRecognizedText(text))
+                    .orElse(false);
+            injectStatusText = accepted
+                    ? asr("status.debug.injected", text)
+                    : asr("status.debug.inject_unavailable");
+            refreshSettingsScreen();
         }
 
         /**
@@ -273,19 +339,35 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private List<String> defaultOwnerValues() {
             List<String> values = new ArrayList<>();
             values.add(NOBODY);
-            defaultOwnerCandidates().forEach(participant -> values.add(participant.participantId()));
+            defaultOwnerCandidates().forEach(participant -> values.add(defaultOwnerSelection(participant)));
             return values;
         }
 
-        private UiText defaultOwnerLabel(String participantId) {
-            if (participantId == null || participantId.isBlank()) {
+        /** The select value is the module-qualified participant; a participant id alone is not unique. */
+        private static String defaultOwnerSelection(DialogueParticipantDescriptor participant) {
+            return participant.moduleId() + ":" + participant.participantId();
+        }
+
+        private UiText defaultOwnerLabel(String selection) {
+            if (selection == null || selection.isBlank()) {
                 return asr("default_owner.none");
             }
-            return defaultOwnerCandidates().stream()
-                    .filter(participant -> participantId.equals(participant.participantId()))
-                    .findFirst()
-                    .map(this::participantLabel)
-                    .orElseGet(() -> asr("default_owner.none"));
+            List<DialogueParticipantDescriptor> candidates = defaultOwnerCandidates();
+            if (selection.indexOf(':') > 0) {
+                return candidates.stream()
+                        .filter(participant -> selection.equals(defaultOwnerSelection(participant)))
+                        .findFirst()
+                        .map(this::participantLabel)
+                        .orElseGet(() -> asr("default_owner.none"));
+            }
+            // A choice saved before selections carried the module: printable only when it is unambiguous.
+            List<DialogueParticipantDescriptor> legacyMatches = candidates.stream()
+                    .filter(participant -> selection.equals(participant.participantId()))
+                    .limit(2)
+                    .toList();
+            return legacyMatches.size() == 1
+                    ? participantLabel(legacyMatches.get(0))
+                    : asr("default_owner.none");
         }
 
         private UiText participantLabel(DialogueParticipantDescriptor participant) {
@@ -300,7 +382,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             }
             return new DialogueDefaultOwnerResolver()
                     .resolve(defaultOwnerCandidates(), defaultOwnerConfig)
-                    .map(DialogueParticipantDescriptor::participantId)
+                    .map(participant -> defaultOwnerSelection(participant))
                     .orElse(NOBODY);
         }
 
@@ -316,10 +398,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
         private Optional<IaModuleService> iaService() {
             return services == null ? Optional.empty() : services.findService(IaModuleService.class);
-        }
-
-        private void buildMainStatus(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
-            status.row("asr.voice_switch", asr("option.voice_switch"), voiceKeyDisplay, enabled::get);
         }
 
         private void buildDownloadAdvancedOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
@@ -590,6 +668,10 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                     runOnClient(() -> {
                         availabilitySnapshot = asrModelService().modelAvailability();
                         context.showStatus(asr("message.download_complete"), 3000);
+                        // The speech lane reads its model once per runtime preparation. Without this refresh
+                        // the model the player just downloaded would only become usable after re-entering
+                        // the world, while the key press still explained "not installed".
+                        services.requestRefresh(RuntimeRefreshReason.RESOURCE_CHANGED);
                         queueDownloadRefresh();
                     });
                 }
@@ -833,12 +915,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
                 return List.of();
             }
             LinkedHashSet<String> tags = new LinkedHashSet<>();
-            for (String tag : info.getTags()) {
-                String normalized = normalizeTag(tag);
-                if (!normalized.isBlank()) {
-                    tags.add(normalized);
-                }
-            }
             if (info.isStreamingModel() || containsToken(info.localKey(), "streaming") || containsToken(info.remoteRepoId(), "streaming")) {
                 tags.add("streaming");
             }

@@ -15,7 +15,11 @@ public interface AsrInputService {
 
     void endVoiceInput();
 
-    void commitVoiceInput();
-
+    /**
+     * Abandons the open turn without producing text.
+     *
+     * <p>Not a platform gesture: the host calls it while releasing input resources, so a turn that is still
+     * recording cannot outlive the module's microphone ownership.</p>
+     */
     void cancelVoiceInput();
 }

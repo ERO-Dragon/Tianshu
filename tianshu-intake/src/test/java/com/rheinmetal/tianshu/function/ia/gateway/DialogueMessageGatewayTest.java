@@ -23,6 +23,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueMessageGatewayTest {
     @Test
+    void authorizingDoesNotDeliverTheBody() {
+        RecordingPort port = new RecordingPort();
+        DialogueMessageGateway gateway = new DialogueMessageGateway(port, new DialogueAccessController());
+
+        DialogueAccessDecision decision = gateway.authorizeToOwner(session(), owner());
+
+        assertTrue(decision.allowed());
+        assertEquals(0, port.deliverCount, "authorization is asked before the turn's side effects, so it must not deliver");
+    }
+
+    @Test
     void deliversToOwnerWhenAuthorized() {
         RecordingPort port = new RecordingPort();
         DialogueMessageGateway gateway = new DialogueMessageGateway(port, new DialogueAccessController());
@@ -116,6 +127,11 @@ class DialogueMessageGatewayTest {
 
         @Override
         public TianshuEnvelope publishSessionEvent(TianshuEnvelope parent, com.rheinmetal.tianshu.function.ia.contract.DialogueSessionEventPayload payload) {
+            return null;
+        }
+
+        @Override
+        public TianshuEnvelope publishSessionEvent(com.rheinmetal.tianshu.function.ia.contract.DialogueSessionEventPayload payload) {
             return null;
         }
 

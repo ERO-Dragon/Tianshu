@@ -60,6 +60,20 @@ public record IrObjectMatch(String spokenWord, String registryId, String registr
         }
     }
 
+    /** One matched item; its translation key is derived from the registry id and the item category. */
+    public static IrObjectMatch item(String spokenWord, String registryId) {
+        return new IrObjectMatch(spokenWord, registryId, KIND_ITEM, languageKeyFor(KIND_ITEM, registryId));
+    }
+
+    /** One matched entity type; its translation key is derived from the registry id and the entity category. */
+    public static IrObjectMatch entity(String spokenWord, String registryId) {
+        return new IrObjectMatch(spokenWord, registryId, KIND_ENTITY, languageKeyFor(KIND_ENTITY, registryId));
+    }
+
+    private static String languageKeyFor(String registryKind, String registryId) {
+        return registryKind + "." + clean(registryId).replace(':', '.').replace('/', '.');
+    }
+
     /**
      * The match names an entity type rather than an item.
      *

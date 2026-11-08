@@ -2,6 +2,14 @@ package com.rheinmetal.tianshu.function.intake.recognition;
 
 import com.rheinmetal.tianshu.function.intake.audio.AsrSpeechActivitySnapshot;
 
+/**
+ * Segment boundaries for continuous listening.
+ *
+ * <p><b>Sealed:</b> the current runtime only supports push-to-talk, and the controller installs
+ * {@link #disabled()}; nothing in production consumes segment decisions. The interface and its VAD
+ * implementation are kept as the extension point for re-enabling continuous input, and their only current
+ * callers are the capture and recognition tests.</p>
+ */
 public interface AsrSpeechSegmenter {
     AsrSpeechSegmenter DISABLED = new AsrSpeechSegmenter() {
     };

@@ -27,7 +27,7 @@ public class ClientConfig implements GlobalDebugSettingsAccess {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
 
         builder.push("debug");
-        DEBUG_ENABLED = builder.define("enabled", false);
+        DEBUG_ENABLED = builder.define("enabled", com.rheinmetal.tianshu.mc.config.TianshuBuildProfile.debugBuild());
         builder.pop();
 
         SPEC = builder.build();

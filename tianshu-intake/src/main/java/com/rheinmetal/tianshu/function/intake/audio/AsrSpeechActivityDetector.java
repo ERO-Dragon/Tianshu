@@ -3,6 +3,10 @@ package com.rheinmetal.tianshu.function.intake.audio;
 /**
  * Voice activity detector for the continuous listening mode.
  *
+ * <p><b>Sealed:</b> continuous input is not exposed by the current runtime or settings, so this detector is
+ * reached only through the capture/recognition tests. It is kept as the extension point for re-enabling
+ * continuous input, not as behaviour the player can currently turn on.</p>
+ *
  * <h2>Deliberately simple</h2>
  * <p>The whole model is three rules:</p>
  * <ol>
@@ -14,7 +18,7 @@ package com.rheinmetal.tianshu.function.intake.audio;
  * <p>Earlier revisions layered calibration windows, dispersion estimates, envelope modulation and
  * self-correction on top of this. Each layer interacted with the others, which made the behaviour
  * hard to predict and hard to tune. The simple version is easier to reason about and its two
- * ratios can be adjusted by hand. It is marked experimental in the settings.</p>
+ * ratios can be adjusted by hand. It is not wired to any setting while continuous input stays sealed.</p>
  *
  * <h2>Tuning</h2>
  * <ul>

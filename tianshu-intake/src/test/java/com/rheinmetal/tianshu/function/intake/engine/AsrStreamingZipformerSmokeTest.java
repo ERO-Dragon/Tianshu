@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsrStreamingZipformerSmokeTest {
-    private static final String MODEL_KEY = "sherpa-onnx-streaming-zipformer-zh-xlarge-int8-2025-06-30";
+    private static final String MODEL_KEY = "sherpa-onnx-streaming-zipformer-ar_en_id_ja_ru_th_vi_zh-2025-02-10";
     @Test
     void initializesStreamingEngineAndFlushesMinimalAudio() throws Exception {
         Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("TIANSHU_ASR_SMOKE")),

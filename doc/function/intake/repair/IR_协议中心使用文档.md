@@ -53,6 +53,7 @@ subscribeTopic(
 
 - `moduleId` 表示该触发词的注册来源，不代表最终 owner；
 - `spokenWord` 是玩家说出的词，`registeredWord` 是该模块注册的词；
+- `kind` 是 `wake` 或 `extra`：只有 `wake` 能满足 IA 的唤醒词条件，`extra` 只辅助识别与排序；
 - 每个命中词一条；模块之间按匹配质量降序排列，匹配质量只用于排序、不进入 payload，也不替代 IA 的 claim 来源档或 participant priority。
 
 ## 3. IA 消费语义
@@ -88,7 +89,7 @@ IR 不再请求 `PresenceCapabilities.QUERY_CONTEXT`，也不再消费 `Presence
 - 订阅者不得在 `IR_RESULT` handler 中执行阻塞 IO、模型推理或游戏主线程工作。
 - 不要根据 `moduleMatches.moduleId` 绕过 IA 投递正文。
 - 不要自行把玩家正文写入公共日志或私有 debug 文件。
-- IR 诊断由 `module.ir` 设置控制，并由宿主集中异步落盘。
+- IR 诊断沿用语音模块的 `module.asr` 会话标识，由设置页右下角的全局 Debug 开关统一控制，并由宿主集中异步落盘。
 
 ## 7. 接入检查表
 

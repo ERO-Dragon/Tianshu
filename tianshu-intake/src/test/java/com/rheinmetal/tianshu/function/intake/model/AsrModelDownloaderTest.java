@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -140,7 +141,7 @@ class AsrModelDownloaderTest {
             AsrModelInfo info = new AsrModelInfo();
             info.name = "hf-asr";
             info.id = "org/asr";
-            info.modelFiles = List.of("model.onnx");
+            info.fileRoles = Map.of("model", "model.onnx");
 
             Path target = tempDir.resolve("hf-model");
             downloader.downloadSync(info, target, "", new RecordingCallback(), () -> {});
@@ -172,7 +173,7 @@ class AsrModelDownloaderTest {
             AsrModelInfo info = new AsrModelInfo();
             info.name = "chunked-asr";
             info.id = "org/asr";
-            info.modelFiles = List.of("first.onnx", "second.onnx");
+            info.fileRoles = Map.of("model", "first.onnx", "tokens", "second.onnx");
             info.size = first.length + second.length;
             List<ModelDownloadProgress> progress = new ArrayList<>();
 
@@ -215,7 +216,7 @@ class AsrModelDownloaderTest {
         AsrModelInfo info = new AsrModelInfo();
         info.name = "archive-asr";
         info.downloadUrl = downloadUrl;
-        info.modelFiles = List.of(requiredFile);
+        info.fileRoles = Map.of("model", requiredFile);
         return info;
     }
 

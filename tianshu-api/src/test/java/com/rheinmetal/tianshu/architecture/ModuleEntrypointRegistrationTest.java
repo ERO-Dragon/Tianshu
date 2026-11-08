@@ -36,6 +36,15 @@ class ModuleEntrypointRegistrationTest {
 
     private static final Path REPOSITORY_ROOT = Path.of("..");
     private static final String FUNCTION_PACKAGE = "com/rheinmetal/tianshu/function";
+    /**
+     * Directories under the repository root that look like modules but are not shipped features.
+     *
+     * <p>{@code tianshu-lab} is a development-only bench: it ships one loader shell for the development
+     * run, no adapter packages it, and the universal-jar contract below does not apply to it. It is listed
+     * here instead of silently skipped so {@link #theScanCoversExactlyTheGradleFeatureSet()} can prove the
+     * exclusion is the only one.</p>
+     */
+    private static final java.util.Set<String> DEV_ONLY_MODULES = java.util.Set.of("tianshu-lab");
 
     private static final Pattern MOD_ANNOTATION = Pattern.compile("@Mod\\(\"([a-z0-9_]+)\"\\)");
     private static final Pattern NEOFORGE_MOD_ID = Pattern.compile("^\\s*modId\\s*=\\s*\"([a-z0-9_]+)\"",
@@ -196,17 +205,48 @@ class ModuleEntrypointRegistrationTest {
 
     /**
      * Discovered rather than listed: a module added tomorrow is covered the moment it ships a loader shell,
-     * and this test does not need editing.
+     * and this test does not need editing. Dev-only benches are the one documented exception.
      */
     private static List<Path> featureModules() throws IOException {
         try (Stream<Path> children = Files.list(REPOSITORY_ROOT)) {
             return children
                     .filter(Files::isDirectory)
                     .filter(module -> module.getFileName().toString().startsWith("tianshu-"))
+                    .filter(module -> !DEV_ONLY_MODULES.contains(module.getFileName().toString()))
                     .filter(ModuleEntrypointRegistrationTest::shipsALoaderShell)
                     .sorted()
                     .toList();
         }
+    }
+
+    /**
+     * The scan above must cover exactly the Gradle feature set — no shipped module missed, and no dev-only
+     * bench quietly excluded beyond the one documented entry.
+     */
+    @Test
+    void theScanCoversExactlyTheGradleFeatureSet() throws Exception {
+        java.util.Set<String> gradleModules = gradleFeatureModules();
+        assertFalse(gradleModules.isEmpty(), "the feature list could not be read from build.gradle");
+
+        java.util.Set<String> scanned = featureModules().stream()
+                .map(module -> module.getFileName().toString())
+                .collect(java.util.stream.Collectors.toSet());
+        assertEquals(gradleModules, scanned,
+                "featureModules in build.gradle and the directory scan disagree; a shipped module without a shell "
+                        + "(or a dev-only bench outside DEV_ONLY_MODULES) is the difference");
+    }
+
+    private static java.util.Set<String> gradleFeatureModules() throws IOException {
+        String build = Files.readString(REPOSITORY_ROOT.resolve("build.gradle"), StandardCharsets.UTF_8);
+        Matcher matcher = Pattern.compile("def featureModules\\s*=\\s*\\[([^\\]]+)\\]").matcher(build);
+        if (!matcher.find()) {
+            return java.util.Set.of();
+        }
+        return java.util.Arrays.stream(matcher.group(1).split(","))
+                .map(String::trim)
+                .map(value -> value.replace("'", "").replace("\"", ""))
+                .filter(value -> !value.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     private static boolean shipsALoaderShell(Path module) {

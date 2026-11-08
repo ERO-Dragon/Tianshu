@@ -22,7 +22,7 @@ class AudioCaptureServiceTest {
         List<Boolean> states = new ArrayList<>();
         AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment(), (speaking, sessionId, occurredAtMillis) -> states.add(speaking));
 
-        service.startPttCapture(42L);
+        service.startPttCapture();
         bridge.push(pcm(0.03D, 160));
         service.stopPttCapture();
 

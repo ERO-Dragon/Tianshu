@@ -7,8 +7,6 @@ public interface IntakeConfiguration {
 
     String getSelectedMicName();
 
-    boolean isAsrRnnoiseEnabled();
-
     boolean isAsrHighPassFilterEnabled();
 
     String getCustomAsrName();

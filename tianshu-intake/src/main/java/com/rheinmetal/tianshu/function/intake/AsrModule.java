@@ -27,6 +27,7 @@ import com.rheinmetal.tianshu.function.intake.input.AsrInputService;
 import com.rheinmetal.tianshu.function.intake.recognition.AsrRecognitionService;
 import com.rheinmetal.tianshu.function.intake.session.AsrSessionManager;
 import com.rheinmetal.tianshu.function.intake.state.AsrStateMachine;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestPayload;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
@@ -45,7 +46,7 @@ import java.util.function.LongSupplier;
 public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeControl {
     /** Queue action name; also what the native-load gate reports to its observers while we are parked. */
     private static final String LOAD_ACTION = "asr-model";
-    /** The concurrency key of the lane the speech model is read on, next to the telemetry reload. */
+    /** The concurrency key of the lane the speech model is read on. */
     private static final String ENGINE_LOAD_KEY_SUFFIX = ":engine.load";
     private final IAudioBridge audioBridge;
     private final ModuleRuntimeAccess moduleRuntime;
@@ -55,13 +56,19 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     private final LongSupplier interruptProcessing;
     private final AtomicBoolean engineLoadInFlight = new AtomicBoolean(false);
     /**
-     * Guards the native-load permit so that exactly one hand-back happens no matter how the load ends.
+     * Guards the hand-off of a freshly loaded engine against teardown.
      *
-     * <p>Two paths can reach the release: the lane task's own {@code finally}, and teardown cancelling a
-     * task that never started. Both flip this flag with a compare-and-set, so the second of them is a
-     * no-op instead of a second release that would hand someone else's permit away.
+     * <p>Loading happens on the model lane while teardown runs on the caller's thread, so the two have to
+     * agree on one thing: whichever of them is second must not leave a loaded model unreachable. Both the
+     * assignment in {@link #runEngineLoad} and the {@code destroyed} flip in {@link #destroy()} happen
+     * under this monitor; a load that loses the race shuts its engine down instead of publishing it.
      */
-    private final AtomicBoolean engineLoadPermit = new AtomicBoolean(false);
+    private final Object engineOwnership = new Object();
+    /**
+     * Set by {@link #abandonEngineLoad()}: the module stopped, so a load that is still queued must not
+     * publish anything. The task itself still runs and hands its permit back.
+     */
+    private volatile boolean engineLoadAbandoned;
     /** Process-wide serial gate for native model loads; null keeps this module self-contained. */
     private final NativeModelLoadQueue loadQueue;
     private final AsrProtocolAdapter adapter;
@@ -82,8 +89,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
      * dead key into an actionable message.
      */
     private volatile ModuleStatus engineStatus;
-    /** The queued/loading engine task, kept so teardown can cancel a load that has not started. */
-    private volatile ProtocolTaskHandle engineLoadTask;
     private volatile AudioCaptureService audioCapture;
     private volatile boolean destroyed;
     private AsrModelService modelService;
@@ -132,7 +137,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     @Override
     public void register(ModuleRegistrationContext context) {
         adapter.registerOwnedTopics(context.protocol());
-        modelService = new AsrModelService(env, config, audioBridge, moduleRuntime, this::asrEngine, this::isAsrReady, this::publishModuleStatus);
+        modelService = new AsrModelService(env, config, audioBridge, moduleRuntime, this::publishModuleStatus);
         context.services().register(AsrModelService.class, modelService);
         context.services().register(AsrModuleRuntimeControl.class, this);
         inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
@@ -148,6 +153,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
         try {
             destroyed = false;
+            engineLoadAbandoned = false;
             runtimeContext = context;
             runtimeState = context.runtimeState();
             engineStatus = null;
@@ -161,6 +167,9 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
             // Same call stack as recognition: the repaired analysis is published right after the raw text,
             // instead of being routed through a subscription into a module that had to ask for context first.
             controller.bindTextRepair(textRepairer::process);
+            // A short press is a stop gesture: the controller discards the turn and this module asks the
+            // arbiter to broadcast the request to whoever is addressed right now.
+            controller.bindTapHandler(this::requestDialogueInterrupt);
             if (inputGateway == null) {
                 inputGateway = new AsrInputGateway(this::canAcceptVoiceInput);
             }
@@ -195,11 +204,23 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
                 ignored -> withAcceptableInput(AsrInputService::beginVoiceInput)));
         subscriptions.add(InputSignals.subscribe(InputSignals.PUSH_TO_TALK_UP,
                 ignored -> withAcceptableInput(AsrInputService::endVoiceInput)));
-        subscriptions.add(InputSignals.subscribe(InputSignals.PUSH_TO_TALK_CANCEL,
-                ignored -> withAcceptableInput(AsrInputService::cancelVoiceInput)));
         return () -> subscriptions.forEach(InputSignals.Subscription::close);
     }
 
+    /**
+     * A short press asks the arbiter to broadcast a stop request; it is not a dialogue turn.
+     *
+     * <p>The request is fire-and-forget: the arbiter resolves the current target and nobody answers the
+     * gesture. When no arbiter is assembled the tap has already discarded its turn, so there is nothing left
+     * to do but say so in the log.</p>
+     */
+    private void requestDialogueInterrupt() {
+        if (!adapter.dialogueInterruptAvailable()) {
+            env.warn("asr.interrupt.unavailable");
+            return;
+        }
+        adapter.requestDialogueInterrupt(new DialogueInterruptRequestPayload(System.currentTimeMillis()));
+    }
     private void withAcceptableInput(java.util.function.Consumer<AsrInputService> action) {
         AsrInputGateway gateway = inputGateway;
         if (gateway == null || !gateway.canAcceptVoiceInput()) {
@@ -210,9 +231,9 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public void stop() {
-        // First, so no native read starts or continues into a session that is going away, and so a permit
-        // held for a load that will never run is handed back.
-        cancelEngineLoad();
+        // First, so a model read that is queued or still running does not publish into a stopped module.
+        // The queued task itself is left to run and hand its native-load permit back.
+        abandonEngineLoad();
         textRepairer.stop();
         if (modelService != null) {
             modelService.stopPreview();
@@ -228,17 +249,38 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
 
     @Override
     public void destroy() {
-        destroyed = true;
-        textRepairer.destroy();
-        // Covers the initial read and a hotword refresh alike: they share one latch and one lane task.
-        cancelEngineLoad();
-        stop();
-        if (modelService != null) {
-            modelService.close();
-            modelService = null;
+        AsrEngine owned;
+        synchronized (engineOwnership) {
+            destroyed = true;
+            owned = engine;
+            engine = null;
         }
-        controller = null;
-        audioCapture = null;
+        closeInputRoutes();
+        textRepairer.destroy();
+        try {
+            stop();
+        } finally {
+            if (modelService != null) {
+                modelService.close();
+                modelService = null;
+            }
+            // The native release is last and runs even when an earlier cleanup failed: every other owner of
+            // this module's state is gone by now, so nothing may skip freeing the model.
+            shutdownQuietly(owned);
+            controller = null;
+            audioCapture = null;
+            inputGateway = null;
+            runtimeContext = null;
+            if (runtimeState != null) {
+                runtimeState.capabilities().remove(AsrRuntimeCapabilities.INPUT);
+                runtimeState.capabilities().remove(AsrRuntimeCapabilities.MODEL);
+                runtimeState = null;
+            }
+        }
+    }
+
+    /** Closes the two ways a key press can reach the controller, before the controller is stopped. */
+    private void closeInputRoutes() {
         if (pushToTalkSubscription != null) {
             pushToTalkSubscription.close();
             pushToTalkSubscription = null;
@@ -246,17 +288,6 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         if (inputGateway != null) {
             inputGateway.unbind();
             inputGateway = null;
-        }
-        runtimeContext = null;
-        if (runtimeState != null) {
-            runtimeState.capabilities().remove(AsrRuntimeCapabilities.INPUT);
-            runtimeState.capabilities().remove(AsrRuntimeCapabilities.MODEL);
-            runtimeState = null;
-        }
-        AsrEngine currentEngine = engine;
-        engine = null;
-        if (currentEngine != null) {
-            currentEngine.shutdown();
         }
     }
 
@@ -272,7 +303,7 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         try {
             audioBridge.releaseCaptureHardware();
         } catch (RuntimeException | LinkageError failure) {
-            env.error("tianshu.asr.audio.hardware_release_failed", failure);
+            env.error("asr.audio.hardware_release_failed", failure);
         }
     }
 
@@ -280,7 +311,23 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     public void reconfigureAudioPipeline() {
         AudioCaptureService capture = audioCapture;
         if (capture != null) {
-            capture.setFrameProcessor(new AsrAudioPipelineFactory(config, env).create());
+            capture.setFrameProcessor(new AsrAudioPipelineFactory(config).create());
+        }
+    }
+
+    @Override
+    public boolean injectRecognizedText(String text) {
+        AsrController current = controller;
+        if (destroyed || current == null) {
+            return false;
+        }
+        try {
+            return current.injectRecognizedText(text);
+        } catch (RuntimeException failure) {
+            // The debug control must not take the module down: a bad injected turn is reported where every
+            // other module failure goes, and the controller is left untouched.
+            env.error("asr.debug.text_injection_failed", failure);
+            return false;
         }
     }
 
@@ -341,19 +388,13 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     /**
-     * Asks the native-load gate for permission to read the speech model, on the ASR lane.
-     *
-     * <p>This is the shape the TTS backend already uses: request the permit and let the gate decide when
-     * the load may run. The request is <em>deferred</em>, not primary — retrieval is a precondition for
-     * dialogue, while speech input is an on-demand capability, so ASR queues behind the embedding lane.
-     * Within the deferred tier there is deliberately no ordering: whoever asks first is granted first.
-     */
-    /**
      * The single entry for every native read of the speech model.
      *
      * <p>Request the permit, re-enter this module's own lane once it is granted, read, and hand the permit
      * back in a {@code finally}. A second request while one is in flight is dropped: the model is read
-     * once per enable, not rebuilt afterwards.
+     * once per enable, not rebuilt afterwards. The request is <em>deferred</em>, not primary — retrieval is
+     * a precondition for dialogue, while speech input is an on-demand capability, so ASR queues behind the
+     * embedding lane.
      */
     private void requestEngineLoad(ModuleRuntimeContext context) {
         if (!engineLoadInFlight.compareAndSet(false, true)) {
@@ -366,7 +407,9 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         NativeModelLoadQueue.Outcome outcome = loadQueue.request(
                 moduleId(), LOAD_ACTION, () -> submitEngineLoad(context), NativeModelLoadQueue.Tier.LAST);
         if (outcome == NativeModelLoadQueue.Outcome.REFUSED) {
-            failEngineLoad(context, "the native model load queue is full");
+            // A refusal never took the permit, so handing it back here would release whichever module
+            // actually holds it.
+            reportEngineLoadRejected("the native model load queue is full");
             return;
         }
         if (outcome == NativeModelLoadQueue.Outcome.PARKED) {
@@ -376,60 +419,61 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
         }
     }
 
-    /** The permit arrived: the load re-enters this module's own lane instead of running on the giver. */
+    /**
+     * The permit arrived: the load re-enters this module's own lane instead of running on the giver.
+     *
+     * <p>A lane rejection is the one exit where the permit was granted but no task exists to return it
+     * from its {@code finally}, so this method hands it back itself.
+     */
     private void submitEngineLoad(ModuleRuntimeContext context) {
-        engineLoadPermit.set(true);
         ProtocolTaskHandle handle = moduleRuntime.submit(engineLoadSpec(), () -> runEngineLoad(context));
         if (handle.state() == ProtocolTaskState.REJECTED) {
-            engineLoadTask = null;
-            failEngineLoad(context, "the model-load lane rejected the task");
-            return;
+            handBackEnginePermit();
+            reportEngineLoadRejected("the model-load lane rejected the task");
         }
-        engineLoadTask = handle;
     }
 
     /**
-     * The one place the model is read. Every exit path — success, early return, throwable — runs the
-     * {@code finally}, which is what guarantees the permit goes back to the gate.
+     * The one place the model is read.
      *
-     * <p>A hotword reload swaps only after the replacement is up: the engine that is already serving stays
-     * alive until then, so a refresh never opens a window with no engine. A failed reload therefore leaves
-     * the lane exactly as it was, and the MODEL dimension is put back to ready, because the bootstrap's
-     * failure marking describes the replacement that failed, not the engine still running.
+     * <p>Every exit path — success, teardown, throwable — runs the {@code finally}, which is the only
+     * place the native-load permit goes back. Teardown therefore never hands the permit back on behalf of
+     * a task that can still run: it marks the load abandoned, and the task returns before reading.
+     *
+     * <p>The hand-off to {@link #engine} is what the {@link #engineOwnership} monitor is for: a teardown
+     * that lands during the read must not leave a loaded model owned by nobody.
      */
     private void runEngineLoad(ModuleRuntimeContext context) {
+        AsrEngine unowned = null;
         try {
-            if (destroyed) {
+            if (isEngineLoadAbandoned()) {
                 return;
             }
-            AsrEngine previous = engine;
-            AsrEngine loaded = createEngine(context);
-            if (destroyed) {
-                shutdownQuietly(loaded);
-                return;
+            unowned = createEngine(context);
+            synchronized (engineOwnership) {
+                if (!isEngineLoadAbandoned()) {
+                    engine = unowned;
+                    unowned = null;
+                }
             }
-            engine = loaded;
         } catch (RuntimeException | LinkageError failure) {
             env.error("asr.engine.load_failed", failure);
+            ModuleRuntimeState state = runtimeState;
+            if (state != null) {
+                state.capabilities().markFailed(AsrRuntimeCapabilities.MODEL, moduleId(),
+                        "ASR engine load failed: " + failure.getMessage());
+            }
             publishModuleStatus(ModuleStatuses.failedKeyed(moduleId(), "tianshu.runtime.module.asr.exception"));
         } finally {
             engineLoadInFlight.set(false);
             adapter.publishLoadingActivity(false);
-            releaseEnginePermit();
+            handBackEnginePermit();
+            shutdownQuietly(unowned);
         }
     }
 
-    /** The replacement failed but the engine that was serving is still up: the lane keeps working. */
-    private void restoreModelReadyIfServing(AsrEngine serving) {
-        if (serving == null) {
-            return;
-        }
-        ModuleRuntimeState state = runtimeState;
-        if (state != null) {
-            state.capabilities().install(AsrRuntimeCapabilities.MODEL, moduleId());
-            state.capabilities().markReady(AsrRuntimeCapabilities.MODEL, moduleId());
-        }
-        engineStatus = ModuleStatuses.readyKeyed(moduleId(), "tianshu.runtime.module.asr.ready");
+    private boolean isEngineLoadAbandoned() {
+        return destroyed || engineLoadAbandoned;
     }
 
     private void shutdownQuietly(AsrEngine target) {
@@ -444,16 +488,12 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     /**
-     * A load that never queued must not be silent: it reports itself and, when no engine exists yet, leaves
-     * the MODEL dimension failed so the key press explains "could not queue" instead of "not installed".
-     *
-     * <p>A rejected hotword refresh is different: the engine that is already serving is untouched, so the
-     * refresh is reported as failed without downgrading a lane that still works.
+     * A load that never queued must not be silent: it reports itself and leaves the MODEL dimension failed, so
+     * the key press explains "could not queue" instead of "not installed".
      */
-    private void failEngineLoad(ModuleRuntimeContext context, String detail) {
+    private void reportEngineLoadRejected(String detail) {
         engineLoadInFlight.set(false);
         adapter.publishLoadingActivity(false);
-        releaseEnginePermit();
         env.warn("asr.engine.load_rejected: " + detail);
         ModuleRuntimeState state = runtimeState;
         if (state != null) {
@@ -465,36 +505,27 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
     }
 
     /**
-     * Hands the permit back at most once across the load task and teardown.
+     * Hands the native-load permit back.
      *
-     * <p>The compare-and-set is the whole point: teardown may cancel a task that never started (whose
-     * {@code finally} therefore never runs) while a task that did start releases in its own {@code finally}.
-     * Whichever happens second finds the flag already clear and does nothing.
+     * <p>Only the task that ran the load, or the submission that never produced one, calls this. The
+     * queue's own owner check makes it a no-op when this module no longer holds the permit, so a late task
+     * can never steal the permit from whichever module was granted it in the meantime.
      */
-    private void releaseEnginePermit() {
-        if (loadQueue != null && engineLoadPermit.compareAndSet(true, false)) {
+    private void handBackEnginePermit() {
+        if (loadQueue != null) {
             loadQueue.release(moduleId());
         }
     }
 
     /**
-     * Stops a load that is still queued or running.
+     * Stops the module from publishing a load that is still queued.
      *
-     * <p>A task that never started cannot release in its own {@code finally}, so the permit is handed back
-     * here. A task that is already running releases its own instead: handing the permit back from teardown
-     * while the native read continues would let the next model start on top of it, which is the one thing
-     * the gate exists to prevent.
+     * <p>Nothing is cancelled: cancelling a queued task would leave the native-load permit held by a task
+     * that never runs its {@code finally}. The task is harmless after teardown — {@link #runEngineLoad}
+     * checks {@link #isEngineLoadAbandoned()} before it reads anything — and returns the permit itself.
      */
-    private void cancelEngineLoad() {
-        ProtocolTaskHandle handle = engineLoadTask;
-        engineLoadTask = null;
-        boolean wasRunning = handle != null && handle.isRunning();
-        if (handle != null && !handle.isDone()) {
-            handle.cancel("ASR module stopped");
-        }
-        if (!wasRunning) {
-            releaseEnginePermit();
-        }
+    private void abandonEngineLoad() {
+        engineLoadAbandoned = true;
         engineLoadInFlight.set(false);
         adapter.publishLoadingActivity(false);
     }

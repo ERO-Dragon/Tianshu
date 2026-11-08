@@ -38,19 +38,19 @@ class IrResultArbitrationMapperTest {
                 1_000L
         );
         var envelope = EnvelopeBuilder.eventTopic(
-                "module.ir",
+                "module.asr",
                 IntakeTopics.IR_RESULT,
                 PayloadType.of("IR_RESULT"),
                 result
         ).build();
 
-        DialogueArbitrationRequestPayload request = new IrResultArbitrationMapper().map(envelope, result);
+        DialogueArbitrationRequestPayload request = new IrResultArbitrationMapper().map(envelope, result, "player-1");
 
         assertEquals(objectMatches, request.objectMatches());
         assertEquals(moduleMatches, request.moduleMatches());
         assertEquals(2, request.moduleMatches().size(), "every trigger word is one entry, not one entry per module");
         assertEquals("酒狐帮我种地", request.repairedText());
-        assertEquals("local", request.playerId());
+        assertEquals("player-1", request.playerId());
     }
 
     /**
@@ -72,13 +72,13 @@ class IrResultArbitrationMapperTest {
                 1_000L
         );
         var envelope = EnvelopeBuilder.eventTopic(
-                "module.ir",
+                "module.asr",
                 IntakeTopics.IR_RESULT,
                 PayloadType.of("IR_RESULT"),
                 result
         ).build();
 
-        DialogueArbitrationRequestPayload request = new IrResultArbitrationMapper().map(envelope, result);
+        DialogueArbitrationRequestPayload request = new IrResultArbitrationMapper().map(envelope, result, "player-1");
 
         assertEquals("钻石锄", request.objectMatches().get(0).spokenWord());
         assertEquals("minecraft:diamond_hoe", request.objectMatches().get(0).registryId());

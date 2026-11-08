@@ -51,7 +51,7 @@ public final class AsrEngineBootstrap {
             publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.not_configured"));
             return null;
         }
-        if (modelPath == null || !Files.isDirectory(modelPath)) {
+        if (!Files.isDirectory(modelPath)) {
             markFailed(context, moduleId, "ASR model is not installed");
             env.info("asr.model.directory_missing");
             publishStatus(AsrEngineBootstrapStatus.waiting("tianshu.runtime.module.asr.not_installed"));
@@ -59,52 +59,59 @@ public final class AsrEngineBootstrap {
         }
 
         AsrEngine engine = new AsrEngine(env);
-        try {
-            if (initializeEngine(engine, context, modelPath)) {
-                context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.MODEL, moduleId);
-                env.info("asr.engine.initialized");
-                publishStatus(AsrEngineBootstrapStatus.ready("tianshu.runtime.module.asr.ready"));
-                return engine;
-            }
-            markFailed(context, moduleId, "ASR 引擎初始化失败");
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.failed"));
-        } catch (ModelFilesMissingException e) {
-            markFailed(context, moduleId, "ASR 模型文件缺失: " + e.getMessage());
-            env.error("asr.model.files_missing", e);
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.model_files_missing"));
-        } catch (RuntimeException | LinkageError failure) {
-            markFailed(context, moduleId, "ASR 引擎初始化异常: " + failure.getMessage());
-            env.error("asr.engine.initialization_failed", failure);
-            publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.exception"));
+        EngineFailure failure = initializeEngine(engine, modelPath);
+        if (failure == null) {
+            context.runtimeState().capabilities().markReady(AsrRuntimeCapabilities.MODEL, moduleId);
+            env.info("asr.engine.initialized");
+            publishStatus(AsrEngineBootstrapStatus.ready("tianshu.runtime.module.asr.ready"));
+            return engine;
         }
+        markFailed(context, moduleId, failure.reason());
+        publishStatus(AsrEngineBootstrapStatus.failed(failure.messageKey()));
         engine.shutdown();
         return null;
     }
 
-    private boolean initializeEngine(AsrEngine engine, ModuleRuntimeContext context, Path modelPath) throws ModelFilesMissingException {
+    /**
+     * Reads one model into {@code engine}, or reports why it could not.
+     *
+     * @return {@code null} when the engine is ready, otherwise the one failure the player should be told about
+     */
+    private EngineFailure initializeEngine(AsrEngine engine, Path modelPath) {
         File safeDir = PathUtils.getSafeModelDir(modelPath.toFile());
         if (safeDir == null) {
             env.error("asr.model.path_unavailable", null);
-            return false;
+            return new EngineFailure("tianshu.runtime.module.asr.failed", "ASR model path is unavailable");
         }
 
         AsrModelInfo modelInfo = resolveModelInfo(modelPath);
         if (modelInfo == null) {
             env.error("ASR model is not declared in asr_model.json: " + modelPath.getFileName(), null);
-            return false;
+            return new EngineFailure("tianshu.runtime.module.asr.unsupported_model",
+                    "ASR model is not declared in the catalog: " + modelPath.getFileName());
         }
         boolean initialized;
         loadingSink.accept(true);
         try {
             initialized = engine.initialize(modelInfo, safeDir.toPath());
+        } catch (ModelFilesMissingException e) {
+            env.error("asr.model.files_missing", e);
+            return new EngineFailure("tianshu.runtime.module.asr.model_files_missing",
+                    "ASR model files are missing: " + e.getMessage());
+        } catch (RuntimeException | LinkageError failure) {
+            env.error("asr.engine.initialization_failed", failure);
+            return new EngineFailure("tianshu.runtime.module.asr.exception",
+                    "ASR engine initialization failed: " + failure.getMessage());
         } finally {
             loadingSink.accept(false);
         }
         if (!initialized) {
             env.error("asr.model.unsupported", null);
-        publishStatus(AsrEngineBootstrapStatus.failed("tianshu.runtime.module.asr.unsupported_model"));
+            String architecture = modelInfo.architecture == null ? "" : modelInfo.architecture.trim();
+            return new EngineFailure("tianshu.runtime.module.asr.unsupported_model",
+                    "ASR model architecture is not supported: " + architecture);
         }
-        return initialized;
+        return null;
     }
 
     private AsrModelInfo resolveModelInfo(Path modelPath) {
@@ -118,5 +125,9 @@ public final class AsrEngineBootstrap {
 
     private void publishStatus(AsrEngineBootstrapStatus status) {
         statusSink.accept(status);
+    }
+
+    /** The one reason a model read did not succeed; the caller publishes exactly one status for it. */
+    private record EngineFailure(String messageKey, String reason) {
     }
 }

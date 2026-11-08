@@ -5,8 +5,7 @@ public record IntakeSettingsSnapshot(
         boolean enabled,
         String selectedMicName,
         String modelName,
-        boolean highPassFilterEnabled,
-        boolean rnnoiseEnabled
+        boolean highPassFilterEnabled
 ) {
     public IntakeSettingsSnapshot {
         selectedMicName = selectedMicName == null ? "" : selectedMicName;
@@ -19,8 +18,7 @@ public record IntakeSettingsSnapshot(
                 config.isAsrEnabled(),
                 config.getSelectedMicName(),
                 modelName,
-                config.isAsrHighPassFilterEnabled(),
-                config.isAsrRnnoiseEnabled()
+                config.isAsrHighPassFilterEnabled()
         );
     }
 

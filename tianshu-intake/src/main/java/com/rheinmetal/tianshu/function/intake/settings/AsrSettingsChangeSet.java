@@ -19,7 +19,6 @@ public record AsrSettingsChangeSet(
                 !Objects.equals(before.selectedMicName(), after.selectedMicName()),
                 !Objects.equals(before.modelName(), after.modelName()),
                 before.highPassFilterEnabled() != after.highPassFilterEnabled()
-                        || before.rnnoiseEnabled() != after.rnnoiseEnabled()
         );
     }
 

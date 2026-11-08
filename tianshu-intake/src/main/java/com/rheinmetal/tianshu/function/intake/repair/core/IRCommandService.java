@@ -7,37 +7,53 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+/**
+ * The dictionary an utterance is matched against, and the only owner of its index.
+ *
+ * <p>Rebuild, restore and clear publish a whole new {@link IRIndex} as one reference; parse and lookups
+ * read the index that was current when they took the read lock. That is what keeps a rebuild from being
+ * observed half-finished by a concurrent parse, and what keeps two service instances independent instead
+ * of sharing one set of static arrays.</p>
+ */
 public final class IRCommandService {
     private final ReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
     private volatile CommandParser parser;
-    private volatile int indexedObjectCount;
+    private volatile IRIndex index = IRIndex.EMPTY;
 
     public void rebuild(Map<String, List<String>> rawDict) {
         lifecycleLock.writeLock().lock();
         try {
-            if (rawDict == null || rawDict.isEmpty()) { clearInternal(); return; }
-            IndexBuilder.build(rawDict);
-            parser = new CommandParser();
-            indexedObjectCount = rawDict.size();
+            if (rawDict == null || rawDict.isEmpty()) {
+                clearInternal();
+                return;
+            }
+            publish(IndexBuilder.build(rawDict));
         } finally {
             lifecycleLock.writeLock().unlock();
         }
     }
 
-    public void restore(IRSnapshot snapshot) {
+    /**
+     * Adopts a cached snapshot.
+     *
+     * @return {@code false} when the snapshot is not structurally usable, so the caller can discard the
+     *         cache file and rebuild instead of matching against a corrupt index
+     */
+    public boolean restore(IRSnapshot snapshot) {
         lifecycleLock.writeLock().lock();
         try {
-            if (snapshot == null || snapshot.reverseLookupArray.length == 0) {
+            Optional<IRIndex> restored = IRIndex.fromSnapshot(snapshot);
+            if (restored.isEmpty()) {
                 clearInternal();
-                return;
+                return false;
             }
-            applySnapshot(snapshot);
-            parser = new CommandParser();
-            indexedObjectCount = snapshot.reverseLookupArray.length;
+            publish(restored.get());
+            return true;
         } finally {
             lifecycleLock.writeLock().unlock();
         }
@@ -53,11 +69,11 @@ public final class IRCommandService {
     }
 
     public boolean isReady() {
-        return parser != null && indexedObjectCount > 0;
+        return parser != null && !index.isEmpty();
     }
 
     public int getIndexedObjectCount() {
-        return indexedObjectCount;
+        return index.entryCount();
     }
 
     public IRParseResult parse(String rawText, ItemContextProvider contextProvider, boolean isFastIR) {
@@ -99,11 +115,7 @@ public final class IRCommandService {
         lifecycleLock.readLock().lock();
         try {
             Integer internalId = resolveInternalIdUnchecked(rawId, itemPreferred);
-            if (internalId == null || internalId < 0 || internalId >= IRBaseUtils.localizedNameArray.length) {
-                return "";
-            }
-            String displayName = IRBaseUtils.localizedNameArray[internalId];
-            return displayName == null ? "" : displayName;
+            return internalId == null ? "" : index.displayName(internalId);
         } finally {
             lifecycleLock.readLock().unlock();
         }
@@ -133,90 +145,67 @@ public final class IRCommandService {
             return null;
         }
         String normalized = rawId.trim();
-        Integer direct = IRBaseUtils.forwardLookupMap.get(normalized);
+        Integer direct = index.internalIdFor(normalized);
         if (direct != null) {
             return direct;
         }
-        Integer preferred = IRBaseUtils.forwardLookupMap.get(itemPreferred ? GameObjectId.item(normalized) : GameObjectId.entity(normalized));
+        Integer preferred = index.internalIdFor(
+                itemPreferred ? GameObjectId.item(normalized) : GameObjectId.entity(normalized));
         if (preferred != null) {
             return preferred;
         }
-        return IRBaseUtils.forwardLookupMap.get(itemPreferred ? GameObjectId.entity(normalized) : GameObjectId.item(normalized));
+        return index.internalIdFor(
+                itemPreferred ? GameObjectId.entity(normalized) : GameObjectId.item(normalized));
     }
 
+    /** The current index as a serializable snapshot, or {@code null} when nothing is built. */
     public IRSnapshot snapshot(String fingerprint) {
         lifecycleLock.readLock().lock();
         try {
-            if (!isReady()) { return null; }
-            int entryCount = IndexBuilder.indexDirectory.size();
-            long[] directoryKeys = new long[entryCount];
-            long[] directoryValues = new long[entryCount];
-            int index = 0;
-            Long2LongOpenHashMap.EntryIterator iterator = IndexBuilder.indexDirectory.entryIterator();
-            while (iterator.next()) {
-                directoryKeys[index] = iterator.key();
-                directoryValues[index] = iterator.value();
-                index++;
+            IRIndex current = index;
+            if (!isReady()) {
+                return null;
+            }
+            int directorySize = current.indexDirectory.size();
+            long[] directoryKeys = new long[directorySize];
+            long[] directoryValues = new long[directorySize];
+            int position = 0;
+            Long2LongOpenHashMap.EntryIterator iterator = current.indexDirectory.entryIterator();
+            while (iterator.next() && position < directorySize) {
+                directoryKeys[position] = iterator.key();
+                directoryValues[position] = iterator.value();
+                position++;
             }
             return new IRSnapshot(
-                fingerprint,
-                IRBaseUtils.reverseLookupArray.clone(),
-                IRBaseUtils.localizedNameArray.clone(),
-                cloneNested(IRBaseUtils.primaryAliasTokensArray),
-                cloneNested(IRBaseUtils.fallbackAliasTokensArray),
-                copyActiveIndexPool(),
-                directoryKeys,
-                directoryValues
+                    fingerprint,
+                    current.reverseLookupArray.clone(),
+                    current.localizedNameArray.clone(),
+                    cloneNested(current.primaryAliasTokensArray),
+                    cloneNested(current.fallbackAliasTokensArray),
+                    current.indexPool.clone(),
+                    directoryKeys,
+                    directoryValues
             );
-        } finally { lifecycleLock.readLock().unlock(); }
+        } finally {
+            lifecycleLock.readLock().unlock();
+        }
+    }
+
+    private void publish(IRIndex next) {
+        index = next;
+        parser = next.isEmpty() ? null : new CommandParser(next);
     }
 
     private void clearInternal() {
+        index = IRIndex.EMPTY;
         parser = null;
-        indexedObjectCount = 0;
-        IndexBuilder.INDEX_POOL = new int[0];
-        IndexBuilder.writeOffset = 0;
-        IndexBuilder.indexDirectory = new Long2LongOpenHashMap();
-        IRBaseUtils.primaryAliasTokensArray = new String[0][];
-        IRBaseUtils.fallbackAliasTokensArray = new String[0][];
-        IRBaseUtils.reverseLookupArray = new String[0];
-        IRBaseUtils.localizedNameArray = new String[0];
-        IRBaseUtils.forwardLookupMap = Map.of();
     }
 
-    private void applySnapshot(IRSnapshot snapshot) {
-        IRBaseUtils.reverseLookupArray = snapshot.reverseLookupArray.clone();
-        IRBaseUtils.localizedNameArray = snapshot.localizedNameArray.clone();
-        IRBaseUtils.forwardLookupMap = buildForwardLookup(snapshot.reverseLookupArray);
-        IRBaseUtils.primaryAliasTokensArray = cloneNested(snapshot.primaryAliasTokensArray); 
-        IRBaseUtils.fallbackAliasTokensArray = cloneNested(snapshot.fallbackAliasTokensArray);
-
-        IndexBuilder.INDEX_POOL = snapshot.indexPool.clone();
-        IndexBuilder.writeOffset = snapshot.indexPool.length;
-        Long2LongOpenHashMap restoredDirectory = new Long2LongOpenHashMap(Math.max(16, snapshot.directoryKeys.length * 2));
-        for (int i = 0; i < snapshot.directoryKeys.length; i++) { restoredDirectory.put(snapshot.directoryKeys[i], snapshot.directoryValues[i]); }
-        IndexBuilder.indexDirectory = restoredDirectory;
-    }
-
-    private Map<String, Integer> buildForwardLookup(String[] reverseLookupArray) {
-        java.util.LinkedHashMap<String, Integer> forwardLookup = new java.util.LinkedHashMap<>(Math.max(16, reverseLookupArray.length));
-        for (int i = 0; i < reverseLookupArray.length; i++) {
-            forwardLookup.put(reverseLookupArray[i], i);
-        }
-        return forwardLookup;
-    }
-
-    private String[][] cloneNested(String[][] source) {
+    private static String[][] cloneNested(String[][] source) {
         String[][] clone = new String[source.length][];
-        for (int i = 0; i < source.length; i++) {
-            clone[i] = source[i] == null ? new String[0] : source[i].clone();
+        for (int index = 0; index < source.length; index++) {
+            clone[index] = source[index] == null ? new String[0] : source[index].clone();
         }
         return clone;
-    }
-
-    private int[] copyActiveIndexPool() {
-        int[] activePool = new int[IndexBuilder.writeOffset];
-        System.arraycopy(IndexBuilder.INDEX_POOL, 0, activePool, 0, IndexBuilder.writeOffset);
-        return activePool;
     }
 }
