@@ -66,6 +66,11 @@ public final class IaModuleProvider implements TianshuModuleProvider {
             context.clientPorts().diagnosticChat().register("PARTICIPANT_UNREGISTERED",
                     new DiagnosticChatNotice("tianshu.chat.progress.ia.participant.unregistered",
                             List.of(List.of("module"), List.of("participant"))));
+            // What the arbiter last told presence: a marker that does not change in game can be compared
+            // against this line before blaming the renderer.
+            context.clientPorts().diagnosticChat().register("PARTNER_MARKER",
+                    new DiagnosticChatNotice("tianshu.chat.progress.ia.marker",
+                            List.of(List.of("module"), List.of("participant"), List.of("kind"))));
         }
         registrar.addModule(new IaModuleInstaller(context.moduleRuntime(), settings));
     }

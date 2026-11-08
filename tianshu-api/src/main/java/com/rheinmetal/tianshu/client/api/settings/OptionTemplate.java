@@ -64,6 +64,18 @@ public interface OptionTemplate {
     default OptionTemplate slider(String id, UiText label, SettingsValue<Double> value, double min, double max, BooleanSupplier enabled, BooleanSupplier visible) {
         return slider(id, label, value::get, min, max, value::set, enabled, visible);
     }
+
+    /**
+     * A key-binding row: the control shows the mapping's current key and captures the next key press in place.
+     *
+     * <p>The module names the mapping, never a key code or a Minecraft type; the platform resolves the
+     * mapping and owns the capture, so the page and the controls screen still edit one binding.</p>
+     */
+    OptionTemplate keyBinding(String id, UiText label, String keyMappingName);
+
+    OptionTemplate keyBinding(String id, UiText label, String keyMappingName, BooleanSupplier enabled);
+
+    OptionTemplate keyBinding(String id, UiText label, String keyMappingName, BooleanSupplier enabled, BooleanSupplier visible);
 }
 
 

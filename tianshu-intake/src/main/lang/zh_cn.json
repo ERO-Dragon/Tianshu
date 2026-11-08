@@ -33,7 +33,6 @@
   "tianshu.gui.asr.option.quality": "识别质量",
   "tianshu.gui.asr.option.recommended": "推荐程度",
   "tianshu.gui.asr.action.preview_start": "开始试听识别模型",
-  "tianshu.gui.asr.action.set_key": "设置按键",
   "tianshu.gui.asr.action.preview_stop": "停止试听",
   "tianshu.gui.asr.action.download": "下载",
   "tianshu.gui.asr.action.pause": "暂停",
@@ -133,5 +132,6 @@
   "tianshu.chat.progress.ia.delivery": "投递 → %s；会话 %s；轮 %s",
   "tianshu.chat.progress.ia.participant.registered": "参与者注册：%s/%s（优先级 %s）",
   "tianshu.chat.progress.ia.participant.rejected": "参与者被拒：%s/%s（%s）",
-  "tianshu.chat.progress.ia.participant.unregistered": "参与者注销：%s/%s"
+  "tianshu.chat.progress.ia.participant.unregistered": "参与者注销：%s/%s",
+  "tianshu.chat.progress.ia.marker": "标记 → %s/%s（%s）"
 }

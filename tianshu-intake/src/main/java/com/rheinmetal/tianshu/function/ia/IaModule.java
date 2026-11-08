@@ -499,6 +499,11 @@ public final class IaModule implements TianshuManagedModule {
                         "text", input.repairedText()
                 )
         ));
+        // The turn is over, so the marker must describe what speaking *next* would target. The latest digest
+        // was recorded throughout the frozen turn (a mid-turn item or crosshair change is already in it), and
+        // without this refresh the marker would stay on the frame frozen at key press until another presence
+        // update happens to arrive — which may never come when the player stops changing state.
+        refreshPartner(payload.playerId(), now);
         respondArbitrationResultIfRequested(envelope, acceptedResult(payload, session, owner, decision.reason()));
         context.complete(envelope.envelopeId());
     }
@@ -552,6 +557,13 @@ public final class IaModule implements TianshuManagedModule {
         contextFreezeStore.sweep(now);
         if (payload.speaking()) {
             contextFreezeStore.freeze(payload.sessionId(), currentInteractionFrame(), now);
+            diagnostics.publish(DiagnosticEvent.now(
+                    moduleId(),
+                    "SPEECH_CONTEXT_FROZEN",
+                    DiagnosticSeverity.INFO,
+                    DiagnosticPrivacy.REDACTED,
+                    Map.of("sessionId", Long.toString(payload.sessionId()))
+            ));
         } else {
             contextFreezeStore.markEnded(payload.sessionId(), now);
         }
@@ -588,8 +600,48 @@ public final class IaModule implements TianshuManagedModule {
 
     private Optional<DialogueContextFrame> frozenContextFor(DialogueArbitrationRequestPayload payload, long now) {
         contextFreezeStore.sweep(now);
-        return contextFreezeStore.consume(payload.sourceSessionId(), now)
-                .map(frame -> withPlayerId(frame, payload.playerId()));
+        Optional<DialogueContextFrame> frozen = contextFreezeStore.consume(payload.sourceSessionId(), now);
+        boolean exact = frozen.isPresent();
+        if (frozen.isEmpty()) {
+            // The speech session id and the arbitration request id did not line up. The single in-flight
+            // frame is still this turn's frame: use and consume it, otherwise the turn would silently fall
+            // back to live context and the frame would pin the marker until its retention expired.
+            frozen = contextFreezeStore.consumeNewest(now);
+        }
+        if (!exact || frozen.isPresent()) {
+            diagnostics.publish(DiagnosticEvent.now(
+                    moduleId(),
+                    "SPEECH_CONTEXT_CONSUMED",
+                    DiagnosticSeverity.INFO,
+                    DiagnosticPrivacy.REDACTED,
+                    Map.of(
+                            "requestedSessionId", Long.toString(payload.sourceSessionId()),
+                            "exact", Boolean.toString(exact),
+                            "framePresent", Boolean.toString(frozen.isPresent())
+                    )
+            ));
+        }
+        return frozen.map(frame -> withPlayerId(frame, payload.playerId()));
+    }
+
+    /** One diagnostic line per marker push, so "what the arbiter told presence" is observable in a test. */
+    private void publishPartnerDiagnostic(PresencePartnerPayload payload) {
+        if (payload == null || payload.playerId().isBlank()) {
+            return;
+        }
+        String kind = payload.defaultOwner() ? "default" : payload.hasLease() ? "lease" : "pre";
+        diagnostics.publish(DiagnosticEvent.now(
+                moduleId(),
+                "PARTNER_MARKER",
+                DiagnosticSeverity.INFO,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "module", payload.moduleId(),
+                        "participant", payload.participantId(),
+                        "kind", kind,
+                        "holdUntil", Long.toString(payload.holdUntilMillis())
+                )
+        ));
     }
 
     private void handleParticipantsChanged() {
@@ -639,7 +691,22 @@ public final class IaModule implements TianshuManagedModule {
             return;
         }
         interactionContext = payload;
-        refreshPartner(payload.playerId(), System.currentTimeMillis());
+        // The marker is recomputed from the frame resolver, not from this digest directly: while a turn is in
+        // flight the resolver pins the frozen frame, so an update cannot repaint the pre-winner mid-turn.
+        long now = System.currentTimeMillis();
+        diagnostics.publish(DiagnosticEvent.now(
+                moduleId(),
+                "INTERACTION_CONTEXT",
+                DiagnosticSeverity.DEBUG,
+                DiagnosticPrivacy.REDACTED,
+                Map.of(
+                        "heldItemId", payload.heldItemId(),
+                        "crosshairTypeId", payload.crosshairEntityTypeId(),
+                        "screen", payload.screenKind().name(),
+                        "frozen", Boolean.toString(contextFreezeStore.active(now).isPresent())
+                )
+        ));
+        refreshPartner(payload.playerId(), now);
         context.complete(envelope.envelopeId());
     }
 
@@ -653,15 +720,29 @@ public final class IaModule implements TianshuManagedModule {
     private synchronized DialogueArbitrationDecision decideCurrentTarget(String playerId, long now) {
         List<DialogueParticipantDescriptor> participants = participantRegistry.snapshot();
         pruneLease(participants, now);
-        DialogueContextFrame frame = interactionContext != null && playerId != null
-                && playerId.equals(interactionContext.playerId())
-                ? interactionContextMapper.toFrame(interactionContext)
-                : DialogueContextFrame.empty(playerId == null ? "" : playerId);
+        DialogueContextFrame frame = markerFrame(playerId, now);
         List<DialogueClaim> contextClaims = claimEngine.collectLocalClaims(
                 participants, frame.interactionHints(), frame.contextSnapshot());
         Optional<DialogueParticipantDescriptor> defaultOwner = resolveDefaultOwner(participants);
         return arbitrationPolicy.decide(
                 participants, contextClaims, partnerTracker.holder(now), defaultOwner);
+    }
+
+    /**
+     * The one frame the player-facing pre-winner is derived from.
+     *
+     * <p>This is the structural half of the freeze contract: callers do not need to remember whether a turn
+     * is in flight, because the answer to "what is the player pointing at right now" is the frozen frame
+     * while the turn is unresolved, and the latest digest otherwise. Pinning it here also keeps an interrupt
+     * aimed at the turn's target instead of whatever the player turned to after pressing the key.</p>
+     */
+    private DialogueContextFrame markerFrame(String playerId, long now) {
+        String effectivePlayerId = playerId == null ? "" : playerId;
+        Optional<DialogueContextFrame> frozen = contextFreezeStore.active(now);
+        if (frozen.isPresent()) {
+            return withPlayerId(frozen.get(), effectivePlayerId);
+        }
+        return withPlayerId(currentInteractionFrame(), effectivePlayerId);
     }
 
     /**
@@ -757,6 +838,7 @@ public final class IaModule implements TianshuManagedModule {
         }
         lastPartnerPayload = payload;
         adapter.publishPartner(payload);
+        publishPartnerDiagnostic(payload);
     }
 
     /** Drops a lease whose participant is gone, so the marker cannot point at an unregistered participant. */

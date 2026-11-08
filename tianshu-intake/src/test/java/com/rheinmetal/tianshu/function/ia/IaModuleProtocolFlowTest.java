@@ -520,7 +520,7 @@ class IaModuleProtocolFlowTest {
         ));
     }
 
-    private void publishInteractionContext(
+    private TianshuEnvelope publishInteractionContext(
             String playerId,
             String dimensionId,
             String dimensionDisplayName,
@@ -530,7 +530,7 @@ class IaModuleProtocolFlowTest {
             String targetName,
             double targetDistance
     ) {
-        runtime.submit(EnvelopeBuilder.eventTopic(
+        TianshuEnvelope envelope = EnvelopeBuilder.eventTopic(
                 "module.presence",
                 PresenceTopics.INTERACTION_CONTEXT,
                 PresencePayloadTypes.INTERACTION_CONTEXT,
@@ -551,7 +551,9 @@ class IaModuleProtocolFlowTest {
                         false,
                         System.currentTimeMillis()
                 )
-        ).build());
+        ).build();
+        runtime.submit(envelope);
+        return envelope;
     }
 
     @Test
@@ -584,6 +586,111 @@ class IaModuleProtocolFlowTest {
         assertFalse(partner.hasLease(), "a pre-winner has no lease yet");
         assertFalse(partner.defaultOwner());
         assertTrue(partner.icon().contains("maid"), "the marker carries the participant's registered icon");
+    }
+
+    /**
+     * The marker is pinned while a turn runs and then follows the live frame again, even when the next turn's
+     * pre-winner differs from the participant that just won the lease.
+     */
+    @Test
+    void theMarkerAfterAResolvedTurnShowsTheLivePreWinnerNotTheLeaseHolder() throws Exception {
+        markerAfterResolution(1L, 1L);
+    }
+
+    /**
+     * A speech session id and its arbitration request id that disagree must still consume the one in-flight
+     * frame: falling back to live context silently would keep the marker pinned after the turn.
+     */
+    @Test
+    void aMismatchedRequestSessionStillConsumesTheFrozenFrame() throws Exception {
+        markerAfterResolution(1L, 2L);
+    }
+
+    private void markerAfterResolution(long speechSessionId, long requestSessionId) throws Exception {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        installAsrRoutes(runtime);
+        registerInteractionContextTopic();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler partnerEvents = new RecordingHandler();
+        subscribePartner(partnerEvents);
+        RecordingHandler alphaDelivery = new RecordingHandler();
+        RecordingHandler betaDelivery = new RecordingHandler();
+        registerDelivery("module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", alphaDelivery);
+        registerDelivery("module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", betaDelivery);
+
+        registerParticipant(participantHolding("alpha", "module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", 30,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "crosshair", DialogueClaimCondition.crosshairEntity())),
+                DialogueHoldTier.TEN_SECONDS));
+        registerParticipant(participantHolding("beta", "module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", 20,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "held", DialogueClaimCondition.heldItem("minecraft:diamond"))),
+                DialogueHoldTier.TEN_SECONDS));
+
+        // Aim at the animal while holding a stick: alpha is the pre-winner.
+        publishInteractionContext("player", "minecraft:overworld", "", "minecraft:stick",
+                "cow-uuid", "minecraft:cow", "Cow", 2.0D);
+        partnerEvents.awaitPayload(PresencePartnerPayload.class,
+                payload -> "alpha".equals(payload.participantId()));
+
+        // Press V: the frame with the crosshair is frozen. The held item changes during the turn.
+        TianshuEnvelope speech = new AsrProtocolAdapter(runtime)
+                .publishSpeechActivity(AsrSpeechActivityPayload.speaking(speechSessionId));
+        await(() -> runtime.lifecycle().statusOf(speech.envelopeId()) == EnvelopeStatus.COMPLETED);
+        TianshuEnvelope diamond = publishInteractionContext("player", "minecraft:overworld", "",
+                "minecraft:diamond", "", "", "", 0.0D);
+        await(() -> runtime.lifecycle().statusOf(diamond.envelopeId()) == EnvelopeStatus.COMPLETED);
+        assertTrue(partnerEvents.envelopes().stream()
+                        .map(TianshuEnvelope::payload)
+                        .noneMatch(payload -> payload instanceof PresencePartnerPayload marker
+                                && "beta".equals(marker.participantId())),
+                "the marker must stay pinned while the turn is unresolved");
+
+        // Release: arbitration runs against the frozen frame, so alpha wins.
+        TianshuEnvelope ir = EnvelopeBuilder.eventTopic(
+                "module.ir",
+                IntakeTopics.IR_RESULT,
+                PayloadType.of("IR_RESULT"),
+                new IrResultPayload(
+                        "open the box",
+                        "open the box",
+                        "open the box",
+                        List.of(),
+                        List.of(),
+                        1,
+                        requestSessionId,
+                        System.currentTimeMillis()
+                )
+        ).build();
+        runtime.submit(ir);
+        await(() -> runtime.lifecycle().statusOf(ir.envelopeId()) == EnvelopeStatus.COMPLETED);
+
+        alphaDelivery.awaitPayload(DialogueDeliveryPayload.class);
+        PresencePartnerPayload afterResolution = partnerEvents.awaitPayload(
+                PresencePartnerPayload.class,
+                payload -> "beta".equals(payload.participantId()));
+        assertEquals("module.lab.beta", afterResolution.moduleId(),
+                "the marker describes the next turn, where the held diamond outranks alpha's lease");
+    }
+
+    private DialogueParticipantDescriptor participantHolding(String participantId, String moduleId,
+                                                              String routeCapability, int priority,
+                                                              DialogueClaimProfile profile,
+                                                              DialogueHoldTier holdTier) {
+        return new DialogueParticipantDescriptor(
+                participantId,
+                moduleId,
+                participantId,
+                priority,
+                profile,
+                DialogueTriggerGroup.EMPTY,
+                routeCapability,
+                DialogueTurnProcessingPolicy.DEFAULT,
+                partnerIcon(participantId),
+                holdTier
+        );
     }
 
     @Test

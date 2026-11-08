@@ -47,6 +47,35 @@ public final class DialogueContextFreezeStore {
         contexts.computeIfPresent(sourceSessionId, (ignored, existing) -> existing.endAt(Math.max(0L, nowMillis)));
     }
 
+    /**
+     * The frame a marker should be computed from right now: the frozen frame while a speech turn is still in
+     * flight, otherwise the caller's live frame.
+     *
+     * <p>Newest first: a failed turn can leave an older frame behind until retention expires, and the current
+     * turn is always the newest one.</p>
+     */
+    public Optional<DialogueContextFrame> active(long nowMillis) {
+        return contexts.values().stream()
+                .filter(context -> !context.expiredAt(nowMillis, retentionMillis))
+                .max(Comparator.comparingLong(FrozenContext::baseMillis))
+                .map(FrozenContext::frame);
+    }
+
+    /**
+     * Consumes the newest in-flight frame, whatever its session id.
+     *
+     * <p>The fallback for a turn whose speech session id and arbitration request id do not line up: the
+     * single in-flight frame is still that turn's frame, and leaving it behind would pin the marker to a
+     * frame no arbitration will ever consume.</p>
+     */
+    public Optional<DialogueContextFrame> consumeNewest(long nowMillis) {
+        Optional<Long> newest = contexts.entrySet().stream()
+                .filter(entry -> !entry.getValue().expiredAt(nowMillis, retentionMillis))
+                .max(Comparator.comparingLong(entry -> entry.getValue().baseMillis()))
+                .map(Map.Entry::getKey);
+        return newest.flatMap(sessionId -> consume(sessionId, nowMillis));
+    }
+
     public Optional<DialogueContextFrame> consume(long sourceSessionId, long nowMillis) {
         if (sourceSessionId <= 0L) {
             return Optional.empty();

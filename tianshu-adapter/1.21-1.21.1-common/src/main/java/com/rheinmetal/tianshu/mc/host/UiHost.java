@@ -4,8 +4,6 @@ import com.rheinmetal.tianshu.mc.ui.settings.TianshuSettingsScreen;
 import com.rheinmetal.tianshu.client.host.ClientUiHost;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.options.controls.KeyBindsScreen;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -43,22 +41,6 @@ public final class UiHost implements ClientUiHost {
         if (module != null) {
             module.openScreen();
         }
-    }
-
-    @Override
-    public boolean supportsKeyBindings() {
-        return true;
-    }
-
-    /**
-     * Opens the vanilla key-binding screen with the settings page as its parent, so closing it returns here.
-     * The player rebinds the voice key in the Tianshu category; no custom rebinding UI is needed.
-     */
-    @Override
-    public void openKeyBindings() {
-        Minecraft minecraft = Minecraft.getInstance();
-        Screen parent = minecraft.screen;
-        minecraft.setScreen(new KeyBindsScreen(parent, minecraft.options));
     }
 
     @Override

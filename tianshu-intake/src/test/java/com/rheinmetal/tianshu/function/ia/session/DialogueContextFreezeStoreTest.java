@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueContextFreezeStoreTest {
@@ -38,6 +39,29 @@ class DialogueContextFreezeStoreTest {
         store.markEnded(42L, 2_000L);
 
         assertTrue(store.consume(42L, 13_001L).isEmpty());
+    }
+
+    @Test
+    void aFrozenTurnCountsAsActiveUntilItsFrameIsConsumed() {
+        DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
+        store.freeze(42L, DialogueContextFrame.empty("player"), 1_000L);
+        assertTrue(store.active(1_000L).isPresent(), "a speaking turn pins the marker to its frame");
+
+        store.markEnded(42L, 2_000L);
+        assertTrue(store.active(2_000L).isPresent(),
+                "recognition is still running after key release; the marker must not follow the live view yet");
+
+        assertTrue(store.consume(42L, 2_500L).isPresent());
+        assertFalse(store.active(2_500L).isPresent(),
+                "arbitration consumed the frame; the marker may follow live context again");
+    }
+
+    @Test
+    void anExpiredTurnNoLongerCountsAsActive() {
+        DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
+        store.freeze(42L, DialogueContextFrame.empty("player"), 1_000L);
+
+        assertFalse(store.active(11_001L).isPresent(), "a turn that never reached arbitration must not pin the marker forever");
     }
 
     @Test

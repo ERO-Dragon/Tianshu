@@ -67,6 +67,8 @@ public final class TianshuSettingsScreen extends Screen {
     private Button saveButton;
     private SelectionPanel<?> selectionPanel;
     private boolean rebuildQueued;
+    /** The key row currently waiting for input; the screen routes the next key or click to it. */
+    private SettingsKeyBindingButton armedKeyBinding;
 
     public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession, Screen returnScreen) {
         super(TITLE);
@@ -107,6 +109,7 @@ public final class TianshuSettingsScreen extends Screen {
 
     public void rebuildCurrentPage() {
         rebuildQueued = false;
+        armedKeyBinding = null;
         clearWidgets();
         // The scroll regions below are new objects; clips cached against the old ones are unreachable.
         visibleRegionCache.clear();
@@ -340,8 +343,20 @@ public final class TianshuSettingsScreen extends Screen {
         }
     }
 
+    /** Called by a key row when it starts waiting for input. */
+    public void armKeyCapture(SettingsKeyBindingButton button) {
+        this.armedKeyBinding = button;
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // While a key row waits for input, the next click is the binding itself, not a click on a control.
+        if (armedKeyBinding != null) {
+            if (armedKeyBinding.isCapturing()) {
+                return armedKeyBinding.captureMouse(button);
+            }
+            armedKeyBinding = null;
+        }
         if (selectionPanel != null && selectionPanel.mouseClicked(mouseX, mouseY)) {
             return true;
         }
@@ -378,6 +393,14 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // A key row that is waiting for input consumes the next key, Escape included; the screen must not
+        // close or hand it to a widget while the capture is armed.
+        if (armedKeyBinding != null) {
+            if (armedKeyBinding.isCapturing()) {
+                return armedKeyBinding.captureKey(keyCode, scanCode);
+            }
+            armedKeyBinding = null;
+        }
         if (selectionPanel != null) {
             if (keyCode == 256) {
                 selectionPanel = null;

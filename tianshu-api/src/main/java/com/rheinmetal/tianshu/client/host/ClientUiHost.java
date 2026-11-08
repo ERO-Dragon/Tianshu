@@ -18,18 +18,4 @@ public interface ClientUiHost {
      */
     default void setTextInputLabels(UiText title, UiText hint) {
     }
-
-    /**
-     * Whether this host can open the game's key-binding screen.
-     *
-     * <p>A feature page shows a "set key" action only where the host can actually carry it out; a platform
-     * that has no such screen must not render a button that does nothing.</p>
-     */
-    default boolean supportsKeyBindings() {
-        return false;
-    }
-
-    /** Opens the game's key-binding screen, returning to the current screen when it closes. */
-    default void openKeyBindings() {
-    }
 }

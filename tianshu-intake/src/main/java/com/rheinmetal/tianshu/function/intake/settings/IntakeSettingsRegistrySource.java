@@ -49,7 +49,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
-import java.util.function.Supplier;
 
 public final class IntakeSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = AsrProtocolAdapter.MODULE_ID;
@@ -87,7 +86,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     private final ClientUiHost uiHost;
     private final ClientTextProvider textProvider;
     private final ClientAudioDeviceCatalog audioDeviceCatalog;
-    private final Supplier<UiText> voiceKeyDisplay;
     private final IaDefaultOwnerConfig defaultOwnerConfig;
     /** Whether the debug switch is on; the injection controls do not exist without it. */
     private final BooleanSupplier debugEnabled;
@@ -95,29 +93,13 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider) {
         this(services, config, audioBridge, scheduler, uiHost, textProvider,
-                audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null,
-                () -> UiText.key("key.tianshu.activate"), null);
+                audioBridge instanceof ClientAudioDeviceCatalog catalog ? catalog : null, () -> false);
     }
 
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
                                      ClientAudioDeviceCatalog audioDeviceCatalog) {
-        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog,
-                () -> UiText.key("key.tianshu.activate"), null);
-    }
-
-    public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
-                                     ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay) {
-        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, voiceKeyDisplay, null);
-    }
-
-    public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
-                                     ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
-                                     IaDefaultOwnerConfig defaultOwnerConfig) {
-        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, voiceKeyDisplay,
-                defaultOwnerConfig, () -> false);
+        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, () -> false);
     }
 
     /**
@@ -126,8 +108,15 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
      */
     public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
                                      ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                     ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
-                                     IaDefaultOwnerConfig defaultOwnerConfig, BooleanSupplier debugEnabled) {
+                                     ClientAudioDeviceCatalog audioDeviceCatalog, BooleanSupplier debugEnabled) {
+        this(services, config, audioBridge, scheduler, uiHost, textProvider, audioDeviceCatalog, null, debugEnabled);
+    }
+
+    /** Full shape, including the IA default-owner settings shared with the arbiter. */
+    public IntakeSettingsRegistrySource(ModuleRuntimeServices services, IntakeSettingsAccess config, IAudioBridge audioBridge,
+                                     ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
+                                     ClientAudioDeviceCatalog audioDeviceCatalog, IaDefaultOwnerConfig defaultOwnerConfig,
+                                     BooleanSupplier debugEnabled) {
         this.services = services;
         this.config = config;
         this.audioBridge = audioBridge;
@@ -135,7 +124,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         this.uiHost = uiHost;
         this.textProvider = textProvider == null ? ClientTextProvider.NOOP : textProvider;
         this.audioDeviceCatalog = audioDeviceCatalog;
-        this.voiceKeyDisplay = voiceKeyDisplay == null ? () -> UiText.key("key.tianshu.activate") : voiceKeyDisplay;
         this.defaultOwnerConfig = defaultOwnerConfig;
         this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
     }
@@ -152,7 +140,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         }
         AsrSettingsDraft draft = new AsrSettingsDraft(
                 config, audioBridge, services, context, scheduler, uiHost, textProvider, audioDeviceCatalog,
-                voiceKeyDisplay, defaultOwnerConfig, debugEnabled
+                defaultOwnerConfig, debugEnabled
         );
         context.settingsSessions().registerOrReplace(draft);
         registry.registerCategory(ModuleSettingsCategory.builder(MODULE_ID)
@@ -171,7 +159,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, AsrSettingsDraft draft) {
         panel.enable("asr.enabled", asr("enabled"), draft.enabled)
-                .compound("as.main", asr("section.main"), draft::buildMainOptions, draft::buildMainActions, draft::buildMainStatus);
+                .compound("as.main", asr("section.main"), draft::buildMainOptions, null, null);
         // The arbiter owns this setting; the page only renders it. With no candidate registered there is nothing
         // to choose, so the group disappears instead of showing a one-option control.
         if (draft.hasDefaultOwnerCandidates()) {
@@ -219,7 +207,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
         private final ClientScheduler scheduler;
         private final ClientUiHost uiHost;
         private final ClientTextProvider textProvider;
-        private final Supplier<UiText> voiceKeyDisplay;
         private final MutableSettingsValue<Boolean> enabled;
         private final MutableSettingsValue<String> selectedMic;
         private final MutableSettingsValue<String> selectedModelName;
@@ -247,7 +234,7 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
         private AsrSettingsDraft(IntakeSettingsAccess config, IAudioBridge audioBridge, ModuleRuntimeServices services, ModuleSettingsContext context,
                                  ClientScheduler scheduler, ClientUiHost uiHost, ClientTextProvider textProvider,
-                                 ClientAudioDeviceCatalog audioDeviceCatalog, Supplier<UiText> voiceKeyDisplay,
+                                 ClientAudioDeviceCatalog audioDeviceCatalog,
                                  IaDefaultOwnerConfig defaultOwnerConfig, BooleanSupplier debugEnabled) {
             this.config = config;
             this.audioBridge = audioBridge;
@@ -256,7 +243,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
             this.scheduler = scheduler;
             this.uiHost = uiHost;
             this.textProvider = textProvider;
-            this.voiceKeyDisplay = voiceKeyDisplay;
             this.audioDeviceCatalog = audioDeviceCatalog;
             this.defaultOwnerConfig = defaultOwnerConfig;
             this.debugEnabled = debugEnabled == null ? () -> false : debugEnabled;
@@ -281,7 +267,8 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
     private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
             refreshMicrophoneNames();
             options.select("asr.model", asr("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
-                    .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get);
+                    .select("asr.mic", asr("option.mic"), micNames(), selectedMic, this::micLabel, enabled::get)
+                    .keyBinding("asr.voice_key", asr("option.voice_switch"), "key.tianshu.activate", enabled::get);
         }
 
         // ------------------------------------------------------------ debug test bench
@@ -411,17 +398,6 @@ public final class IntakeSettingsRegistrySource implements TianshuSettingsRegist
 
         private Optional<IaModuleService> iaService() {
             return services == null ? Optional.empty() : services.findService(IaModuleService.class);
-        }
-
-        private void buildMainActions(com.rheinmetal.tianshu.client.api.settings.ActionTemplate actions) {
-            // The host owns the key-binding screen; a platform without one does not get a dead button.
-            if (uiHost != null && uiHost.supportsKeyBindings()) {
-                actions.button("asr.voice_key.open", asr("action.set_key"), uiHost::openKeyBindings, enabled::get);
-            }
-        }
-
-        private void buildMainStatus(com.rheinmetal.tianshu.client.api.settings.StatusTemplate status) {
-            status.row("asr.voice_switch", asr("option.voice_switch"), voiceKeyDisplay, enabled::get);
         }
 
         private void buildDownloadAdvancedOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {

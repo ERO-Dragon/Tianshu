@@ -33,7 +33,6 @@
   "tianshu.gui.asr.option.quality": "Recognition Quality",
   "tianshu.gui.asr.option.recommended": "Recommendation",
   "tianshu.gui.asr.action.preview_start": "Preview Recognition Model",
-  "tianshu.gui.asr.action.set_key": "Set Key",
   "tianshu.gui.asr.action.preview_stop": "Stop Preview",
   "tianshu.gui.asr.action.download": "Download",
   "tianshu.gui.asr.action.pause": "Pause",
@@ -133,5 +132,6 @@
   "tianshu.chat.progress.ia.delivery": "Delivered to %s; session %s; turn %s",
   "tianshu.chat.progress.ia.participant.registered": "Participant registered: %s/%s (priority %s)",
   "tianshu.chat.progress.ia.participant.rejected": "Participant rejected: %s/%s (%s)",
-  "tianshu.chat.progress.ia.participant.unregistered": "Participant unregistered: %s/%s"
+  "tianshu.chat.progress.ia.participant.unregistered": "Participant unregistered: %s/%s",
+  "tianshu.chat.progress.ia.marker": "Marker -> %s/%s (%s)"
 }
