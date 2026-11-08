@@ -105,7 +105,11 @@ final class CommandTextRepairer {
         for (int windowLength = minimumLength; windowLength <= maximumLength; windowLength++) {
             for (int start = 0; start <= rawText.length() - windowLength; start++) {
                 int end = start + windowLength;
-                String slicePinyin = IRBaseUtils.joinTokens(IRBaseUtils.tokenize(rawText.substring(start, end)));
+                String slice = rawText.substring(start, end);
+                if (!IRBaseUtils.hasPlausibleRepairEvidence(slice, target)) {
+                    continue;
+                }
+                String slicePinyin = IRBaseUtils.joinTokens(IRBaseUtils.tokenize(slice));
                 if (slicePinyin.isEmpty()) {
                     continue;
                 }

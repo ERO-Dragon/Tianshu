@@ -565,7 +565,18 @@ public final class IaModule implements TianshuManagedModule {
                     Map.of("sessionId", Long.toString(payload.sessionId()))
             ));
         } else {
-            contextFreezeStore.markEnded(payload.sessionId(), now);
+            // A silent mark means the turn ended without an arbiter: empty or failed recognition, a
+            // cancellation, or a stop gesture. There is no arbitration coming to consume the frame, so
+            // release it now and let the marker follow the live frame again.
+            contextFreezeStore.abandon(payload.sessionId());
+            diagnostics.publish(DiagnosticEvent.now(
+                    moduleId(),
+                    "SPEECH_CONTEXT_ABANDONED",
+                    DiagnosticSeverity.INFO,
+                    DiagnosticPrivacy.REDACTED,
+                    Map.of("sessionId", Long.toString(payload.sessionId()))
+            ));
+            refreshPartner(currentPlayerId(), now);
         }
         context.complete(envelope.envelopeId());
     }

@@ -47,8 +47,11 @@ public final class LabParticipants {
     /**
      * @param crosshairEntityIds entity type ids that make this participant claim; empty means any entity
      *                           the crosshair is on, which is what a quick "aim at an animal" test needs
+     * @param holdTier           how long this participant keeps the turn after winning it; the bench can
+     *                           switch this to observe the lease, including {@code NONE}
      */
-    public static DialogueParticipantDescriptor alpha(String displayName, List<String> crosshairEntityIds) {
+    public static DialogueParticipantDescriptor alpha(String displayName, List<String> crosshairEntityIds,
+                                                      DialogueHoldTier holdTier) {
         List<String> ids = crosshairEntityIds == null ? List.of() : crosshairEntityIds;
         return descriptor(
                 ALPHA,
@@ -59,11 +62,13 @@ public final class LabParticipants {
                         DialogueClaimCondition.crosshairEntity(ids.toArray(String[]::new)))),
                 DialogueTriggerGroup.EMPTY,
                 LabProtocolAdapter.ALPHA_CAPABILITY,
-                "minecraft:textures/item/spyglass.png"
+                "minecraft:textures/item/spyglass.png",
+                holdTier
         );
     }
 
-    public static DialogueParticipantDescriptor beta(String displayName, String heldItemId) {
+    public static DialogueParticipantDescriptor beta(String displayName, String heldItemId,
+                                                     DialogueHoldTier holdTier) {
         String itemId = requireText(heldItemId, "heldItemId");
         return descriptor(
                 BETA,
@@ -74,11 +79,13 @@ public final class LabParticipants {
                         DialogueClaimCondition.heldItem(itemId))),
                 DialogueTriggerGroup.EMPTY,
                 LabProtocolAdapter.BETA_CAPABILITY,
-                "minecraft:textures/item/diamond.png"
+                "minecraft:textures/item/diamond.png",
+                holdTier
         );
     }
 
-    public static DialogueParticipantDescriptor gamma(String displayName, List<String> wakeWords) {
+    public static DialogueParticipantDescriptor gamma(String displayName, List<String> wakeWords,
+                                                      DialogueHoldTier holdTier) {
         List<String> words = normalize(wakeWords);
         if (words.isEmpty()) {
             throw new IllegalArgumentException("gamma needs at least one wake word");
@@ -92,7 +99,8 @@ public final class LabParticipants {
                         DialogueClaimCondition.wakeWord(words.toArray(String[]::new)))),
                 DialogueTriggerGroup.of(words, List.of()),
                 LabProtocolAdapter.GAMMA_CAPABILITY,
-                "minecraft:textures/item/bell.png"
+                "minecraft:textures/item/bell.png",
+                holdTier
         );
     }
 
@@ -118,7 +126,8 @@ public final class LabParticipants {
             DialogueClaimProfile claimProfile,
             DialogueTriggerGroup triggerGroup,
             String routeCapability,
-            String icon) {
+            String icon,
+            DialogueHoldTier holdTier) {
         return new DialogueParticipantDescriptor(
                 participantId,
                 LabProtocolAdapter.MODULE_ID,
@@ -129,7 +138,7 @@ public final class LabParticipants {
                 routeCapability,
                 DialogueTurnProcessingPolicy.DEFAULT,
                 icon,
-                DialogueHoldTier.NONE
+                holdTier == null ? DialogueHoldTier.NONE : holdTier
         );
     }
 

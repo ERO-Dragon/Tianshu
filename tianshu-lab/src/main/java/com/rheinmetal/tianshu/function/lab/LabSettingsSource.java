@@ -9,6 +9,10 @@ import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
 import com.rheinmetal.tianshu.client.settings.session.SettingsValidationResult;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
+
+import java.util.List;
+import java.util.Locale;
 
 /**
  * The bench's page: choose what each participant looks for, register them, and keep or release the session
@@ -43,7 +47,9 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
         panel.options("lab.participants", lab("section.participants"), module::debugEnabled, module::debugEnabled, options -> options
                         .text("lab.crosshair", lab("option.crosshair"), module::crosshairFilter, module::setCrosshairFilter, module::debugEnabled)
                         .text("lab.held", lab("option.held"), module::heldItemId, module::setHeldItemId, module::debugEnabled)
-                        .text("lab.wake", lab("option.wake"), module::wakeWords, module::setWakeWords, module::debugEnabled))
+                        .text("lab.wake", lab("option.wake"), module::wakeWords, module::setWakeWords, module::debugEnabled)
+                        .select("lab.hold_tier", lab("option.hold_tier"), List.of(DialogueHoldTier.values()),
+                                module::holdTier, LabSettingsSource::holdTierLabel, module::setHoldTier, module::debugEnabled))
                 .toggles("lab.behaviour", lab("section.behaviour"), module::debugEnabled, module::debugEnabled, group -> group
                         .toggle("lab.auto_release", lab("option.auto_release"),
                                 module::autoRelease, module::setAutoRelease, module::debugEnabled))
@@ -75,6 +81,10 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
 
     private static UiText lab(String key, Object... args) {
         return UiText.key("tianshu.gui.lab." + key, args);
+    }
+
+    private static UiText holdTierLabel(DialogueHoldTier tier) {
+        return lab("hold_tier." + tier.name().toLowerCase(Locale.ROOT));
     }
 
     private static UiText common(String key, Object... args) {

@@ -18,6 +18,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.context.DialogueInteractionHints
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaim;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimConditionType;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimSource;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueArbitrationDecision;
 import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
@@ -38,7 +39,7 @@ class LabParticipantsTest {
 
     @Test
     void alphaClaimsFromTheConfiguredCrosshairEntityTypes() {
-        DialogueParticipantDescriptor cowOnly = LabParticipants.alpha("Alpha", List.of("minecraft:cow"));
+        DialogueParticipantDescriptor cowOnly = LabParticipants.alpha("Alpha", List.of("minecraft:cow"), DialogueHoldTier.TEN_SECONDS);
 
         assertEquals(DialogueClaimConditionType.CROSSHAIR_ENTITY, conditionType(cowOnly));
         assertEquals(List.of("minecraft:cow"), conditionValues(cowOnly));
@@ -48,8 +49,21 @@ class LabParticipantsTest {
     }
 
     @Test
+    void theBenchCarriesTheSelectedHoldTier() {
+        assertEquals(DialogueHoldTier.TWENTY_SECONDS,
+                LabParticipants.alpha("Alpha", List.of(), DialogueHoldTier.TWENTY_SECONDS).holdTier());
+        assertEquals(DialogueHoldTier.FIVE_SECONDS,
+                LabParticipants.beta("Beta", "minecraft:diamond", DialogueHoldTier.FIVE_SECONDS).holdTier());
+        assertEquals(DialogueHoldTier.TEN_SECONDS,
+                LabParticipants.gamma("Gamma", List.of("伽马"), DialogueHoldTier.TEN_SECONDS).holdTier());
+        assertEquals(DialogueHoldTier.NONE,
+                LabParticipants.alpha("Alpha", List.of(), null).holdTier(),
+                "a missing tier must not turn into an accidental lease");
+    }
+
+    @Test
     void anEmptyCrosshairFilterMeansAnyCrosshairEntity() {
-        DialogueParticipantDescriptor anyEntity = LabParticipants.alpha("Alpha", List.of());
+        DialogueParticipantDescriptor anyEntity = LabParticipants.alpha("Alpha", List.of(), DialogueHoldTier.TEN_SECONDS);
 
         assertEquals(DialogueClaimConditionType.CROSSHAIR_ENTITY, conditionType(anyEntity));
         assertTrue(conditionValues(anyEntity).isEmpty());
@@ -57,24 +71,24 @@ class LabParticipantsTest {
 
     @Test
     void betaClaimsFromTheConfiguredHeldItem() {
-        DialogueParticipantDescriptor beta = LabParticipants.beta("Beta", "minecraft:diamond");
+        DialogueParticipantDescriptor beta = LabParticipants.beta("Beta", "minecraft:diamond", DialogueHoldTier.TEN_SECONDS);
 
         assertEquals(DialogueClaimConditionType.HELD_ITEM, conditionType(beta));
         assertEquals(List.of("minecraft:diamond"), conditionValues(beta));
         assertEquals(LabParticipants.BETA_PRIORITY, beta.priority());
-        assertThrows(IllegalArgumentException.class, () -> LabParticipants.beta("Beta", " "),
+        assertThrows(IllegalArgumentException.class, () -> LabParticipants.beta("Beta", " ", DialogueHoldTier.TEN_SECONDS),
                 "a blank item would turn the condition into 'any held item'");
     }
 
     @Test
     void gammaClaimsFromItsWakeWordsAndAlsoRegistersThemAsTriggers() {
-        DialogueParticipantDescriptor gamma = LabParticipants.gamma("Gamma", List.of("伽马", "gamma"));
+        DialogueParticipantDescriptor gamma = LabParticipants.gamma("Gamma", List.of("伽马", "gamma"), DialogueHoldTier.TEN_SECONDS);
 
         assertEquals(DialogueClaimConditionType.WAKE_WORD, conditionType(gamma));
         assertEquals(List.of("伽马", "gamma"), conditionValues(gamma));
         assertEquals(List.of("伽马", "gamma"), gamma.triggerGroup().wakeWords());
         assertEquals(LabParticipants.GAMMA_PRIORITY, gamma.priority());
-        assertThrows(IllegalArgumentException.class, () -> LabParticipants.gamma("Gamma", List.of()));
+        assertThrows(IllegalArgumentException.class, () -> LabParticipants.gamma("Gamma", List.of(), DialogueHoldTier.TEN_SECONDS));
     }
 
     @Test
@@ -90,9 +104,9 @@ class LabParticipantsTest {
      */
     @Test
     void theBenchFixturesProduceTheClaimsTheArbiterRanks() {
-        DialogueParticipantDescriptor alpha = LabParticipants.alpha("Alpha", List.of());
-        DialogueParticipantDescriptor beta = LabParticipants.beta("Beta", "minecraft:diamond");
-        DialogueParticipantDescriptor gamma = LabParticipants.gamma("Gamma", List.of("伽马"));
+        DialogueParticipantDescriptor alpha = LabParticipants.alpha("Alpha", List.of(), DialogueHoldTier.TEN_SECONDS);
+        DialogueParticipantDescriptor beta = LabParticipants.beta("Beta", "minecraft:diamond", DialogueHoldTier.TEN_SECONDS);
+        DialogueParticipantDescriptor gamma = LabParticipants.gamma("Gamma", List.of("伽马"), DialogueHoldTier.TEN_SECONDS);
         List<DialogueParticipantDescriptor> participants = List.of(alpha, beta, gamma);
 
         DialogueInteractionHints held = new DialogueInteractionHints("minecraft:diamond", true, false, false, 2.0D);
@@ -117,7 +131,7 @@ class LabParticipantsTest {
 
     @Test
     void aWakeWordClaimIsUtteranceAndAloneDecidesTheTurn() {
-        DialogueParticipantDescriptor gamma = LabParticipants.gamma("Gamma", List.of("伽马"));
+        DialogueParticipantDescriptor gamma = LabParticipants.gamma("Gamma", List.of("伽马"), DialogueHoldTier.TEN_SECONDS);
         List<DialogueClaim> claims = claimEngine.collectLocalClaims(
                 List.of(gamma),
                 input(DialogueInteractionHints.empty(), DialogueContextSnapshot.empty("local"),
@@ -130,7 +144,7 @@ class LabParticipantsTest {
 
     @Test
     void aCrosshairFilterDoesNotClaimForAnotherEntityType() {
-        DialogueParticipantDescriptor cowOnly = LabParticipants.alpha("Alpha", List.of("minecraft:cow"));
+        DialogueParticipantDescriptor cowOnly = LabParticipants.alpha("Alpha", List.of("minecraft:cow"), DialogueHoldTier.TEN_SECONDS);
         DialogueContextSnapshot pig = new DialogueContextSnapshot(
                 "local", "minecraft:overworld",
                 List.of(new DialogueEntityRef("entity-2", "minecraft:pig", "Pig", 2.0D, true)),
@@ -144,9 +158,9 @@ class LabParticipantsTest {
     void theDescriptorsSatisfyTheArbitersRegistrationContract() {
         DialogueParticipantContractValidator validator = new DialogueParticipantContractValidator(this::registrations);
 
-        assertTrue(validator.validate(LabParticipants.alpha("A", List.of())).accepted());
-        assertTrue(validator.validate(LabParticipants.beta("B", "minecraft:diamond")).accepted());
-        assertTrue(validator.validate(LabParticipants.gamma("G", List.of("伽马"))).accepted());
+        assertTrue(validator.validate(LabParticipants.alpha("A", List.of(), DialogueHoldTier.TEN_SECONDS)).accepted());
+        assertTrue(validator.validate(LabParticipants.beta("B", "minecraft:diamond", DialogueHoldTier.TEN_SECONDS)).accepted());
+        assertTrue(validator.validate(LabParticipants.gamma("G", List.of("伽马"), DialogueHoldTier.TEN_SECONDS)).accepted());
     }
 
     private DialogueArbitrationInput input(DialogueInteractionHints hints, DialogueContextSnapshot snapshot,

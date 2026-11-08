@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
@@ -45,6 +46,8 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     private volatile String heldItemId = "minecraft:diamond";
     private volatile String wakeWords = LabParticipants.DEFAULT_WAKE_WORDS;
     private volatile String registeredParticipants = "";
+    /** How long a winner keeps the turn; the page can switch it, and all three participants share it. */
+    private volatile DialogueHoldTier holdTier = DialogueHoldTier.TEN_SECONDS;
 
     public LabModule(ModuleRuntimeAccess runtime, ClientPorts ports) {
         this.adapter = new LabProtocolAdapter(Objects.requireNonNull(runtime, "runtime"));
@@ -153,6 +156,16 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     }
 
     @Override
+    public DialogueHoldTier holdTier() {
+        return holdTier;
+    }
+
+    @Override
+    public void setHoldTier(DialogueHoldTier holdTier) {
+        this.holdTier = holdTier == null ? DialogueHoldTier.NONE : holdTier;
+    }
+
+    @Override
     public String registeredParticipants() {
         return registeredParticipants;
     }
@@ -176,7 +189,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
         try {
             adapter.registerParticipant(LabParticipants.alpha(
                     displayName("tianshu.lab.participant.alpha"),
-                    LabParticipants.parseList(crosshairFilter)));
+                    LabParticipants.parseList(crosshairFilter), holdTier));
             registered.add(LabParticipants.ALPHA);
         } catch (RuntimeException failure) {
             appendError(errors, "alpha", failure);
@@ -186,7 +199,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
         } else {
             try {
                 adapter.registerParticipant(LabParticipants.beta(
-                        displayName("tianshu.lab.participant.beta"), heldItemId));
+                        displayName("tianshu.lab.participant.beta"), heldItemId, holdTier));
                 registered.add(LabParticipants.BETA);
             } catch (RuntimeException failure) {
                 appendError(errors, "beta", failure);
@@ -198,7 +211,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
         } else {
             try {
                 adapter.registerParticipant(LabParticipants.gamma(
-                        displayName("tianshu.lab.participant.gamma"), words));
+                        displayName("tianshu.lab.participant.gamma"), words, holdTier));
                 registered.add(LabParticipants.GAMMA);
             } catch (RuntimeException failure) {
                 appendError(errors, "gamma", failure);

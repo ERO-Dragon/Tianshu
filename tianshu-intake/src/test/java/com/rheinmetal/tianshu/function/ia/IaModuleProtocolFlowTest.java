@@ -606,6 +606,52 @@ class IaModuleProtocolFlowTest {
         markerAfterResolution(1L, 2L);
     }
 
+    /** Empty recognition ends the turn without an arbiter; its frame must be released, not held to retention. */
+    @Test
+    void aTurnThatEndsWithoutTextReleasesTheFrozenMarker() throws Exception {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        installAsrRoutes(runtime);
+        registerInteractionContextTopic();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler partnerEvents = new RecordingHandler();
+        subscribePartner(partnerEvents);
+        RecordingHandler alphaDelivery = new RecordingHandler();
+        registerDelivery("module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", alphaDelivery);
+        registerDelivery("module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(participantHolding("alpha", "module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", 30,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "crosshair", DialogueClaimCondition.crosshairEntity())),
+                DialogueHoldTier.TEN_SECONDS));
+        registerParticipant(participantHolding("beta", "module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", 20,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "held", DialogueClaimCondition.heldItem("minecraft:diamond"))),
+                DialogueHoldTier.TEN_SECONDS));
+
+        publishInteractionContext("player", "minecraft:overworld", "", "minecraft:stick",
+                "cow-uuid", "minecraft:cow", "Cow", 2.0D);
+        partnerEvents.awaitPayload(PresencePartnerPayload.class,
+                payload -> "alpha".equals(payload.participantId()));
+
+        TianshuEnvelope speech = new AsrProtocolAdapter(runtime)
+                .publishSpeechActivity(AsrSpeechActivityPayload.speaking(1L));
+        await(() -> runtime.lifecycle().statusOf(speech.envelopeId()) == EnvelopeStatus.COMPLETED);
+        TianshuEnvelope diamond = publishInteractionContext("player", "minecraft:overworld", "",
+                "minecraft:diamond", "", "", "", 0.0D);
+        await(() -> runtime.lifecycle().statusOf(diamond.envelopeId()) == EnvelopeStatus.COMPLETED);
+        TianshuEnvelope silent = new AsrProtocolAdapter(runtime)
+                .publishSpeechActivity(AsrSpeechActivityPayload.silent(1L));
+        await(() -> runtime.lifecycle().statusOf(silent.envelopeId()) == EnvelopeStatus.COMPLETED);
+
+        PresencePartnerPayload released = partnerEvents.awaitPayload(
+                PresencePartnerPayload.class,
+                payload -> "beta".equals(payload.participantId()));
+        assertEquals("module.lab.beta", released.moduleId(),
+                "the empty turn must not keep pinning the crosshair frame");
+        assertTrue(alphaDelivery.envelopes().isEmpty(), "no arbitration followed the empty recognition");
+    }
+
     private void markerAfterResolution(long speechSessionId, long requestSessionId) throws Exception {
         runtime = ProtocolBootstrap.create(Runnable::run);
         installPresence(runtime);

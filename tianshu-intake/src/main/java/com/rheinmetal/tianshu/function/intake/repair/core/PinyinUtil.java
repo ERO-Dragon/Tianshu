@@ -19,12 +19,13 @@ import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombi
 public final class PinyinUtil {
 
     private static final HanyuPinyinOutputFormat PINYIN_OUTPUT_FORMAT = createOutputFormat();
+    private static final HanyuPinyinOutputFormat PINYIN_TONE_FORMAT = createToneFormat();
 
     private PinyinUtil() {
     }
 
     public static String toPinyinWithoutTone(char c) {
-        String fromLibrary = lookupFromLibrary(c);
+        String fromLibrary = lookupFromLibrary(c, PINYIN_OUTPUT_FORMAT);
         if (!fromLibrary.isEmpty()) {
             return fromLibrary;
         }
@@ -37,6 +38,14 @@ public final class PinyinUtil {
         return "";
     }
 
+    /**
+     * The syllable with its tone number ({@code huo3}), used only as extra evidence when a repair has no
+     * character in common with what was heard.
+     */
+    public static String toPinyinWithToneNumber(char c) {
+        return lookupFromLibrary(c, PINYIN_TONE_FORMAT);
+    }
+
     private static HanyuPinyinOutputFormat createOutputFormat() {
         HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
         format.setCaseType(HanyuPinyinCaseType.LOWERCASE);
@@ -45,9 +54,17 @@ public final class PinyinUtil {
         return format;
     }
 
-    private static String lookupFromLibrary(char c) {
+    private static HanyuPinyinOutputFormat createToneFormat() {
+        HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
+        format.setCaseType(HanyuPinyinCaseType.LOWERCASE);
+        format.setToneType(HanyuPinyinToneType.WITH_TONE_NUMBER);
+        format.setVCharType(HanyuPinyinVCharType.WITH_V);
+        return format;
+    }
+
+    private static String lookupFromLibrary(char c, HanyuPinyinOutputFormat format) {
         try {
-            String[] candidates = PinyinHelper.toHanyuPinyinStringArray(c, PINYIN_OUTPUT_FORMAT);
+            String[] candidates = PinyinHelper.toHanyuPinyinStringArray(c, format);
             if (candidates == null || candidates.length == 0) {
                 return "";
             }

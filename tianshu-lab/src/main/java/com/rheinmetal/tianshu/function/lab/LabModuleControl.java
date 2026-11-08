@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.function.lab;
 
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
+
 /**
  * What the bench settings page can see and do.
  *
@@ -35,6 +37,11 @@ public interface LabModuleControl {
     String wakeWords();
 
     void setWakeWords(String value);
+
+    /** How long the winner keeps the turn; all three participants use the same tier. */
+    DialogueHoldTier holdTier();
+
+    void setHoldTier(DialogueHoldTier holdTier);
 
     void registerParticipants();
 

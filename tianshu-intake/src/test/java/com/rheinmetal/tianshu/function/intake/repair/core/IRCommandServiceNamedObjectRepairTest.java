@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IRCommandServiceNamedObjectRepairTest {
@@ -38,6 +39,31 @@ class IRCommandServiceNamedObjectRepairTest {
                 "\u78e8\u5236\u9ed1\u77f3\u7816\u600e\u4e48\u505a",
                 "minecraft:polished_blackstone_bricks"
         );
+    }
+
+    @Test
+    void doesNotRewriteOrdinaryCompanionSpeechIntoATrapdoor() {
+        service.rebuild(testDictionary());
+
+        assertNotRepaired(
+                "\u4f19\u4f34\u4eec\u5728\u54ea",
+                "companions are ordinary speech, not an item name that merely sounds alike"
+        );
+        assertNotRepaired(
+                "\u9879\u76ee\u4f19\u4f34\u4eec\u5728\u54ea",
+                "a longer ordinary sentence must not become a material-prefixed trapdoor"
+        );
+    }
+
+    @Test
+    void zeroOverlapEvidenceRejectsInsertedOrDroppedSyllables() {
+        assertFalse(IRBaseUtils.hasPlausibleRepairEvidence("\u4f19\u4f34\u4eec\u5728", "\u94c1\u6d3b\u677f\u95e8"),
+                "铁 is an inserted syllable and 在 would be swallowed");
+        assertFalse(IRBaseUtils.hasPlausibleRepairEvidence("\u4f19\u4f34\u4eec", "\u6d3b\u677f\u95e8"),
+                "same syllables, but the tones do not line up");
+        assertTrue(IRBaseUtils.hasPlausibleRepairEvidence("\u9879\u76ee\u4eec", "\u6a61\u6728\u95e8"));
+        assertTrue(IRBaseUtils.hasPlausibleRepairEvidence("\u94c1\u6d3b\u677f\u4eec", "\u94c1\u6d3b\u677f\u95e8"),
+                "a partial written match is ordinary ASR evidence");
     }
 
     @Test
@@ -110,6 +136,14 @@ class IRCommandServiceNamedObjectRepairTest {
         );
     }
 
+    private void assertNotRepaired(String asrText, String reason) {
+        IRParseResult result = service.parse(asrText, () -> Set.of(), true);
+
+        assertEquals(asrText, result.getHealedRawText(), reason);
+        assertTrue(result.getMatchedItemRealIds().isEmpty(), reason + " (items " + result.getMatchedItemRealIds() + ")");
+        assertTrue(result.getUnits().isEmpty(), reason);
+    }
+
     private Map<String, List<String>> testDictionary() {
         Map<String, List<String>> dictionary = new LinkedHashMap<>();
         dictionary.put("minecraft:oak_door", List.of("\u6a61\u6728\u95e8", "oak_door"));
@@ -120,6 +154,8 @@ class IRCommandServiceNamedObjectRepairTest {
         dictionary.put("minecraft:sculk_sensor", List.of("\u5e7d\u533f\u611f\u6d4b\u4f53", "sculk_sensor"));
         dictionary.put("minecraft:polished_blackstone_bricks", List.of("\u78e8\u5236\u9ed1\u77f3\u7816", "polished_blackstone_bricks"));
         dictionary.put("minecraft:chiseled_polished_blackstone", List.of("\u96d5\u7eb9\u78e8\u5236\u9ed1\u77f3", "chiseled_polished_blackstone"));
+        dictionary.put("minecraft:iron_trapdoor", List.of("\u94c1\u6d3b\u677f\u95e8", "iron_trapdoor"));
+        dictionary.put("minecraft:oak_trapdoor", List.of("\u6a61\u6728\u6d3b\u677f\u95e8", "oak_trapdoor"));
         return dictionary;
     }
 }

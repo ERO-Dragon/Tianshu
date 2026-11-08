@@ -120,6 +120,7 @@ public final class CommandParser {
             CommandCandidateRanker.LcsWorkspace lcsWorkspace
     ) {
         CommandCandidateRanker.ScoredCandidate[] ranked = executeRankQuery(rawText, contextInternalIds, lcsWorkspace);
+        CommandTextRepairer.RepairResult repairResult = textRepairer.repair(rawText, ranked);
         ParseUnit interceptedUnit = null;
         ReviewHint reviewHint = ReviewHint.EMPTY;
         if (ranked.length > 0) {
@@ -129,14 +130,19 @@ public final class CommandParser {
             double threshold = computeInterceptThreshold(rawText, best);
             double entityRatio = computeEntityRatio(rawText, best);
             reviewHint = new ReviewHint(targetText, targetObjectId, best.score, entityRatio, threshold, Intent.UNKNOWN.name());
+            // An item candidate is only a match when the text contains evidence for it: a shared written
+            // character, or a repair proposal (which itself requires that evidence). Without this, any
+            // sentence that merely sounds like an item name becomes one.
+            boolean hasEvidence = IRBaseUtils.sharedHanCharacter(rawText, targetText)
+                    || repairResult.matchedItemRealIds.contains(GameObjectId.raw(targetObjectId));
             if (isItemCandidate(best)
                     && best.score >= threshold
+                    && hasEvidence
                     && !isGenericContainedQuery(IRBaseUtils.tokenize(rawText), ranked)) {
                 interceptedUnit = new ParseUnit(Intent.UNKNOWN, GameObjectId.raw(targetObjectId), false);
             }
         }
 
-        CommandTextRepairer.RepairResult repairResult = textRepairer.repair(rawText, ranked);
         return new FastIRFallbackResult(
                 interceptedUnit,
                 repairResult.text,
@@ -210,7 +216,8 @@ public final class CommandParser {
                 ranked,
                 topCandidate
         );
-        if (!isItemCandidate(selected)) {
+        if (!isItemCandidate(selected)
+                || !IRBaseUtils.hasPlausibleRepairEvidence(subQuery.rawChunk, irIndex.displayName(selected.internalId))) {
             return null;
         }
         return new ParseUnit(subQuery.intent, GameObjectId.raw(irIndex.realId(selected.internalId)), subQuery.negFlag);
