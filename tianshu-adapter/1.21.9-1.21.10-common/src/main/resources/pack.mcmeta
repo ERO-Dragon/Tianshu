@@ -1,0 +1,11 @@
+{
+  "pack": {
+    "description": {
+      "translate": "tianshu.pack.description"
+    },
+    "supported_formats": {
+      "min_inclusive": 69,
+      "max_inclusive": 69
+    }
+  }
+}

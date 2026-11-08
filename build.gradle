@@ -247,6 +247,30 @@ tasks.register('verifyFeatureOptionalDependencies') {
 // not read inside the task, because a task action may not reach into other projects under the configuration
 // cache — and the project graph is exactly what this gate is about.
 def adapterProjects = project(':tianshu-adapter').subprojects as List
+
+// ---------------------------------------------------------------- adapter dependency policy
+// Forge's accessory libraries request log4j through a dynamic range (`2.11.+`). A dynamic selector makes Gradle list
+// the metadata of every declared repository before it can choose, and a host that throws aborts the whole resolution
+// instead of letting the next repository answer — so an adapter that is otherwise fine fails to configure. Rewriting
+// the *selector* to the concrete build that range would have selected keeps resolution static without deciding what
+// the runtime gets: conflict resolution still upgrades log4j to whatever the loader's logging backend needs. Pinning
+// the resolved version instead (resolutionStrategy.force) downgraded the runtime classpath to 2.11.2 next to a 2.19.0
+// backend, which fails at startup with NoSuchMethodError on LoggerContextFactory.
+def adapterDynamicVersionPins = [
+        'org.apache.logging.log4j:log4j-api' : '2.11.2',
+        'org.apache.logging.log4j:log4j-core': '2.11.2',
+]
+adapterProjects.each { adapterProject ->
+    adapterProject.configurations.configureEach { configuration ->
+        configuration.resolutionStrategy.eachDependency { details ->
+            def pinned = adapterDynamicVersionPins["${details.requested.group}:${details.requested.name}".toString()]
+            if (pinned != null && details.requested.version != null && details.requested.version.endsWith('+')) {
+                details.useVersion(pinned)
+            }
+        }
+    }
+}
+
 // The shared adapter layer is not a Gradle project: one source tree is compiled into every loader adapter,
 // so it is scanned by path wherever a rule says "kernel code".
 // Version dimension: one shared tree per Minecraft target, named `common-<target>`, and each adapter names the
