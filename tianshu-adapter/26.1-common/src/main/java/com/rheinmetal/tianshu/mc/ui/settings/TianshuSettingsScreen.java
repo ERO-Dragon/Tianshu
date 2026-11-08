@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.mc.ui.settings;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.mc.ui.settings.UiTexts;
 import com.rheinmetal.tianshu.client.api.settings.TextBlockLevel;
@@ -70,6 +71,8 @@ public final class TianshuSettingsScreen extends Screen {
     private Button saveButton;
     private SelectionPanel<?> selectionPanel;
     private boolean rebuildQueued;
+    /** The key row currently waiting for input; the screen routes the next key or click to it. */
+    private SettingsKeyBindingButton armedKeyBinding;
 
     public TianshuSettingsScreen(ModuleSettingsContext context, TianshuSettingsRegistry registry, ModuleSettingsRendererProvider rendererProvider, GlobalDebugSettingsSession debugSession, Screen returnScreen) {
         super(TITLE);
@@ -110,6 +113,7 @@ public final class TianshuSettingsScreen extends Screen {
 
     public void rebuildCurrentPage() {
         rebuildQueued = false;
+        armedKeyBinding = null;
         clearWidgets();
         // The scroll regions below are new objects; clips cached against the old ones are unreachable.
         visibleRegionCache.clear();
@@ -343,12 +347,24 @@ public final class TianshuSettingsScreen extends Screen {
         }
     }
 
+    /** Called by a key row when it starts waiting for input. */
+    public void armKeyCapture(SettingsKeyBindingButton button) {
+        this.armedKeyBinding = button;
+    }
+
     /**
      * 1.21.9 delivers one input record instead of loose coordinates, so the pointer is read off the event and the
      * region widgets are handed that same event: it already carries the cursor position they hit-test against.
      */
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        // While a key row waits for input, the next click is the binding itself, not a click on a control.
+        if (armedKeyBinding != null) {
+            if (armedKeyBinding.isCapturing()) {
+                return armedKeyBinding.capture(InputConstants.Type.MOUSE.getOrCreate(event.button()));
+            }
+            armedKeyBinding = null;
+        }
         if (selectionPanel != null && selectionPanel.mouseClicked(event.x(), event.y())) {
             return true;
         }
@@ -385,6 +401,18 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        // A key row that is waiting for input consumes the next key, Escape included; the screen must not
+        // close or hand it to a widget while the capture is armed.
+        if (armedKeyBinding != null) {
+            if (armedKeyBinding.isCapturing()) {
+                if (event.isEscape()) {
+                    armedKeyBinding.cancelCapture();
+                    return true;
+                }
+                return armedKeyBinding.capture(InputConstants.getKey(event));
+            }
+            armedKeyBinding = null;
+        }
         if (selectionPanel != null) {
             if (event.isEscape()) {
                 selectionPanel = null;
@@ -396,6 +424,10 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public boolean charTyped(CharacterEvent event) {
+        // The key press that just bound itself must not also type into a focused field.
+        if (armedKeyBinding != null && armedKeyBinding.isCapturing()) {
+            return true;
+        }
         if (selectionPanel != null) {
             return true;
         }

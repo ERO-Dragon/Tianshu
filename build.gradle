@@ -639,6 +639,51 @@ tasks.register('verifyProtocolVersionSingleSource') {
     }
 }
 
+// ---------------------------------------------------------------- settings row coverage
+// A settings row is data: the kernel's SettingsTemplateModel declares the closed set of option entries, and each
+// Minecraft line draws that set with its own widgets, so one variant means one kernel edit plus one renderer edit
+// per shared tree. A tree that misses the variant compiles — its switch is only exhaustive over what its own copy
+// names — and the row silently does not appear on those versions. The expected set is read from the kernel's own
+// `permits` clause, so the gate follows the model instead of repeating its list.
+tasks.register('verifySettingsRenderersCoverOptionEntries') {
+    group = 'verification'
+    description = 'Every shared settings renderer must draw every option-entry variant the kernel model declares.'
+    def modelFile = file('tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
+    def commonTrees = (file('tianshu-adapter').listFiles() ?: [] as File[])
+            .findAll { it.isDirectory() && it.name.endsWith('-common') }
+            .sort { it.name }
+    def rendererOf = { File tree ->
+        new File(tree, 'src/main/java/com/rheinmetal/tianshu/mc/ui/settings/VanillaModuleSettingsRenderer.java')
+    }
+    inputs.file(modelFile)
+    inputs.files(commonTrees.collect(rendererOf).findAll { it.isFile() })
+    doLast {
+        def permits = modelFile.text =~ /(?s)interface\s+OptionEntry\s+permits\s+([^{]+)\{/
+        if (!permits.find()) {
+            throw new GradleException("Cannot read the option-entry set from ${modelFile.name}; the permits clause changed shape")
+        }
+        def variants = permits.group(1).split(',').collect { it.trim().replaceAll('<.*>', '') }.findAll { !it.isEmpty() }
+        def violations = []
+        commonTrees.each { tree ->
+            def renderer = rendererOf(tree)
+            if (!renderer.isFile()) {
+                violations << "${tree.name}: no settings renderer".toString()
+                return
+            }
+            def source = renderer.getText('UTF-8')
+            // A variant name is matched whole: a longer name that merely starts with it is not coverage.
+            def missing = variants.findAll { variant -> !(source =~ /SettingsTemplateModel\.${variant}\b/).find() }
+            if (!missing.isEmpty()) {
+                violations << "${tree.name}: does not draw ${missing.join(', ')}".toString()
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("A settings row exists in the kernel but not on every Minecraft line; add it to "
+                    + "the renderer of each shared tree:\n" + violations.join('\n'))
+        }
+    }
+}
+
 tasks.named('check') {
     dependsOn tasks.named('verifyFeatureIsolation')
     dependsOn tasks.named('verifyFeatureOptionalDependencies')
@@ -649,6 +694,7 @@ tasks.named('check') {
     dependsOn tasks.named('verifyAdapterProperties')
     dependsOn tasks.named('verifyAdapterMatrixCoverage')
     dependsOn tasks.named('verifyProtocolVersionSingleSource')
+    dependsOn tasks.named('verifySettingsRenderersCoverOptionEntries')
 }
 
 // ---------------------------------------------------------------- test concurrency
