@@ -21,6 +21,7 @@ import com.rheinmetal.tianshu.function.weaving.service.EmbeddingRuntime;
 import com.rheinmetal.tianshu.function.weaving.service.LLMService;
 import com.rheinmetal.tianshu.function.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
+import com.rheinmetal.tianshu.function.weaving.service.LlmTimeoutScheduler;
 import com.rheinmetal.tianshu.function.weaving.service.OpenAiCompatibleInferenceClient;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
@@ -30,6 +31,7 @@ import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMRuntimeSnapshotPayload;
@@ -82,6 +84,13 @@ public final class LlmModule implements TianshuManagedModule {
      * there is no static lookup anywhere in the chain.
      */
     private final LlmUsageLedger usageLedger = new LlmUsageLedger();
+    /**
+     * Arms each request's deadline on the protocol's scheduled lane.
+     *
+     * <p>The transport hands one callback per request; running it here costs no thread of the module's
+     * own, and the runtime removes a cancelled timer instead of leaving it queued.</p>
+     */
+    private final LlmTimeoutScheduler requestDeadline = this::scheduleRequestDeadline;
     private final Object lifecycleLock = new Object();
     private LLMService llmService;
     private ModuleRuntimeContext runtimeContext;
@@ -471,8 +480,34 @@ public final class LlmModule implements TianshuManagedModule {
                 model,
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
                 env::warn,
-                reasoning
+                reasoning,
+                requestDeadline
         );
+    }
+
+    /**
+     * Schedules one request's deadline and returns the handle that disarms it.
+     *
+     * <p>A rejected timer is reported and otherwise ignored: the request stays bounded by the
+     * connection, and failing it here would turn a missing watchdog into a missing answer.</p>
+     */
+    private LlmTimeoutScheduler.Handle scheduleRequestDeadline(Duration delay, Runnable onExpiry) {
+        ProtocolTaskHandle handle = runtime.schedule(
+                ProtocolTaskSpec.builder()
+                        .moduleId(moduleId())
+                        .lane(ExecutionLane.SCHEDULED)
+                        .concurrencyKey("module.llm:request.deadline")
+                        .maxConcurrency(1)
+                        .queueCapacity(16)
+                        .interruptible(true)
+                        .build(),
+                onExpiry,
+                delay
+        );
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            env.warn("[LLM] The scheduled lane refused a request deadline; that request has no timeout guard");
+        }
+        return () -> handle.cancel("llm_request_deadline_disarmed");
     }
 
     /** The reasoning ladder of the selected model: configured on the entry, else the provider profile. */
@@ -493,6 +528,12 @@ public final class LlmModule implements TianshuManagedModule {
                 ? STATUS_KEY_MISSING_API_KEY
                 : STATUS_KEY_REMOTE_INCOMPLETE;
         env.warn("[LLM] Cloud LLM lane is not configured: missing " + missingSetting);
+        // This failure happens before the retrieval lane was ever asked to load, so nothing will settle the
+        // primary claim taken at world entry. Leaving it outstanding parks the speech lanes for the whole
+        // session — the speech modules are deferred behind retrieval — which would make an unconfigured
+        // cloud endpoint silence TTS and ASR. A retry that does reach the embedding engine re-claims in
+        // startEmbeddingOnly(), so the permit is only given up while nothing is queued.
+        engineProvider.abandonQueuedLoad();
         reportStartFailure(statusKey, "Cloud LLM is not configured: missing " + missingSetting);
     }
 

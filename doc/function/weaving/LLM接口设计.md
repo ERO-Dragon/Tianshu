@@ -137,6 +137,8 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 
 对 `texts` 调用本地向量引擎。引擎未就绪时返回 `LLM_EMBEDDING_UNAVAILABLE`；执行失败返回 `LLM_EMBED_FAILED`。每条结果包含 `text`、`dimension`、可选 `vector`、`embeddingModelName`、`embeddingNamespace`。
 
+两个开关互相独立：`includeVector` 只决定是否回传 `vector`，`includeEmbeddingDetails` 只决定是否回传 `embeddingModelName` / `embeddingNamespace`；`dimension` 总是返回（它是向量的长度，不是可选详情）。
+
 ### 4.3 `STATUS`
 
 ```java
@@ -169,6 +171,7 @@ record LLMRuntimeSnapshotPayload(
 - 原生模型加载经过进程级串行闸门，与听澜 / 回响的语音模型互斥。
 - 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。请求本身不产生映迹活动，那属于调用方的一轮对话。
 - 取消或线程中断会中止底层 HTTP 交换，而不是让读者线程继续读到超时；中断标志会被恢复，交给上层决定。
+- 每个请求还会在 scheduled lane 上挂一个截止任务：供应商接上流后若不再发字节，截止到点会关闭响应体并按 `REMOTE_LLM_STREAM_TIMEOUT` 报失败，不会让读者线程一直阻塞在 `readLine()` 上。
 
 ## 6. 边界
 
