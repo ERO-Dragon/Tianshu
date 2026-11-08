@@ -104,6 +104,27 @@ class LLMServiceTest {
         assertEquals("LLM_EMBEDDING_UNAVAILABLE", result.errorCode());
     }
 
+    /**
+     * "Give me the vectors" and "tell me which model produced them" are two different questions; the
+     * transport used to AND them, so a caller that only asked for vectors got an empty one back.
+     */
+    @Test
+    void vectorAndDetailsFlagsAreIndependent() {
+        EmbeddingRuntime embedding = new EmbeddingRuntime();
+        embedding.bind(new FixedEmbeddingService());
+        LLMService service = service(new StubInferenceClient(), embedding);
+
+        LLMPrimitiveResultPayload vectorsOnly = service.embedResponse("embed-v", List.of("a"), true, false);
+        assertEquals(2, vectorsOnly.embedResults().get(0).dimension());
+        assertEquals("", vectorsOnly.embedResults().get(0).embeddingModelName());
+        assertEquals("", vectorsOnly.embedResults().get(0).embeddingNamespace());
+
+        LLMPrimitiveResultPayload detailsOnly = service.embedResponse("embed-d", List.of("a"), false, true);
+        assertEquals(2, detailsOnly.embedResults().get(0).dimension(), "the dimension is not a detail flag");
+        assertEquals(0, detailsOnly.embedResults().get(0).vector().length);
+        assertEquals(NAMESPACE, detailsOnly.embedResults().get(0).embeddingNamespace());
+    }
+
     @Test
     void tokenCountIsDelegatedToTheEstimator() {
         StubInferenceClient client = new StubInferenceClient();

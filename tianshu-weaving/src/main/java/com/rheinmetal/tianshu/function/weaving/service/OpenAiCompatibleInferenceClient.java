@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmHttpTransport;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmTokenEstimator;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
@@ -56,7 +57,6 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private static final Duration MAX_TIMEOUT = Duration.ofMinutes(10);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(120);
 
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final String COMPLETIONS_PATH = "/chat/completions";
     private static final String STREAM_MEDIA_TYPE = "text/event-stream";
     private static final String REDACTED = "<redacted>";
@@ -75,6 +75,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private final HttpClient httpClient;
     private final Executor executor;
     private final ExecutorService ownedExecutor;
+    /** Arms the deadline of one request; null when the caller has no scheduler to offer. */
+    private final LlmTimeoutScheduler timeoutScheduler;
     private final LlmReasoningProfile reasoningProfile;
     private final Set<RemoteStream> activeStreams = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -103,7 +105,24 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Consumer<String> diagnostics,
             LlmReasoningProfile reasoningProfile
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, null, null);
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, null, null, null);
+    }
+
+    /**
+     * @param timeoutScheduler arms the per-request deadline that aborts a body which stopped sending;
+     *                         {@code null} leaves the request bounded only by the connection itself,
+     *                         which is what tests and headless callers want
+     */
+    public OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            LlmReasoningProfile reasoningProfile,
+            LlmTimeoutScheduler timeoutScheduler
+    ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, null, null, timeoutScheduler);
     }
 
     /** Transport seam: tests drive the real stream loop with a stub {@link HttpClient}, no socket. */
@@ -116,7 +135,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             HttpClient httpClient,
             Executor executor
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, LlmReasoningProfile.NONE, httpClient, executor);
+        this(baseUrl, apiKey, model, timeout, diagnostics, LlmReasoningProfile.NONE, httpClient, executor, null);
     }
 
     OpenAiCompatibleInferenceClient(
@@ -129,13 +148,28 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             HttpClient httpClient,
             Executor executor
     ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, httpClient, executor, null);
+    }
+
+    OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            LlmReasoningProfile reasoningProfile,
+            HttpClient httpClient,
+            Executor executor,
+            LlmTimeoutScheduler timeoutScheduler
+    ) {
         this.endpoint = normalizeEndpoint(baseUrl);
         this.apiKey = requireHeaderSafe(apiKey == null ? "" : apiKey.trim());
         this.model = requireText(model, "model");
         this.timeout = clampTimeout(timeout);
         this.diagnostics = diagnostics == null ? message -> { } : diagnostics;
         this.reasoningProfile = reasoningProfile == null ? LlmReasoningProfile.NONE : reasoningProfile;
-        this.httpClient = httpClient != null ? httpClient : newHttpClient(this.timeout);
+        this.httpClient = httpClient != null ? httpClient : LlmHttpTransport.client();
+        this.timeoutScheduler = timeoutScheduler;
         this.ownedExecutor = executor == null ? newOwnedExecutor() : null;
         this.executor = executor != null ? executor : ownedExecutor;
     }
@@ -230,6 +264,9 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         });
         Consumer<String> tokenSink = sink(onToken);
         Consumer<String> thinkingSink = captureThinkingContent ? sink(onThinking) : null;
+        // Armed before the exchange starts: the request timeout covers the wait for a response head, not a
+        // body that stops mid-stream, so without this a stalled provider holds the reader and its socket.
+        LlmTimeoutScheduler.Handle deadline = armDeadline(stream);
         try {
             executor.execute(() -> {
                 try {
@@ -242,19 +279,48 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                     notifyFinish(onFinish, null, cancelled);
                     future.completeExceptionally(cancelled);
                 } catch (Throwable failure) {
-                    Throwable reported = stream.cancelled()
+                    Throwable reported = stream.timedOut()
+                            ? streamStopped(stream)
+                            : stream.cancelled()
                             ? new CancellationException("REMOTE_LLM_REQUEST_CANCELLED")
                             : failure;
                     report(reported);
                     notifyFinish(onFinish, null, reported);
                     future.completeExceptionally(reported);
+                } finally {
+                    disarm(deadline);
                 }
             });
         } catch (RuntimeException rejected) {
+            disarm(deadline);
             activeStreams.remove(stream);
             future.completeExceptionally(rejected);
         }
         return future;
+    }
+
+    /**
+     * Arms the request deadline, or returns {@code null} when no scheduler is wired.
+     *
+     * <p>A scheduler that refuses the timer is reported and then ignored: the request is still bounded by
+     * the connection, and failing it here would turn a missing watchdog into a missing answer.</p>
+     */
+    private LlmTimeoutScheduler.Handle armDeadline(RemoteStream stream) {
+        if (timeoutScheduler == null) {
+            return null;
+        }
+        try {
+            return timeoutScheduler.schedule(timeout, stream::timeout);
+        } catch (RuntimeException unavailable) {
+            report(new IllegalStateException("REMOTE_LLM_DEADLINE_UNAVAILABLE " + describe(unavailable), unavailable));
+            return null;
+        }
+    }
+
+    private static void disarm(LlmTimeoutScheduler.Handle handle) {
+        if (handle != null) {
+            handle.cancel();
+        }
     }
 
     private LlmGenerationResult streamChat(
@@ -280,6 +346,9 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 Thread.currentThread().interrupt();
                 throw new CancellationException("REMOTE_LLM_REQUEST_INTERRUPTED");
             } catch (IOException failure) {
+                if (stream.timedOut()) {
+                    throw streamStopped(stream);
+                }
                 throw new IllegalStateException("REMOTE_LLM_TRANSPORT_FAILED " + describe(failure), failure);
             }
             try (InputStream body = response.body()) {
@@ -292,8 +361,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 calibrateUsage(messages, result);
                 return result;
             } catch (IOException failure) {
-                if (stream.cancelled()) {
-                    throw new CancellationException("REMOTE_LLM_REQUEST_CANCELLED");
+                if (stream.timedOut() || stream.cancelled()) {
+                    throw streamStopped(stream);
                 }
                 throw new IllegalStateException("REMOTE_LLM_STREAM_FAILED " + describe(failure), failure);
             }
@@ -321,7 +390,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         String line;
         while ((line = reader.readLine()) != null) {
             if (stream.cancelled()) {
-                throw new CancellationException("REMOTE_LLM_REQUEST_CANCELLED");
+                throw streamStopped(stream);
             }
             OpenAiChatStreamParser.Event event = OpenAiChatStreamParser.parse(line);
             if (event == null) {
@@ -483,14 +552,6 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     }
 
     // --- lifecycle helpers ------------------------------------------------------------------------
-
-    private static HttpClient newHttpClient(Duration timeout) {
-        Duration connectTimeout = timeout.compareTo(CONNECT_TIMEOUT) < 0 ? timeout : CONNECT_TIMEOUT;
-        return HttpClient.newBuilder()
-                .connectTimeout(connectTimeout)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
-    }
 
     private static ExecutorService newOwnedExecutor() {
         ThreadFactory factory = runnable -> {
@@ -700,6 +761,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     /** Handle of one in-flight request: cancelling it closes the response stream and aborts the exchange. */
     private static final class RemoteStream {
         private volatile boolean cancelled;
+        /** Set when the request deadline fired, so the failure is reported as a timeout, not a cancel. */
+        private volatile boolean timedOut;
         private volatile InputStream stream;
 
         void attach(InputStream body) {
@@ -713,6 +776,12 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             this.stream = null;
         }
 
+        /** The request ran past its deadline: abort the exchange and remember why. */
+        void timeout() {
+            timedOut = true;
+            cancel();
+        }
+
         void cancel() {
             cancelled = true;
             close(stream);
@@ -720,6 +789,10 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
         boolean cancelled() {
             return cancelled;
+        }
+
+        boolean timedOut() {
+            return timedOut;
         }
 
         private static void close(InputStream body) {
@@ -732,5 +805,19 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 // Closing an already aborted stream is expected; the reader observes the failure.
             }
         }
+    }
+
+    /**
+     * The failure of an aborted stream: a timeout when the deadline fired, a cancellation otherwise.
+     *
+     * <p>The distinction matters to the caller: a timeout is a failed request, a cancellation is one the
+     * caller gave up on, and they are reported under different protocol codes.</p>
+     */
+    private RuntimeException streamStopped(RemoteStream stream) {
+        if (stream.timedOut()) {
+            return new IllegalStateException(
+                    "REMOTE_LLM_STREAM_TIMEOUT timeoutSeconds=" + timeout.toSeconds());
+        }
+        return new CancellationException("REMOTE_LLM_REQUEST_CANCELLED");
     }
 }

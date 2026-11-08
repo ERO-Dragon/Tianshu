@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving.account;
 
+import com.rheinmetal.tianshu.function.weaving.runtime.LlmHttpTransport;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 
 import java.net.URI;
@@ -46,7 +47,6 @@ public final class DeepSeekBalanceProbe implements LlmAccountProbe {
     private static final int HTTP_OK = 200;
     private static final int HTTP_UNAUTHORIZED = 401;
     private static final int HTTP_FORBIDDEN = 403;
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
     private static final String DIAGNOSTIC_PREFIX = "[LLM] account_balance";
 
@@ -64,7 +64,7 @@ public final class DeepSeekBalanceProbe implements LlmAccountProbe {
         this.config = config;
         this.diagnostics = diagnostics == null ? message -> { } : diagnostics;
         this.timeout = timeout == null || timeout.isZero() || timeout.isNegative() ? DEFAULT_TIMEOUT : timeout;
-        this.httpClient = httpClient != null ? httpClient : newHttpClient();
+        this.httpClient = httpClient != null ? httpClient : LlmHttpTransport.client();
     }
 
     @Override
@@ -186,12 +186,5 @@ public final class DeepSeekBalanceProbe implements LlmAccountProbe {
                 && Character.isDigit(lastSegment.charAt(1))
                 && lastSegment.chars().allMatch(character -> Character.isLetterOrDigit(character));
         return versionSegment ? url.substring(0, separator) : url;
-    }
-
-    private static HttpClient newHttpClient() {
-        return HttpClient.newBuilder()
-                .connectTimeout(CONNECT_TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
     }
 }

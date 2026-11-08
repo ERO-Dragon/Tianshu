@@ -8,6 +8,8 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,6 +36,8 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     private static final int MAX_TEXT_BYTES = 1_048_576;
     private static final int MAX_ENTRY_ID_BYTES = 4_096;
     private static final int MAX_VECTOR_DIMENSION = 65_536;
+    /** How many digest bytes the cache file name carries; 6 bytes is plenty for a per-install uid set. */
+    private static final int DIGEST_HEX_BYTES = 6;
     private static final Duration FLUSH_DEBOUNCE = Duration.ofSeconds(1);
 
     private final IGameEnvironment env;
@@ -244,62 +248,83 @@ public final class PersistentRagCacheManager implements RagCacheManager {
 
     private void loadStoreIfNeeded(String uid) {
         String cleanUid = uid == null ? "" : uid.trim();
-        if (!cleanUid.isBlank() && !stores.containsKey(cleanUid) && Files.isRegularFile(vectorsFile(cleanUid))) {
+        if (!cleanUid.isBlank() && !stores.containsKey(cleanUid) && existingVectorsFile(cleanUid) != null) {
             loadStore(cleanUid);
         }
     }
 
+    /**
+     * Loads one store from disk, preferring the current file name and falling back to the legacy one.
+     *
+     * <p>The file is fully read before anything is deleted: Windows refuses to delete a file that is
+     * still open, so a corrupt cache used to survive its own cleanup and be re-read every session. A
+     * store read from the legacy name is marked dirty, which is what migrates it to the current name on
+     * the next flush.</p>
+     */
     private void loadStore(String uid) {
         if (isBlank(uid)) {
             return;
         }
-        Path vectorsFile = vectorsFile(uid);
-        if (!Files.isRegularFile(vectorsFile)) {
+        String cleanUid = uid.trim();
+        Path current = vectorsFile(cleanUid);
+        Path source = existingVectorsFile(cleanUid);
+        if (source == null) {
             return;
         }
+        boolean legacy = !source.equals(current);
 
-        try (DataInputStream dis = new DataInputStream(new BufferedInputStream(Files.newInputStream(vectorsFile)))) {
+        VectorStore store = new VectorStore(cleanUid);
+        boolean rejected = false;
+        try (DataInputStream dis = new DataInputStream(new BufferedInputStream(Files.newInputStream(source)))) {
             int magic = dis.readInt();
             int version = dis.readInt();
             if (magic != CACHE_MAGIC || version != CACHE_VERSION) {
                 env.warn("[RAG] Ignored incompatible cache file for uid: " + uid);
-                discardStoreFile(uid);
-                return;
-            }
-
-            String fileNamespace = dis.readUTF();
-            int count = dis.readInt();
-            if (!namespace.equals(fileNamespace) || count < 0) {
-                env.warn("[RAG] Ignored invalid cache metadata for uid: " + uid);
-                discardStoreFile(uid);
-                return;
-            }
-
-            VectorStore store = new VectorStore(uid);
-            for (int entry = 0; entry < count; entry++) {
-                String entryId = readString(dis, MAX_ENTRY_ID_BYTES, false);
-                String content = readString(dis, MAX_TEXT_BYTES, true);
-                int vectorLength = dis.readInt();
-                if (vectorLength < 0 || vectorLength > MAX_VECTOR_DIMENSION) {
-                    throw new IOException("Invalid vector dimension: " + vectorLength);
-                }
-                float[] vector = new float[vectorLength];
-                for (int i = 0; i < vectorLength; i++) {
-                    float value = dis.readFloat();
-                    if (Float.isNaN(value) || Float.isInfinite(value)) {
-                        throw new IOException("Invalid vector value");
+                rejected = true;
+            } else {
+                String fileNamespace = dis.readUTF();
+                int count = dis.readInt();
+                if (!namespace.equals(fileNamespace) || count < 0) {
+                    env.warn("[RAG] Ignored invalid cache metadata for uid: " + uid);
+                    rejected = true;
+                } else {
+                    for (int entry = 0; entry < count; entry++) {
+                        String entryId = readString(dis, MAX_ENTRY_ID_BYTES, false);
+                        String content = readString(dis, MAX_TEXT_BYTES, true);
+                        int vectorLength = dis.readInt();
+                        if (vectorLength < 0 || vectorLength > MAX_VECTOR_DIMENSION) {
+                            throw new IOException("Invalid vector dimension: " + vectorLength);
+                        }
+                        float[] vector = new float[vectorLength];
+                        for (int i = 0; i < vectorLength; i++) {
+                            float value = dis.readFloat();
+                            if (Float.isNaN(value) || Float.isInfinite(value)) {
+                                throw new IOException("Invalid vector value");
+                            }
+                            vector[i] = value;
+                        }
+                        store.upsert(entryId, content, vectorLength == 0 ? null : vector);
                     }
-                    vector[i] = value;
                 }
-                store.upsert(entryId, content, vectorLength == 0 ? null : vector);
-            }
-
-            if (!store.isEmpty()) {
-                stores.put(uid.trim(), store);
             }
         } catch (Exception e) {
             env.error("[RAG] Failed to load store for uid: " + uid, e);
-            discardStoreFile(uid);
+            discardUnreadableStore(cleanUid, source);
+            return;
+        }
+
+        if (rejected) {
+            discardUnreadableStore(cleanUid, source);
+            return;
+        }
+        if (store.isEmpty()) {
+            return;
+        }
+        stores.put(cleanUid, store);
+        if (legacy) {
+            // A store read from the old name is rewritten under the current one, which is what makes the
+            // rename a one-time migration instead of a second read every session.
+            markDirty(cleanUid);
         }
     }
 
@@ -315,7 +340,7 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         List<VectorStore.EntrySnapshot> entries = store.getEntries();
         try {
             Files.createDirectories(cacheDirectory);
-            Path tmp = cacheDirectory.resolve(sanitizeFileName(cleanUid) + ".tmp");
+            Path tmp = cacheDirectory.resolve(fileName(cleanUid) + ".tmp");
             try (DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)))) {
                 dos.writeInt(CACHE_MAGIC);
                 dos.writeInt(CACHE_VERSION);
@@ -340,6 +365,7 @@ public final class PersistentRagCacheManager implements RagCacheManager {
             }
             moveIntoPlace(tmp, vectorsFile(cleanUid));
             updateManifest(cleanUid, true);
+            deleteLegacyIfPresent(cleanUid);
             return true;
         } catch (Exception e) {
             env.error("[RAG] Failed to save store for uid: " + uid, e);
@@ -431,7 +457,11 @@ public final class PersistentRagCacheManager implements RagCacheManager {
                 return;
             }
             Files.createDirectories(cacheDirectory);
-            Files.write(manifestFile(), uids, StandardCharsets.UTF_8);
+            // Written to a temporary file and moved into place: a crash mid-write would otherwise leave a
+            // truncated manifest, and the manifest is the only index of which stores exist.
+            Path tmp = cacheDirectory.resolve("manifest.txt.tmp");
+            Files.write(tmp, uids, StandardCharsets.UTF_8);
+            moveIntoPlace(tmp, manifestFile());
         } catch (Exception e) {
             env.error("[RAG] Failed to update manifest", e);
         }
@@ -441,8 +471,50 @@ public final class PersistentRagCacheManager implements RagCacheManager {
         return cacheDirectory.resolve("manifest.txt");
     }
 
+    /**
+     * The cache file of one library.
+     *
+     * <p>The readable part of the name is sanitized, which is not injective: two different uids can
+     * collapse onto the same string (`mod:a` and `mod_a`, or any non-ASCII uid). A digest of the raw
+     * uid follows it so each library keeps its own file instead of silently overwriting another one's.</p>
+     */
     private Path vectorsFile(String uid) {
+        return cacheDirectory.resolve(fileName(uid) + ".bin");
+    }
+
+    /** The name this build used before the digest existed: read once, then migrated. */
+    private Path legacyVectorsFile(String uid) {
         return cacheDirectory.resolve(sanitizeFileName(uid) + ".bin");
+    }
+
+    private Path existingVectorsFile(String uid) {
+        Path current = vectorsFile(uid);
+        if (Files.isRegularFile(current)) {
+            return current;
+        }
+        Path legacy = legacyVectorsFile(uid);
+        return Files.isRegularFile(legacy) ? legacy : null;
+    }
+
+    private String fileName(String uid) {
+        String cleanUid = uid == null ? "" : uid.trim();
+        return sanitizeFileName(cleanUid) + "-" + digest(cleanUid);
+    }
+
+    /** Short stable digest of the raw uid; no security property is claimed, only uniqueness. */
+    private static String digest(String value) {
+        try {
+            byte[] bytes = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(DIGEST_HEX_BYTES * 2);
+            for (int index = 0; index < DIGEST_HEX_BYTES; index++) {
+                hex.append(Character.forDigit((bytes[index] >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(bytes[index] & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException missing) {
+            // Every JVM ships SHA-256, so this is a broken runtime rather than a case to fail a write on.
+            return Integer.toHexString(value.hashCode());
+        }
     }
 
     private void moveIntoPlace(Path tmp, Path target) throws IOException {
@@ -456,15 +528,41 @@ public final class PersistentRagCacheManager implements RagCacheManager {
     private void deleteStoreFile(String uid) {
         try {
             Files.deleteIfExists(vectorsFile(uid));
+            Files.deleteIfExists(legacyVectorsFile(uid));
         } catch (Exception e) {
             env.error("[RAG] Failed to delete cache file for uid: " + uid, e);
         }
     }
 
-    private void discardStoreFile(String uid) {
+    /** Removes the pre-digest file once the store lives under the current name; a no-op for new stores. */
+    private void deleteLegacyIfPresent(String uid) {
+        Path legacy = legacyVectorsFile(uid);
+        if (legacy.equals(vectorsFile(uid))) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(legacy);
+        } catch (Exception e) {
+            env.warn("[RAG] Failed to remove the legacy cache file for uid: " + uid);
+        }
+    }
+
+    /**
+     * Drops one unreadable store and only the file it was read from.
+     *
+     * <p>Deleting both names would throw away a legacy file that the current name shadowed, and that
+     * file may be the readable copy.</p>
+     */
+    private void discardUnreadableStore(String uid, Path source) {
         stores.remove(uid == null ? "" : uid.trim());
-        deleteStoreFile(uid);
-        updateManifest(uid, false);
+        try {
+            Files.deleteIfExists(source);
+        } catch (Exception e) {
+            env.error("[RAG] Failed to delete the unreadable cache file for uid: " + uid, e);
+        }
+        if (!Files.isRegularFile(vectorsFile(uid))) {
+            updateManifest(uid, false);
+        }
     }
 
     private long safeSize(Path path) {

@@ -34,15 +34,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -282,10 +285,56 @@ class OpenAiCompatibleInferenceClientTest {
         assertFalse(client.isReady());
     }
 
+    /**
+     * A provider can send the response head and then stop. The request timeout only covers the head, so
+     * without the armed deadline the reader would stay blocked on the body until the OS gave up, holding
+     * an IO thread and its connection.
+     */
+    @Test
+    void aStalledBodyIsAbortedByTheRequestDeadline() throws Exception {
+        BlockingSseStream blocking = new BlockingSseStream();
+        AtomicReference<Runnable> armed = new AtomicReference<>();
+        LlmTimeoutScheduler scheduler = (delay, task) -> {
+            armed.set(task);
+            return () -> { };
+        };
+        OpenAiCompatibleInferenceClient client = clientWithDeadline(stub(200, () -> blocking), "sk-test", scheduler);
+
+        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+                messages(), sampling(), 0, false, null, token -> { }, null, null, null);
+        assertTrue(blocking.awaitReading(AWAIT), "the reader must be blocked on the body");
+        assertNotNull(armed.get(), "the request must arm its deadline");
+
+        armed.get().run();
+
+        ExecutionException failure = assertThrows(ExecutionException.class, () -> streamed.get(5, TimeUnit.SECONDS));
+        assertTrue(failure.getCause().getMessage().contains("REMOTE_LLM_STREAM_TIMEOUT"),
+                "a deadline hit is a timeout, not a cancellation: " + failure.getCause().getMessage());
+        assertTrue(blocking.awaitClosed(AWAIT), "the deadline must close the response stream");
+    }
+
     // --- fixtures -----------------------------------------------------------------------------
 
     private static OpenAiCompatibleInferenceClient client(StubHttpClient transport, String apiKey) {
         return client(transport, apiKey, message -> { }, BASE_URL);
+    }
+
+    private static OpenAiCompatibleInferenceClient clientWithDeadline(
+            StubHttpClient transport,
+            String apiKey,
+            LlmTimeoutScheduler timeoutScheduler
+    ) {
+        return new OpenAiCompatibleInferenceClient(
+                BASE_URL,
+                apiKey,
+                MODEL,
+                Duration.ofSeconds(30),
+                message -> { },
+                LlmReasoningProfile.NONE,
+                transport,
+                EXECUTOR,
+                timeoutScheduler
+        );
     }
 
     private static OpenAiCompatibleInferenceClient client(
