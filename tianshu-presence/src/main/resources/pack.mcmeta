@@ -3,9 +3,10 @@
     "description": {
       "translate": "tianshu.pack.description"
     },
+    "pack_format": 15,
     "supported_formats": {
-      "min_inclusive": 97,
-      "max_inclusive": 97
+      "min_inclusive": 15,
+      "max_inclusive": 98
     }
   }
 }
