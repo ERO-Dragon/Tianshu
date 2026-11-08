@@ -13,4 +13,9 @@ public record IrInputText(String text, String rawText, int turnId, long sessionI
     public boolean blank() {
         return text.isBlank();
     }
+
+    /** The same utterance with a different displayed text; identity and provenance are kept. */
+    public IrInputText withText(String newText) {
+        return new IrInputText(newText, rawText, turnId, sessionId, source, createdAt);
+    }
 }

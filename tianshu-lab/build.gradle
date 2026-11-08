@@ -1,0 +1,71 @@
+plugins {
+    id 'java-library'
+}
+
+version = mod_version
+group = mod_group_id
+
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
+
+repositories {
+    mavenCentral()
+}
+
+// Dev-only test bench: it is never part of the shipped feature set, so it is not in `featureModules` and no
+// adapter packaging task knows about it. It exists to give IA a participant to arbitrate against while the
+// player tests the speech module in a development client.
+dependencies {
+    api project(':tianshu-intake')
+    compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+def tianshuModVersion = providers.gradleProperty('mod_version').get()
+def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
+def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
+def tianshuModName = providers.gradleProperty('mod_name').get()
+
+processResources {
+    inputs.property('tianshuModVersion', tianshuModVersion)
+    inputs.property('tianshuMcRange', tianshuMcRange)
+    inputs.property('tianshuLibsRange', tianshuLibsRange)
+    inputs.property('tianshuModName', tianshuModName)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(
+                mod_version               : tianshuModVersion,
+                minecraft_version_range   : tianshuMcRange,
+                tianshu_libs_version_range: tianshuLibsRange,
+                mod_name                  : tianshuModName
+        )
+    }
+}
+
+jar {
+    archiveBaseName = 'tianshu_lab'
+}
+
+// ---------------------------------------------------------------- loader entrypoint
+// One shell, NeoForge only: the bench is a development tool for the 1.21.1 line, not a shipped artifact.
+sourceSets {
+    neoforgeStubs {
+        java.srcDir 'src/neoforgeStubs'
+    }
+    neoforgeEntry {
+        java.srcDir 'src/neoforgeEntry/java'
+        compileClasspath += sourceSets.main.output + sourceSets.neoforgeStubs.output
+        compileClasspath += project(':tianshu-api').sourceSets.main.output
+    }
+}
+
+jar {
+    from sourceSets.neoforgeEntry.output
+}

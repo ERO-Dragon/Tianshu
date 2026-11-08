@@ -23,14 +23,12 @@ public final class IntakeConfig implements IntakeConfiguration, IntakeSettingsAc
     private static final String KEY_SELECTED_MIC = "selectedMicName";
     private static final String KEY_GITHUB_PROXY = "githubProxyUrl";
     private static final String KEY_HIGH_PASS = "highPassFilterEnabled";
-    private static final String KEY_RNNOISE = "rnnoiseEnabled";
     private static final String KEY_CUSTOM_MODEL = "customModelName";
 
     private static final boolean DEFAULT_ENABLED = true;
     private static final String DEFAULT_SELECTED_MIC = "";
     private static final String DEFAULT_GITHUB_PROXY = "https://gh-proxy.org/";
     private static final boolean DEFAULT_HIGH_PASS = true;
-    private static final boolean DEFAULT_RNNOISE = false;
 
     private final ModuleConfigStore store;
     private final Path basePath;
@@ -83,15 +81,6 @@ public final class IntakeConfig implements IntakeConfiguration, IntakeSettingsAc
     @Override
     public void setAsrHighPassFilterEnabled(boolean enabled) {
         store.setBoolean(KEY_HIGH_PASS, enabled);
-    }
-
-    @Override
-    public boolean isAsrRnnoiseEnabled() {
-        return store.getBoolean(KEY_RNNOISE, DEFAULT_RNNOISE);
-    }
-
-    public void setAsrRnnoiseEnabled(boolean enabled) {
-        store.setBoolean(KEY_RNNOISE, enabled);
     }
 
     @Override

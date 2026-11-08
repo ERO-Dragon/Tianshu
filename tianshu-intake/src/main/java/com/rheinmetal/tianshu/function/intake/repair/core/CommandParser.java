@@ -18,14 +18,15 @@ public final class CommandParser {
     private final String[] fillerWords;
     private final String[] entityBoundaryWords;
     private final CommandParserPolicy policy;
+    private final IRIndex irIndex;
     private final CommandCandidateRanker candidateRanker;
     private final CommandTextRepairer textRepairer;
 
-    public CommandParser() {
-        this(CommandParserPolicy.DEFAULT);
+    CommandParser(IRIndex index) {
+        this(index, CommandParserPolicy.DEFAULT);
     }
 
-    CommandParser(CommandParserPolicy policy) {
+    CommandParser(IRIndex index, CommandParserPolicy policy) {
         Map<String, String[]> keywords = IntentKeywordLoader.load();
         this.prioritySplitters = keywords.getOrDefault("PRIORITY_SPLITTERS", new String[0]);
         this.parallelSplitters = keywords.getOrDefault("PARALLEL_SPLITTERS", new String[0]);
@@ -33,8 +34,9 @@ public final class CommandParser {
         this.fillerWords = keywords.getOrDefault("FILLER_WORDS", new String[0]);
         this.entityBoundaryWords = IntentKeywordLoader.getEntityBoundaryWords();
         this.policy = policy == null ? CommandParserPolicy.DEFAULT : policy;
-        this.candidateRanker = new CommandCandidateRanker(this.policy);
-        this.textRepairer = new CommandTextRepairer(this.policy);
+        this.irIndex = index == null ? IRIndex.EMPTY : index;
+        this.candidateRanker = new CommandCandidateRanker(this.irIndex, this.policy);
+        this.textRepairer = new CommandTextRepairer(this.irIndex, this.policy);
     }
 
     public IRParseResult parse(String rawText, Set<Integer> contextInternalIds, boolean isFastIR) {
@@ -73,7 +75,7 @@ public final class CommandParser {
             } else {
                 CommandCandidateRanker.ScoredCandidate best = findBestCandidateForIntercept(rawText, contextInternalIds, sharedLcsWorkspace);
                 if (isItemCandidate(best) && best.score >= policy.finalIrFixedThreshold()) {
-                    results.add(new ParseUnit(Intent.UNKNOWN, GameObjectId.raw(IRBaseUtils.reverseLookupArray[best.internalId]), false));
+                    results.add(new ParseUnit(Intent.UNKNOWN, GameObjectId.raw(irIndex.realId(best.internalId)), false));
                 }
             }
         } else if (isFastIR) {
@@ -118,23 +120,29 @@ public final class CommandParser {
             CommandCandidateRanker.LcsWorkspace lcsWorkspace
     ) {
         CommandCandidateRanker.ScoredCandidate[] ranked = executeRankQuery(rawText, contextInternalIds, lcsWorkspace);
+        CommandTextRepairer.RepairResult repairResult = textRepairer.repair(rawText, ranked);
         ParseUnit interceptedUnit = null;
         ReviewHint reviewHint = ReviewHint.EMPTY;
         if (ranked.length > 0) {
             CommandCandidateRanker.ScoredCandidate best = ranked[0];
-            String targetText = IRBaseUtils.localizedNameArray[best.internalId];
-            String targetObjectId = IRBaseUtils.reverseLookupArray[best.internalId];
+            String targetText = irIndex.displayName(best.internalId);
+            String targetObjectId = irIndex.realId(best.internalId);
             double threshold = computeInterceptThreshold(rawText, best);
             double entityRatio = computeEntityRatio(rawText, best);
             reviewHint = new ReviewHint(targetText, targetObjectId, best.score, entityRatio, threshold, Intent.UNKNOWN.name());
+            // An item candidate is only a match when the text contains evidence for it: a shared written
+            // character, or a repair proposal (which itself requires that evidence). Without this, any
+            // sentence that merely sounds like an item name becomes one.
+            boolean hasEvidence = IRBaseUtils.sharedHanCharacter(rawText, targetText)
+                    || repairResult.matchedItemRealIds.contains(GameObjectId.raw(targetObjectId));
             if (isItemCandidate(best)
                     && best.score >= threshold
+                    && hasEvidence
                     && !isGenericContainedQuery(IRBaseUtils.tokenize(rawText), ranked)) {
                 interceptedUnit = new ParseUnit(Intent.UNKNOWN, GameObjectId.raw(targetObjectId), false);
             }
         }
 
-        CommandTextRepairer.RepairResult repairResult = textRepairer.repair(rawText, ranked);
         return new FastIRFallbackResult(
                 interceptedUnit,
                 repairResult.text,
@@ -153,7 +161,7 @@ public final class CommandParser {
     }
 
     private double computeInterceptThreshold(String rawText, CommandCandidateRanker.ScoredCandidate best) {
-        String target = IRBaseUtils.localizedNameArray[best.internalId];
+        String target = irIndex.displayName(best.internalId);
         if (target == null || target.isEmpty()) {
             return Double.MAX_VALUE;
         }
@@ -168,7 +176,7 @@ public final class CommandParser {
     }
 
     private double computeEntityRatio(String rawText, CommandCandidateRanker.ScoredCandidate best) {
-        String target = IRBaseUtils.localizedNameArray[best.internalId];
+        String target = irIndex.displayName(best.internalId);
         if (target == null || target.isEmpty() || rawText == null || rawText.isEmpty()) {
             return 0.0D;
         }
@@ -208,14 +216,15 @@ public final class CommandParser {
                 ranked,
                 topCandidate
         );
-        if (!isItemCandidate(selected)) {
+        if (!isItemCandidate(selected)
+                || !IRBaseUtils.hasPlausibleRepairEvidence(subQuery.rawChunk, irIndex.displayName(selected.internalId))) {
             return null;
         }
-        return new ParseUnit(subQuery.intent, GameObjectId.raw(IRBaseUtils.reverseLookupArray[selected.internalId]), subQuery.negFlag);
+        return new ParseUnit(subQuery.intent, GameObjectId.raw(irIndex.realId(selected.internalId)), subQuery.negFlag);
     }
 
     private boolean isItemCandidate(CommandCandidateRanker.ScoredCandidate candidate) {
-        return candidate != null && GameObjectId.isItem(IRBaseUtils.reverseLookupArray[candidate.internalId]);
+        return candidate != null && GameObjectId.isItem(irIndex.realId(candidate.internalId));
     }
 
     private boolean isGenericContainedQuery(String[] queryTokens, CommandCandidateRanker.ScoredCandidate[] ranked) {
@@ -225,7 +234,7 @@ public final class CommandParser {
         String queryJoined = IRBaseUtils.joinTokens(queryTokens);
         int containedLongerCandidates = 0;
         for (CommandCandidateRanker.ScoredCandidate candidate : ranked) {
-            String[] candidateTokens = IRBaseUtils.primaryAliasTokensArray[candidate.internalId];
+            String[] candidateTokens = irIndex.primaryTokens(candidate.internalId);
             if (candidateTokens == null || candidateTokens.length == 0) {
                 continue;
             }

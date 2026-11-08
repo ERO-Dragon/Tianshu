@@ -4,5 +4,7 @@
   "key.tianshu.activate": "Toggle Voice (Press to Talk)",
   "key.tianshu.text_input": "Text Dialogue (Open Input Bar)",
   "tianshu.gui.text_input.title": "Talk to the assistant",
-  "tianshu.gui.text_input.hint": "Type what you want to say, Enter to send, Esc to cancel"
+  "tianshu.gui.text_input.hint": "Type what you want to say, Enter to send, Esc to cancel",
+  "tianshu.gui.key_capture.waiting": "Waiting for input...",
+  "tianshu.gui.key_capture.unbound": "Unbound"
 }

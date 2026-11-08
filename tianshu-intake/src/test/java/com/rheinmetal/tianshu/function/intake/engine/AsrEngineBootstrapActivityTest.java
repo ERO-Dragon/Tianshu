@@ -19,7 +19,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class AsrEngineBootstrapActivityTest {
-    private static final String MODEL_KEY = "sherpa-onnx-sense-voice-funasr-nano-int8-2025-12-17";
+    private static final String MODEL_KEY = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09";
 
     @TempDir
     Path tempDir;
@@ -81,7 +81,6 @@ class AsrEngineBootstrapActivityTest {
     private record FakeConfiguration(boolean enabled, Path basePath, String modelName) implements IntakeConfiguration {
         @Override public boolean isAsrEnabled() { return enabled; }
         @Override public String getSelectedMicName() { return ""; }
-        @Override public boolean isAsrRnnoiseEnabled() { return false; }
         @Override public boolean isAsrHighPassFilterEnabled() { return true; }
         @Override public String getCustomAsrName() { return modelName; }
         @Override public Path getAsrBasePath() { return basePath; }

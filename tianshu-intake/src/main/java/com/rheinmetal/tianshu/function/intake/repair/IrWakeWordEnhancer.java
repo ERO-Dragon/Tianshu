@@ -73,7 +73,7 @@ final class IrWakeWordEnhancer {
 
     private Candidate score(String slice, IrCompiledVoiceWord word, int start, int end) {
         String actual = IRBaseUtils.joinTokens(IRBaseUtils.tokenize(slice));
-        String expected = word.normalizedText();
+        String expected = word.joined();
         if (actual.isBlank() || expected.isBlank()) {
             return null;
         }
@@ -117,6 +117,11 @@ final class IrWakeWordEnhancer {
         for (Candidate other : candidates) {
             if (candidate == other || !candidate.overlaps(other) || candidate.replacement().equals(other.replacement())) {
                 continue;
+            }
+            if (candidate.sameSpan(other)) {
+                // Two different replacements for exactly the same span are equally justified. Choosing one
+                // would make the displayed text depend on tie-breaking order instead of on evidence.
+                return true;
             }
             if (candidate.contains(other) || other.contains(candidate) || candidate.replacementContains(other)) {
                 continue;
@@ -201,6 +206,10 @@ final class IrWakeWordEnhancer {
 
         private boolean overlaps(Candidate other) {
             return other != null && start < other.end && other.start < end;
+        }
+
+        private boolean sameSpan(Candidate other) {
+            return other != null && start == other.start && end == other.end;
         }
 
         private boolean contains(Candidate other) {

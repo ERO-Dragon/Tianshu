@@ -30,8 +30,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * never waits for a worse one, but a worse tier waits for every better tier that is expected and not
  * yet settled. The permit must not be held forever by a model that never loads, so a tier that decides
  * not to load settles or abandons its claim — {@link #claimPrimary()} is how the retrieval lane
- * announces itself, and the speech-output tier is expected from the start because a voice-input load
- * must not overtake it even when the two ask in the opposite order.
+ * announces itself, and the speech-output module announces its tier when it registers. A tier is only
+ * expected when a module that will actually load it is installed: an assumption baked into the queue
+ * would park the speech-input load forever in a kernel that ships without speech output.
  */
 public final class NativeModelLoadQueue {
 
@@ -107,10 +108,10 @@ public final class NativeModelLoadQueue {
     private Request active;
 
     public NativeModelLoadQueue() {
-        // Retrieval announces itself with claimPrimary(); the speech-output tier is expected from the
-        // start, so a voice-input load cannot slip in ahead of it when it happens to ask first.
+        // Retrieval announces itself with claimPrimary(); speech output announces its own tier from the
+        // TTS module's register hook. It is deliberately not assumed here: when no speech-output module is
+        // installed, an expected-but-never-settled DEFERRED tier would park the speech-input load forever.
         tierSettled[Tier.LAST.rank()] = true;
-        tierExpected[Tier.DEFERRED.rank()] = true;
     }
 
     public void addObserver(Observer observer) {

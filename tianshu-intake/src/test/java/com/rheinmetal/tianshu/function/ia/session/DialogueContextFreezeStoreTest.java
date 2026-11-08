@@ -10,11 +10,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueContextFreezeStoreTest {
     @Test
-    void endedSpeechContextStaysAvailableForFinalText() {
+    void speechContextStaysAvailableForFinalText() {
         DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
         DialogueContextFrame frame = new DialogueContextFrame(
                 new DialogueInteractionHints("create:wrench", true, false, false, 3.0D),
@@ -22,7 +23,6 @@ class DialogueContextFreezeStoreTest {
         );
 
         store.freeze(42L, frame, 1_000L);
-        store.markEnded(42L, 2_000L);
 
         DialogueContextFrame restored = store.consume(42L, 3_000L).orElseThrow();
 
@@ -32,11 +32,52 @@ class DialogueContextFreezeStoreTest {
     }
 
     @Test
-    void endedSpeechContextExpiresAfterRetention() {
+    void unconsumedSpeechContextExpiresAfterRetention() {
         DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
         store.freeze(42L, DialogueContextFrame.empty("player"), 1_000L);
-        store.markEnded(42L, 2_000L);
 
         assertTrue(store.consume(42L, 13_001L).isEmpty());
+    }
+
+    @Test
+    void aFrozenTurnCountsAsActiveUntilItsFrameIsConsumed() {
+        DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
+        store.freeze(42L, DialogueContextFrame.empty("player"), 1_000L);
+        assertTrue(store.active(1_000L).isPresent(), "a speaking turn pins the marker to its frame");
+
+        assertTrue(store.consume(42L, 2_500L).isPresent());
+        assertFalse(store.active(2_500L).isPresent(),
+                "arbitration consumed the frame; the marker may follow live context again");
+    }
+
+    @Test
+    void anAbandonedTurnReleasesItsFrame() {
+        DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
+        store.freeze(42L, DialogueContextFrame.empty("player"), 1_000L);
+
+        store.abandon(42L);
+
+        assertFalse(store.active(1_000L).isPresent(),
+                "an empty or failed recognition has no arbitration to consume the frame");
+        assertTrue(store.consume(42L, 1_000L).isEmpty());
+    }
+
+    @Test
+    void anExpiredTurnNoLongerCountsAsActive() {
+        DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(10));
+        store.freeze(42L, DialogueContextFrame.empty("player"), 1_000L);
+
+        assertFalse(store.active(11_001L).isPresent(), "a turn that never reached arbitration must not pin the marker forever");
+    }
+
+    @Test
+    void retainedFramesAreCappedSoAFailedTurnCannotGrowTheStoreForever() {
+        DialogueContextFreezeStore store = new DialogueContextFreezeStore(Duration.ofSeconds(30));
+        for (long sessionId = 1L; sessionId <= 100L; sessionId++) {
+            store.freeze(sessionId, DialogueContextFrame.empty("player"), 1_000L + sessionId);
+        }
+
+        assertTrue(store.consume(1L, 2_000L).isEmpty(), "the oldest frame is evicted once the cap is reached");
+        assertTrue(store.consume(100L, 2_000L).isPresent(), "the newest frame is still available");
     }
 }

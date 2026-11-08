@@ -1,62 +1,23 @@
 package com.rheinmetal.tianshu.function.intake.repair.core;
 
 import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
+/**
+ * Pure text utilities of the IR index: tokenizing a name, building gram keys, hashing.
+ *
+ * <p>This class no longer holds the dictionary. The mapping, aliases and inverted pool live in one
+ * {@link IRIndex} owned by {@link IRCommandService}, which is what makes a rebuild a single reference
+ * swap instead of a set of static fields a second instance could observe half-written.</p>
+ */
 public final class IRBaseUtils {
 
     private static final int FNV_OFFSET_BASIS = 0x811c9dc5;
     private static final int FNV_PRIME = 0x01000193;
-
     private static final String[] EMPTY_STRING_ARRAY = new String[0];
-
-    public static String[] reverseLookupArray = EMPTY_STRING_ARRAY;
-    public static String[] localizedNameArray = EMPTY_STRING_ARRAY;
-    public static Map<String, Integer> forwardLookupMap = Map.of();
-
-    public static String[][] primaryAliasTokensArray = new String[0][];
-    public static String[][] fallbackAliasTokensArray = new String[0][];
+    /** A pure homophone may differ in at most one tone in three; more than that is a different phrase. */
+    private static final double MAX_ZERO_OVERLAP_TONE_MISMATCH_RATIO = 1.0D / 3.0D;
 
     private IRBaseUtils() {
-    }
-
-    public static int buildMapping(Map<String, List<String>> rawDict) {
-        LinkedHashMap<String, Integer> idMap = new LinkedHashMap<>(Math.max(16, rawDict.size()));
-        int itemCount = rawDict.size();
-        String[] reverse = new String[itemCount];
-        String[] names = new String[itemCount];
-        String[][] primaryTokens = new String[itemCount][];
-        String[][] fallbackTokens = new String[itemCount][];
-        int index = 0;
-        for (Map.Entry<String, List<String>> entry : rawDict.entrySet()) {
-            idMap.put(entry.getKey(), index);
-            reverse[index] = entry.getKey();
-            List<String> aliases = entry.getValue();
-            
-            if (aliases == null || aliases.isEmpty()) {
-                names[index] = "";
-                primaryTokens[index] = EMPTY_STRING_ARRAY;
-                fallbackTokens[index] = EMPTY_STRING_ARRAY;
-            } else {
-                names[index] = aliases.get(0);
-                primaryTokens[index] = tokenize(aliases.get(0));
-
-                if (aliases.size() > 1) {
-                    fallbackTokens[index] = tokenize(aliases.get(1));
-                } else {
-                    fallbackTokens[index] = EMPTY_STRING_ARRAY;
-                }
-            }
-            index++;
-        }
-        reverseLookupArray = reverse;
-        localizedNameArray = names;
-        forwardLookupMap = idMap;
-        primaryAliasTokensArray = primaryTokens;
-        fallbackAliasTokensArray = fallbackTokens;
-        return index;
     }
 
     public static int fnv1a32(String str) {
@@ -66,6 +27,72 @@ public final class IRBaseUtils {
             hash *= FNV_PRIME;
         }
         return hash;
+    }
+
+    /**
+     * Whether a repair proposal has enough evidence to be more than a pinyin guess.
+     *
+     * <p>A shared written character is strong evidence: an ASR error usually keeps part of the word
+     * ({@code 铁活板们} for {@code 铁活板门}). A zero-shared proposal is a pure homophone and is accepted only
+     * when it is the same syllables in the same order (no material prefix added, no trailing word dropped) and
+     * the tones agree closely; otherwise ordinary speech ({@code 伙伴们在哪}) can be rewritten into an item
+     * name that merely sounds similar — or into a longer name with an extra qualifier.</p>
+     */
+    static boolean hasPlausibleRepairEvidence(String sourceSlice, String target) {
+        if (sourceSlice == null || target == null || sourceSlice.isEmpty() || target.isEmpty()) {
+            return false;
+        }
+        if (sharedHanCharacter(sourceSlice, target)) {
+            return true;
+        }
+        if (!isAllHan(sourceSlice) || !isAllHan(target) || sourceSlice.length() != target.length()) {
+            return false;
+        }
+        // Same syllables in the same order: an insertion ("铁" not heard) or a deletion ("在" swallowed)
+        // is not a homophone repair even when the LCS is high.
+        String sourcePinyin = joinTokens(tokenize(sourceSlice));
+        String targetPinyin = joinTokens(tokenize(target));
+        if (!sourcePinyin.equals(targetPinyin)) {
+            return false;
+        }
+        int compared = 0;
+        int mismatches = 0;
+        for (int index = 0; index < sourceSlice.length(); index++) {
+            String sourceTone = PinyinUtil.toPinyinWithToneNumber(sourceSlice.charAt(index));
+            String targetTone = PinyinUtil.toPinyinWithToneNumber(target.charAt(index));
+            if (sourceTone.isEmpty() || targetTone.isEmpty()) {
+                continue;
+            }
+            compared++;
+            if (!sourceTone.equals(targetTone)) {
+                mismatches++;
+            }
+        }
+        return compared > 0 && (double) mismatches / compared <= MAX_ZERO_OVERLAP_TONE_MISMATCH_RATIO;
+    }
+
+    static boolean sharedHanCharacter(String first, String second) {
+        for (int firstIndex = 0; firstIndex < first.length(); firstIndex++) {
+            char candidate = first.charAt(firstIndex);
+            if (!isCjkUnifiedIdeograph(candidate)) {
+                continue;
+            }
+            for (int secondIndex = 0; secondIndex < second.length(); secondIndex++) {
+                if (candidate == second.charAt(secondIndex)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isAllHan(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            if (!isCjkUnifiedIdeograph(value.charAt(index))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static String[] tokenize(String name) {

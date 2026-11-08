@@ -52,16 +52,6 @@ public class AsrModelManager {
         return loadCatalog();
     }
 
-    public static List<AsrModelInfo> getModelsByLang(String lang) {
-        return loadCatalog().stream()
-                .filter(m -> m.getLang().contains(lang))
-                .collect(Collectors.toList());
-    }
-
-    public static AsrModelInfo getModelByName(String name) {
-        return getModelByLocalKey(name);
-    }
-
     public static AsrModelInfo getModelByLocalKey(String localKey) {
         String normalizedKey = normalizeLocalKey(localKey);
         if (normalizedKey.isBlank()) return null;
@@ -83,14 +73,6 @@ public class AsrModelManager {
                 && normalizedLeft.toLowerCase(Locale.ROOT).equals(normalizedRight.toLowerCase(Locale.ROOT));
     }
 
-    public static AsrModelInfo getModelByRemoteRepoId(String repoId) {
-        if (repoId == null || repoId.isBlank()) return null;
-        for (AsrModelInfo info : loadCatalog()) {
-            if (repoId.equals(info.remoteRepoId())) return info;
-        }
-        return null;
-    }
-
     public static boolean isModelDownloaded(AsrModelInfo info, Path baseDir) {
         if (info == null || baseDir == null) return false;
         Path modelDir = baseDir.resolve(info.localKey());
@@ -101,13 +83,5 @@ public class AsrModelManager {
             }
         }
         return true;
-    }
-
-    public static List<String> findMissingFiles(AsrModelInfo info, Path baseDir) {
-        if (info == null || baseDir == null) return Collections.emptyList();
-        Path modelDir = baseDir.resolve(info.localKey());
-        return info.getAllRequiredFiles().stream()
-                .filter(f -> !Files.isRegularFile(modelDir.resolve(f)))
-                .collect(Collectors.toList());
     }
 }

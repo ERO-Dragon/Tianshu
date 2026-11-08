@@ -1,7 +1,5 @@
 package com.rheinmetal.tianshu.function.intake;
 
-import com.rheinmetal.tianshu.function.intake.AsrProtocolAdapter;
-
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceTopics;
 
 import com.rheinmetal.tianshu.function.presence.protocol.PresencePayloadTypes;
@@ -19,6 +17,8 @@ import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.adapter.AbstractProtocolAdapter;
 import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
 import com.rheinmetal.tianshu.function.ia.contract.AsrSpeechActivityPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestPayload;
+import com.rheinmetal.tianshu.function.ia.protocol.IaCapabilities;
 import com.rheinmetal.tianshu.function.intake.contract.AsrTextPayload;
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
 import com.rheinmetal.tianshu.function.presence.payload.PresenceActivityPayload;
@@ -40,8 +40,8 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
     /**
      * Registers the topics this module produces.
      *
-     * <p>Topic ownership follows payload ownership: the producer declares its own route. The kernel used to
-     * register these for the four original modules, so deleting a module still left its vocabulary behind.</p>
+     * <p>Topic ownership follows payload ownership: the producer declares its own route, so deleting the
+     * module deletes its vocabulary with it instead of leaving registered topic names behind.</p>
      */
     public void registerOwnedTopics(com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess protocol) {
         if (protocol == null) {
@@ -142,6 +142,23 @@ public final class AsrProtocolAdapter extends AbstractProtocolAdapter {
      * <p>The repair lane lives inside the speech module, but its output stays a public topic: a
      * consumer that only wants the corrected text does not have to know which module produced it.</p>
      */
+    /** Whether the arbiter's interrupt port is registered; without it a tap can only discard the turn. */
+    public boolean dialogueInterruptAvailable() {
+        return runtime().capabilityProviderCount(IaCapabilities.DIALOGUE_INTERRUPT) > 0;
+    }
+
+    /**
+     * Asks the arbiter to broadcast a stop request for whoever currently owns the dialogue.
+     *
+     * <p>Fire-and-forget on purpose: the gesture needs no answer, and the arbiter decides both the target and
+     * the broadcast; this module only reports that the user made the gesture.</p>
+     */
+    public TianshuEnvelope requestDialogueInterrupt(DialogueInterruptRequestPayload payload) {
+        return commandCapability(
+                IaCapabilities.DIALOGUE_INTERRUPT,
+                PayloadType.of("DIALOGUE_INTERRUPT_REQUEST"),
+                payload);
+    }
     public TianshuEnvelope publishIrResult(TianshuEnvelope parent, IrResultPayload payload) {
         return publishTopic(parent, IntakeTopics.IR_RESULT, PayloadType.of("IR_RESULT"), payload);
     }

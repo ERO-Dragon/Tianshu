@@ -21,7 +21,7 @@
 
 | 模块 | 入口 |
 |---|---|
-| 听澜（语音输入） | [ASR 协议](function/intake/ASR_协议中心使用文档.md)、[ASR 架构](function/intake/ASR_模块架构说明.md)、[IR 协议](function/intake/repair/IR_协议中心使用文档.md)、[IR 架构](function/intake/repair/IR_模块架构说明.md) |
+| 听澜（语音输入） | [ASR 协议](function/intake/ASR_协议中心使用文档.md)、[ASR 架构](function/intake/ASR_模块架构说明.md)、[IR 协议](function/intake/repair/IR_协议中心使用文档.md)、[IR 架构](function/intake/repair/IR_模块架构说明.md)、[游戏内测试说明](function/intake/听澜游戏内测试说明.md) |
 | 回响（语音输出） | [TTS 协议](function/echo/TTS_协议中心使用文档.md)、[TTS 架构](function/echo/TTS_模块架构说明.md) |
 | 织言（云端对话） | [LLM 接口设计](function/weaving/LLM接口设计.md)、[libs 接口设计](function/weaving/libs接口设计.md) |
 | 辅星（对话助手） | [文档索引](function/auxilium/AX_文档索引.md)（运行架构 / 事件系统 / 上下文编排 / 记忆策略 / Agent 运行时 / 协议） |

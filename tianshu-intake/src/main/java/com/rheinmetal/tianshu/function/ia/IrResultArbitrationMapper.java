@@ -5,15 +5,14 @@ import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPay
 import com.rheinmetal.tianshu.function.ia.contract.IrResultPayload;
 
 final class IrResultArbitrationMapper {
-    private static final String LOCAL_DIALOGUE_SCOPE = "local";
     private static final long REQUEST_TTL_MILLIS = 10_000L;
 
-    DialogueArbitrationRequestPayload map(TianshuEnvelope envelope, IrResultPayload payload) {
+    DialogueArbitrationRequestPayload map(TianshuEnvelope envelope, IrResultPayload payload, String playerId) {
         long timestampMillis = payload.timestampMillis();
         return new DialogueArbitrationRequestPayload(
                 envelope.envelopeId(),
                 envelope.header().sourceId(),
-                LOCAL_DIALOGUE_SCOPE,
+                playerId,
                 Integer.toString(payload.turnId()),
                 payload.sessionId(),
                 payload.repairedText(),

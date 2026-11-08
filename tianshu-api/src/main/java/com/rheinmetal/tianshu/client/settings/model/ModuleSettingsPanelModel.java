@@ -334,6 +334,22 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
             return this;
         }
 
+        @Override
+        public OptionTemplate keyBinding(String id, UiText label, String keyMappingName) {
+            return keyBinding(id, label, keyMappingName, ALWAYS_ENABLED, ALWAYS_VISIBLE);
+        }
+
+        @Override
+        public OptionTemplate keyBinding(String id, UiText label, String keyMappingName, BooleanSupplier enabled) {
+            return keyBinding(id, label, keyMappingName, enabled, ALWAYS_VISIBLE);
+        }
+
+        @Override
+        public OptionTemplate keyBinding(String id, UiText label, String keyMappingName, BooleanSupplier enabled, BooleanSupplier visible) {
+            entries.add(new SettingsTemplateModel.KeyBindingEntry(id, label, keyMappingName, enabled, visible));
+            return this;
+        }
+
         private SettingsTemplateModel.OptionGroup toModel(BooleanSupplier enabled, BooleanSupplier visible) {
             return new SettingsTemplateModel.OptionGroup(id, title, List.copyOf(entries), enabled, visible);
         }

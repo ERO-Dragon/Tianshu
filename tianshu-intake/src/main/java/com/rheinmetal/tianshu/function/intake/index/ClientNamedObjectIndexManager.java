@@ -119,7 +119,10 @@ public final class ClientNamedObjectIndexManager implements NamedObjectIndex {
 
     IRParseResult parsePlayerCommand(String rawText, boolean isFastIR, IrContextHint contextHint) {
         ensureIndex("parse fallback");
-        return irService.parse(rawText, ClientItemContextResolver.from(contextHint), isFastIR);
+        IrContextHint hint = contextHint == null ? IrContextHint.empty() : contextHint;
+        // Resolved lazily inside parse, under the index read lock: building the id set eagerly would read
+        // the index before the lock was taken and could see a rebuild in progress.
+        return irService.parse(rawText, () -> irService.resolveInternalIds(hint.itemIds()), isFastIR);
     }
 
     @Override
@@ -131,6 +134,9 @@ public final class ClientNamedObjectIndexManager implements NamedObjectIndex {
             closed = true;
             generation.incrementAndGet();
             indexExecutor.shutdownNow();
+            // Drop the dictionary and pool now: a client-lifetime manager that is closed should not keep
+            // the whole localized dictionary alive until the next reload.
+            irService.clear();
         }
     }
 
@@ -178,8 +184,16 @@ public final class ClientNamedObjectIndexManager implements NamedObjectIndex {
             if (!isGenerationActive(taskGeneration)) {
                 return false;
             }
-            irService.restore(cachedSnapshot);
-            return true;
+            if (irService.restore(cachedSnapshot)) {
+                return true;
+            }
+            // The file parsed but is not a usable index: discard it and rebuild rather than leaving every
+            // later attempt to read the same corrupt cache.
+            cacheStore.deleteQuietly();
+            logSink.warn("ir.index.cache_rejected reason=" + reason);
+        }
+        if (!isGenerationActive(taskGeneration)) {
+            return false;
         }
 
         irService.rebuild(dictionary);
@@ -203,8 +217,11 @@ public final class ClientNamedObjectIndexManager implements NamedObjectIndex {
     private IRSnapshot tryLoadSnapshot(String fingerprint, String reason) {
         try {
             return cacheStore.loadIfMatches(fingerprint);
-        } catch (IOException exception) {
-            logSink.warn("ir.index.cache_read_failed reason=" + reason + " exception=" + exception);
+        } catch (IOException | RuntimeException unreadable) {
+            // A cache read may fail as a plain IOException (truncated file) or as a runtime exception from
+            // a length check. Either way the file is unusable, so it is removed and the index rebuilt.
+            logSink.warn("ir.index.cache_read_failed reason=" + reason + " exception=" + unreadable);
+            cacheStore.deleteQuietly();
             return null;
         }
     }

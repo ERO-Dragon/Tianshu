@@ -1,23 +1,28 @@
 package com.rheinmetal.tianshu.function.intake.index;
 
+import com.rheinmetal.tianshu.function.intake.repair.core.IRParseResult;
+import com.rheinmetal.tianshu.function.intake.repair.enhance.IrContextHint;
 import com.rheinmetal.tianshu.function.intake.repair.enhance.IrNamedObjectEnhancementResult;
 import com.rheinmetal.tianshu.function.intake.repair.enhance.IrNamedObjectEnhancer;
-import com.rheinmetal.tianshu.function.intake.repair.enhance.IrContextHint;
 import com.rheinmetal.tianshu.function.intake.repair.input.IrPreparedInput;
-import com.rheinmetal.tianshu.function.intake.repair.core.IRParseResult;
-import com.rheinmetal.tianshu.function.intake.repair.core.ParseUnit;
+import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
+/**
+ * Named-object enhancement backed by the client-lifetime index.
+ *
+ * <p>Matching runs on the filtered view; the displayed sentence is healed separately so fillers and
+ * boundary words never leak into the text a prompt shows. Matches are built as pairs, so an object whose
+ * display name is missing is dropped alone instead of shifting every later pairing.</p>
+ */
 public final class ClientIrNamedObjectEnhancer implements IrNamedObjectEnhancer {
     private final ClientNamedObjectIndexManager indexManager;
 
     public ClientIrNamedObjectEnhancer(ClientNamedObjectIndexManager indexManager) {
         this.indexManager = java.util.Objects.requireNonNull(indexManager, "indexManager");
     }
+
     @Override
     public IrNamedObjectEnhancementResult enhance(IrPreparedInput input) {
         return enhance(input, IrContextHint.empty());
@@ -25,46 +30,27 @@ public final class ClientIrNamedObjectEnhancer implements IrNamedObjectEnhancer 
 
     @Override
     public IrNamedObjectEnhancementResult enhance(IrPreparedInput input, IrContextHint contextHint) {
-        if (input == null || input.filteredText().isBlank()) {
+        if (input == null || input.voiceText().isBlank() || input.filteredText().isBlank()) {
             return IrNamedObjectEnhancementResult.empty(input == null ? "" : input.voiceText());
         }
-        IRParseResult parseResult = indexManager.parsePlayerCommand(input.filteredText(), true, contextHint);
-        if (parseResult == null) {
-            return IrNamedObjectEnhancementResult.empty(input.filteredText());
-        }
-        Set<String> matchedIdSet = new LinkedHashSet<>(parseResult.getMatchedItemRealIds());
-        Set<String> matchedEntityTypeSet = new LinkedHashSet<>(parseResult.getMatchedEntityTypeIds());
-        for (ParseUnit unit : parseResult.getUnits()) {
-            if (unit == null || unit.targetRealItemId == null || unit.targetRealItemId.isBlank()) {
-                continue;
-            }
-            matchedIdSet.add(unit.targetRealItemId.trim());
-        }
+        IRParseResult matchParse = indexManager.parsePlayerCommand(input.filteredText(), true, contextHint);
+        List<IrObjectMatch> matches = IrNamedObjectEnhancementResult.matchesFrom(
+                matchParse,
+                indexManager::resolveDisplayName,
+                indexManager::resolveEntityDisplayName
+        );
+        return new IrNamedObjectEnhancementResult(repairedSentence(input, matchParse, contextHint), matches);
+    }
 
-        String repairedText = parseResult.getHealedRawText();
-        if (repairedText == null || repairedText.isBlank()) {
-            repairedText = input.filteredText();
+    private String repairedSentence(IrPreparedInput input, IRParseResult matchParse, IrContextHint contextHint) {
+        if (input.filteredText().equals(input.voiceText())) {
+            return healedOr(matchParse, input.voiceText());
         }
-        if (matchedIdSet.isEmpty() && matchedEntityTypeSet.isEmpty() && repairedText.equals(input.filteredText())) {
-            return IrNamedObjectEnhancementResult.empty(input.filteredText());
-        }
+        return healedOr(indexManager.parsePlayerCommand(input.voiceText(), true, contextHint), input.voiceText());
+    }
 
-        List<String> matchedIds = new ArrayList<>(matchedIdSet);
-        List<String> matchedNames = new ArrayList<>();
-        for (String itemId : matchedIds) {
-            String displayName = indexManager.resolveDisplayName(itemId);
-            if (!displayName.isBlank()) {
-                matchedNames.add(displayName);
-            }
-        }
-        List<String> matchedEntityTypeIds = new ArrayList<>(matchedEntityTypeSet);
-        List<String> matchedEntityNames = new ArrayList<>();
-        for (String entityTypeId : matchedEntityTypeIds) {
-            String displayName = indexManager.resolveEntityDisplayName(entityTypeId);
-            if (!displayName.isBlank()) {
-                matchedEntityNames.add(displayName);
-            }
-        }
-        return new IrNamedObjectEnhancementResult(repairedText, matchedNames, matchedIds, matchedEntityNames, matchedEntityTypeIds, !matchedIds.isEmpty() || !matchedEntityTypeIds.isEmpty());
+    private static String healedOr(IRParseResult result, String fallback) {
+        String healed = result == null ? null : result.getHealedRawText();
+        return healed == null || healed.isBlank() ? fallback : healed;
     }
 }

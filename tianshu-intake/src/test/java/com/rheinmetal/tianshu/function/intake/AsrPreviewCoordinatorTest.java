@@ -50,7 +50,7 @@ class AsrPreviewCoordinatorTest {
         CountDownLatch laneAvailable = new CountDownLatch(1);
         executors.submit(previewTaskSpec(), laneAvailable::countDown);
 
-        assertTrue(laneAvailable.await(2, TimeUnit.SECONDS), "ASR_STREAM remained occupied during recording");
+        assertTrue(laneAvailable.await(2, TimeUnit.SECONDS), "AUDIO_INPUT_STREAM remained occupied during recording");
         assertTrue(coordinator.stop());
         assertTrue(listener.finished.await(2, TimeUnit.SECONDS));
     }

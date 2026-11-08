@@ -82,10 +82,35 @@ class DialogueDefaultOwnerResolverTest {
         assertTrue(resolved.isEmpty());
     }
 
+    @Test
+    void aModuleQualifiedPickSelectsTheRightModuleWhenIdsCollide() {
+        var resolved = resolver.resolve(
+                List.of(owner("default", "module.maid", 1, false), owner("default", "module.other", 2, false)),
+                new Settings(false, "module.other:default")
+        );
+
+        assertTrue(resolved.isPresent());
+        assertEquals("module.other", resolved.get().moduleId());
+    }
+
+    @Test
+    void aLegacyBareIdThatTwoModulesShareMeansNobody() {
+        var resolved = resolver.resolve(
+                List.of(owner("default", "module.maid", 1, false), owner("default", "module.other", 2, false)),
+                new Settings(false, "default")
+        );
+
+        assertTrue(resolved.isEmpty(), "a bare id cannot tell two modules apart, so it must not pick either");
+    }
+
     private DialogueParticipantDescriptor owner(String participantId, int priority, boolean factoryDefault) {
+        return owner(participantId, "module." + participantId, priority, factoryDefault);
+    }
+
+    private DialogueParticipantDescriptor owner(String participantId, String moduleId, int priority, boolean factoryDefault) {
         return new DialogueParticipantDescriptor(
                 participantId,
-                "module." + participantId,
+                moduleId,
                 participantId,
                 priority,
                 DialogueClaimProfile.DEFAULT_OWNER,
@@ -114,15 +139,15 @@ class DialogueDefaultOwnerResolverTest {
         );
     }
 
-    private record Settings(boolean disabled, String participantId) implements IaDefaultOwnerSettings {
+    private record Settings(boolean disabled, String selection) implements IaDefaultOwnerSettings {
         @Override
         public boolean isDisabled() {
             return disabled;
         }
 
         @Override
-        public String participantId() {
-            return participantId;
+        public String selection() {
+            return selection;
         }
     }
 }

@@ -46,16 +46,16 @@ ASR final text
 IrInputMapper
   ↓
 IrInputPreprocessor
-  ├─ voiceText：保留完整句子
-  └─ filteredText：去除填充词和边界噪声
+  ├─ voiceText：保留完整句子（展示句的基底）
+  └─ filteredText：去除填充词和边界噪声（只用于检索）
   ↓
 IrNamedObjectEnhancer
-  ├─ 修复物品、实体名称
-  └─ objectMatches：spokenWord + registryId + registryKind + languageKey
+  ├─ 在整句上修复物品、实体名称（fillers 不进入展示正文）
+  └─ matches：每个命中对象一条 IrObjectMatch（成对构建）
   ↓
-IrWakeWordEnhancer
+IrWakeWordEnhancer（作用在已修复的整句上）
   ↓
-IrTriggerMatcher
+IrTriggerMatcher（token 序列匹配）
   └─ moduleMatches：每个命中触发词一条（匹配质量只用于排序）
   ↓
 IrResultPayload
@@ -70,10 +70,12 @@ IA
 - `AsrTextRepairer`：在识别调用栈内执行一次文本修复（原 IR 模块的入口）。
 - `AsrProtocolAdapter`：在识别后发布 `IR_RESULT`，修复结果随 ASR 调用栈发出。
 - `IrInputMapper` / `IrInputPreprocessor`：输入映射和双文本视图构建。
-- `IrNamedObjectEnhancer`：自然语言名称修复和结构化物品、实体 ID 提取。
+- `IrNamedObjectEnhancer`：自然语言名称修复和结构化物品、实体 ID 提取；结果只由“整句修复文本 + 成对匹配列表”组成。
 - `IrWakeWordEnhancer`：只对已注册 wake word 做保守修复。
-- `IrTriggerIndexer` / `IrTriggerMatcher`：编译并匹配 wake/extra 词组。
+- `IrTriggerIndexer` / `IrTriggerMatcher`：编译并匹配 wake/extra 词组（token 序列，不做拼音子串包含）。
 - `IRCommandService` / `CommandParser` / `CommandCandidateRanker` / `CommandTextRepairer`：命名对象索引、候选评分和文本修复。
+- `IRIndex` / `IndexBuilder` / `IRSnapshot` / `IRCacheStore`：不可变索引的构建、快照序列化与磁盘缓存。
+- `IntentKeywordLoader`：随包关键词表（分隔词 / 否定词 / 填充词 / 边界词）及其资源包覆盖入口。
 
 IR 不再包含独立 routing policy，也不包含 IA request mapper。发布分析事实就是 IR 的处理终点。
 
@@ -86,26 +88,36 @@ IR 不再包含独立 routing policy，也不包含 IA request mapper。发布�
 
 `replaceHomophones()` 当前只做基础清理，没有实现通用同音词纠正。文档和 UI 不应把同音词纠正描述为现有能力。
 
+关键词表（`ir_intent_keywords.json`）随模块以**绝对资源路径**发布，并由 `IntentKeywordLoader` 在首次使用时读取；资源包可用同名文件覆盖。解析时会丢弃空串、空白和 null 项：这些值会被 parser 当作字面分隔符，空分隔符会让拆分循环不前进。加载或覆盖失败时保留上一份可用表，不会把整张表清空。
+
 ## 5. 命名对象增强
 
-增强结果包含：
+增强结果是一对事实，而不是四组平行列表：
 
-- `repairedText`：修复后的自然语言正文。
-- `matchedItemNames` / `matchedEntityNames`：内部匹配和诊断信息。
-- `matchedItemIds` / `matchedEntityTypeIds`：增强阶段内部的结构化结果，发布前折算为 `IrObjectMatch`。
+- `repairedText`：整句修复文本。对象词在**整句**上修复（匹配在 filtered 视图上做，两条视图不同时对整句再跑一次修复），因此填充词和边界词不会进入展示正文。
+- `matches`：每个命中对象一条 `IrObjectMatch`，由增强器直接成对构建。某一个 id 没有显示名时只丢这一条，不会让后面的 id 与名字错位；两个 id 同名也仍是两条。
 
-发布时每个命中对象一条 `IrObjectMatch`：`spokenWord` 是对词典命中的词（玩家实际说的词），`registryKind` 记录类别，`languageKey` 由类别与 id 派生、类别未知时为空。
+发布时 `spokenWord` 是对词典命中的词，`registryKind` 记录类别，`languageKey` 由类别与 id 派生、类别未知时为空。
 
-资源 ID 不会替换进玩家正文。索引检索、拼音评分和文本替换均为 common 纯计算逻辑，不依赖 Minecraft 或 NeoForge 活对象。
+资源 ID 不会替换进玩家正文。索引检索和文本替换均为 common 纯计算逻辑，不依赖 Minecraft 或 NeoForge 活对象。拼音统一由 pinyin4j 提供：此前随包的硬编码表存在错位（“七”读作 er、“上”读作 bu、“下”读作 yu），会把无关物品名映射成同音，且覆盖了库的正确结果，现已删除。
+
+索引状态收口为一个不可变 `IRIndex`（词典映射、别名 token、倒排池），由 `IRCommandService` 以单个引用发布：rebuild/restore/clear 换整个索引，解析在读锁内取当前引用，不存在“静态数组被另一个实例替换”的半成品状态。`IRBaseUtils` 只保留 tokenize/joinTokens/buildGram/hash 等纯函数。
 
 客户端索引由 `TianshuClientRuntime` 在客户端启动阶段异步初始化：
 
 - 单独使用 `Tianshu-IR-Index` worker；
-- 缓存位于 `config/Tianshu/cache`；
+- 缓存位于 `config/Tianshu/module/asr/index`；
 - 世界退出和重新进入不重建索引；
 - resource reload 通过同一 worker 串行重建；
-- 客户端关闭时释放 worker；
+- 客户端关闭时释放 worker 并清空索引；
 - 读写锁保证解析只读取完整快照。
+
+缓存文件遵守：
+
+- 写入先落临时文件再原子替换，崩溃不会留下半份缓存；
+- 读取时每个数组长度都以文件大小为界校验，损坏文件按普通读取失败处理；
+- 快照转索引时再校验结构一致性（平行数组等长、倒排区间在池内、池内 id 在词典范围内）；任何校验失败都视为坏缓存，**删除并重建**，而不是每次启动都读同一个坏文件；
+- 指纹包含索引算法版本（`INDEX_SCHEMA_VERSION`）：tokenizer、拼音或 gram 规则变化后旧快照自动失效，不会静默复用旧算法结果。
 
 索引构建和解析不得放入 Minecraft 主线程或 tick 热路径。首次解析发现索引未就绪时只触发后台初始化并返回未就绪结果，不同步等待构建完成；后续输入在快照可用后自动获得命名对象增强。
 
@@ -119,6 +131,7 @@ IR 从共享 `TriggerRegistry` 读取各模块注册的词组。
 moduleId
 spokenWord
 registeredWord
+kind
 ```
 
 一个模块命中多个词就是多条。匹配质量（命中词数 / 注册词数）只用于给多条命中排序——命中更多的模块排在前面——不进入 payload，也不替代 IA 的 claim 来源档或 participant priority。
@@ -126,7 +139,7 @@ registeredWord
 语义边界：
 
 - 触发词命中是 IA 可用的仲裁证据之一；
-- extra word 命中同样会出现在 `moduleMatches` 里，但只有当它与 claim 条件声明的词相同时才形成 claim；
+- `kind` 区分 wake（能唤醒模块的词）与 extra（只辅助识别的词）；extra word 命中同样会出现在 `moduleMatches` 里，但 IA 的唤醒词条件只接受 `kind=wake`，因此 extra word 不会形成 claim；
 - IR 不根据 participant priority 排序或选择目标；priority 只由 IA 在有效 claim 之间使用。
 
 ## 7. IR_RESULT 契约

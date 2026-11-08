@@ -19,11 +19,14 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimProfile;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescriptor;
+import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionEventType;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTurnProcessingPolicy;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationRequestPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueArbitrationResultPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestPayload;
+import com.rheinmetal.tianshu.function.ia.contract.DialogueInterruptRequestedPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueParticipantRegisterPayload;
 import com.rheinmetal.tianshu.function.ia.contract.DialogueSessionEventPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
@@ -345,7 +348,7 @@ class IaModuleProtocolFlowTest {
             }
 
             @Override
-            public String participantId() {
+            public String selection() {
                 return "";
             }
         });
@@ -517,7 +520,7 @@ class IaModuleProtocolFlowTest {
         ));
     }
 
-    private void publishInteractionContext(
+    private TianshuEnvelope publishInteractionContext(
             String playerId,
             String dimensionId,
             String dimensionDisplayName,
@@ -527,7 +530,7 @@ class IaModuleProtocolFlowTest {
             String targetName,
             double targetDistance
     ) {
-        runtime.submit(EnvelopeBuilder.eventTopic(
+        TianshuEnvelope envelope = EnvelopeBuilder.eventTopic(
                 "module.presence",
                 PresenceTopics.INTERACTION_CONTEXT,
                 PresencePayloadTypes.INTERACTION_CONTEXT,
@@ -548,7 +551,9 @@ class IaModuleProtocolFlowTest {
                         false,
                         System.currentTimeMillis()
                 )
-        ).build());
+        ).build();
+        runtime.submit(envelope);
+        return envelope;
     }
 
     @Test
@@ -581,6 +586,267 @@ class IaModuleProtocolFlowTest {
         assertFalse(partner.hasLease(), "a pre-winner has no lease yet");
         assertFalse(partner.defaultOwner());
         assertTrue(partner.icon().contains("maid"), "the marker carries the participant's registered icon");
+    }
+
+    /**
+     * The marker is pinned while a turn runs and then follows the live frame again, even when the next turn's
+     * pre-winner differs from the participant that just won the lease.
+     */
+    @Test
+    void theMarkerAfterAResolvedTurnShowsTheLivePreWinnerNotTheLeaseHolder() throws Exception {
+        markerAfterResolution(1L, 1L);
+    }
+
+    /**
+     * A speech session id and its arbitration request id that disagree must still consume the one in-flight
+     * frame: falling back to live context silently would keep the marker pinned after the turn.
+     */
+    @Test
+    void aMismatchedRequestSessionStillConsumesTheFrozenFrame() throws Exception {
+        markerAfterResolution(1L, 2L);
+    }
+
+    /** Empty recognition ends the turn without an arbiter; its frame must be released, not held to retention. */
+    @Test
+    void aTurnThatEndsWithoutTextReleasesTheFrozenMarker() throws Exception {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        installAsrRoutes(runtime);
+        registerInteractionContextTopic();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler partnerEvents = new RecordingHandler();
+        subscribePartner(partnerEvents);
+        RecordingHandler alphaDelivery = new RecordingHandler();
+        registerDelivery("module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", alphaDelivery);
+        registerDelivery("module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(participantHolding("alpha", "module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", 30,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "crosshair", DialogueClaimCondition.crosshairEntity())),
+                DialogueHoldTier.TEN_SECONDS));
+        registerParticipant(participantHolding("beta", "module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", 20,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "held", DialogueClaimCondition.heldItem("minecraft:diamond"))),
+                DialogueHoldTier.TEN_SECONDS));
+
+        publishInteractionContext("player", "minecraft:overworld", "", "minecraft:stick",
+                "cow-uuid", "minecraft:cow", "Cow", 2.0D);
+        partnerEvents.awaitPayload(PresencePartnerPayload.class,
+                payload -> "alpha".equals(payload.participantId()));
+
+        TianshuEnvelope speech = new AsrProtocolAdapter(runtime)
+                .publishSpeechActivity(AsrSpeechActivityPayload.speaking(1L));
+        await(() -> runtime.lifecycle().statusOf(speech.envelopeId()) == EnvelopeStatus.COMPLETED);
+        TianshuEnvelope diamond = publishInteractionContext("player", "minecraft:overworld", "",
+                "minecraft:diamond", "", "", "", 0.0D);
+        await(() -> runtime.lifecycle().statusOf(diamond.envelopeId()) == EnvelopeStatus.COMPLETED);
+        TianshuEnvelope silent = new AsrProtocolAdapter(runtime)
+                .publishSpeechActivity(AsrSpeechActivityPayload.silent(1L));
+        await(() -> runtime.lifecycle().statusOf(silent.envelopeId()) == EnvelopeStatus.COMPLETED);
+
+        PresencePartnerPayload released = partnerEvents.awaitPayload(
+                PresencePartnerPayload.class,
+                payload -> "beta".equals(payload.participantId()));
+        assertEquals("module.lab.beta", released.moduleId(),
+                "the empty turn must not keep pinning the crosshair frame");
+        assertTrue(alphaDelivery.envelopes().isEmpty(), "no arbitration followed the empty recognition");
+    }
+
+    private void markerAfterResolution(long speechSessionId, long requestSessionId) throws Exception {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        installAsrRoutes(runtime);
+        registerInteractionContextTopic();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler partnerEvents = new RecordingHandler();
+        subscribePartner(partnerEvents);
+        RecordingHandler alphaDelivery = new RecordingHandler();
+        RecordingHandler betaDelivery = new RecordingHandler();
+        registerDelivery("module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", alphaDelivery);
+        registerDelivery("module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", betaDelivery);
+
+        registerParticipant(participantHolding("alpha", "module.lab.alpha", "LAB.ALPHA.DIALOGUE_INPUT", 30,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "crosshair", DialogueClaimCondition.crosshairEntity())),
+                DialogueHoldTier.TEN_SECONDS));
+        registerParticipant(participantHolding("beta", "module.lab.beta", "LAB.BETA.DIALOGUE_INPUT", 20,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "held", DialogueClaimCondition.heldItem("minecraft:diamond"))),
+                DialogueHoldTier.TEN_SECONDS));
+
+        // Aim at the animal while holding a stick: alpha is the pre-winner.
+        publishInteractionContext("player", "minecraft:overworld", "", "minecraft:stick",
+                "cow-uuid", "minecraft:cow", "Cow", 2.0D);
+        partnerEvents.awaitPayload(PresencePartnerPayload.class,
+                payload -> "alpha".equals(payload.participantId()));
+
+        // Press V: the frame with the crosshair is frozen. The held item changes during the turn.
+        TianshuEnvelope speech = new AsrProtocolAdapter(runtime)
+                .publishSpeechActivity(AsrSpeechActivityPayload.speaking(speechSessionId));
+        await(() -> runtime.lifecycle().statusOf(speech.envelopeId()) == EnvelopeStatus.COMPLETED);
+        TianshuEnvelope diamond = publishInteractionContext("player", "minecraft:overworld", "",
+                "minecraft:diamond", "", "", "", 0.0D);
+        await(() -> runtime.lifecycle().statusOf(diamond.envelopeId()) == EnvelopeStatus.COMPLETED);
+        assertTrue(partnerEvents.envelopes().stream()
+                        .map(TianshuEnvelope::payload)
+                        .noneMatch(payload -> payload instanceof PresencePartnerPayload marker
+                                && "beta".equals(marker.participantId())),
+                "the marker must stay pinned while the turn is unresolved");
+
+        // Release: arbitration runs against the frozen frame, so alpha wins.
+        TianshuEnvelope ir = EnvelopeBuilder.eventTopic(
+                "module.ir",
+                IntakeTopics.IR_RESULT,
+                PayloadType.of("IR_RESULT"),
+                new IrResultPayload(
+                        "open the box",
+                        "open the box",
+                        "open the box",
+                        List.of(),
+                        List.of(),
+                        1,
+                        requestSessionId,
+                        System.currentTimeMillis()
+                )
+        ).build();
+        runtime.submit(ir);
+        await(() -> runtime.lifecycle().statusOf(ir.envelopeId()) == EnvelopeStatus.COMPLETED);
+
+        alphaDelivery.awaitPayload(DialogueDeliveryPayload.class);
+        PresencePartnerPayload afterResolution = partnerEvents.awaitPayload(
+                PresencePartnerPayload.class,
+                payload -> "beta".equals(payload.participantId()));
+        assertEquals("module.lab.beta", afterResolution.moduleId(),
+                "the marker describes the next turn, where the held diamond outranks alpha's lease");
+    }
+
+    private DialogueParticipantDescriptor participantHolding(String participantId, String moduleId,
+                                                              String routeCapability, int priority,
+                                                              DialogueClaimProfile profile,
+                                                              DialogueHoldTier holdTier) {
+        return new DialogueParticipantDescriptor(
+                participantId,
+                moduleId,
+                participantId,
+                priority,
+                profile,
+                DialogueTriggerGroup.EMPTY,
+                routeCapability,
+                DialogueTurnProcessingPolicy.DEFAULT,
+                partnerIcon(participantId),
+                holdTier
+        );
+    }
+
+    @Test
+    void anInterruptRequestTargetsTheParticipantThePartnerMarkerShows() {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        registerInteractionContextTopic();
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler partnerEvents = new RecordingHandler();
+        subscribePartner(partnerEvents);
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(participant(
+                "maid",
+                "module.maid",
+                "MAID.DIALOGUE_INPUT",
+                10,
+                DialogueClaimProfile.rules(DialogueClaimRule.any(
+                        "maid.crosshair",
+                        DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
+                ))
+        ));
+        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        publishInteractionContext("player", "minecraft:overworld", "", "", "maid-uuid",
+                "touhou_little_maid:maid", "", 0.0D);
+        PresencePartnerPayload partner = partnerEvents.awaitPayload(PresencePartnerPayload.class);
+
+        // The speech adapter is the real sender: it owns the module id the arbiter trusts.
+        new AsrProtocolAdapter(runtime).requestDialogueInterrupt(
+                new DialogueInterruptRequestPayload(System.currentTimeMillis()));
+
+        DialogueInterruptRequestedPayload interrupt = interruptEvents.awaitPayload(DialogueInterruptRequestedPayload.class);
+        assertEquals("player", interrupt.playerId());
+        assertEquals(partner.moduleId(), interrupt.targetModuleId(),
+                "the request names the participant the marker shows");
+        assertEquals(partner.participantId(), interrupt.targetParticipantId());
+        assertTrue(interrupt.addresses("module.maid", "maid"));
+    }
+
+    @Test
+    void anInterruptWithoutAnyTargetIsNotBroadcast() throws InterruptedException {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(participant("maid", "module.maid", "MAID.DIALOGUE_INPUT", 10, DialogueClaimProfile.DISABLED));
+
+        submitInterruptRequest("module.asr");
+        Thread.sleep(200L);
+
+        assertTrue(interruptEvents.envelopes().isEmpty(),
+                "a gesture with no addressable participant must stay silent");
+    }
+
+    @Test
+    void anInterruptRequestDoesNotReleaseOrChangeTheActiveSession() throws InterruptedException {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler sessionEvents = new RecordingHandler();
+        subscribeSessionEvents(sessionEvents);
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+
+        runtime.submit(EnvelopeBuilder.commandToCapability(
+                "module.ir",
+                IaCapabilities.DIALOGUE_ARBITRATE,
+                PayloadType.of("DIALOGUE_ARBITRATION_REQUEST"),
+                request("req-session", "player", "turn-session", 0L, "帮我记一下", List.of(), List.of())
+        ).build());
+        await(() -> !sessionEvents.envelopes().isEmpty());
+
+        submitInterruptRequest("module.asr");
+        DialogueInterruptRequestedPayload interrupt = interruptEvents.awaitPayload(DialogueInterruptRequestedPayload.class);
+        assertEquals("module.ax", interrupt.targetModuleId());
+        Thread.sleep(200L);
+
+        for (TianshuEnvelope envelope : sessionEvents.envelopes()) {
+            DialogueSessionEventPayload event = (DialogueSessionEventPayload) envelope.payload();
+            assertFalse(event.eventType() == DialogueSessionEventType.CONVERSATION_INTERRUPTED
+                            || event.eventType() == DialogueSessionEventType.CONVERSATION_RELEASED
+                            || event.eventType() == DialogueSessionEventType.CONVERSATION_SESSION_FINISHED,
+                    "an interrupt request must not change the session; only the owner may");
+        }
+    }
+
+    @Test
+    void onlyTheSpeechModuleMayRequestAnInterrupt() throws InterruptedException {
+        runtime = ProtocolBootstrap.create(Runnable::run);
+        installPresence(runtime);
+        IaModule ia = new IaModule(runtime);
+        ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
+        RecordingHandler interruptEvents = new RecordingHandler();
+        subscribeInterruptRequested(interruptEvents);
+        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+
+        submitInterruptRequest("module.evil");
+        Thread.sleep(200L);
+
+        assertTrue(interruptEvents.envelopes().isEmpty(), "only module.asr may raise the user's stop gesture");
     }
 
     @Test
@@ -642,6 +908,31 @@ class IaModuleProtocolFlowTest {
                 ),
                 handler
         );
+    }
+
+    private void subscribeInterruptRequested(RecordingHandler handler) {
+        runtime.subscribeTopic(
+                descriptor("test.interrupt." + System.nanoTime(), List.of()),
+                new TopicSubscriptionDescriptor(
+                        IaTopics.DIALOGUE_INTERRUPT_REQUESTED,
+                        PayloadType.of("DIALOGUE_INTERRUPT_REQUESTED"),
+                        DialogueInterruptRequestedPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.EVENT),
+                        Priority.LOW,
+                        CompletionPolicy.AUTO_COMPLETE_ON_RETURN
+                ),
+                handler
+        );
+    }
+
+    private void submitInterruptRequest(String sourceId) {
+        runtime.submit(EnvelopeBuilder.commandToCapability(
+                sourceId,
+                IaCapabilities.DIALOGUE_INTERRUPT,
+                PayloadType.of("DIALOGUE_INTERRUPT_REQUEST"),
+                new DialogueInterruptRequestPayload(System.currentTimeMillis())
+        ).build());
     }
 
     private void subscribeSessionEvents(RecordingHandler handler) {

@@ -27,7 +27,7 @@ public class ClientConfig implements GlobalDebugSettingsAccess {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
         builder.push("debug");
-        DEBUG_ENABLED = builder.define("enabled", false);
+        DEBUG_ENABLED = builder.define("enabled", com.rheinmetal.tianshu.mc.config.TianshuBuildProfile.debugBuild());
         builder.pop();
 
         SPEC = builder.build();

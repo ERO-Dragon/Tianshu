@@ -70,6 +70,22 @@ sourceSets {
     test {
         java.srcDir "${sharedLayerRoot}/src/test/java"
     }
+    // Output-only: holds the kernel modules that ship inside the `tianshu` mod but are compiled by their
+    // own projects. Its folder is what keeps those classes inside the mod's module layer — the plain
+    // runtime classpath is not visible to a mod's class loader. See the mods block below.
+    kernel
+}
+
+// The three platform-neutral kernel modules. `classes` builds both the compiled classes and the processed
+// resources (the generated language shard included), which is exactly what the mod folder has to contain.
+def kernelProjects = [':tianshu-client', ':tianshu-core', ':tianshu-api']
+kernelProjects.each { path ->
+    def kernelProject = project(path)
+    sourceSets.kernel.output.dir(kernelProject.layout.buildDirectory.dir('classes/java/main'))
+    sourceSets.kernel.output.dir(kernelProject.layout.buildDirectory.dir('resources/main'))
+}
+tasks.withType(JavaExec).configureEach {
+    dependsOn(kernelProjects.collect { "${it}:classes" })
 }
 
 repositories {
@@ -149,11 +165,15 @@ neoForge {
         if (startedFrom == 'adapter') {
             return []
         }
+        def base
         if (startedFrom == 'root') {
-            return runFeatureNames
+            base = runFeatureNames
+        } else {
+            // A feature run boots its required partners too: without them it cannot assemble at all.
+            base = [startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])
         }
-        // A feature run boots its required partners too: without them it cannot assemble at all.
-        return ([startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])).unique()
+        // Development benches ride along with the feature they exercise; they are not features themselves.
+        return (base + (rootProject.devRunFeatureEdges[startedFrom] ?: [])).unique()
     }()
     if (gradle.startParameter.taskNames.any { name ->
                 name.endsWith('runClient') || name.endsWith('runServer')
@@ -162,14 +182,22 @@ neoForge {
                 (devFeatureMods.isEmpty() ? 'the kernel alone' : devFeatureMods.join(', ')))
     }
 
+    // The mods block below reads the feature projects' source sets. Under --configure-on-demand a project
+    // that nothing else evaluates is not configured yet, and reading its source sets would fail; asking
+    // for it here is the dependency the closure always had implicitly.
+    devFeatureMods.each { feature -> project.evaluationDependsOn(":tianshu-${feature}") }
+
     mods {
-        // One entry per mod id. The kernel mod owns the adapter plus every platform-neutral module
-        // that carries no metadata of its own; each feature is a separate mod with its own manifest.
+        // One entry per mod id. The kernel mod is the adapter plus every platform-neutral module that
+        // carries no metadata of its own; each feature is a separate mod with its own manifest.
+        //
+        // ModDevGradle keys a mod's source sets by name and aborts the launch when two of them are called
+        // `main`, so the three sibling projects cannot be listed here directly. They contribute their
+        // compiled output through `kernel` instead: an adapter-owned, output-only source set, which keeps
+        // the classes in this mod's folder (and therefore in its class loader) where the game expects them.
         "${mod_id}" {
             sourceSet(sourceSets.main)
-            sourceSet(project(':tianshu-client').sourceSets.main)
-            sourceSet(project(':tianshu-core').sourceSets.main)
-            sourceSet(project(':tianshu-api').sourceSets.main)
+            sourceSet(sourceSets.kernel)
         }
         // A feature's entry source set is what makes it a mod at all. The @Mod class lives there, so a
         // mod declared with only `main` is listed in game (its manifest is on the classpath) while no
@@ -203,6 +231,13 @@ neoForge {
             tianshu_presence {
                 sourceSet(project(':tianshu-presence').sourceSets.main)
                 sourceSet(project(':tianshu-presence').sourceSets.neoforgeEntry)
+            }
+        }
+        // Dev-only bench. It is not a shipped feature, so only an explicit `-PfeatureMods=...lab` installs it.
+        if ('lab' in devFeatureMods) {
+            tianshu_lab {
+                sourceSet(project(':tianshu-lab').sourceSets.main)
+                sourceSet(project(':tianshu-lab').sourceSets.neoforgeEntry)
             }
         }
     }

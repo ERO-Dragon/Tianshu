@@ -40,10 +40,37 @@ public final class IaModuleProvider implements TianshuModuleProvider {
             // The arbitration wording belongs to this module; the host only looks the codes up.
             context.clientPorts().diagnosticChat().register("ARBITRATION_ACCEPTED",
                     new DiagnosticChatNotice("tianshu.chat.progress.ia.arbitration.accepted",
-                            List.of(List.of("normalizedText", "repairedText", "input"), List.of("reason"))));
+                            List.of(List.of("normalizedText", "repairedText"), List.of("owner"),
+                                    List.of("claims"), List.of("reason"))));
             context.clientPorts().diagnosticChat().register("ARBITRATION_REJECTED",
                     new DiagnosticChatNotice("tianshu.chat.progress.ia.arbitration.rejected",
-                            List.of(List.of("normalizedText", "repairedText", "input"), List.of("reason"))));
+                            List.of(List.of("normalizedText", "repairedText"), List.of("claims"),
+                                    List.of("reason"))));
+            // Every session transition goes through the one publisher, so one line per transition covers
+            // start, claim, owner change, completion, rejection and expiry alike.
+            context.clientPorts().diagnosticChat().register("DIALOGUE_SESSION_EVENT",
+                    new DiagnosticChatNotice("tianshu.chat.progress.ia.session",
+                            List.of(List.of("event"), List.of("state"), List.of("owner"),
+                                    List.of("releaseReason", "reason"))));
+            context.clientPorts().diagnosticChat().register("DIALOGUE_DELIVERED",
+                    new DiagnosticChatNotice("tianshu.chat.progress.ia.delivery",
+                            List.of(List.of("owner"), List.of("sessionId"), List.of("turnId"))));
+            // Registration outcomes are part of the bench's contract: "the fake participant did not appear"
+            // has to be one readable line, not a silent NO_PARTICIPANT ten seconds later.
+            context.clientPorts().diagnosticChat().register("PARTICIPANT_REGISTERED",
+                    new DiagnosticChatNotice("tianshu.chat.progress.ia.participant.registered",
+                            List.of(List.of("module"), List.of("participant"), List.of("priority"))));
+            context.clientPorts().diagnosticChat().register("PARTICIPANT_REGISTER_REJECTED",
+                    new DiagnosticChatNotice("tianshu.chat.progress.ia.participant.rejected",
+                            List.of(List.of("module"), List.of("participant"), List.of("code"))));
+            context.clientPorts().diagnosticChat().register("PARTICIPANT_UNREGISTERED",
+                    new DiagnosticChatNotice("tianshu.chat.progress.ia.participant.unregistered",
+                            List.of(List.of("module"), List.of("participant"))));
+            // What the arbiter last told presence: a marker that does not change in game can be compared
+            // against this line before blaming the renderer.
+            context.clientPorts().diagnosticChat().register("PARTNER_MARKER",
+                    new DiagnosticChatNotice("tianshu.chat.progress.ia.marker",
+                            List.of(List.of("module"), List.of("participant"), List.of("kind"))));
         }
         registrar.addModule(new IaModuleInstaller(context.moduleRuntime(), settings));
     }

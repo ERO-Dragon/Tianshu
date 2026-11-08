@@ -425,7 +425,7 @@ public final class SherpaOnnxAsrConfigFactory {
         }
 
         private String findByName(String keyword, String extension, String... aliases) {
-            List<String> candidates = info.getModelFiles();
+            List<String> candidates = info.getAllRequiredFiles();
             for (String candidate : candidates) {
                 if (matches(candidate, keyword, extension, aliases)) {
                     Path path = modelDir.resolve(candidate).normalize();

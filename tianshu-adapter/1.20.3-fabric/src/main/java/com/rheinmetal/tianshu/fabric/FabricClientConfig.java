@@ -30,7 +30,7 @@ public final class FabricClientConfig implements GlobalDebugSettingsAccess {
 
     private final Path file;
     private final Properties values = new Properties();
-    private boolean debugEnabled;
+    private boolean debugEnabled = TianshuBuildProfile.debugBuild();
 
     public FabricClientConfig(Path gameDirectory) {
         Path configDirectory = Objects.requireNonNull(gameDirectory, "gameDirectory")
@@ -53,7 +53,7 @@ public final class FabricClientConfig implements GlobalDebugSettingsAccess {
             // diagnostics router is not built yet at this point in the bootstrap.
             return;
         }
-        debugEnabled = Boolean.parseBoolean(values.getProperty(DEBUG_ENABLED, "false").trim());
+        debugEnabled = Boolean.parseBoolean(values.getProperty(DEBUG_ENABLED, Boolean.toString(TianshuBuildProfile.debugBuild())).trim());
     }
 
     @Override

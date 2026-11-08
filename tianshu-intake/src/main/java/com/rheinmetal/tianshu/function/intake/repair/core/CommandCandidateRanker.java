@@ -26,8 +26,10 @@ final class CommandCandidateRanker {
     private static final double LONG_QUERY_CONTEXT_BONUS = 0.3D;
 
     private final CommandParserPolicy policy;
+    private final IRIndex irIndex;
 
-    CommandCandidateRanker(CommandParserPolicy policy) {
+    CommandCandidateRanker(IRIndex index, CommandParserPolicy policy) {
+        this.irIndex = index == null ? IRIndex.EMPTY : index;
         this.policy = policy;
     }
 
@@ -96,14 +98,14 @@ final class CommandCandidateRanker {
             for (int index = 0; index <= tokens.length - gramSize; index++) {
                 int hash = IRBaseUtils.fnv1a32(IRBaseUtils.buildGram(tokens, index, gramSize));
                 gramCount++;
-                long packed = IndexBuilder.indexDirectory.get(hash & 0xffffffffL);
+                long packed = irIndex.indexDirectory.get(hash & 0xffffffffL);
                 if (packed == 0L) {
                     continue;
                 }
                 int offset = (int) (packed >>> 32);
                 int length = (int) packed;
                 for (int poolIndex = 0; poolIndex < length; poolIndex++) {
-                    int internalId = IndexBuilder.INDEX_POOL[offset + poolIndex];
+                    int internalId = irIndex.indexPool[offset + poolIndex];
                     votes.computeIfAbsent(internalId, ignored -> new MutableVote()).count++;
                 }
             }
@@ -130,8 +132,8 @@ final class CommandCandidateRanker {
         List<ScoredCandidate> ranked = new ArrayList<>(candidates.length);
         for (Candidate candidate : candidates) {
             int internalId = candidate.internalId;
-            String[] primaryTokens = IRBaseUtils.primaryAliasTokensArray[internalId];
-            String[] fallbackTokens = IRBaseUtils.fallbackAliasTokensArray[internalId];
+            String[] primaryTokens = irIndex.primaryTokens(internalId);
+            String[] fallbackTokens = irIndex.fallbackTokens(internalId);
             if ((primaryTokens == null || primaryTokens.length == 0) && (fallbackTokens == null || fallbackTokens.length == 0)) {
                 continue;
             }
