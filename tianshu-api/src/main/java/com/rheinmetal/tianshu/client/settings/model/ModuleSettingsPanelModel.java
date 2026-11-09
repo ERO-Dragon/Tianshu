@@ -447,6 +447,8 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
     private static final class ListGroup<T> implements ListTemplate<T> {
         private final String id;
         private final UiText title;
+        /** Section-level buttons ("add …"), rendered under the items by the list renderer. */
+        private final ActionGroup footerActions;
         private BiConsumer<T, ItemActionTemplate<T>> itemActionsBuilder = (item, actions) -> {};
         private Supplier<List<T>> items = List::of;
         private Function<T, UiText> labeler = item -> UiText.literal(String.valueOf(item));
@@ -460,6 +462,7 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         private ListGroup(String id, UiText title) {
             this.id = id;
             this.title = title;
+            this.footerActions = new ActionGroup(id + ".footer", title);
         }
 
         @Override
@@ -499,6 +502,14 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         }
 
         @Override
+        public ListTemplate<T> footerActions(Consumer<ActionTemplate> builder) {
+            if (builder != null) {
+                builder.accept(footerActions);
+            }
+            return this;
+        }
+
+        @Override
         public ListTemplate<T> emptyText(UiText emptyText) {
             this.emptyText = emptyText;
             return this;
@@ -517,7 +528,7 @@ public final class ModuleSettingsPanelModel implements ModuleSettingsPanel {
         }
 
         private SettingsTemplateModel.ListGroup<T> toModel(BooleanSupplier enabled, BooleanSupplier visible) {
-            return new SettingsTemplateModel.ListGroup<>(id, title, items, labeler, carder, selected, onSelect, this::buildItemActions, emptyText, () -> enabled.getAsBoolean() && itemEnabled.getAsBoolean(), () -> visible.getAsBoolean() && itemVisible.getAsBoolean());
+            return new SettingsTemplateModel.ListGroup<>(id, title, items, labeler, carder, selected, onSelect, this::buildItemActions, emptyText, footerActions.entries(), () -> enabled.getAsBoolean() && itemEnabled.getAsBoolean(), () -> visible.getAsBoolean() && itemVisible.getAsBoolean());
         }
 
         private List<SettingsTemplateModel.ItemActionEntry<T>> buildItemActions(T item) {

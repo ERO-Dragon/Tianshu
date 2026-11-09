@@ -43,7 +43,6 @@
   "tianshu.gui.llm.models.card.disabled": "○ 未启用",
   "tianshu.gui.llm.models.badge.custom": "自定义",
   "tianshu.gui.llm.provider.deepseek": "DeepSeek",
-  "tianshu.gui.llm.section.provider_add": "添加",
   "tianshu.gui.llm.action.add_provider": "添加模型提供商",
   "tianshu.gui.llm.action.activate": "启用",
   "tianshu.gui.llm.action.edit": "编辑",

@@ -43,7 +43,6 @@
   "tianshu.gui.llm.models.card.disabled": "○ Not enabled",
   "tianshu.gui.llm.models.badge.custom": "Custom",
   "tianshu.gui.llm.provider.deepseek": "DeepSeek",
-  "tianshu.gui.llm.section.provider_add": "Add",
   "tianshu.gui.llm.action.add_provider": "Add Provider",
   "tianshu.gui.llm.action.activate": "Activate",
   "tianshu.gui.llm.action.edit": "Edit",

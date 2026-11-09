@@ -411,6 +411,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         renderSection(groupActive, () -> {
             renderGroupTitle(group.title(), groupActive);
             renderListItems(group, groupActive, false);
+            renderActionEntries(group.footerActions(), groupActive);
         });
     }
 

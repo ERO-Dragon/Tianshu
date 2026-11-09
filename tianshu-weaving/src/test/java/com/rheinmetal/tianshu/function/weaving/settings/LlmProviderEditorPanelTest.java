@@ -62,7 +62,6 @@ final class LlmProviderEditorPanelTest {
     private static final String MODULE_ID = "module.llm";
     private static final String TYPED_KEY = "sk-typed-into-the-editor";
     private static final String PROVIDERS_LIST = "llm.providers";
-    private static final String ADD_BUTTON_GROUP = "llm.providers.add";
     private static final String EMBEDDING_GROUP = "llm.embedding";
     private static final String EDITOR_GROUP = "llm.providers.editor";
     private static final String EDITOR_MODEL_ROW = "llm.editor.active_model";
@@ -126,13 +125,16 @@ final class LlmProviderEditorPanelTest {
     @Test
     void theColumnIsTheOptionalVectorModelThenTheCloudProfile() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, EDITOR_GROUP),
                     harness.leftColumnIds(),
-                    "the column is the vector model, the cards, the add button and one editor section");
+                    "the column is the vector model, the provider list (with its own add button) and the editor");
+            assertEquals("llm.providers.add.button",
+                    harness.providers().footerActions().get(0).id(),
+                    "the add button belongs to the provider list, not to a section of its own");
 
             harness.runProviderAction("llm.provider.edit");
 
-            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, EDITOR_GROUP),
                     harness.leftColumnIds(),
                     "opening a form adds no section: the catalog is a layer, not a part of the page");
             assertEquals(0, harness.layerHost().opens(),
@@ -177,8 +179,8 @@ final class LlmProviderEditorPanelTest {
                     "the vector-model section is disabled");
             assertFalse(harness.template(PROVIDERS_LIST).enabled().getAsBoolean(),
                     "the provider list is disabled with the module");
-            assertFalse(harness.template(ADD_BUTTON_GROUP).enabled().getAsBoolean(),
-                    "so is the add button");
+            assertFalse(harness.footerAction("llm.providers.add.button").enabled().getAsBoolean(),
+                    "so is the add button in the list footer");
             assertFalse(harness.template(EDITOR_GROUP).enabled().getAsBoolean(),
                     "and the editor section");
             assertFalse(harness.template("llm.usage.actions").enabled().getAsBoolean(),
@@ -352,7 +354,7 @@ final class LlmProviderEditorPanelTest {
             assertTrue(picker.statusKey().isEmpty(), "and nothing to report before the player asks");
 
             assertTrue(harness.editorOpen(), "the form stays where it was while the layer is open");
-            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, EDITOR_GROUP),
                     harness.leftColumnIds(),
                     "the page under the layer is untouched");
         }
@@ -883,6 +885,18 @@ final class LlmProviderEditorPanelTest {
                 }
             }
             return fail("the vector model section has no position button");
+        }
+
+        /** One of the provider list's own footer buttons, such as the add-provider action. */
+        private SettingsTemplateModel.ActionEntry footerAction(String actionId) {
+            SettingsTemplateModel.ListGroup<WeavingModelEntry> providers = providers();
+            assertNotNull(providers, "the page has no provider list");
+            for (SettingsTemplateModel.ActionEntry entry : providers.footerActions()) {
+                if (entry.id().equals(actionId)) {
+                    return entry;
+                }
+            }
+            return fail("the provider list has no footer action " + actionId);
         }
 
         /** The language key the vector-model hint row currently shows. */

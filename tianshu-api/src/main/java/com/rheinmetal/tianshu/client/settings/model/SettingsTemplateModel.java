@@ -47,7 +47,7 @@ public sealed interface SettingsTemplateModel permits
 
     record CompoundGroup(String id, UiText title, List<OptionEntry> options, List<ActionEntry> actions, List<StatusEntry> statuses, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
-    record ListGroup<T>(String id, UiText title, Supplier<List<T>> items, Function<T, UiText> labeler, Function<T, SettingsListCard> carder, Supplier<T> selected, Consumer<T> onSelect, Function<T, List<ItemActionEntry<T>>> itemActions, UiText emptyText, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
+    record ListGroup<T>(String id, UiText title, Supplier<List<T>> items, Function<T, UiText> labeler, Function<T, SettingsListCard> carder, Supplier<T> selected, Consumer<T> onSelect, Function<T, List<ItemActionEntry<T>>> itemActions, UiText emptyText, List<ActionEntry> footerActions, BooleanSupplier enabled, BooleanSupplier visible) implements SettingsTemplateModel {}
 
     record CatalogGroup<T>(String id, UiText title, List<OptionEntry> controls, ListGroup<T> list, BooleanSupplier enabled, BooleanSupplier visible, boolean scrollable) implements SettingsTemplateModel {}
 

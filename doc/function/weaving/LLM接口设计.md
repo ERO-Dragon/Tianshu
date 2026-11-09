@@ -121,6 +121,8 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 
 检索为 BM25 + 向量的混合检索：embedding 不可用时退化为纯词法；只有向量没有文本的条目只参与向量检索。命中条目返回 `entryId`、`content`、`score`。
 
+运行态能力跟随向量 lane：没有绑定向量引擎时（未下载向量模型、加载失败、模块未启动），`LLM.CACHE_MANAGE` 在运行态标记为 **FAILED**，原因写明“没有向量模型，检索会退化为纯词法”。处理器本身不阻断请求——纯词法检索、`SEARCH_INLINE_CONTENTS` 和自带向量的写入仍可用——状态是给消费者在发请求之前判断用的。`LLM.PRIMITIVE_QUERY` 不需要向量，始终 ready。
+
 ### 3.1 存储
 
 持久 RAG 位于 `config/Tianshu/module/llm/ragCache/entries/`，按 `uid` 分文件；命名空间由向量模型决定，模型变化后旧向量被视为不可用并等待重建。写入先更新内存，磁盘按约 1 秒 debounce 合并；`CLEAR_UID` 立即删除；模块停止时 flush。

@@ -166,31 +166,30 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
     }
 
     /**
-     * The cloud half: the configured providers, the add button, then the editor.
+     * The cloud half: the configured providers with their own add button, then the editor.
      *
      * <p>A card carries what identifies and activates an entry — the name, the "custom" badge of an
      * endpoint this build does not ship, the activation dot and the model the provider currently uses —
      * and nothing more. Endpoint data lives in the editor, so no card grows a full-width paragraph.</p>
      *
-     * <p>Those are the only three groups of the column, in that order: cards, add button, editor. The add
-     * button keeps its place while the editor is open and only the button itself is disabled, so opening a
-     * form never moves what is already on screen. The editor is the form and one read-only line: which
-     * model the provider uses, and one button that opens the picker.</p>
+     * <p>The add button is the list's own footer instead of a section of its own: it belongs with the
+     * cards it extends, and a separate section would sit between the cards and the editor a card opens,
+     * pushing the form below a button that has nothing to do with it.</p>
      *
-     * <p>All three are disabled while the module itself is off, exactly like the vector-model section:
-     * an off module must not offer a control that configures a lane nothing will read.</p>
+     * <p>The editor is the form and one read-only line: which model the provider uses, and one button
+     * that opens the picker. Both groups are disabled while the module itself is off, exactly like the
+     * vector-model section: an off module must not offer a control that configures a lane nothing will
+     * read.</p>
      */
     private void buildProviderColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.<WeavingModelEntry>list("llm.providers", llm("section.providers"), draft.enabled::get, list -> list
                         .items(draft::modelEntries)
                         .card(draft::providerCard)
                         .itemActions(draft::buildProviderActions)
-                        .emptyText(llm("models.empty")))
-                .actions("llm.providers.add", llm("section.provider_add"),
-                        draft.enabled::get, () -> true,
-                        actions -> actions.button("llm.providers.add.button", llm("action.add_provider"),
+                        .emptyText(llm("models.empty"))
+                        .footerActions(actions -> actions.button("llm.providers.add.button", llm("action.add_provider"),
                                 SettingsButtonStyle.PRIMARY, draft::startNewProvider,
-                                () -> draft.enabled.get() && !draft.editing()))
+                                () -> draft.enabled.get() && !draft.editing())))
                 .compound("llm.providers.editor", llm("section.editor"),
                         draft.enabled::get, draft::editing,
                         draft::buildEditorOptions,
