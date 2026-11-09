@@ -167,6 +167,7 @@ record LLMRuntimeSnapshotPayload(
 - 上下文容量来自所选模型条目声明的 `contextWindowTokens`（tier 值，例如 100K / 200K / 500K）。预算公式为
   `容量 − 512 输出保留 − headroom`，headroom 为 prompt 窗口的 6.25%，钳位 4096..32768 并向上取整到 1024。
 - 向量引擎是本机唯一加载的模型：进世界后延迟数秒在模型加载 lane 上启动；GPU 失败自动回落 CPU（`DEGRADED`），两级都失败才 `UNAVAILABLE`。
+- **向量模型是可选的**：未下载时云端通道照常工作，`STATUS` 报 `embeddingAvailable=false`，只有检索、`EMBED` 以及依赖检索的模组（如辅星）不可用。设置页不以“已下载”作为配置云端模型的前提。
 - 向量引擎起不来**不会**让云端通道失败：聊天不依赖检索，此时只有 RAG / `EMBED` 报不可用。
 - 原生模型加载经过进程级串行闸门，与听澜 / 回响的语音模型互斥。
 - 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。请求本身不产生映迹活动，那属于调用方的一轮对话。

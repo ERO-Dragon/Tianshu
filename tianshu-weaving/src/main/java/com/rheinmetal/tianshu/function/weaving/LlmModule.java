@@ -706,6 +706,8 @@ public final class LlmModule implements TianshuManagedModule {
             }
             case UNAVAILABLE -> {
                 embeddingRuntime.bind(null);
+                // Only an attempted load reports here; "no model downloaded" never reaches this listener,
+                // so it stays quiet: retrieval off by choice is a configuration, not a failure.
                 adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }

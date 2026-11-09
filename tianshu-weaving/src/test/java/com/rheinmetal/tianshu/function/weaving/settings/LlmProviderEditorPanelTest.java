@@ -124,14 +124,16 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
-    void theColumnIsCardsThenTheAddButtonThenOneEditorSection() throws Exception {
+    void theColumnIsTheOptionalVectorModelThenTheCloudProfile() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP), harness.leftColumnIds(),
-                    "the column is the cards, the add button and one editor section, in that order");
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+                    harness.leftColumnIds(),
+                    "the column is the vector model, the cards, the add button and one editor section");
 
             harness.runProviderAction("llm.provider.edit");
 
-            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP), harness.leftColumnIds(),
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+                    harness.leftColumnIds(),
                     "opening a form adds no section: the catalog is a layer, not a part of the page");
             assertEquals(0, harness.layerHost().opens(),
                     "and no layer is opened until the player asks for one");
@@ -139,24 +141,66 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
-    void theVectorModelIsAFullWidthRowDirectlyAboveTheColumns() throws Exception {
+    void thePageIsTheEnableSwitchAndTheTwoColumns() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertEquals(List.of("llm.enabled", EMBEDDING_GROUP, "llm.panel.layout"),
-                    harness.topLevelIds(),
-                    "the vector model is the page's second row: everything below it needs an embedding file");
+            assertEquals(List.of("llm.enabled", "llm.panel.layout"), harness.topLevelIds(),
+                    "the vector model sits inside the left column, so it is not a page-level row");
+        }
+    }
+
+    /**
+     * The vector model used to be a hard gate: without the file the two columns were not built at all,
+     * so a cloud profile could not be configured until a local model had been downloaded. Chat is a
+     * cloud lane and answers without retrieval, so the page must not make that trade.
+     */
+    @Test
+    void aMissingVectorModelLeavesTheCloudProfileUsable() throws Exception {
+        try (Harness harness = new Harness(gameDirectory)) {
+            assertTrue(harness.template("llm.panel.layout").visible().getAsBoolean(),
+                    "the columns are drawn even though no embedding file exists");
+            assertNotNull(harness.providers(), "and the provider list is there to configure");
+            assertEquals("tianshu.gui.llm.status.embedding_optional_note",
+                    harness.embeddingHintKey(),
+                    "the vector-model section states what stays unavailable instead of hiding the page");
+        }
+    }
+
+    /**
+     * Switching the module off used to grey the vector-model section only: the provider cards, the add
+     * button and the editor stayed clickable, so an off module still offered controls for a lane nothing
+     * would read. Every section below the switch follows it now.
+     */
+    @Test
+    void switchingTheModuleOffDisablesEveryOtherControl() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.setLlmEnabled(false))) {
+            assertFalse(harness.template(EMBEDDING_GROUP).enabled().getAsBoolean(),
+                    "the vector-model section is disabled");
+            assertFalse(harness.template(PROVIDERS_LIST).enabled().getAsBoolean(),
+                    "the provider list is disabled with the module");
+            assertFalse(harness.template(ADD_BUTTON_GROUP).enabled().getAsBoolean(),
+                    "so is the add button");
+            assertFalse(harness.template(EDITOR_GROUP).enabled().getAsBoolean(),
+                    "and the editor section");
+            assertFalse(harness.template("llm.usage.actions").enabled().getAsBoolean(),
+                    "the usage refresh is disabled too");
         }
     }
 
     @Test
-    void anUnreadyVectorModelHidesBothColumns() throws Exception {
+    void aCloudProfileCanBeSavedWithoutTheVectorModel() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertTrue(harness.template(EMBEDDING_GROUP).visible().getAsBoolean(),
-                    "the download row itself stays on screen");
-            assertFalse(harness.template("llm.panel.layout").visible().getAsBoolean(),
-                    "and it does not draw the provider columns: the gate is visibility, not a grey-out");
+            harness.runProviderAction("llm.provider.edit");
+            harness.typeEditorText("llm.editor.api_key", TYPED_KEY);
 
-            assertEquals(2, harness.visibleTopLevelIds().size(),
-                    "so an unready page is exactly the enable switch and the download row");
+            SettingsValidationResult validation = harness.session().validate();
+            assertTrue(validation.success(),
+                    () -> "a missing embedding model must not refuse a cloud profile: "
+                            + validation.message().value());
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+            assertEquals(TYPED_KEY, harness.access().getLlmApiKey(WeavingModelEntry.LEGACY_ID),
+                    "the cloud profile is written even though no embedding file exists");
         }
     }
 
@@ -308,7 +352,7 @@ final class LlmProviderEditorPanelTest {
             assertTrue(picker.statusKey().isEmpty(), "and nothing to report before the player asks");
 
             assertTrue(harness.editorOpen(), "the form stays where it was while the layer is open");
-            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
                     harness.leftColumnIds(),
                     "the page under the layer is untouched");
         }
@@ -720,14 +764,6 @@ final class LlmProviderEditorPanelTest {
             return templates().stream().map(SettingsTemplateModel::id).toList();
         }
 
-        /** Top-level row ids the renderer would actually draw, in order. */
-        private List<String> visibleTopLevelIds() {
-            return templates().stream()
-                    .filter(template -> template.visible().getAsBoolean())
-                    .map(SettingsTemplateModel::id)
-                    .toList();
-        }
-
         private boolean editorOpen() {
             SettingsTemplateModel.CompoundGroup editor = editor();
             return editor != null && editor.visible().getAsBoolean();
@@ -847,6 +883,18 @@ final class LlmProviderEditorPanelTest {
                 }
             }
             return fail("the vector model section has no position button");
+        }
+
+        /** The language key the vector-model hint row currently shows. */
+        private String embeddingHintKey() {
+            SettingsTemplateModel.CompoundGroup embedding = group(EMBEDDING_GROUP);
+            assertNotNull(embedding, "the vector model has a section of its own");
+            for (SettingsTemplateModel.StatusEntry entry : embedding.statuses()) {
+                if (entry.id().equals("llm.embedding.hint")) {
+                    return entry.value().get().value();
+                }
+            }
+            return fail("the vector model section has no hint row");
         }
 
         private String editorStatusValue(String rowId) {

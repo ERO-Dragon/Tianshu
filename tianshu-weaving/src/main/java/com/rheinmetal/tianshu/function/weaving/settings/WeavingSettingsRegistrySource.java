@@ -49,7 +49,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BooleanSupplier;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class WeavingSettingsRegistrySource implements TianshuSettingsRegistrySource {
@@ -124,20 +123,25 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
     }
 
     /**
-     * The page, top to bottom: the enable switch, the RAG vector model, then the two columns.
+     * The page: the enable switch, then the two columns.
      *
-     * <p>Everything below the vector model depends on it: without an embedding file there is no
-     * retrieval, and without retrieval the cloud lane cannot answer. The gate is therefore a
-     * <em>visibility</em> gate, not a disabled state — the columns are not built into the page at
-     * all until the model is on disk, which leaves an unready page as exactly two rows.
+     * <p>The vector model is <em>optional</em>, not a gate: chat is a cloud lane and answers without
+     * retrieval, so the provider and usage columns are always built. Without the embedding file only
+     * retrieval-dependent features are unavailable, which the vector-model section states in its own
+     * hint row. The section sits at the top of the left column because it is the local half of the
+     * lane, above the cloud profile beside it.</p>
      */
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled);
-        buildEmbeddingSection(panel, context, draft);
-        BooleanSupplier ready = draft::embeddingReady;
-        panel.columns("llm.panel.layout", 0.45D, 0.55D, () -> true, ready, columns -> columns
-                .column(0, left -> buildProviderColumn(left, context, draft))
+        panel.columns("llm.panel.layout", 0.45D, 0.55D, columns -> columns
+                .column(0, left -> buildLeftColumn(left, context, draft))
                 .column(1, right -> buildStatsColumn(right, draft)));
+    }
+
+    /** Left column: the optional vector model first, then the cloud profile. */
+    private void buildLeftColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
+        buildEmbeddingSection(panel, context, draft);
+        buildProviderColumn(panel, context, draft);
     }
 
     /**
@@ -162,29 +166,33 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
     }
 
     /**
-     * Left column: the configured providers, the add button, then the editor.
+     * The cloud half: the configured providers, the add button, then the editor.
      *
      * <p>A card carries what identifies and activates an entry — the name, the "custom" badge of an
      * endpoint this build does not ship, the activation dot and the model the provider currently uses —
-     * and nothing more. Endpoint data lives in the editor, so no card grows a full-width paragraph.
+     * and nothing more. Endpoint data lives in the editor, so no card grows a full-width paragraph.</p>
      *
      * <p>Those are the only three groups of the column, in that order: cards, add button, editor. The add
      * button keeps its place while the editor is open and only the button itself is disabled, so opening a
      * form never moves what is already on screen. The editor is the form and one read-only line: which
-     * model the provider uses, and one button that opens the picker.
+     * model the provider uses, and one button that opens the picker.</p>
+     *
+     * <p>All three are disabled while the module itself is off, exactly like the vector-model section:
+     * an off module must not offer a control that configures a lane nothing will read.</p>
      */
     private void buildProviderColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
-        panel.<WeavingModelEntry>list("llm.providers", llm("section.providers"), list -> list
+        panel.<WeavingModelEntry>list("llm.providers", llm("section.providers"), draft.enabled::get, list -> list
                         .items(draft::modelEntries)
                         .card(draft::providerCard)
                         .itemActions(draft::buildProviderActions)
                         .emptyText(llm("models.empty")))
                 .actions("llm.providers.add", llm("section.provider_add"),
-                        () -> true, () -> true,
+                        draft.enabled::get, () -> true,
                         actions -> actions.button("llm.providers.add.button", llm("action.add_provider"),
-                                SettingsButtonStyle.PRIMARY, draft::startNewProvider, () -> !draft.editing()))
+                                SettingsButtonStyle.PRIMARY, draft::startNewProvider,
+                                () -> draft.enabled.get() && !draft.editing()))
                 .compound("llm.providers.editor", llm("section.editor"),
-                        () -> true, draft::editing,
+                        draft.enabled::get, draft::editing,
                         draft::buildEditorOptions,
                         actions -> draft.buildEditorActions(context, actions),
                         draft::buildEditorStatus);
@@ -205,7 +213,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 .status("llm.usage.overall", llm("section.usage_overall"), draft::buildOverallUsageStatus)
                 .status("llm.usage.spend", llm("section.usage_spend"), draft::buildSpendStatus)
                 .status("llm.usage.balance", llm("section.usage_balance"), draft::buildBalanceStatus)
-                .actions("llm.usage.actions", llm("section.usage_actions"), actions -> actions
+                .actions("llm.usage.actions", llm("section.usage_actions"), draft.enabled::get, actions -> actions
                         .button("llm.usage.refresh", llm("action.refresh_usage"), draft::refreshUsage));
     }
 
@@ -1122,12 +1130,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         @Override
         public SettingsValidationResult validate() {
-            // The page hides the provider columns while the vector model is missing, but a form opened
-            // before the model was removed, or a programmatic save, must not slip past that. Only cloud
-            // profile changes are refused: the enable switch stays writable.
-            if (!embeddingReady() && cloudSettingsDirty()) {
-                return SettingsValidationResult.failure(llm("validation.embedding_missing"));
-            }
+            // The vector model is optional, so a missing embedding file is never a reason to refuse a
+            // cloud profile: chat answers without retrieval, and only retrieval-dependent features stay
+            // off until the model is downloaded.
             // An open form is not a reason to refuse the page save. save is expected to finish the job,
             // so the form is judged here as the change it would make — and applied by save(), never by
             // this method, which the load button polls while the page renders. A form that cannot be
@@ -1315,15 +1320,26 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private void buildEmbeddingStatus(StatusTemplate status) {
             status.row("llm.embedding.model", llm("row.embedding_model"), this::embeddingModelNameStatus)
                     .row("llm.embedding.state", llm("row.embedding_state"), this::embeddingModelStateStatus)
-                    .row("llm.embedding.hint", llm("row.embedding_hint"), () -> llm("status.embedding_gpu_hint"));
+                    .row("llm.embedding.hint", llm("row.embedding_hint"), this::embeddingHintStatus);
         }
 
         /**
-         * Whether the page may show anything below the vector model.
+         * The hint row that tells what the model is for and what is lost without it.
          *
-         * <p>The provider columns are gated on this: without the embedding file there is no
-         * retrieval, so the cloud lane cannot answer and offering its configuration would be a promise the
-         * page cannot keep.
+         * <p>Downloaded, it carries the one warning a player needs before switching to the card.
+         * Missing, it says the lane still chats and names the thing that does not work — a module that
+         * depends on retrieval (Auxilium) simply has nothing to detect and cannot run, and that must be
+         * visible here instead of surfacing as "the other module is broken".</p>
+         */
+        private UiText embeddingHintStatus() {
+            return embeddingReady() ? llm("status.embedding_gpu_hint") : llm("status.embedding_optional_note");
+        }
+
+        /**
+         * Whether the vector model is on disk.
+         *
+         * <p>Only the hint row and the download button follow this now: the rest of the page is not
+         * gated on it, because chat is a cloud lane and answers without retrieval.</p>
          */
         private boolean embeddingReady() {
             LlmModelInfo info = embeddingModel();
