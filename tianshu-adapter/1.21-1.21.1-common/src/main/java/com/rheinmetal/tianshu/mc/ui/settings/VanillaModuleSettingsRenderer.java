@@ -306,7 +306,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 return;
             }
             addIfVisible(new SettingsKeyBindingButton(item.controlX(), item.screenY(), item.controlWidth(),
-                    SettingsLayoutMetrics.CONTROL_HEIGHT, mapping, screen), item.row(), active);
+                    SettingsLayoutMetrics.CONTROL_HEIGHT, mapping, screen).widget(), item.row(), active);
         });
     }
 
@@ -321,7 +321,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             return;
         }
         addIfVisible(new SettingsKeyBindingButton(buttonX, item.screenY(), buttonWidth,
-                SettingsLayoutMetrics.CONTROL_HEIGHT, mapping, screen), item, active);
+                SettingsLayoutMetrics.CONTROL_HEIGHT, mapping, screen).widget(), item, active);
     }
 
     private static KeyMapping keyMapping(String keyMappingName) {

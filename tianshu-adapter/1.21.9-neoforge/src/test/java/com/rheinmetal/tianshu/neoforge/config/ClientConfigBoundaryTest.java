@@ -34,7 +34,8 @@ final class ClientConfigBoundaryTest {
     void debugConfigurationHasOneGlobalSourceOfTruth() throws Exception {
         String source = read(CONFIG_HOST);
 
-        assertTrue(source.contains("DEBUG_ENABLED = builder.define(\"enabled\", false)"));
+        assertTrue(source.contains("DEBUG_ENABLED = builder.define(\"enabled\", com.rheinmetal.tianshu.mc.config.TianshuBuildProfile.debugBuild())"),
+                "the debug default comes from the build profile, not a literal");
         assertTrue(source.contains("public boolean isDebugEnabled()"));
         assertTrue(source.contains("public void setDebugEnabled(boolean enabled)"));
         assertFalse(source.contains("DIAGNOSTICS_ENABLED"));

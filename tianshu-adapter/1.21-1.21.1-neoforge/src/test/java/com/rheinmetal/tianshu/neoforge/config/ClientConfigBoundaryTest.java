@@ -36,7 +36,8 @@ final class ClientConfigBoundaryTest {
 
         // The default follows the build profile: a debug build starts with debugging on, a release build
         // always resolves to off because isDebugEnabled() gates on the profile too.
-        assertTrue(source.contains("DEBUG_ENABLED = builder.define(\"enabled\","));
+        assertTrue(source.contains("DEBUG_ENABLED = builder.define(\"enabled\", com.rheinmetal.tianshu.mc.config.TianshuBuildProfile.debugBuild())"),
+                "the debug default comes from the build profile, not a literal");
         assertTrue(source.contains("TianshuBuildProfile.debugBuild()"));
         assertTrue(source.contains("public boolean isDebugEnabled()"));
         assertTrue(source.contains("public void setDebugEnabled(boolean enabled)"));

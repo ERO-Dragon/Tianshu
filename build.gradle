@@ -28,13 +28,21 @@ def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-c
 // One jar per Minecraft line, and the oldest line the product ships for (1.20.1) runs Java 17: the platform-neutral
 // modules therefore emit 17-compatible bytecode. That is the common denominator — a 21/25 JVM runs 17 bytecode
 // unchanged, while a 17 adapter could not read classes compiled for 21. The adapters are deliberately not covered:
-// each compiles its own Minecraft artifacts, which are compiled for the level of their line. Only the shipped
-// `compileJava` is constrained: test sources never leave the build and may use the build JVM's newer library.
+// each compiles its own Minecraft artifacts, which are compiled for the level of their line.
+//
+// Every shipped source set is constrained, not just `compileJava`: a feature's loader entry lives in its own source
+// set, and a shell left at the build JVM's level cannot be instantiated by a Java 17 game (the adapter then reports
+// "Failed to load class <Entry>" with UnsupportedClassVersionError). Test sources keep the build JVM's level by
+// source-set name, since they never leave the build.
 subprojects {
     if (name in neutralModules) {
-        tasks.withType(JavaCompile).configureEach { compileTask ->
-            if (compileTask.name == 'compileJava') {
-                options.release = 17
+        plugins.withId('java') {
+            sourceSets.configureEach { sourceSet ->
+                if (sourceSet.name != 'test' && !sourceSet.name.endsWith('Test')) {
+                    tasks.named(sourceSet.compileJavaTaskName) {
+                        options.release = 17
+                    }
+                }
             }
         }
     }
@@ -247,6 +255,30 @@ tasks.register('verifyFeatureOptionalDependencies') {
 // not read inside the task, because a task action may not reach into other projects under the configuration
 // cache — and the project graph is exactly what this gate is about.
 def adapterProjects = project(':tianshu-adapter').subprojects as List
+
+// ---------------------------------------------------------------- adapter dependency policy
+// Forge's accessory libraries request log4j through a dynamic range (`2.11.+`). A dynamic selector makes Gradle list
+// the metadata of every declared repository before it can choose, and a host that throws aborts the whole resolution
+// instead of letting the next repository answer — so an adapter that is otherwise fine fails to configure. Rewriting
+// the *selector* to the concrete build that range would have selected keeps resolution static without deciding what
+// the runtime gets: conflict resolution still upgrades log4j to whatever the loader's logging backend needs. Pinning
+// the resolved version instead (resolutionStrategy.force) downgraded the runtime classpath to 2.11.2 next to a 2.19.0
+// backend, which fails at startup with NoSuchMethodError on LoggerContextFactory.
+def adapterDynamicVersionPins = [
+        'org.apache.logging.log4j:log4j-api' : '2.11.2',
+        'org.apache.logging.log4j:log4j-core': '2.11.2',
+]
+adapterProjects.each { adapterProject ->
+    adapterProject.configurations.configureEach { configuration ->
+        configuration.resolutionStrategy.eachDependency { details ->
+            def pinned = adapterDynamicVersionPins["${details.requested.group}:${details.requested.name}".toString()]
+            if (pinned != null && details.requested.version != null && details.requested.version.endsWith('+')) {
+                details.useVersion(pinned)
+            }
+        }
+    }
+}
+
 // The shared adapter layer is not a Gradle project: one source tree is compiled into every loader adapter,
 // so it is scanned by path wherever a rule says "kernel code".
 // Version dimension: one shared tree per Minecraft target, named `common-<target>`, and each adapter names the
@@ -639,6 +671,51 @@ tasks.register('verifyProtocolVersionSingleSource') {
     }
 }
 
+// ---------------------------------------------------------------- settings row coverage
+// A settings row is data: the kernel's SettingsTemplateModel declares the closed set of option entries, and each
+// Minecraft line draws that set with its own widgets, so one variant means one kernel edit plus one renderer edit
+// per shared tree. A tree that misses the variant compiles — its switch is only exhaustive over what its own copy
+// names — and the row silently does not appear on those versions. The expected set is read from the kernel's own
+// `permits` clause, so the gate follows the model instead of repeating its list.
+tasks.register('verifySettingsRenderersCoverOptionEntries') {
+    group = 'verification'
+    description = 'Every shared settings renderer must draw every option-entry variant the kernel model declares.'
+    def modelFile = file('tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
+    def commonTrees = (file('tianshu-adapter').listFiles() ?: [] as File[])
+            .findAll { it.isDirectory() && it.name.endsWith('-common') }
+            .sort { it.name }
+    def rendererOf = { File tree ->
+        new File(tree, 'src/main/java/com/rheinmetal/tianshu/mc/ui/settings/VanillaModuleSettingsRenderer.java')
+    }
+    inputs.file(modelFile)
+    inputs.files(commonTrees.collect(rendererOf).findAll { it.isFile() })
+    doLast {
+        def permits = modelFile.text =~ /(?s)interface\s+OptionEntry\s+permits\s+([^{]+)\{/
+        if (!permits.find()) {
+            throw new GradleException("Cannot read the option-entry set from ${modelFile.name}; the permits clause changed shape")
+        }
+        def variants = permits.group(1).split(',').collect { it.trim().replaceAll('<.*>', '') }.findAll { !it.isEmpty() }
+        def violations = []
+        commonTrees.each { tree ->
+            def renderer = rendererOf(tree)
+            if (!renderer.isFile()) {
+                violations << "${tree.name}: no settings renderer".toString()
+                return
+            }
+            def source = renderer.getText('UTF-8')
+            // A variant name is matched whole: a longer name that merely starts with it is not coverage.
+            def missing = variants.findAll { variant -> !(source =~ /SettingsTemplateModel\.${variant}\b/).find() }
+            if (!missing.isEmpty()) {
+                violations << "${tree.name}: does not draw ${missing.join(', ')}".toString()
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("A settings row exists in the kernel but not on every Minecraft line; add it to "
+                    + "the renderer of each shared tree:\n" + violations.join('\n'))
+        }
+    }
+}
+
 tasks.named('check') {
     dependsOn tasks.named('verifyFeatureIsolation')
     dependsOn tasks.named('verifyFeatureOptionalDependencies')
@@ -649,6 +726,7 @@ tasks.named('check') {
     dependsOn tasks.named('verifyAdapterProperties')
     dependsOn tasks.named('verifyAdapterMatrixCoverage')
     dependsOn tasks.named('verifyProtocolVersionSingleSource')
+    dependsOn tasks.named('verifySettingsRenderersCoverOptionEntries')
 }
 
 // ---------------------------------------------------------------- test concurrency

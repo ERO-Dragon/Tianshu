@@ -38,13 +38,6 @@ def fallbackRepo = repositories.maven {
 repositories.remove(fallbackRepo)
 repositories.add(0, fallbackRepo)
 repositories.removeAll { it.name == 'Mojang Meta' }
-// Forge's accessory libraries ask for log4j with a dynamic version (`2.11.+`). A dynamic version makes Gradle consult
-// every declared repository, including the unreachable primary, so the range is pinned to the 2.11 build Maven Central
-// serves — the same version the range would have selected had every host answered.
-configurations.configureEach {
-    resolutionStrategy.force 'org.apache.logging.log4j:log4j-api:2.11.2', 'org.apache.logging.log4j:log4j-core:2.11.2'
-}
-
 
 version = mod_version
 group = mod_group_id
@@ -61,7 +54,6 @@ def parchmentMappingsVersion = adapterProperties.getProperty('parchment_mappings
 def parchmentMinecraftVersion = adapterProperties.getProperty('parchment_minecraft_version')
 def sharedLayer = adapterProperties.getProperty('shared_layer')
 def sharedLayerRoot = "../${sharedLayer}"
-
 
 // Running the NeoForge client from the Gradle panel is the development path,
 // so it defaults to the Debug channel. Artifact builds remain Release by
@@ -121,7 +113,6 @@ repositories {
 
 neoForge {
     version = neoVersion
-
 
     parchment {
         mappingsVersion = parchmentMappingsVersion
