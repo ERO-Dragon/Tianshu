@@ -6,12 +6,10 @@ import com.rheinmetal.tianshu.client.settings.layout.SettingsScreenLayout;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 
 public final class SettingsScreenChrome {
-    private static final Identifier LIST_BACKGROUND = Identifier.withDefaultNamespace("textures/gui/menu_list_background.png");
+    private static final int LIST_BACKGROUND_COLOR = 0x40000000;
     private static final int HEADER_BACKGROUND = 0x66000000;
     private static final int PANEL_BORDER = 0x66000000;
 
@@ -68,7 +66,7 @@ public final class SettingsScreenChrome {
         if (width <= 0 || height <= 0) {
             return;
         }
-        Screen.extractMenuBackgroundTexture(guiGraphics, LIST_BACKGROUND, x, y, x, y, width, height);
+        guiGraphics.fill(x, y, x + width, y + height, LIST_BACKGROUND_COLOR);
     }
 
     private void drawScrollbar(GuiGraphicsExtractor guiGraphics, SettingsScreenLayout layout, ScrollState scroll) {
