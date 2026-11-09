@@ -158,6 +158,14 @@ public interface WeavingConfiguration {
         return LlmReasoningProfile.NONE;
     }
 
+    /**
+     * The two optional request fields the active entry's endpoint accepts, as configured for that
+     * entry or inherited from its provider profile. The default is the strict OpenAI shape.
+     */
+    default LlmWireCompat getLlmWireCompat() {
+        return LlmWireCompat.DEFAULT;
+    }
+
     default String getLlmEmbeddingModelName() {
         return "";
     }

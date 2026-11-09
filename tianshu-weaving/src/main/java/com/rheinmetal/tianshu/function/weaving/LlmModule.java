@@ -515,7 +515,8 @@ public final class LlmModule implements TianshuManagedModule {
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
                 env::warn,
                 reasoning,
-                requestDeadline
+                requestDeadline,
+                config.getLlmWireCompat()
         );
     }
 

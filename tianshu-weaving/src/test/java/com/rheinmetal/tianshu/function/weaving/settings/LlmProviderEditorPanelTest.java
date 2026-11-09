@@ -273,6 +273,39 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
+    void theEditorWritesTheWireCompatibilityOfACustomEndpoint() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.setEditorSelect("llm.editor.stream_usage", Boolean.FALSE);
+            harness.setEditorSelect("llm.editor.max_tokens_field",
+                    LlmWireCompat.MaxTokensField.MAX_COMPLETION_TOKENS);
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+
+            LlmWireCompat stored = harness.access().getLlmWireCompat("alpha");
+            assertNotNull(stored, "a value that differs from the provider default is stored on the entry");
+            assertFalse(stored.includeStreamUsage());
+            assertEquals(LlmWireCompat.MaxTokensField.MAX_COMPLETION_TOKENS, stored.maxTokensField());
+        }
+    }
+
+    @Test
+    void anUntouchedFormStoresNoWireCompatibilityOverride() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+
+            assertTrue(harness.session().save().success());
+            assertNull(harness.access().getLlmWireCompat("alpha"),
+                    "inheriting the provider default means no override is written");
+        }
+    }
+
+    @Test
     void theFormWritesTheModelCapacityAndACustomLadder() throws Exception {
         try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
                 new WeavingModelEntry("alpha", "alpha", "deepseek", "https://api.deepseek.com/v1",
@@ -321,8 +354,10 @@ final class LlmProviderEditorPanelTest {
             assertEquals(List.of("llm.editor.mode", "llm.editor.provider", "llm.editor.name",
                             "llm.editor.base_url", "llm.editor.context_tier",
                             "llm.editor.reasoning_wire", "llm.editor.reasoning_no_thinking",
-                            "llm.editor.reasoning_levels", "llm.editor.api_key"), optionIds,
-                    "the editor holds the endpoint form, the model's own capacity and ladder: " + optionIds);
+                            "llm.editor.reasoning_levels", "llm.editor.stream_usage",
+                            "llm.editor.max_tokens_field", "llm.editor.api_key"), optionIds,
+                    "the editor holds the endpoint form, the model's own capacity, ladder and wire compatibility: "
+                            + optionIds);
 
             List<String> actionIds = harness.editor().actions().stream()
                     .map(SettingsTemplateModel.ActionEntry::id)
@@ -986,6 +1021,7 @@ final class LlmProviderEditorPanelTest {
         private final Path basePath;
         private final Map<String, String> apiKeys = new LinkedHashMap<>();
         private final Map<String, LlmReasoningProfile> reasoningProfiles = new LinkedHashMap<>();
+        private final Map<String, LlmWireCompat> wireCompat = new LinkedHashMap<>();
         private boolean enabled = true;
         private String customName = "";
         private List<WeavingModelEntry> models;
@@ -1092,6 +1128,20 @@ final class LlmProviderEditorPanelTest {
                 reasoningProfiles.remove(entryId);
             } else {
                 reasoningProfiles.put(entryId, profile);
+            }
+        }
+
+        @Override
+        public LlmWireCompat getLlmWireCompat(String entryId) {
+            return wireCompat.get(entryId);
+        }
+
+        @Override
+        public void setLlmWireCompat(String entryId, LlmWireCompat compat) {
+            if (compat == null) {
+                wireCompat.remove(entryId);
+            } else {
+                wireCompat.put(entryId, compat);
             }
         }
 

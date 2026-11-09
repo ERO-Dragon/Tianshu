@@ -36,6 +36,16 @@ public interface WeavingSettingsAccess extends WeavingConfiguration {
     /** The ladder stored for one entry, or {@code null} when that entry inherits the profile. */
     LlmReasoningProfile getLlmReasoningProfile(String entryId);
 
+    /**
+     * Stores the wire compatibility of one entry, or removes it when {@code compat} is null so the
+     * provider profile (or the build default) applies again. Endpoint data, so it lives in its own key
+     * like the credential and the ladder.
+     */
+    void setLlmWireCompat(String entryId, LlmWireCompat compat);
+
+    /** The compatibility stored for one entry, or {@code null} when that entry inherits it. */
+    LlmWireCompat getLlmWireCompat(String entryId);
+
     /*
      * Embedding position. The same model runs either on the card or on the CPU, so this is one value
      * rather than a model property; the read side stays on the configuration port.

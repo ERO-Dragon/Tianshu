@@ -37,6 +37,13 @@
 
 空消息列表会在发出请求前被拒绝，错误码 `LLM_EMPTY_MESSAGES`。
 
+两个可选请求字段由“条目兼容开关”决定（`wireCompat`，设置页自定义模式可编辑）：
+
+- `stream_options.include_usage` 只在条目允许时发送——老网关收到未知字段会回 400，而不是忽略；
+- 生成长度上限默认 `max_tokens`；新模型可以改成 `max_completion_tokens`。
+
+内置 DeepSeek 条目使用默认值（发送 include_usage、使用 max_tokens）。
+
 ### 2.2 推理档位
 
 调用方只使用**序号**：每个模型有一条从 0 开始的有序档位表，`0` 是模型支持的非思考档，其余序号依次是提供商官方的档位名。表长与名称由提供商 profile 的数据决定，织言不写死 `low/medium/high` 这类字面量。
@@ -78,6 +85,7 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 - 结束帧：`finished=true`，带 `finishType`（`COMPLETED` / `CANCELLED` / `FAILED`）、累计 thinking 文本与 usage；发生失败时带 `errorMessage`。
 - 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方应按 `index` 拼接——分片经协议运行时派发，可能由不同工作线程送达，按到达顺序拼接会打乱正文。
 - 取消或中断时：结束帧 `CANCELLED`，终态结果同样为 `CANCELLED`，正文是本轮已经发出的部分。
+- 供应商以 `finish_reason=content_filter` 结束流时按失败处理：终态 `FAILED`、`errorCode=LLM_INFERENCE_FAILED`、消息含 `REMOTE_LLM_CONTENT_FILTERED`。被过滤机制截断的回复不能当作完整回答交给调用方。
 
 ### 2.5 终态结果
 
@@ -91,6 +99,13 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 | `usage` | `promptTokens` / `completionTokens` / `thinkingTokens` / `outputTokens` / `totalTokens` |
 
 `usage` 来自供应商返回的真实用量；`outputTokens = completionTokens + thinkingTokens`。未报告时为零值，不猜测。
+
+响应侧对中转站的字段差异是宽容的，不假设只有一种写法：
+
+- reasoning 依次读 `reasoning_content` / `reasoning` / `reasoning_text`，取第一个非空（有的网关两个字段同时给相同内容，取第一个避免重复）；
+- 缓存命中读 `prompt_tokens_details.cached_tokens`（OpenAI / OpenRouter）、`prompt_cache_hit_tokens`（DeepSeek）、`cached_tokens`（Kimi）；只有 hit 而没有 miss 时，用 `prompt_tokens − hit` 推导 miss；
+- `usage` 可以出现在任意一帧，也接受旧式 `choices[0].usage`；
+- `[DONE]` 缺失时按流结束处理。
 
 ### 2.6 错误码
 

@@ -246,6 +246,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private final Map<String, String> pendingApiKeys = new LinkedHashMap<>();
         /** Ladders staged by the form, keyed by entry id; {@code null} value = inherit the profile. */
         private final Map<String, LlmReasoningProfile> pendingReasoning = new LinkedHashMap<>();
+        /** Wire compatibility staged by the form, keyed by entry id; {@code null} value = inherit it. */
+        private final Map<String, LlmWireCompat> pendingWireCompat = new LinkedHashMap<>();
         /** Credentials of deleted models, cleared on save so no orphan secret stays behind. */
         private final Set<String> retiredApiKeyIds = new LinkedHashSet<>();
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
@@ -388,6 +390,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             retiredApiKeyIds.add(entry.id());
             // A deleted entry takes its staged ladder with it, so no override outlives the entry.
             pendingReasoning.put(entry.id(), null);
+            pendingWireCompat.put(entry.id(), null);
             if (entry.id().equals(activeModelId.get())) {
                 activeModelId.set(next.get(0).id());
             }
@@ -415,7 +418,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     : EditorMode.CUSTOM;
             modelEditor = new ModelEditorBuffer(entry.id(), mode, entry.providerId(), entry.displayName(),
                     entry.baseUrl(), entry.models(), entry.activeModelId(), "",
-                    reasoningFor(entry));
+                    reasoningFor(entry), wireCompatFor(entry));
             refreshSettingsScreen();
         }
 
@@ -429,6 +432,16 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return provider == null ? LlmReasoningProfile.NONE : provider.reasoning();
         }
 
+        /** The optional request fields the entry accepts today: its override, else its provider's. */
+        private LlmWireCompat wireCompatFor(WeavingModelEntry entry) {
+            LlmWireCompat stored = config.getLlmWireCompat(entry.id());
+            if (stored != null) {
+                return stored;
+            }
+            LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(entry.providerId());
+            return provider == null ? LlmWireCompat.DEFAULT : provider.wireCompat();
+        }
+
         /** A new entry starts from the shipped default provider; custom API is one switch away. */
         private void startNewProvider() {
             if (modelEditor != null) {
@@ -437,7 +450,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.defaultProvider();
             modelEditor = new ModelEditorBuffer(null, EditorMode.BUILTIN, provider.id(), provider.id(),
                     provider.baseUrl(), provider.defaultCatalog(), provider.defaultModelId(), "",
-                    provider.reasoning());
+                    provider.reasoning(), provider.wireCompat());
             refreshSettingsScreen();
         }
 
@@ -533,6 +546,16 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     .text("llm.editor.reasoning_levels", llm("option.reasoning_levels"),
                             editor::reasoningLevels, editor::setReasoningLevels,
                             editor::reasoningHasControl, editor::customMode)
+                    // Two optional request fields relays disagree on. Custom mode because a shipped
+                    // profile defines them; a gateway that rejects either is by definition custom.
+                    .select("llm.editor.stream_usage", llm("option.stream_usage"),
+                            List.of(Boolean.TRUE, Boolean.FALSE),
+                            editor::includeStreamUsage, this::streamUsageLabel,
+                            editor::setIncludeStreamUsage, () -> true, editor::customMode)
+                    .select("llm.editor.max_tokens_field", llm("option.max_tokens_field"),
+                            List.of(LlmWireCompat.MaxTokensField.values()),
+                            editor::maxTokensField, this::maxTokensFieldLabel,
+                            editor::setMaxTokensField, () -> true, editor::customMode)
                     // Last and write-only. The widget is always empty: only the fact that a credential is
                     // stored is read back, so a blank field keeps the key and a typed value replaces it.
                     .text("llm.editor.api_key", apiKeyLabel, editor::apiKey, editor::setApiKey);
@@ -568,6 +591,19 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         private UiText booleanOptionLabel(Boolean value) {
             return Boolean.TRUE.equals(value) ? common("yes") : common("no");
+        }
+
+        private UiText streamUsageLabel(Boolean include) {
+            return Boolean.TRUE.equals(include)
+                    ? llm("option.stream_usage.include")
+                    : llm("option.stream_usage.omit");
+        }
+
+        private UiText maxTokensFieldLabel(LlmWireCompat.MaxTokensField field) {
+            return switch (field == null ? LlmWireCompat.MaxTokensField.MAX_TOKENS : field) {
+                case MAX_TOKENS -> llm("option.max_tokens_field.max_tokens");
+                case MAX_COMPLETION_TOKENS -> llm("option.max_tokens_field.max_completion_tokens");
+            };
         }
 
         private UiText providerOptionLabel(String providerId) {
@@ -660,7 +696,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     baseUrl,
                     catalog.specs(),
                     editor.activeModelId()
-            ), trimmed(editor.apiKey()), reasoningPlan(editor, providerId));
+            ), trimmed(editor.apiKey()), reasoningPlan(editor, providerId), wireCompatPlan(editor, providerId));
         }
 
         /**
@@ -676,6 +712,17 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(providerId);
             LlmReasoningProfile inherited = profile == null ? LlmReasoningProfile.NONE : profile.reasoning();
             return ladder.equals(inherited) ? null : ladder;
+        }
+
+        /**
+         * The compatibility the form describes, or {@code null} when the entry should inherit it: an
+         * untouched form never writes an override that just restates the provider's defaults.
+         */
+        private LlmWireCompat wireCompatPlan(ModelEditorBuffer editor, String providerId) {
+            LlmWireCompat compat = editor.wireCompat();
+            LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(providerId);
+            LlmWireCompat inherited = profile == null ? LlmWireCompat.DEFAULT : profile.wireCompat();
+            return compat.equals(inherited) ? null : compat;
         }
 
         /**
@@ -704,6 +751,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             // Null means "inherit the shipped profile", which is a write too: it clears any earlier
             // override instead of leaving a stale ladder behind.
             pendingReasoning.put(entry.id(), plan.reasoning());
+            pendingWireCompat.put(entry.id(), plan.wireCompat());
             // A closed form has no catalog to pick from, so any window on it ends with the form.
             modelEditor = null;
             modelPicker = null;
@@ -1124,7 +1172,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty()
-                    || !pendingReasoning.isEmpty();
+                    || !pendingReasoning.isEmpty()
+                    || !pendingWireCompat.isEmpty();
         }
 
         @Override
@@ -1209,7 +1258,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty()
-                    || !pendingReasoning.isEmpty();
+                    || !pendingReasoning.isEmpty()
+                    || !pendingWireCompat.isEmpty();
             // Only a staged position is written. A save that never touched the button must not rewrite the
             // key from whatever this page happened to read first, which is what turned a stale page into a
             // stale file. The value is read before the transaction writes, so this is the change about to be
@@ -1239,6 +1289,12 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 transaction.write(() -> config.getLlmReasoningProfile(entryId),
                         value -> config.setLlmReasoningProfile(entryId, value), profile);
             }
+            for (Map.Entry<String, LlmWireCompat> pending : pendingWireCompat.entrySet()) {
+                String entryId = pending.getKey();
+                LlmWireCompat compat = pending.getValue();
+                transaction.write(() -> config.getLlmWireCompat(entryId),
+                        value -> config.setLlmWireCompat(entryId, value), compat);
+            }
             transaction.commit(config::save);
             // Accepted only after persistence succeeded: a failed save keeps the staged position so the
             // player can retry it instead of finding the button silently back at the stored value.
@@ -1246,6 +1302,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
             pendingReasoning.clear();
+            pendingWireCompat.clear();
             if (!enabled.get()) {
                 moduleService.unload();
             } else if (cloudSettingsChanged || embeddingPositionChanged) {
@@ -1264,6 +1321,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
             pendingReasoning.clear();
+            pendingWireCompat.clear();
             modelEditor = null;
             modelPicker = null;
             catalogFetching = false;
@@ -1546,19 +1604,28 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          *
          * @param entry   the provider the form would produce, {@code null} when it cannot be applied
          * @param apiKey  credential typed into the form, empty when none was typed
+         * @param reasoning the ladder to store, {@code null} when the entry inherits the profile
+         * @param wireCompat the compatibility to store, {@code null} when the entry inherits it
          * @param failure why the form cannot be applied, {@code null} when it can
          */
-        private record EditorPlan(WeavingModelEntry entry, String apiKey, LlmReasoningProfile reasoning, UiText failure) {
+        private record EditorPlan(
+                WeavingModelEntry entry,
+                String apiKey,
+                LlmReasoningProfile reasoning,
+                LlmWireCompat wireCompat,
+                UiText failure
+        ) {
             private static EditorPlan applied(
                     WeavingModelEntry entry,
                     String apiKey,
-                    LlmReasoningProfile reasoning
+                    LlmReasoningProfile reasoning,
+                    LlmWireCompat wireCompat
             ) {
-                return new EditorPlan(entry, apiKey == null ? "" : apiKey, reasoning, null);
+                return new EditorPlan(entry, apiKey == null ? "" : apiKey, reasoning, wireCompat, null);
             }
 
             private static EditorPlan rejected(UiText failure) {
-                return new EditorPlan(null, "", null, failure);
+                return new EditorPlan(null, "", null, null, failure);
             }
 
             private boolean applicable() {
@@ -1648,10 +1715,13 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private boolean reasoningIncludesNoThinking;
         private String reasoningLevels;
         private int reasoningDefaultTier;
+        /** Optional request fields as the form shows them. */
+        private boolean includeStreamUsage;
+        private LlmWireCompat.MaxTokensField maxTokensField;
 
         private ModelEditorBuffer(String entryId, EditorMode mode, String providerId, String displayName,
                                   String baseUrl, List<WeavingModelSpec> models, String activeModelId, String apiKey,
-                                  LlmReasoningProfile reasoning) {
+                                  LlmReasoningProfile reasoning, LlmWireCompat wireCompat) {
             this.entryId = entryId;
             this.mode = mode == null ? EditorMode.BUILTIN : mode;
             this.providerId = providerId;
@@ -1661,6 +1731,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             this.activeModelId = activeModelId;
             this.apiKey = apiKey;
             applyReasoning(reasoning);
+            applyWireCompat(wireCompat);
         }
 
         private static List<CatalogRowBuffer> catalogRowsOf(List<WeavingModelSpec> models) {
@@ -1730,6 +1801,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             this.rows = catalogRowsOf(provider.defaultCatalog());
             this.activeModelId = provider.defaultModelId();
             applyReasoning(provider.reasoning());
+            applyWireCompat(provider.wireCompat());
         }
 
         // --- reasoning ladder -------------------------------------------------------------------
@@ -1783,6 +1855,36 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 }
             }
             return new LlmReasoningProfile(reasoningWire, reasoningIncludesNoThinking, levels, reasoningDefaultTier);
+        }
+
+        // --- wire compatibility -----------------------------------------------------------------
+
+        private void applyWireCompat(LlmWireCompat compat) {
+            LlmWireCompat effective = compat == null ? LlmWireCompat.DEFAULT : compat;
+            this.includeStreamUsage = effective.includeStreamUsage();
+            this.maxTokensField = effective.maxTokensField();
+        }
+
+        private boolean includeStreamUsage() {
+            return includeStreamUsage;
+        }
+
+        private void setIncludeStreamUsage(boolean includeStreamUsage) {
+            this.includeStreamUsage = includeStreamUsage;
+        }
+
+        private LlmWireCompat.MaxTokensField maxTokensField() {
+            return maxTokensField;
+        }
+
+        private void setMaxTokensField(LlmWireCompat.MaxTokensField maxTokensField) {
+            this.maxTokensField = maxTokensField == null
+                    ? LlmWireCompat.MaxTokensField.MAX_TOKENS
+                    : maxTokensField;
+        }
+
+        private LlmWireCompat wireCompat() {
+            return new LlmWireCompat(includeStreamUsage, maxTokensField);
         }
 
         private String providerId() {

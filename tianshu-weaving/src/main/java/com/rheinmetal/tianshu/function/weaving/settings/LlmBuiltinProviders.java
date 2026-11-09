@@ -32,7 +32,9 @@ public final class LlmBuiltinProviders {
                     true,
                     List.of("low", "high", "max"),
                     1
-            ));
+            ),
+            // DeepSeek accepts both optional fields, and its documented completion limit is max_tokens.
+            LlmWireCompat.DEFAULT);
 
     /** Every built-in provider, in the order the form lists them; the first one is the default. */
     private static final List<Provider> PROVIDERS = List.of(DEEPSEEK);
@@ -88,6 +90,7 @@ public final class LlmBuiltinProviders {
      * @param defaultModelId     provider model id the profile uses
      * @param contextWindowTokens declared context window of that model
      * @param reasoning          the reasoning ladder this endpoint offers
+     * @param wireCompat         the optional request fields this endpoint accepts
      */
     public record Provider(
             String id,
@@ -95,7 +98,8 @@ public final class LlmBuiltinProviders {
             String baseUrl,
             String defaultModelId,
             int contextWindowTokens,
-            LlmReasoningProfile reasoning
+            LlmReasoningProfile reasoning,
+            LlmWireCompat wireCompat
     ) {
         public Provider {
             id = requireText(id, WeavingConfiguration.DEFAULT_LLM_PROVIDER_ID);
@@ -106,6 +110,7 @@ public final class LlmBuiltinProviders {
                     ? contextWindowTokens
                     : WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
             reasoning = reasoning == null ? LlmReasoningProfile.NONE : reasoning;
+            wireCompat = wireCompat == null ? LlmWireCompat.DEFAULT : wireCompat;
         }
 
         /**
