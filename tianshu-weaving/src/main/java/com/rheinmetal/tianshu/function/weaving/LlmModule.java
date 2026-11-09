@@ -206,7 +206,7 @@ public final class LlmModule implements TianshuManagedModule {
         if (config.isLlmEnabled()) {
             publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
             markGenerationCapabilityFailed("LLM model is not loaded");
-            markStorageCapabilitiesReady();
+            syncStorageCapabilities();
             if (moduleService != null) {
                 moduleService.markStopped();
             }
@@ -293,7 +293,7 @@ public final class LlmModule implements TianshuManagedModule {
             return;
         }
         context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_REQUEST, moduleId());
-        markStorageCapabilitiesReady();
+        syncStorageCapabilities();
     }
 
     private void markGenerationCapabilityFailed(String reason) {
@@ -315,7 +315,7 @@ public final class LlmModule implements TianshuManagedModule {
      * and a consumer that reads capability state must see "not available" while no vector lane is
      * bound, instead of discovering it one failed request later.</p>
      */
-    private void markStorageCapabilitiesReady() {
+    private void syncStorageCapabilities() {
         ModuleRuntimeContext context = runtimeContext;
         if (context != null) {
             context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY, moduleId());
@@ -581,7 +581,7 @@ public final class LlmModule implements TianshuManagedModule {
      */
     private void reportStartFailure(String statusKey, String reason) {
         markGenerationCapabilityFailed(reason);
-        markStorageCapabilitiesReady();
+        syncStorageCapabilities();
         if (moduleService != null) {
             moduleService.markFailed(statusKey);
         }
@@ -706,7 +706,7 @@ public final class LlmModule implements TianshuManagedModule {
             }
             if (config.isLlmEnabled()) {
                 markGenerationCapabilityFailed("LLM model is not loaded");
-                markStorageCapabilitiesReady();
+                syncStorageCapabilities();
             } else {
                 disableCapabilities();
             }
@@ -729,6 +729,11 @@ public final class LlmModule implements TianshuManagedModule {
      * is retracted when a later load succeeds.</p>
      */
     private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
+        if (!config.isLlmEnabled()) {
+            // A load can settle after the player switched the module off; the disabled state owns the
+            // capability states from then on, and a late report must not revive them.
+            return;
+        }
         switch (report.outcome()) {
             case READY -> {
                 embeddingRuntime.bind(engineProvider.embeddingService());
@@ -747,7 +752,7 @@ public final class LlmModule implements TianshuManagedModule {
         }
         // The load settles after the lane is already running, so the capability state has to follow it:
         // a model that finished loading turns the RAG data plane ready, a failed one turns it off.
-        markStorageCapabilitiesReady();
+        syncStorageCapabilities();
     }
 
     /** The status a module reports when it is not — or no longer — running. */
