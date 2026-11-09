@@ -181,8 +181,9 @@ record LLMRuntimeSnapshotPayload(
 ## 5. 运行时
 
 - 云端通道只校验配置（地址、密钥、模型）；启动不发送探测请求，网络断开不影响模块就绪。
-- 上下文容量来自所选模型条目声明的 `contextWindowTokens`（tier 值，例如 100K / 200K / 500K）。预算公式为
+- 上下文容量来自所选模型条目声明的 `contextWindowTokens`（档位 50K / 100K / 200K / 500K / 1M，或自定义值）。预算公式为
   `容量 − 512 输出保留 − headroom`，headroom 为 prompt 窗口的 6.25%，钳位 4096..32768 并向上取整到 1024。
+- 条目声明的是“织言对调用方承诺的预算”，不是供应商原始上限：预设模型用预设窗口；清单外、实时列表新增或手输 id 的模型默认 **200K**（`WeavingContextTiers.defaultWindow()`）。玩家可在自定义模式里选档位，或选“自定义…”直接填 tokens。织言**只公布、不拦截**，超预算请求不会在这里被拒绝或裁剪。
 - 向量引擎是本机唯一加载的模型：进世界后延迟数秒在模型加载 lane 上启动；GPU 失败自动回落 CPU（`DEGRADED`），两级都失败才 `UNAVAILABLE`。
 - **向量模型是可选的**：未下载时云端通道照常工作，`STATUS` 报 `embeddingAvailable=false`，只有检索、`EMBED` 以及依赖检索的模组（如辅星）不可用。设置页不以“已下载”作为配置云端模型的前提。
 - 向量引擎起不来**不会**让云端通道失败：聊天不依赖检索，此时只有 RAG / `EMBED` 报不可用。
@@ -190,6 +191,12 @@ record LLMRuntimeSnapshotPayload(
 - 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。请求本身不产生映迹活动，那属于调用方的一轮对话。
 - 取消或线程中断会中止底层 HTTP 交换，而不是让读者线程继续读到超时；中断标志会被恢复，交给上层决定。
 - 每个请求还会在 scheduled lane 上挂一个截止任务：供应商接上流后若不再发字节，截止到点会关闭响应体并按 `REMOTE_LLM_STREAM_TIMEOUT` 报失败，不会让读者线程一直阻塞在 `readLine()` 上。
+- **内置提供商预设**：DeepSeek、OpenAI、xAI（Grok）、Google Gemini、通义千问（DashScope 兼容模式）、Moonshot Kimi、智谱 GLM。每个预设固定一个默认模型和一小份常用模型清单，端点、窗口与默认模型都是数据；玩家可在表单里切换模型，或用“选择模型…”从端点实时拉取。
+  - 预设在 `com/rheinmetal/tianshu/function/weaving/settings/llm_providers.json`，不是 Java 常量：上游改名只改数据，后续刷新预设也可以只替换资源。
+  - 预设的模型清单/窗口取自 DeepSeek Harness 的 provider catalog（2026-11 快照），非官方承诺；上游改 ID 时用自定义模式覆盖即可。
+  - 只有 OpenAI 与 Gemini 预设携带 `OPENAI_EFFORT` 推理梯子；xAI / Qwen / Kimi / GLM 不猜 `reasoning_effort`，梯子为“无控制”，玩家可在自定义模式自行声明。
+  - OpenAI / xAI 预设使用 `max_completion_tokens`；其余使用 `max_tokens`。
+  - `/models` 只返回 id，不含上下文窗口：picker 对预设清单内已有的模型使用清单里的窗口，清单外的新模型才回落到预设默认窗口。
 
 ## 6. 边界
 

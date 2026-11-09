@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.ToIntFunction;
 
 public final class WeavingSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = LlmProtocolAdapter.MODULE_ID;
@@ -527,10 +528,14 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     // Capacity of the model in use. Hidden in built-in mode because the shipped profile
                     // defines that entry entirely: a different window is a custom configuration, and
                     // switching to custom API is how the player says so.
-                    .select("llm.editor.context_tier", llm("option.context_tier"),
-                            contextTierChoices(editor.activeWindowTokens()),
-                            editor::activeWindowTokens, this::contextTierLabel,
-                            editor::setActiveWindowTokens, () -> true, editor::customMode)
+                    .select("llm.editor.context_window", llm("option.context_window"),
+                            contextWindowChoices(),
+                            editor::windowChoice, this::contextWindowChoiceLabel,
+                            editor::setWindowChoice, () -> true, editor::customMode)
+                    // Revealed only while the select is on "custom"; one value, one place to read it.
+                    .text("llm.editor.context_window_custom", llm("option.context_window_custom"),
+                            editor::customWindowText, editor::setCustomWindowText,
+                            editor::customWindowSelected, editor::customWindowVisible)
                     // Reasoning ladder of a custom endpoint. The shipped profiles already carry theirs,
                     // and a built-in entry is defined by its profile, so this belongs to custom mode.
                     .select("llm.editor.reasoning_wire", llm("option.reasoning_wire"),
@@ -562,23 +567,24 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         }
 
         /**
-         * The selectable capacities, plus whatever the entry already declares so a hand-set or legacy
-         * window still renders instead of silently snapping to the nearest tier when the form opens.
+         * The dropdown: the canonical tiers, plus the "custom" sentinel. A value between tiers (a preset
+         * window such as 272,000, or a hand-typed one) is not added to this list — it is represented by
+         * the sentinel and edited in the text field below, so the two controls can never disagree.
          */
-        private List<Integer> contextTierChoices(int currentWindow) {
+        private List<Integer> contextWindowChoices() {
             List<Integer> choices = new ArrayList<>();
             for (int tier : WeavingContextTiers.values()) {
                 choices.add(tier);
             }
-            if (currentWindow > 0 && !choices.contains(currentWindow)) {
-                choices.add(currentWindow);
-                choices.sort(Integer::compareTo);
-            }
+            choices.add(ModelEditorBuffer.CUSTOM_WINDOW_CHOICE);
             return List.copyOf(choices);
         }
 
-        private UiText contextTierLabel(int windowTokens) {
-            return LlmUsageValueFormat.tokens(windowTokens);
+        private UiText contextWindowChoiceLabel(Integer choice) {
+            if (choice == null || choice == ModelEditorBuffer.CUSTOM_WINDOW_CHOICE) {
+                return llm("option.context_window.custom");
+            }
+            return LlmUsageValueFormat.tokens(choice);
         }
 
         private UiText reasoningWireLabel(LlmReasoningWire wire) {
@@ -685,6 +691,11 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 // keeps the identity it is stored with, because the form does not show that field.
                 providerId = editor.entryId() == null ? WeavingModelEntry.CUSTOM_PROVIDER_ID : editor.providerId();
             }
+            if (!editor.activeWindowValid()) {
+                // Caught here, before the catalog is built: a custom text that is not a capacity must
+                // never fall through to WeavingModelSpec's default tier.
+                return EditorPlan.rejected(contextWindowRangeMessage());
+            }
             CatalogPlan catalog = catalogPlan(editor);
             if (!catalog.applicable()) {
                 return EditorPlan.rejected(catalog.failure());
@@ -761,9 +772,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          * The edited catalog in the shape the storage layer wants.
          *
          * <p>Every row keeps the window it was created with, except the model in use: that one carries the
-         * capacity the form shows, which is how a custom endpoint declares something other than the
-         * shipped default. The capacity floor itself is checked once, on the provider that ends up in
-         * use ({@link #validate()}), so a legacy row another row still carries cannot block the form.
+         * window the form's control declares, which is how a custom endpoint states something other than
+         * the shipped default. That value is range-checked by {@link #editorPlan()} before this runs, so
+         * an unreadable custom text never reaches {@link WeavingModelSpec}'s fallback.
          */
         private CatalogPlan catalogPlan(ModelEditorBuffer editor) {
             if (editor.rowCount() == 0) {
@@ -779,7 +790,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     return CatalogPlan.rejected(llm("validation.duplicate_model", modelId));
                 }
                 specs.add(new WeavingModelSpec(modelId, trimmed(editor.displayNameAt(index)),
-                        editor.windowTokensAt(index)));
+                        editor.isActiveModelAt(index) ? editor.activeWindowTokens() : editor.windowTokensAt(index)));
             }
             return CatalogPlan.applied(List.copyOf(specs));
         }
@@ -799,8 +810,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         /** Accepted window range of one model entry, expressed by the tier policy and the storage bound. */
         private boolean validContextWindow(int tokens) {
-            return tokens <= WeavingConfiguration.MAX_LLM_CONTEXT_WINDOW_TOKENS
-                    && WeavingContextTiers.supportsTier(WeavingContextTiers.minimumTier(), tokens);
+            return WeavingContextTiers.isValidWindow(tokens);
         }
 
         private UiText contextWindowRangeMessage() {
@@ -927,7 +937,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
             @Override
             public void addCustomModel() {
-                buffer.addCustomModel(defaultWindowFor(editor.providerId()));
+                buffer.addCustomModel(windowForModel(editor.providerId(), buffer.customModelId()));
             }
 
             @Override
@@ -976,7 +986,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     return;
                 }
                 if (result.success()) {
-                    buffer.replaceWithFetchedModels(result.modelIds(), defaultWindowFor(editor.providerId()));
+                    buffer.replaceWithFetchedModels(result.modelIds(),
+                            modelId -> windowForModel(editor.providerId(), modelId));
                     status = llm("catalog.fetched", result.modelIds().size());
                     return;
                 }
@@ -991,12 +1002,16 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             }
         }
 
-        /** The context window a model the picker adds starts from: the shipped profile's, or the default. */
-        private int defaultWindowFor(String providerId) {
+        /**
+         * The window for one model id: the preset catalog is authoritative for a model it lists; every
+         * other id starts from the single 200K declaration rather than the provider's default model.
+         * The live list carries ids, not windows, so this is what keeps "fetched" and "shipped" models
+         * on the same declaration.
+         */
+        private int windowForModel(String providerId, String modelId) {
+            int fallback = WeavingContextTiers.defaultWindow();
             LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(providerId);
-            return provider == null
-                    ? WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS
-                    : provider.contextWindowTokens();
+            return provider == null ? fallback : provider.contextWindowFor(modelId, fallback);
         }
 
         /**
@@ -1700,6 +1715,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
      * {@code ModelPickerSession#confirm()}.
      */
     private static final class ModelEditorBuffer {
+        /** Select sentinel for "the window is typed below, not one of the tiers". */
+        static final int CUSTOM_WINDOW_CHOICE = -1;
+
         private final String entryId;
         private EditorMode mode;
         private String providerId;
@@ -1710,6 +1728,10 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         /** The model id this provider would use if the form were applied now. */
         private String activeModelId;
         private String apiKey;
+        /** Window control of the model in use: a tier value, or {@link #CUSTOM_WINDOW_CHOICE}. */
+        private int windowChoice;
+        /** The typed window while {@link #windowChoice} is custom; never the source of truth by itself. */
+        private String customWindowText;
         /** Reasoning ladder as the form shows it; {@link LlmReasoningWire#NONE} means no control. */
         private LlmReasoningWire reasoningWire;
         private boolean reasoningIncludesNoThinking;
@@ -1730,6 +1752,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             this.rows = catalogRowsOf(models);
             this.activeModelId = activeModelId;
             this.apiKey = apiKey;
+            syncWindowChoice();
             applyReasoning(reasoning);
             applyWireCompat(wireCompat);
         }
@@ -1800,6 +1823,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             // The profile is the definition of a built-in provider, its model catalog included.
             this.rows = catalogRowsOf(provider.defaultCatalog());
             this.activeModelId = provider.defaultModelId();
+            syncWindowChoice();
             applyReasoning(provider.reasoning());
             applyWireCompat(provider.wireCompat());
         }
@@ -1926,24 +1950,96 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return rows.get(index).windowTokens();
         }
 
-        /** Declared capacity of the model in use, read from its row so the two cannot disagree. */
-        private int activeWindowTokens() {
-            String active = activeModelId();
+        /** Whether the row at {@code index} is the model the form would put to work. */
+        private boolean isActiveModelAt(int index) {
+            return index >= 0 && index < rows.size()
+                    && trimmed(rows.get(index).modelId()).equals(activeModelId());
+        }
+
+        // --- window of the model in use ---------------------------------------------------------
+        /*
+         * One control, one source of truth: the select says "a tier" or "custom", and the effective
+         * window is derived from that pair on read. The catalog rows are not rewritten per keystroke;
+         * catalogPlan substitutes this value for the active row when the form is applied.
+         */
+
+        /** Declared capacity of the model in use as stored in its row; the starting point of the control. */
+        private int activeRowWindowTokens() {
             for (CatalogRowBuffer row : rows) {
-                if (trimmed(row.modelId()).equals(active)) {
+                if (trimmed(row.modelId()).equals(activeModelId())) {
                     return row.windowTokens();
                 }
             }
-            return WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
+            return WeavingContextTiers.defaultWindow();
         }
 
-        private void setActiveWindowTokens(int windowTokens) {
-            String active = activeModelId();
-            List<CatalogRowBuffer> next = new ArrayList<>(rows.size());
-            for (CatalogRowBuffer row : rows) {
-                next.add(trimmed(row.modelId()).equals(active) ? row.withWindowTokens(windowTokens) : row);
+        /** Points the control at the row's window: a matching tier, or custom with the value prefilled. */
+        private void syncWindowChoice() {
+            int current = activeRowWindowTokens();
+            if (WeavingContextTiers.isTier(current)) {
+                windowChoice = current;
+                customWindowText = "";
+            } else {
+                windowChoice = CUSTOM_WINDOW_CHOICE;
+                customWindowText = String.valueOf(current);
             }
-            rows = next;
+        }
+
+        private int windowChoice() {
+            return windowChoice;
+        }
+
+        private void setWindowChoice(Integer choice) {
+            if (choice == null) {
+                return;
+            }
+            if (choice == CUSTOM_WINDOW_CHOICE) {
+                if (windowChoice != CUSTOM_WINDOW_CHOICE) {
+                    // Seed the text with the value the form currently declares, so "custom" is an edit,
+                    // not a reset to an empty field.
+                    customWindowText = String.valueOf(activeRowWindowTokens());
+                }
+                windowChoice = CUSTOM_WINDOW_CHOICE;
+                return;
+            }
+            windowChoice = choice;
+            customWindowText = "";
+        }
+
+        private String customWindowText() {
+            return customWindowText == null ? "" : customWindowText;
+        }
+
+        private void setCustomWindowText(String text) {
+            customWindowText = text == null ? "" : text;
+        }
+
+        private boolean customWindowSelected() {
+            return windowChoice == CUSTOM_WINDOW_CHOICE;
+        }
+
+        private boolean customWindowVisible() {
+            return customMode() && customWindowSelected();
+        }
+
+        /**
+         * The window the form would declare for the model in use; negative when the custom text is not
+         * a number. Callers check {@link #activeWindowValid()} before treating it as a capacity.
+         */
+        private int activeWindowTokens() {
+            if (windowChoice != CUSTOM_WINDOW_CHOICE) {
+                return windowChoice;
+            }
+            try {
+                return Integer.parseInt(trimmed(customWindowText));
+            } catch (NumberFormatException notANumber) {
+                return -1;
+            }
+        }
+
+        /** Whether the value can be saved: readable and inside the declared range. */
+        private boolean activeWindowValid() {
+            return WeavingContextTiers.isValidWindow(activeWindowTokens());
         }
 
         /**
@@ -1967,6 +2063,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private void replaceCatalog(List<CatalogRowBuffer> rows, String activeModelId) {
             this.rows = catalogCopiesOf(rows);
             this.activeModelId = resolveActiveModelId(activeModelId);
+            syncWindowChoice();
         }
 
         private String resolveActiveModelId(String candidate) {
@@ -2031,10 +2128,6 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         private CatalogRowBuffer copy() {
             return new CatalogRowBuffer(modelId, displayName, contextWindowTokens);
-        }
-
-        private CatalogRowBuffer withWindowTokens(int windowTokens) {
-            return new CatalogRowBuffer(modelId, displayName, windowTokens);
         }
 
         private String modelId() {
@@ -2159,9 +2252,10 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          *
          * <p>A model that is already configured keeps its display name and window: the provider lists ids
          * only, so re-reading the list must not throw away what is already known about a model. New ids
-         * arrive with the id as their display name and the provider's preset window.
+         * arrive with the id as their display name and {@code windowFor}'s window — the preset catalog's
+         * when it lists the model, the provider default otherwise.
          */
-        private void replaceWithFetchedModels(List<String> modelIds, int contextWindowTokens) {
+        private void replaceWithFetchedModels(List<String> modelIds, ToIntFunction<String> windowFor) {
             if (modelIds == null || modelIds.isEmpty()) {
                 return;
             }
@@ -2173,7 +2267,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 }
                 CatalogRowBuffer existing = rowFor(id);
                 next.add(existing == null
-                        ? CatalogRowBuffer.of(WeavingModelSpec.of(id, contextWindowTokens))
+                        ? CatalogRowBuffer.of(WeavingModelSpec.of(id, windowFor.applyAsInt(id)))
                         : existing.copy());
             }
             if (next.isEmpty()) {

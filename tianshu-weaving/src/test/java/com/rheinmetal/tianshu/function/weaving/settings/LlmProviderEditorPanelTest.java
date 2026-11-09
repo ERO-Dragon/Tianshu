@@ -311,7 +311,7 @@ final class LlmProviderEditorPanelTest {
                 new WeavingModelEntry("alpha", "alpha", "deepseek", "https://api.deepseek.com/v1",
                         List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
             harness.runProviderAction(0, "llm.provider.edit");
-            harness.setEditorSelect("llm.editor.context_tier", Integer.valueOf(204_800));
+            harness.setEditorSelect("llm.editor.context_window", Integer.valueOf(204_800));
             harness.setEditorSelect("llm.editor.reasoning_wire", LlmReasoningWire.OPENAI_EFFORT);
             harness.typeEditorText("llm.editor.reasoning_levels", "minimal, standard, deep");
 
@@ -352,7 +352,8 @@ final class LlmProviderEditorPanelTest {
                     .map(SettingsTemplateModel.OptionEntry::id)
                     .toList();
             assertEquals(List.of("llm.editor.mode", "llm.editor.provider", "llm.editor.name",
-                            "llm.editor.base_url", "llm.editor.context_tier",
+                            "llm.editor.base_url", "llm.editor.context_window",
+                            "llm.editor.context_window_custom",
                             "llm.editor.reasoning_wire", "llm.editor.reasoning_no_thinking",
                             "llm.editor.reasoning_levels", "llm.editor.stream_usage",
                             "llm.editor.max_tokens_field", "llm.editor.api_key"), optionIds,
@@ -532,6 +533,66 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
+    void aManualWindowCanBeTypedInsteadOfATier() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.setEditorSelect("llm.editor.context_window", Integer.valueOf(-1));
+            harness.typeEditorText("llm.editor.context_window_custom", "300000");
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+            assertEquals(300_000, harness.access().getLlmModels().get(0).activeModel().contextWindowTokens(),
+                    "a value between tiers is saved exactly as typed");
+        }
+    }
+
+    @Test
+    void aManualWindowOutsideTheRangeIsRejected() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.setEditorSelect("llm.editor.context_window", Integer.valueOf(-1));
+            harness.typeEditorText("llm.editor.context_window_custom", "1000");
+
+            SettingsSaveResult saved = harness.session().save();
+            assertFalse(saved.success(), "a window below the floor must not reach the catalog");
+            assertEquals("tianshu.gui.llm.validation.context_window_out_of_range", saved.message().value());
+        }
+    }
+
+    @Test
+    void aFetchedModelTakesItsWindowFromThePresetCatalog() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "openai", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("relay-model", "relay-model", 102_400)), "relay-model"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.catalog().answer(LlmModelCatalogResult.success(List.of("gpt-5.4-mini", "gpt-9-unknown")));
+
+            LayerDriver picker = harness.openPickerLayer();
+            picker.click(LlmModelPickerLayers.ACTION_FETCH);
+            picker.select("gpt-5.4-mini");
+            picker.click(LlmModelPickerLayers.ACTION_CONFIRM);
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+
+            WeavingModelEntry entry = harness.access().getLlmModels().get(0);
+            for (WeavingModelSpec spec : entry.models()) {
+                if (spec.modelId().equals("gpt-5.4-mini")) {
+                    assertEquals(400_000, spec.contextWindowTokens(),
+                            "a model the preset catalog lists keeps its declared window");
+                } else if (spec.modelId().equals("gpt-9-unknown")) {
+                    assertEquals(WeavingContextTiers.defaultWindow(), spec.contextWindowTokens(),
+                            "a model outside the catalog falls back to the single 200K declaration");
+                }
+            }
+        }
+    }
+
+    @Test
     void fetchingIsAttemptedWithoutAnyKeySoTheProviderDecides() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
             harness.catalog().answer(LlmModelCatalogResult.failure(LlmModelCatalogState.UNAUTHORIZED, "401"));
@@ -582,9 +643,9 @@ final class LlmProviderEditorPanelTest {
             // Two providers: the active one has no credential, and the form is open on the other.
             access.seedProviders(List.of(
                     new WeavingModelEntry("alpha", "alpha", "deepseek", "https://api.deepseek.com/v1",
-                            List.of(new WeavingModelSpec("model-alpha", "model-alpha", 8192)), "model-alpha"),
+                            List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"),
                     new WeavingModelEntry("beta", "beta", "deepseek", "https://api.deepseek.com/v1",
-                            List.of(new WeavingModelSpec("model-beta", "model-beta", 8192)), "model-beta")));
+                            List.of(new WeavingModelSpec("model-beta", "model-beta", 102_400)), "model-beta")));
         })) {
             harness.runProviderAction(1, "llm.provider.edit");
 
@@ -624,6 +685,11 @@ final class LlmProviderEditorPanelTest {
             SettingsLayerElement.List.Search field = list().search();
             assertNotNull(field, "the picker list is not searchable");
             field.setTerm().accept(term);
+        }
+
+        /** Clicks one row of the model list, the same intent the window's selection calls. */
+        private void select(String modelId) {
+            list().onSelect().accept(modelId);
         }
 
         private String customModelText() {
