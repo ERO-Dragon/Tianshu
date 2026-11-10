@@ -52,6 +52,18 @@ final class LlmPromptRequestHandler {
             return;
         }
         UsageRecording usage = new UsageRecording(envelope);
+        // An inbound CANCEL envelope changes the envelope status but does not interrupt the worker.
+        // The transport cancels its future on interrupt, which closes the response body; registering
+        // that bridge here is what turns the protocol's cancellation into a stopped provider stream.
+        AtomicBoolean finished = new AtomicBoolean(false);
+        if (context != null) {
+            Thread worker = Thread.currentThread();
+            context.onCancel(envelope.envelopeId(), ignored -> {
+                if (finished.compareAndSet(false, true)) {
+                    worker.interrupt();
+                }
+            });
+        }
         try {
             LlmPrompt prompt = promptFactory.create(payload);
             if (payload.stream()) {
@@ -64,6 +76,8 @@ final class LlmPromptRequestHandler {
             reject(envelope, payload, context, rejected.code(), rejected.getMessage(), null);
         } catch (Exception exception) {
             reject(envelope, payload, context, "LLM_REQUEST_FAILED", failureMessage(exception), exception);
+        } finally {
+            finished.set(true);
         }
     }
 

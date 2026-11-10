@@ -37,6 +37,13 @@
 
 空消息列表会在发出请求前被拒绝，错误码 `LLM_EMPTY_MESSAGES`。
 
+两个可选请求字段由“条目兼容开关”决定（`wireCompat`，设置页自定义模式可编辑）：
+
+- `stream_options.include_usage` 只在条目允许时发送——老网关收到未知字段会回 400，而不是忽略；
+- 生成长度上限默认 `max_tokens`；新模型可以改成 `max_completion_tokens`。
+
+内置 DeepSeek 条目使用默认值（发送 include_usage、使用 max_tokens）。
+
 ### 2.2 推理档位
 
 调用方只使用**序号**：每个模型有一条从 0 开始的有序档位表，`0` 是模型支持的非思考档，其余序号依次是提供商官方的档位名。表长与名称由提供商 profile 的数据决定，织言不写死 `low/medium/high` 这类字面量。
@@ -73,11 +80,12 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 
 ### 2.4 流式语义
 
-- 正文分片：`text` 非空，`finished=false`。
-- thinking 分片：`thinkingContent` 非空，`text` 为空（仅当请求要求捕获）。
+- 正文分片：`text` 非空，`finished=false`。分片**按 25ms 窗口合批**，首片立即发出，慢流逐 token、快流一帧可含多个 token；调用方只能按 `index` 顺序追加文本，不能假设一帧等于一个 token。
+- thinking 分片：`thinkingContent` 非空，`text` 为空（仅当请求要求捕获）；与正文同样合批。
 - 结束帧：`finished=true`，带 `finishType`（`COMPLETED` / `CANCELLED` / `FAILED`）、累计 thinking 文本与 usage；发生失败时带 `errorMessage`。
 - 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方应按 `index` 拼接——分片经协议运行时派发，可能由不同工作线程送达，按到达顺序拼接会打乱正文。
 - 取消或中断时：结束帧 `CANCELLED`，终态结果同样为 `CANCELLED`，正文是本轮已经发出的部分。
+- 供应商以 `finish_reason=content_filter` 结束流时按失败处理：终态 `FAILED`、`errorCode=LLM_INFERENCE_FAILED`、消息含 `REMOTE_LLM_CONTENT_FILTERED`。被过滤机制截断的回复不能当作完整回答交给调用方。
 
 ### 2.5 终态结果
 
@@ -91,6 +99,13 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 | `usage` | `promptTokens` / `completionTokens` / `thinkingTokens` / `outputTokens` / `totalTokens` |
 
 `usage` 来自供应商返回的真实用量；`outputTokens = completionTokens + thinkingTokens`。未报告时为零值，不猜测。
+
+响应侧对中转站的字段差异是宽容的，不假设只有一种写法：
+
+- reasoning 依次读 `reasoning_content` / `reasoning` / `reasoning_text`，取第一个非空（有的网关两个字段同时给相同内容，取第一个避免重复）；
+- 缓存命中读 `prompt_tokens_details.cached_tokens`（OpenAI / OpenRouter）、`prompt_cache_hit_tokens`（DeepSeek）、`cached_tokens`（Kimi）；只有 hit 而没有 miss 时，用 `prompt_tokens − hit` 推导 miss；
+- `usage` 可以出现在任意一帧，也接受旧式 `choices[0].usage`；
+- `[DONE]` 缺失时按流结束处理。
 
 ### 2.6 错误码
 
@@ -120,6 +135,8 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 | `SEARCH_INLINE_CONTENTS` | 只检索请求携带的文本，不写库、不触发持久化 |
 
 检索为 BM25 + 向量的混合检索：embedding 不可用时退化为纯词法；只有向量没有文本的条目只参与向量检索。命中条目返回 `entryId`、`content`、`score`。
+
+运行态能力跟随向量 lane：没有绑定向量引擎时（未下载向量模型、加载失败、模块未启动），`LLM.CACHE_MANAGE` 在运行态标记为 **FAILED**，原因写明“没有向量模型，检索会退化为纯词法”。处理器本身不阻断请求——纯词法检索、`SEARCH_INLINE_CONTENTS` 和自带向量的写入仍可用——状态是给消费者在发请求之前判断用的。`LLM.PRIMITIVE_QUERY` 不需要向量，始终 ready。
 
 ### 3.1 存储
 
@@ -164,14 +181,22 @@ record LLMRuntimeSnapshotPayload(
 ## 5. 运行时
 
 - 云端通道只校验配置（地址、密钥、模型）；启动不发送探测请求，网络断开不影响模块就绪。
-- 上下文容量来自所选模型条目声明的 `contextWindowTokens`（tier 值，例如 100K / 200K / 500K）。预算公式为
+- 上下文容量来自所选模型条目声明的 `contextWindowTokens`（档位 50K / 100K / 200K / 500K / 1M，或自定义值）。预算公式为
   `容量 − 512 输出保留 − headroom`，headroom 为 prompt 窗口的 6.25%，钳位 4096..32768 并向上取整到 1024。
+- 条目声明的是“织言对调用方承诺的预算”，不是供应商原始上限：预设模型用预设窗口；清单外、实时列表新增或手输 id 的模型默认 **200K**（`WeavingContextTiers.defaultWindow()`）。玩家可在自定义模式里选档位，或选“自定义…”直接填 tokens。织言**只公布、不拦截**，超预算请求不会在这里被拒绝或裁剪。
 - 向量引擎是本机唯一加载的模型：进世界后延迟数秒在模型加载 lane 上启动；GPU 失败自动回落 CPU（`DEGRADED`），两级都失败才 `UNAVAILABLE`。
+- **向量模型是可选的**：未下载时云端通道照常工作，`STATUS` 报 `embeddingAvailable=false`，只有检索、`EMBED` 以及依赖检索的模组（如辅星）不可用。设置页不以“已下载”作为配置云端模型的前提。
 - 向量引擎起不来**不会**让云端通道失败：聊天不依赖检索，此时只有 RAG / `EMBED` 报不可用。
 - 原生模型加载经过进程级串行闸门，与听澜 / 回响的语音模型互斥。
 - 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。请求本身不产生映迹活动，那属于调用方的一轮对话。
 - 取消或线程中断会中止底层 HTTP 交换，而不是让读者线程继续读到超时；中断标志会被恢复，交给上层决定。
 - 每个请求还会在 scheduled lane 上挂一个截止任务：供应商接上流后若不再发字节，截止到点会关闭响应体并按 `REMOTE_LLM_STREAM_TIMEOUT` 报失败，不会让读者线程一直阻塞在 `readLine()` 上。
+- **内置提供商预设**：DeepSeek、OpenAI、xAI（Grok）、Google Gemini、通义千问（DashScope 兼容模式）、Moonshot Kimi、智谱 GLM。每个预设固定一个默认模型和一小份常用模型清单，端点、窗口与默认模型都是数据；玩家可在表单里切换模型，或用“选择模型…”从端点实时拉取。
+  - 预设在 `com/rheinmetal/tianshu/function/weaving/settings/llm_providers.json`，不是 Java 常量：上游改名只改数据，后续刷新预设也可以只替换资源。
+  - 预设的模型清单/窗口取自 DeepSeek Harness 的 provider catalog（2026-11 快照），非官方承诺；上游改 ID 时用自定义模式覆盖即可。
+  - 只有 OpenAI 与 Gemini 预设携带 `OPENAI_EFFORT` 推理梯子；xAI / Qwen / Kimi / GLM 不猜 `reasoning_effort`，梯子为“无控制”，玩家可在自定义模式自行声明。
+  - OpenAI / xAI 预设使用 `max_completion_tokens`；其余使用 `max_tokens`。
+  - `/models` 只返回 id，不含上下文窗口：picker 对预设清单内已有的模型使用清单里的窗口，清单外的新模型才回落到预设默认窗口。
 
 ## 6. 边界
 

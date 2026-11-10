@@ -31,7 +31,9 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     private static final String KEY_CREDENTIALS = "credentials";
     /** One line per entry that overrides the shipped provider's reasoning ladder: {@code id=encoded}. */
     private static final String KEY_REASONING_PROFILES = "reasoningProfiles";
-    private static final char REASONING_SEPARATOR = '=';
+    /** One line per entry that overrides its provider's wire compatibility: {@code id=encoded}. */
+    private static final String KEY_WIRE_COMPAT = "wireCompat";
+    private static final char ENTRY_SEPARATOR = '=';
     private static final String KEY_EMBEDDING_GPU_LAYERS = "embeddingGpuLayers";
     private static final String KEY_EMBEDDING_CONTEXT_SIZE = "embeddingContextSize";
     private static final String KEY_PRICE_CACHE_MISS = "usageCacheMissInputPricePerMillion";
@@ -240,40 +242,74 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     /** The ladder explicitly configured for one entry, or {@code null} when it inherits the profile. */
     @Override
     public LlmReasoningProfile getLlmReasoningProfile(String entryId) {
-        String id = entryId == null ? "" : entryId.trim();
-        if (id.isEmpty()) {
-            return null;
-        }
-        for (String line : store.getStringList(KEY_REASONING_PROFILES, List.of())) {
-            int separator = line == null ? -1 : line.indexOf(REASONING_SEPARATOR);
-            if (separator <= 0) {
-                continue;
-            }
-            if (line.substring(0, separator).trim().equals(id)) {
-                return LlmReasoningProfile.decode(line.substring(separator + 1));
-            }
-        }
-        return null;
+        return LlmReasoningProfile.decode(readEntryOverride(KEY_REASONING_PROFILES, entryId));
     }
 
     @Override
     public void setLlmReasoningProfile(String entryId, LlmReasoningProfile profile) {
+        writeEntryOverride(KEY_REASONING_PROFILES, entryId, profile == null ? null : profile.encode());
+    }
+
+    // --- wire compatibility -----------------------------------------------------------------------
+
+    /** The optional request fields the active entry accepts: its override, else its provider profile. */
+    @Override
+    public LlmWireCompat getLlmWireCompat() {
+        LlmWireCompat configured = getLlmWireCompat(getLlmActiveModelId());
+        if (configured != null) {
+            return configured;
+        }
+        LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(getLlmProviderId());
+        return provider == null ? LlmWireCompat.DEFAULT : provider.wireCompat();
+    }
+
+    /** The compatibility explicitly configured for one entry, or {@code null} when it inherits it. */
+    @Override
+    public LlmWireCompat getLlmWireCompat(String entryId) {
+        return LlmWireCompat.decode(readEntryOverride(KEY_WIRE_COMPAT, entryId));
+    }
+
+    @Override
+    public void setLlmWireCompat(String entryId, LlmWireCompat compat) {
+        writeEntryOverride(KEY_WIRE_COMPAT, entryId, compat == null ? null : compat.encode());
+    }
+
+    // --- entry override storage -------------------------------------------------------------------
+
+    /** One entry's encoded override from a {@code id=encoded} key, or {@code null} when absent. */
+    private String readEntryOverride(String key, String entryId) {
+        String id = entryId == null ? "" : entryId.trim();
+        if (id.isEmpty()) {
+            return null;
+        }
+        for (String line : store.getStringList(key, List.of())) {
+            int separator = line == null ? -1 : line.indexOf(ENTRY_SEPARATOR);
+            if (separator <= 0 || !line.substring(0, separator).trim().equals(id)) {
+                continue;
+            }
+            return line.substring(separator + 1);
+        }
+        return null;
+    }
+
+    /** Replaces one entry's line in a {@code id=encoded} key, or removes it when {@code encoded} is null. */
+    private void writeEntryOverride(String key, String entryId, String encoded) {
         String id = entryId == null ? "" : entryId.trim();
         if (id.isEmpty()) {
             return;
         }
         List<String> lines = new ArrayList<>();
-        for (String line : store.getStringList(KEY_REASONING_PROFILES, List.of())) {
-            int separator = line == null ? -1 : line.indexOf(REASONING_SEPARATOR);
+        for (String line : store.getStringList(key, List.of())) {
+            int separator = line == null ? -1 : line.indexOf(ENTRY_SEPARATOR);
             if (separator <= 0 || line.substring(0, separator).trim().equals(id)) {
                 continue;
             }
             lines.add(line);
         }
-        if (profile != null) {
-            lines.add(id + REASONING_SEPARATOR + profile.encode());
+        if (encoded != null) {
+            lines.add(id + ENTRY_SEPARATOR + encoded);
         }
-        store.setStringList(KEY_REASONING_PROFILES, lines);
+        store.setStringList(key, lines);
     }
 
     /**

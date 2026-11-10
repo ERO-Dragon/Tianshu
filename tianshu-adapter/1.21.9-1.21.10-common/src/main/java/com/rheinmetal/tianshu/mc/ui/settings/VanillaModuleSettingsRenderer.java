@@ -10,6 +10,8 @@ import com.rheinmetal.tianshu.client.settings.model.SettingsTemplateModel;
 import com.rheinmetal.tianshu.mc.ui.settings.TianshuSettingsScreen;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -157,6 +159,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                     case SettingsTemplateModel.SelectEntry<?> select -> renderSelect(select, active);
                     case SettingsTemplateModel.TextEntry text -> renderTextEntry(text, active);
                     case SettingsTemplateModel.SliderEntry slider -> renderSlider(slider, active);
+                    case SettingsTemplateModel.KeyBindingEntry binding -> renderKeyBinding(binding, active);
                 }
             }
             finishGridRow();
@@ -183,6 +186,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 case SettingsTemplateModel.SelectEntry<?> select -> renderCompactSelect(select, active, item, buttonX, buttonWidth);
                 case SettingsTemplateModel.TextEntry text -> renderCompactTextEntry(text, active, item, buttonX, buttonWidth);
                 case SettingsTemplateModel.SliderEntry slider -> renderCompactSlider(slider, active, item, buttonX, buttonWidth);
+                case SettingsTemplateModel.KeyBindingEntry binding -> renderCompactKeyBinding(binding, active, item, buttonX, buttonWidth);
             }
             buttonX += buttonWidth + SettingsLayoutMetrics.GAP;
         }
@@ -291,6 +295,54 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         addIfVisible(new SettingsSlider(buttonX, item.screenY(), buttonWidth, SettingsLayoutMetrics.CONTROL_HEIGHT, safeComponent(slider.label(), Component.empty()), value, slider.min(), slider.max(), slider.setter()), item, active);
     }
 
+    private void renderKeyBinding(SettingsTemplateModel.KeyBindingEntry binding, boolean active) {
+        KeyMapping mapping = keyMapping(binding.keyMappingName());
+        renderControlRow(safeComponent(binding.label(), Component.empty()), active, SELECT_CONTROL, item -> {
+            if (mapping == null) {
+                addIfVisible(new SettingsTextWidget(item.controlX(), item.screenY(), item.controlWidth(),
+                        SettingsLayoutMetrics.ROW_HEIGHT,
+                        Component.translatable("tianshu.gui.settings.option.no_available",
+                                safeComponent(binding.label(), Component.empty())),
+                        active ? 0xA0A0A0 : 0x606060), item.row(), false);
+                return;
+            }
+            addIfVisible(new SettingsKeyBindingButton(item.controlX(), item.screenY(), item.controlWidth(),
+                    SettingsLayoutMetrics.CONTROL_HEIGHT, mapping, screen).widget(), item.row(), active);
+        });
+    }
+
+    private void renderCompactKeyBinding(SettingsTemplateModel.KeyBindingEntry binding, boolean active,
+                                         SettingsLayoutItem item, int buttonX, int buttonWidth) {
+        KeyMapping mapping = keyMapping(binding.keyMappingName());
+        if (mapping == null) {
+            addIfVisible(new SettingsTextWidget(buttonX, item.screenY(), buttonWidth,
+                    SettingsLayoutMetrics.ROW_HEIGHT,
+                    Component.translatable("tianshu.gui.settings.option.no_available",
+                            safeComponent(binding.label(), Component.empty())),
+                    active ? 0xA0A0A0 : 0x606060), item, false);
+            return;
+        }
+        addIfVisible(new SettingsKeyBindingButton(buttonX, item.screenY(), buttonWidth,
+                SettingsLayoutMetrics.CONTROL_HEIGHT, mapping, screen).widget(), item, active);
+    }
+
+    /** The key row names its mapping; only the platform may resolve that name to a {@code KeyMapping}. */
+    private static KeyMapping keyMapping(String keyMappingName) {
+        if (keyMappingName == null || keyMappingName.isBlank()) {
+            return null;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.options == null) {
+            return null;
+        }
+        for (KeyMapping mapping : minecraft.options.keyMappings) {
+            if (mapping != null && keyMappingName.equals(mapping.getName())) {
+                return mapping;
+            }
+        }
+        return null;
+    }
+
     private void renderStatusGroup(SettingsTemplateModel.StatusGroup group) {
         boolean groupActive = safeBoolean(group.enabled(), true);
         renderSection(groupActive, () -> {
@@ -359,6 +411,9 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         renderSection(groupActive, () -> {
             renderGroupTitle(group.title(), groupActive);
             renderListItems(group, groupActive, false);
+            if (!group.footerActions().isEmpty()) {
+                renderActionEntries(group.footerActions(), groupActive);
+            }
         });
     }
 

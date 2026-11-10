@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.mc.ui.settings;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 import com.rheinmetal.tianshu.mc.ui.settings.UiTexts;
 import com.rheinmetal.tianshu.client.api.settings.TextBlockLevel;
@@ -31,6 +32,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.HashSet;
@@ -353,7 +355,7 @@ public final class TianshuSettingsScreen extends Screen {
         // While a key row waits for input, the next click is the binding itself, not a click on a control.
         if (armedKeyBinding != null) {
             if (armedKeyBinding.isCapturing()) {
-                return armedKeyBinding.captureMouse(button);
+                return armedKeyBinding.capture(InputConstants.Type.MOUSE.getOrCreate(button));
             }
             armedKeyBinding = null;
         }
@@ -397,7 +399,11 @@ public final class TianshuSettingsScreen extends Screen {
         // close or hand it to a widget while the capture is armed.
         if (armedKeyBinding != null) {
             if (armedKeyBinding.isCapturing()) {
-                return armedKeyBinding.captureKey(keyCode, scanCode);
+                if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                    armedKeyBinding.cancelCapture();
+                    return true;
+                }
+                return armedKeyBinding.capture(InputConstants.getKey(keyCode, scanCode));
             }
             armedKeyBinding = null;
         }
@@ -412,6 +418,10 @@ public final class TianshuSettingsScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        // The key press that just bound itself must not also type into a focused field.
+        if (armedKeyBinding != null && armedKeyBinding.isCapturing()) {
+            return true;
+        }
         if (selectionPanel != null) {
             return true;
         }

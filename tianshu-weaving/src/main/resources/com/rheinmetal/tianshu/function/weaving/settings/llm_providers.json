@@ -1,0 +1,120 @@
+[
+  {
+    "id": "deepseek",
+    "labelKey": "tianshu.gui.llm.provider.deepseek",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "defaultModelId": "deepseek-flash",
+    "reasoning": {
+      "wire": "DEEPSEEK_THINKING",
+      "includesNoThinking": true,
+      "levels": ["low", "high", "max"],
+      "defaultTier": 1
+    },
+    "wireCompat": {
+      "includeStreamUsage": true,
+      "maxTokensField": "MAX_TOKENS"
+    },
+    "models": [
+      { "modelId": "deepseek-flash", "contextWindowTokens": 102400 }
+    ]
+  },
+  {
+    "id": "openai",
+    "labelKey": "tianshu.gui.llm.provider.openai",
+    "baseUrl": "https://api.openai.com/v1",
+    "defaultModelId": "gpt-5.4",
+    "reasoning": {
+      "wire": "OPENAI_EFFORT",
+      "includesNoThinking": false,
+      "levels": ["none", "low", "medium", "high", "xhigh"],
+      "defaultTier": 2
+    },
+    "wireCompat": {
+      "includeStreamUsage": true,
+      "maxTokensField": "MAX_COMPLETION_TOKENS"
+    },
+    "models": [
+      { "modelId": "gpt-5.4", "contextWindowTokens": 272000 },
+      { "modelId": "gpt-5.4-mini", "contextWindowTokens": 400000 },
+      { "modelId": "gpt-5.2", "contextWindowTokens": 400000 }
+    ]
+  },
+  {
+    "id": "xai",
+    "labelKey": "tianshu.gui.llm.provider.xai",
+    "baseUrl": "https://api.x.ai/v1",
+    "defaultModelId": "grok-4.7",
+    "wireCompat": {
+      "includeStreamUsage": true,
+      "maxTokensField": "MAX_COMPLETION_TOKENS"
+    },
+    "models": [
+      { "modelId": "grok-4.7", "contextWindowTokens": 500000 },
+      { "modelId": "grok-4.6", "contextWindowTokens": 500000 },
+      { "modelId": "grok-4.3", "contextWindowTokens": 1000000 }
+    ]
+  },
+  {
+    "id": "google",
+    "labelKey": "tianshu.gui.llm.provider.google",
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "defaultModelId": "gemini-3.1-pro-preview",
+    "reasoning": {
+      "wire": "OPENAI_EFFORT",
+      "includesNoThinking": false,
+      "levels": ["low", "medium", "high"],
+      "defaultTier": 1
+    },
+    "wireCompat": {
+      "includeStreamUsage": true,
+      "maxTokensField": "MAX_TOKENS"
+    },
+    "models": [
+      { "modelId": "gemini-3.1-pro-preview", "contextWindowTokens": 1048576 },
+      { "modelId": "gemini-3.5-flash", "contextWindowTokens": 1048576 }
+    ]
+  },
+  {
+    "id": "qwen",
+    "labelKey": "tianshu.gui.llm.provider.qwen",
+    "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "defaultModelId": "qwen3.8-max",
+    "wireCompat": {
+      "includeStreamUsage": true,
+      "maxTokensField": "MAX_TOKENS"
+    },
+    "models": [
+      { "modelId": "qwen3.8-max", "contextWindowTokens": 1000000 },
+      { "modelId": "qwen3.7-max", "contextWindowTokens": 1000000 },
+      { "modelId": "qwen3.6-plus", "contextWindowTokens": 1000000 }
+    ]
+  },
+  {
+    "id": "moonshot",
+    "labelKey": "tianshu.gui.llm.provider.moonshot",
+    "baseUrl": "https://api.moonshot.cn/v1",
+    "defaultModelId": "kimi-k3",
+    "wireCompat": {
+      "includeStreamUsage": true,
+      "maxTokensField": "MAX_TOKENS"
+    },
+    "models": [
+      { "modelId": "kimi-k3", "contextWindowTokens": 1048576 },
+      { "modelId": "kimi-k2.6", "contextWindowTokens": 262144 }
+    ]
+  },
+  {
+    "id": "zai",
+    "labelKey": "tianshu.gui.llm.provider.zai",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "defaultModelId": "glm-5.3",
+    "wireCompat": {
+      "includeStreamUsage": true,
+      "maxTokensField": "MAX_TOKENS"
+    },
+    "models": [
+      { "modelId": "glm-5.3", "contextWindowTokens": 1000000 },
+      { "modelId": "glm-5.2", "contextWindowTokens": 1000000 }
+    ]
+  }
+]
