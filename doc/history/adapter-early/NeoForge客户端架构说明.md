@@ -129,7 +129,7 @@ GPU 设备发现和占用采样使用最后一次完整快照。打开设置页�
 
 固定显示文本必须通过资源 key。client 使用 `UiText`，只有 NeoForge adapter 能转换成 Minecraft 文本组件。
 
-HUD core shader 遵循 Minecraft 的资源约定，但文件属于声明它的功能模组，不在北辰里：
+HUD core shader 遵循 Minecraft 的资源约定，但文件属于声明它的功能模组，不在基座里：
 
 ```text
 assets/<feature_modid>/shaders/core/<program>.json

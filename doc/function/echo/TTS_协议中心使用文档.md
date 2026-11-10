@@ -268,4 +268,4 @@ TtsPlaybackStatusPayload、TtsRequestStatus、TtsRequestStatusPayload、TtsSynth
 - **有回响就多说一句** → 联动接入：compileOnly + mods.toml optional + InstalledMods.isLoaded("module.tts")
   守卫 + 单一 bridge 类。完整配方见 doc/architecture/模块架构.md §5 / §8。
 
-北辰（`tianshu-api` / `core` / `client` / `adapter`）不再持有任何 TTS 载荷。
+天枢基座（`tianshu-api` / `core` / `client` / `adapter`）不再持有任何 TTS 载荷。

@@ -1,6 +1,6 @@
 # Tianshu
 
-Tianshu is an extensible AI assistant: Polaris (北辰) is its base, providing the UI, key bindings, settings, world state and local audio, and feature modules run on top of it.
+Tianshu is an extensible AI assistant: its base provides the UI, key bindings, settings, world state and local audio, and feature modules run on top of it.
 
 **Game versions**: NeoForge from 1.20.1, Fabric from 1.20, one jar per Minecraft version (see the [documentation index](../doc/README.md)).
 **Loaders**: NeoForge / Fabric
@@ -8,7 +8,7 @@ Tianshu is an extensible AI assistant: Polaris (北辰) is its base, providing t
 
 ---
 
-## What the Polaris provides
+## What the base provides
 
 - **One console** — "Tianshu Console" in the pause menu; feature modules put their settings pages there.
 - **Shared building blocks** — keys, HUD, audio, chat lines and local notices.

@@ -37,7 +37,7 @@ module.presence
 
 ## 2. 模块定位
 
-映迹是独立的 universal 功能模组 `tianshu-presence`（客户端，零平台代码）；北辰只负责在 api 端口
+映迹是独立的 universal 功能模组 `tianshu-presence`（客户端，零平台代码）；基座只负责在 api 端口
 （`HudSurface` / `HudHost` / `ClientGameContextPort`）后面提供 Minecraft 落笔与 GUI 门控。映迹负责：
 
 - 通过外层 platform 端口读取客户端状态
@@ -645,7 +645,7 @@ tianshu-adapter/1.21-1.21.1-neoforge/src/main/java/.../neoforge/event/
 - HUD 图标改为纯 shader 绘制：每个预设程序都包含 liquid loading、中心点交接、流体球/raymarch、聆听环与后台小点；
   程序缺失时图标不绘制，没有 Java 回退
 - `Morph` 是唯一的 loading→球体参数：进入（球 → 点 → 六点）与退出（六点 → 点 → 球）使用控制器配置的交接时长，全程同一个程序
-- `PresenceHudProgram` 是 uniform 契约的唯一位置：北辰发布后，映迹新增/改名 uniform、增加参数或预设，只需更新映迹 jar 与 shader 资源，不需要更新北辰
+- `PresenceHudProgram` 是 uniform 契约的唯一位置：基座发布后，映迹新增/改名 uniform、增加参数或预设，只需更新映迹 jar 与 shader 资源，不需要更新基座
 - 浏览器 HUD 预览工具（`tianshu-presence/tools/hud-preview`）可切换状态、预设、尺寸与伙伴标记，并查看生成模型和着色器
 
 待实现：

@@ -1,4 +1,4 @@
-# 北辰 API 兼容策略（RFC）
+# 天枢基座 API 兼容策略（RFC）
 
 > 状态：草案，待拍板。适用起点：`tianshu 1.0.0`。
 > 关联：审计报告 A5；`doc/architecture/模块架构.md`；`EXTERNAL_INTEGRATION_GUIDE.md`。
