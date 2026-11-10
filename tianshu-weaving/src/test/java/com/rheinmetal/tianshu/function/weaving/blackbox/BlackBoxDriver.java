@@ -94,6 +94,17 @@ final class BlackBoxDriver implements AutoCloseable {
         return all;
     }
 
+    /** Dead letters and broker depth, for diagnosing a stream that never completed. */
+    java.util.List<String> diagnostics() {
+        java.util.List<String> all = new java.util.ArrayList<>();
+        runtime.deadLetters().snapshot(20).forEach(record -> all.add(
+                "DEAD " + record.errorCode() + " " + record.payloadType() + " " + record.reason()));
+        runtime.brokers().snapshots().forEach(snapshot -> all.add(
+                "BROKER " + snapshot.brokerId() + " queue=" + snapshot.queueSize()
+                        + " running=" + snapshot.runningSize()));
+        return all;
+    }
+
     /** Capability state as a consumer would read it before sending a request. */
     com.rheinmetal.tianshu.core.runtime.RuntimeCapabilityState capabilityState(
             com.rheinmetal.tianshu.core.runtime.RuntimeCapability capability) {
@@ -213,7 +224,8 @@ final class BlackBoxDriver implements AutoCloseable {
             Class<? extends com.rheinmetal.tianshu.protocol.ITianshuPayload> payloadClass,
             EnvelopeHandler handler
     ) {
-        AdapterDefaults defaults = AdapterDefaults.standard();
+        AdapterDefaults defaults = AdapterDefaults.standard()
+                .withConcurrency(Math.max(2, Runtime.getRuntime().availableProcessors()), 4_096);
         CapabilityDescriptor capability = new CapabilityDescriptor(
                 "blackbox.response." + payloadType,
                 PayloadType.of(payloadType),

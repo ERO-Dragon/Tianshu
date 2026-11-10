@@ -197,6 +197,24 @@ class WeavingBlackBoxRagTest {
         }
     }
 
+    @Test
+    void patchingContentAndVectorKeepsTheEntrySearchable() throws Exception {
+        try (BlackBoxDriver driver = BlackBoxDriver.start(new BlackBoxConfig(tempDir, "http://127.0.0.1:1/v1"))) {
+            driver.cache(LLMCacheManagePayload.registerLibrary("kb", "modid", "SHARED", List.of()));
+            driver.cache(LLMCacheManagePayload.upsertEntry("kb", "entry-1", "old needle text", vector()));
+
+            LLMCacheManageResultPayload patched = driver.cache(LLMCacheManagePayload.patchEntry(
+                    "kb", "entry-1", "vector patched text", new float[]{0f, 1f, 0f}, true, true));
+            assertTrue(patched.success(), patched.errorMessage());
+            assertTrue(patched.exists());
+
+            LLMCacheManageResultPayload searched = driver.cache(
+                    LLMCacheManagePayload.searchUid("kb", "patched", 4, 0.01f));
+            assertFalse(searched.hits().isEmpty());
+            assertEquals("vector patched text", searched.hits().get(0).entries().get(0).content());
+        }
+    }
+
     private static float[] vector() {
         return new float[]{1f, 0f, 0f};
     }

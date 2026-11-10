@@ -20,6 +20,7 @@ final class BlackBoxConfig implements WeavingConfiguration {
     private int requestTimeoutSeconds = 10;
     private long autoLoadDelayMillis = 0L;
     private String embeddingModelName = "";
+    private int embeddingGpuLayers = 0;
     private LlmReasoningProfile reasoning = LlmReasoningProfile.NONE;
     private LlmWireCompat wireCompat = LlmWireCompat.DEFAULT;
 
@@ -55,6 +56,11 @@ final class BlackBoxConfig implements WeavingConfiguration {
 
     BlackBoxConfig embeddingModelName(String embeddingModelName) {
         this.embeddingModelName = embeddingModelName == null ? "" : embeddingModelName;
+        return this;
+    }
+
+    BlackBoxConfig embeddingGpuLayers(int layers) {
+        this.embeddingGpuLayers = layers;
         return this;
     }
 
@@ -125,7 +131,7 @@ final class BlackBoxConfig implements WeavingConfiguration {
 
     @Override
     public int getLlmEmbeddingGpuLayers() {
-        return 0;
+        return embeddingGpuLayers;
     }
 
     @Override

@@ -80,8 +80,8 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 
 ### 2.4 流式语义
 
-- 正文分片：`text` 非空，`finished=false`。
-- thinking 分片：`thinkingContent` 非空，`text` 为空（仅当请求要求捕获）。
+- 正文分片：`text` 非空，`finished=false`。分片**按 25ms 窗口合批**，首片立即发出，慢流逐 token、快流一帧可含多个 token；调用方只能按 `index` 顺序追加文本，不能假设一帧等于一个 token。
+- thinking 分片：`thinkingContent` 非空，`text` 为空（仅当请求要求捕获）；与正文同样合批。
 - 结束帧：`finished=true`，带 `finishType`（`COMPLETED` / `CANCELLED` / `FAILED`）、累计 thinking 文本与 usage；发生失败时带 `errorMessage`。
 - 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方应按 `index` 拼接——分片经协议运行时派发，可能由不同工作线程送达，按到达顺序拼接会打乱正文。
 - 取消或中断时：结束帧 `CANCELLED`，终态结果同样为 `CANCELLED`，正文是本轮已经发出的部分。

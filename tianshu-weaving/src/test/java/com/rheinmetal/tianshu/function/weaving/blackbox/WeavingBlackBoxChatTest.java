@@ -64,12 +64,13 @@ class WeavingBlackBoxChatTest {
                 assertEquals("think", response.result().thinkingContent(), "reasoning travels separately");
 
                 List<LLMPromptStreamChunkPayload> ordered = response.orderedChunks();
+                assertEquals(3, ordered.size(), "thinking, one coalesced text chunk, terminal");
                 assertEquals("think", ordered.get(0).thinkingContent());
-                assertEquals(List.of("Hel", "lo"),
-                        List.of(ordered.get(1).text(), ordered.get(2).text()));
-                assertTrue(ordered.get(ordered.size() - 1).finished());
-                assertEquals("COMPLETED", ordered.get(ordered.size() - 1).finishType());
-                assertEquals(List.of(0, 1, 2, 3), ordered.stream()
+                assertEquals("Hello", ordered.get(1).text(),
+                        "the two provider deltas are coalesced into one text chunk");
+                assertTrue(ordered.get(2).finished());
+                assertEquals("COMPLETED", ordered.get(2).finishType());
+                assertEquals(List.of(0, 1, 2), ordered.stream()
                         .map(LLMPromptStreamChunkPayload::index).toList(),
                         "indices are the caller's ordering contract");
             }
@@ -263,6 +264,58 @@ class WeavingBlackBoxChatTest {
                 assertEquals(12, total.cacheMissInputTokens(), "the rest of the prompt is the miss");
                 assertEquals(1, total.cacheReportedRequests());
                 assertEquals(2, total.outputTokens());
+            }
+        }
+    }
+
+    @Test
+    void aBlockingRequestCanAlsoBeCancelledMidFlight() throws Exception {
+        try (FakeOpenAiEndpoint endpoint = FakeOpenAiEndpoint.start((body, exchange) -> {
+            FakeOpenAiEndpoint.beginSse(exchange);
+            FakeOpenAiEndpoint.write(exchange, "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n");
+            Thread.sleep(5_000L);
+        })) {
+            try (BlackBoxDriver driver = BlackBoxDriver.start(new BlackBoxConfig(tempDir, endpoint.baseUrl()))) {
+                BlackBoxDriver.Pending pending = driver.promptAsync(payload("req-cancel-blocking", false));
+                for (int i = 0; i < 200 && endpoint.requests().isEmpty(); i++) {
+                    Thread.sleep(10L);
+                }
+                assertFalse(endpoint.requests().isEmpty(), "the blocking request must reach the provider");
+
+                driver.cancel(pending.request());
+                assertEquals("CANCELLED", driver.await(pending).result().status());
+            }
+        }
+    }
+
+    @Test
+    void aBurstOfTokensIsBatchedBelowTheProtocolRateLimit() throws Exception {
+        int frames = 400;
+        try (FakeOpenAiEndpoint endpoint = FakeOpenAiEndpoint.start((body, exchange) -> {
+            FakeOpenAiEndpoint.beginSse(exchange);
+            for (int index = 0; index < frames; index++) {
+                FakeOpenAiEndpoint.write(exchange,
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\n");
+            }
+            FakeOpenAiEndpoint.write(exchange, "data: [DONE]\n\n");
+        })) {
+            try (BlackBoxDriver driver = BlackBoxDriver.start(new BlackBoxConfig(tempDir, endpoint.baseUrl()))) {
+                BlackBoxDriver.Response response;
+                try {
+                    response = driver.prompt(payload("req-long", true, 0, false));
+                } catch (AssertionError failure) {
+                    throw new AssertionError(failure.getMessage() + "\n" + driver.diagnostics(), failure);
+                }
+
+                assertEquals(frames, response.result().text().length(), "no token is lost");
+                assertTrue(response.chunks().size() < frames / 4,
+                        "a burst is coalesced into a handful of envelopes, got " + response.chunks().size());
+                var ordered = response.orderedChunks();
+                assertTrue(ordered.get(ordered.size() - 1).finished());
+                assertEquals(ordered.size() - 1, ordered.get(ordered.size() - 1).index());
+                for (int index = 0; index < ordered.size(); index++) {
+                    assertEquals(index, ordered.get(index).index(), "indices stay contiguous");
+                }
             }
         }
     }

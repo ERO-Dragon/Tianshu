@@ -8,6 +8,10 @@ import com.rheinmetal.tianshu.protocol.ITianshuPayload;
  * <p>Text and reasoning travel on separate channels; a terminal frame repeats the accumulated
  * reasoning text so a subscriber that joined late still sees it, and carries the provider's token
  * usage.</p>
+ *
+ * <p>The granularity is not guaranteed to be one provider token: a fast stream is coalesced into
+ * short batches before publishing, so one chunk may carry several tokens. Callers must append
+ * {@code text} in {@code index} order, never assume a chunk equals a token.</p>
  */
 public record LLMPromptStreamChunkPayload(
         String requestId,

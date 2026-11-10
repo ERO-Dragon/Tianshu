@@ -30,31 +30,13 @@ class WeavingBlackBoxBgeIntegrationTest {
 
     @Test
     void theRealBgeModelAnswersEmbedAndVectorRag() throws Exception {
-        String configured = System.getProperty("blackbox.bge", System.getenv("TIANSHU_BLACKBOX_BGE"));
-        Assumptions.assumeTrue(configured != null && Files.isRegularFile(Path.of(configured)),
-                "set -Dblackbox.bge=<bge-m3-Q8_0.gguf> to run the real embedding integration");
-
-        Path home = Path.of(System.getProperty("blackbox.home", "build/blackbox/bge-home")).toAbsolutePath();
-        Path modelDir = home.resolve("llm").resolve("model");
-        Files.createDirectories(modelDir);
-        // A catalog selection that is not a .gguf resolves to a directory named after it.
-        Path targetDir = modelDir.resolve("bge-m3");
-        Files.createDirectories(targetDir);
-        Path target = targetDir.resolve("bge-m3-Q8_0.gguf");
-        if (!Files.isRegularFile(target)) {
-            Files.copy(Path.of(configured), target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        Path home = prepareHome();
 
         BlackBoxConfig config = new BlackBoxConfig(home, "http://127.0.0.1:1/v1")
                 .embeddingModelName("bge-m3")
                 .requestTimeoutSeconds(30);
         try (BlackBoxDriver driver = BlackBoxDriver.start(config)) {
-            try {
-                driver.awaitCapability(LlmRuntimeCapabilities.LLM_CACHE_MANAGE,
-                        RuntimeCapabilityState.READY, 180_000L);
-            } catch (AssertionError failure) {
-                throw new AssertionError(failure.getMessage() + "\nmodule logs: " + driver.logs(), failure);
-            }
+            awaitReady(driver);
 
             LLMPrimitiveResultPayload embedded = driver.primitive(
                     LLMPrimitiveQueryPayload.embed("bge-embed", List.of("the cat sat on the warm mat"), true, true));
@@ -63,6 +45,15 @@ class WeavingBlackBoxBgeIntegrationTest {
             assertEquals(1024, vector.dimension(), "BGE-M3 dense vectors are 1024-dimensional");
             assertEquals(1024, vector.vector().length);
             assertEquals("bge-m3", vector.embeddingModelName());
+
+            LLMPrimitiveResultPayload batch = driver.primitive(
+                    LLMPrimitiveQueryPayload.embed("bge-batch",
+                            List.of("first text", "second text", "third text"), true, true));
+            assertEquals("COMPLETED", batch.status());
+            assertEquals(3, batch.embedResults().size());
+            for (LLMPrimitiveResultPayload.EmbedResultPayload result : batch.embedResults()) {
+                assertEquals(1024, result.dimension(), "every batched text gets a full vector");
+            }
 
             LLMPrimitiveResultPayload status = driver.primitive(LLMPrimitiveQueryPayload.status("bge-status"));
             assertTrue(status.runtimeSnapshot().embeddingAvailable());
@@ -84,5 +75,48 @@ class WeavingBlackBoxBgeIntegrationTest {
             assertEquals("The cat sat on the warm mat.",
                     searched.hits().get(0).entries().get(0).content());
         }
+    }
+
+    @Test
+    void aRequestedGpuPositionStillProducesVectors() throws Exception {
+        Path home = prepareHome();
+
+        BlackBoxConfig config = new BlackBoxConfig(home, "http://127.0.0.1:1/v1")
+                .embeddingModelName("bge-m3")
+                .embeddingGpuLayers(999)
+                .requestTimeoutSeconds(30);
+        try (BlackBoxDriver driver = BlackBoxDriver.start(config)) {
+            awaitReady(driver);
+
+            LLMPrimitiveResultPayload embedded = driver.primitive(
+                    LLMPrimitiveQueryPayload.embed("bge-gpu", List.of("offload or fall back"), true, true));
+            assertEquals("COMPLETED", embedded.status());
+            assertEquals(1024, embedded.embedResults().get(0).dimension(),
+                    "a card that cannot take the load falls back to the CPU; vectors still arrive");
+        }
+    }
+
+    private static void awaitReady(BlackBoxDriver driver) throws InterruptedException {
+        try {
+            driver.awaitCapability(LlmRuntimeCapabilities.LLM_CACHE_MANAGE,
+                    RuntimeCapabilityState.READY, 180_000L);
+        } catch (AssertionError failure) {
+            throw new AssertionError(failure.getMessage() + "\nmodule logs: " + driver.logs(), failure);
+        }
+    }
+
+    private static Path prepareHome() throws Exception {
+        String configured = System.getProperty("blackbox.bge", System.getenv("TIANSHU_BLACKBOX_BGE"));
+        Assumptions.assumeTrue(configured != null && Files.isRegularFile(Path.of(configured)),
+                "set -Dblackbox.bge=<bge-m3-Q8_0.gguf> to run the real embedding integration");
+
+        Path home = Path.of(System.getProperty("blackbox.home", "build/blackbox/bge-home")).toAbsolutePath();
+        Path targetDir = home.resolve("llm").resolve("model").resolve("bge-m3");
+        Files.createDirectories(targetDir);
+        Path target = targetDir.resolve("bge-m3-Q8_0.gguf");
+        if (!Files.isRegularFile(target)) {
+            Files.copy(Path.of(configured), target, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return home;
     }
 }

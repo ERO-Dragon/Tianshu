@@ -102,7 +102,7 @@ class LlmProtocolAdapterTest {
 
         assertEquals(1, context.completed.get());
         assertEquals(1, client.streamCalls);
-        assertTrue(await(() -> chunks.size() == 4), "one thinking frame, two token frames and one terminal frame");
+        assertTrue(await(() -> chunks.size() == 3), "one thinking frame, one batched text frame and one terminal frame");
         // Frames are published in order, but the runtime dispatches responses on a broker, so they can
         // reach a handler on different workers. The index is the ordering contract; a caller that
         // appends by arrival order would corrupt the answer.
@@ -110,11 +110,11 @@ class LlmProtocolAdapterTest {
                 .sorted(java.util.Comparator.comparingInt(LLMPromptStreamChunkPayload::index))
                 .toList();
         assertEquals("reasoning", ordered.get(0).thinkingContent());
-        assertEquals(List.of("Hel", "lo"), List.of(ordered.get(1).text(), ordered.get(2).text()));
-        assertTrue(ordered.get(3).finished());
-        assertEquals("COMPLETED", ordered.get(3).finishType());
-        assertEquals("reasoning", ordered.get(3).thinkingContent());
-        assertEquals(3, ordered.get(3).index());
+        assertEquals("Hello", ordered.get(1).text(), "the token burst is coalesced into one chunk");
+        assertTrue(ordered.get(2).finished());
+        assertEquals("COMPLETED", ordered.get(2).finishType());
+        assertEquals("reasoning", ordered.get(2).thinkingContent());
+        assertEquals(2, ordered.get(2).index());
     }
 
     @Test
