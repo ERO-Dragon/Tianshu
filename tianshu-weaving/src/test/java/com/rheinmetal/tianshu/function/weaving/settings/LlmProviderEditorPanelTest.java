@@ -62,7 +62,6 @@ final class LlmProviderEditorPanelTest {
     private static final String MODULE_ID = "module.llm";
     private static final String TYPED_KEY = "sk-typed-into-the-editor";
     private static final String PROVIDERS_LIST = "llm.providers";
-    private static final String ADD_BUTTON_GROUP = "llm.providers.add";
     private static final String EMBEDDING_GROUP = "llm.embedding";
     private static final String EDITOR_GROUP = "llm.providers.editor";
     private static final String EDITOR_MODEL_ROW = "llm.editor.active_model";
@@ -124,14 +123,19 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
-    void theColumnIsCardsThenTheAddButtonThenOneEditorSection() throws Exception {
+    void theColumnIsTheOptionalVectorModelThenTheCloudProfile() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP), harness.leftColumnIds(),
-                    "the column is the cards, the add button and one editor section, in that order");
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, EDITOR_GROUP),
+                    harness.leftColumnIds(),
+                    "the column is the vector model, the provider list (with its own add button) and the editor");
+            assertEquals("llm.providers.add.button",
+                    harness.providers().footerActions().get(0).id(),
+                    "the add button belongs to the provider list, not to a section of its own");
 
             harness.runProviderAction("llm.provider.edit");
 
-            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP), harness.leftColumnIds(),
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, EDITOR_GROUP),
+                    harness.leftColumnIds(),
                     "opening a form adds no section: the catalog is a layer, not a part of the page");
             assertEquals(0, harness.layerHost().opens(),
                     "and no layer is opened until the player asks for one");
@@ -139,24 +143,66 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
-    void theVectorModelIsAFullWidthRowDirectlyAboveTheColumns() throws Exception {
+    void thePageIsTheEnableSwitchAndTheTwoColumns() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertEquals(List.of("llm.enabled", EMBEDDING_GROUP, "llm.panel.layout"),
-                    harness.topLevelIds(),
-                    "the vector model is the page's second row: everything below it needs an embedding file");
+            assertEquals(List.of("llm.enabled", "llm.panel.layout"), harness.topLevelIds(),
+                    "the vector model sits inside the left column, so it is not a page-level row");
+        }
+    }
+
+    /**
+     * The vector model used to be a hard gate: without the file the two columns were not built at all,
+     * so a cloud profile could not be configured until a local model had been downloaded. Chat is a
+     * cloud lane and answers without retrieval, so the page must not make that trade.
+     */
+    @Test
+    void aMissingVectorModelLeavesTheCloudProfileUsable() throws Exception {
+        try (Harness harness = new Harness(gameDirectory)) {
+            assertTrue(harness.template("llm.panel.layout").visible().getAsBoolean(),
+                    "the columns are drawn even though no embedding file exists");
+            assertNotNull(harness.providers(), "and the provider list is there to configure");
+            assertEquals("tianshu.gui.llm.status.embedding_optional_note",
+                    harness.embeddingHintKey(),
+                    "the vector-model section states what stays unavailable instead of hiding the page");
+        }
+    }
+
+    /**
+     * Switching the module off used to grey the vector-model section only: the provider cards, the add
+     * button and the editor stayed clickable, so an off module still offered controls for a lane nothing
+     * would read. Every section below the switch follows it now.
+     */
+    @Test
+    void switchingTheModuleOffDisablesEveryOtherControl() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.setLlmEnabled(false))) {
+            assertFalse(harness.template(EMBEDDING_GROUP).enabled().getAsBoolean(),
+                    "the vector-model section is disabled");
+            assertFalse(harness.template(PROVIDERS_LIST).enabled().getAsBoolean(),
+                    "the provider list is disabled with the module");
+            assertFalse(harness.footerAction("llm.providers.add.button").enabled().getAsBoolean(),
+                    "so is the add button in the list footer");
+            assertFalse(harness.template(EDITOR_GROUP).enabled().getAsBoolean(),
+                    "and the editor section");
+            assertFalse(harness.template("llm.usage.actions").enabled().getAsBoolean(),
+                    "the usage refresh is disabled too");
         }
     }
 
     @Test
-    void anUnreadyVectorModelHidesBothColumns() throws Exception {
+    void aCloudProfileCanBeSavedWithoutTheVectorModel() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
-            assertTrue(harness.template(EMBEDDING_GROUP).visible().getAsBoolean(),
-                    "the download row itself stays on screen");
-            assertFalse(harness.template("llm.panel.layout").visible().getAsBoolean(),
-                    "and it does not draw the provider columns: the gate is visibility, not a grey-out");
+            harness.runProviderAction("llm.provider.edit");
+            harness.typeEditorText("llm.editor.api_key", TYPED_KEY);
 
-            assertEquals(2, harness.visibleTopLevelIds().size(),
-                    "so an unready page is exactly the enable switch and the download row");
+            SettingsValidationResult validation = harness.session().validate();
+            assertTrue(validation.success(),
+                    () -> "a missing embedding model must not refuse a cloud profile: "
+                            + validation.message().value());
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+            assertEquals(TYPED_KEY, harness.access().getLlmApiKey(WeavingModelEntry.LEGACY_ID),
+                    "the cloud profile is written even though no embedding file exists");
         }
     }
 
@@ -227,12 +273,45 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
+    void theEditorWritesTheWireCompatibilityOfACustomEndpoint() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.setEditorSelect("llm.editor.stream_usage", Boolean.FALSE);
+            harness.setEditorSelect("llm.editor.max_tokens_field",
+                    LlmWireCompat.MaxTokensField.MAX_COMPLETION_TOKENS);
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+
+            LlmWireCompat stored = harness.access().getLlmWireCompat("alpha");
+            assertNotNull(stored, "a value that differs from the provider default is stored on the entry");
+            assertFalse(stored.includeStreamUsage());
+            assertEquals(LlmWireCompat.MaxTokensField.MAX_COMPLETION_TOKENS, stored.maxTokensField());
+        }
+    }
+
+    @Test
+    void anUntouchedFormStoresNoWireCompatibilityOverride() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+
+            assertTrue(harness.session().save().success());
+            assertNull(harness.access().getLlmWireCompat("alpha"),
+                    "inheriting the provider default means no override is written");
+        }
+    }
+
+    @Test
     void theFormWritesTheModelCapacityAndACustomLadder() throws Exception {
         try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
                 new WeavingModelEntry("alpha", "alpha", "deepseek", "https://api.deepseek.com/v1",
                         List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
             harness.runProviderAction(0, "llm.provider.edit");
-            harness.setEditorSelect("llm.editor.context_tier", Integer.valueOf(204_800));
+            harness.setEditorSelect("llm.editor.context_window", Integer.valueOf(204_800));
             harness.setEditorSelect("llm.editor.reasoning_wire", LlmReasoningWire.OPENAI_EFFORT);
             harness.typeEditorText("llm.editor.reasoning_levels", "minimal, standard, deep");
 
@@ -273,10 +352,13 @@ final class LlmProviderEditorPanelTest {
                     .map(SettingsTemplateModel.OptionEntry::id)
                     .toList();
             assertEquals(List.of("llm.editor.mode", "llm.editor.provider", "llm.editor.name",
-                            "llm.editor.base_url", "llm.editor.context_tier",
+                            "llm.editor.base_url", "llm.editor.context_window",
+                            "llm.editor.context_window_custom",
                             "llm.editor.reasoning_wire", "llm.editor.reasoning_no_thinking",
-                            "llm.editor.reasoning_levels", "llm.editor.api_key"), optionIds,
-                    "the editor holds the endpoint form, the model's own capacity and ladder: " + optionIds);
+                            "llm.editor.reasoning_levels", "llm.editor.stream_usage",
+                            "llm.editor.max_tokens_field", "llm.editor.api_key"), optionIds,
+                    "the editor holds the endpoint form, the model's own capacity, ladder and wire compatibility: "
+                            + optionIds);
 
             List<String> actionIds = harness.editor().actions().stream()
                     .map(SettingsTemplateModel.ActionEntry::id)
@@ -308,7 +390,7 @@ final class LlmProviderEditorPanelTest {
             assertTrue(picker.statusKey().isEmpty(), "and nothing to report before the player asks");
 
             assertTrue(harness.editorOpen(), "the form stays where it was while the layer is open");
-            assertEquals(List.of(PROVIDERS_LIST, ADD_BUTTON_GROUP, EDITOR_GROUP),
+            assertEquals(List.of(EMBEDDING_GROUP, PROVIDERS_LIST, EDITOR_GROUP),
                     harness.leftColumnIds(),
                     "the page under the layer is untouched");
         }
@@ -451,6 +533,66 @@ final class LlmProviderEditorPanelTest {
     }
 
     @Test
+    void aManualWindowCanBeTypedInsteadOfATier() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.setEditorSelect("llm.editor.context_window", Integer.valueOf(-1));
+            harness.typeEditorText("llm.editor.context_window_custom", "300000");
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+            assertEquals(300_000, harness.access().getLlmModels().get(0).activeModel().contextWindowTokens(),
+                    "a value between tiers is saved exactly as typed");
+        }
+    }
+
+    @Test
+    void aManualWindowOutsideTheRangeIsRejected() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "deepseek", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.setEditorSelect("llm.editor.context_window", Integer.valueOf(-1));
+            harness.typeEditorText("llm.editor.context_window_custom", "1000");
+
+            SettingsSaveResult saved = harness.session().save();
+            assertFalse(saved.success(), "a window below the floor must not reach the catalog");
+            assertEquals("tianshu.gui.llm.validation.context_window_out_of_range", saved.message().value());
+        }
+    }
+
+    @Test
+    void aFetchedModelTakesItsWindowFromThePresetCatalog() throws Exception {
+        try (Harness harness = new Harness(gameDirectory, access -> access.seedProviders(List.of(
+                new WeavingModelEntry("alpha", "alpha", "openai", "https://relay.example.test/v1",
+                        List.of(new WeavingModelSpec("relay-model", "relay-model", 102_400)), "relay-model"))))) {
+            harness.runProviderAction(0, "llm.provider.edit");
+            harness.catalog().answer(LlmModelCatalogResult.success(List.of("gpt-5.4-mini", "gpt-9-unknown")));
+
+            LayerDriver picker = harness.openPickerLayer();
+            picker.click(LlmModelPickerLayers.ACTION_FETCH);
+            picker.select("gpt-5.4-mini");
+            picker.click(LlmModelPickerLayers.ACTION_CONFIRM);
+
+            SettingsSaveResult saved = harness.session().save();
+            assertTrue(saved.success(), () -> "the page save failed: " + saved.message().value());
+
+            WeavingModelEntry entry = harness.access().getLlmModels().get(0);
+            for (WeavingModelSpec spec : entry.models()) {
+                if (spec.modelId().equals("gpt-5.4-mini")) {
+                    assertEquals(400_000, spec.contextWindowTokens(),
+                            "a model the preset catalog lists keeps its declared window");
+                } else if (spec.modelId().equals("gpt-9-unknown")) {
+                    assertEquals(WeavingContextTiers.defaultWindow(), spec.contextWindowTokens(),
+                            "a model outside the catalog falls back to the single 200K declaration");
+                }
+            }
+        }
+    }
+
+    @Test
     void fetchingIsAttemptedWithoutAnyKeySoTheProviderDecides() throws Exception {
         try (Harness harness = new Harness(gameDirectory)) {
             harness.catalog().answer(LlmModelCatalogResult.failure(LlmModelCatalogState.UNAUTHORIZED, "401"));
@@ -501,9 +643,9 @@ final class LlmProviderEditorPanelTest {
             // Two providers: the active one has no credential, and the form is open on the other.
             access.seedProviders(List.of(
                     new WeavingModelEntry("alpha", "alpha", "deepseek", "https://api.deepseek.com/v1",
-                            List.of(new WeavingModelSpec("model-alpha", "model-alpha", 8192)), "model-alpha"),
+                            List.of(new WeavingModelSpec("model-alpha", "model-alpha", 102_400)), "model-alpha"),
                     new WeavingModelEntry("beta", "beta", "deepseek", "https://api.deepseek.com/v1",
-                            List.of(new WeavingModelSpec("model-beta", "model-beta", 8192)), "model-beta")));
+                            List.of(new WeavingModelSpec("model-beta", "model-beta", 102_400)), "model-beta")));
         })) {
             harness.runProviderAction(1, "llm.provider.edit");
 
@@ -543,6 +685,11 @@ final class LlmProviderEditorPanelTest {
             SettingsLayerElement.List.Search field = list().search();
             assertNotNull(field, "the picker list is not searchable");
             field.setTerm().accept(term);
+        }
+
+        /** Clicks one row of the model list, the same intent the window's selection calls. */
+        private void select(String modelId) {
+            list().onSelect().accept(modelId);
         }
 
         private String customModelText() {
@@ -720,14 +867,6 @@ final class LlmProviderEditorPanelTest {
             return templates().stream().map(SettingsTemplateModel::id).toList();
         }
 
-        /** Top-level row ids the renderer would actually draw, in order. */
-        private List<String> visibleTopLevelIds() {
-            return templates().stream()
-                    .filter(template -> template.visible().getAsBoolean())
-                    .map(SettingsTemplateModel::id)
-                    .toList();
-        }
-
         private boolean editorOpen() {
             SettingsTemplateModel.CompoundGroup editor = editor();
             return editor != null && editor.visible().getAsBoolean();
@@ -849,6 +988,30 @@ final class LlmProviderEditorPanelTest {
             return fail("the vector model section has no position button");
         }
 
+        /** One of the provider list's own footer buttons, such as the add-provider action. */
+        private SettingsTemplateModel.ActionEntry footerAction(String actionId) {
+            SettingsTemplateModel.ListGroup<WeavingModelEntry> providers = providers();
+            assertNotNull(providers, "the page has no provider list");
+            for (SettingsTemplateModel.ActionEntry entry : providers.footerActions()) {
+                if (entry.id().equals(actionId)) {
+                    return entry;
+                }
+            }
+            return fail("the provider list has no footer action " + actionId);
+        }
+
+        /** The language key the vector-model hint row currently shows. */
+        private String embeddingHintKey() {
+            SettingsTemplateModel.CompoundGroup embedding = group(EMBEDDING_GROUP);
+            assertNotNull(embedding, "the vector model has a section of its own");
+            for (SettingsTemplateModel.StatusEntry entry : embedding.statuses()) {
+                if (entry.id().equals("llm.embedding.hint")) {
+                    return entry.value().get().value();
+                }
+            }
+            return fail("the vector model section has no hint row");
+        }
+
         private String editorStatusValue(String rowId) {
             SettingsTemplateModel.CompoundGroup editor = editor();
             assertNotNull(editor, "no editor section to read");
@@ -924,6 +1087,7 @@ final class LlmProviderEditorPanelTest {
         private final Path basePath;
         private final Map<String, String> apiKeys = new LinkedHashMap<>();
         private final Map<String, LlmReasoningProfile> reasoningProfiles = new LinkedHashMap<>();
+        private final Map<String, LlmWireCompat> wireCompat = new LinkedHashMap<>();
         private boolean enabled = true;
         private String customName = "";
         private List<WeavingModelEntry> models;
@@ -1030,6 +1194,20 @@ final class LlmProviderEditorPanelTest {
                 reasoningProfiles.remove(entryId);
             } else {
                 reasoningProfiles.put(entryId, profile);
+            }
+        }
+
+        @Override
+        public LlmWireCompat getLlmWireCompat(String entryId) {
+            return wireCompat.get(entryId);
+        }
+
+        @Override
+        public void setLlmWireCompat(String entryId, LlmWireCompat compat) {
+            if (compat == null) {
+                wireCompat.remove(entryId);
+            } else {
+                wireCompat.put(entryId, compat);
             }
         }
 

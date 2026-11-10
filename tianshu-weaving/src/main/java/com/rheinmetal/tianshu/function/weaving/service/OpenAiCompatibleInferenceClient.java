@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.weaving.runtime.LlmHttpTransport;
 import com.rheinmetal.tianshu.function.weaving.runtime.LlmTokenEstimator;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
@@ -78,6 +79,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     /** Arms the deadline of one request; null when the caller has no scheduler to offer. */
     private final LlmTimeoutScheduler timeoutScheduler;
     private final LlmReasoningProfile reasoningProfile;
+    /** Optional request fields this endpoint accepts; {@link LlmWireCompat#DEFAULT} is the OpenAI shape. */
+    private final LlmWireCompat wireCompat;
     private final Set<RemoteStream> activeStreams = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
     /** The endpoint ships no tokenizer, so prompt size is estimated and calibrated from usage. */
@@ -122,7 +125,25 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             LlmReasoningProfile reasoningProfile,
             LlmTimeoutScheduler timeoutScheduler
     ) {
-        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, null, null, timeoutScheduler);
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, null, null, timeoutScheduler,
+                LlmWireCompat.DEFAULT);
+    }
+
+    /**
+     * @param wireCompat the two optional request fields this endpoint accepts; {@code null} means the
+     *                   strict OpenAI shape
+     */
+    public OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            LlmReasoningProfile reasoningProfile,
+            LlmTimeoutScheduler timeoutScheduler,
+            LlmWireCompat wireCompat
+    ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, null, null, timeoutScheduler, wireCompat);
     }
 
     /** Transport seam: tests drive the real stream loop with a stub {@link HttpClient}, no socket. */
@@ -162,12 +183,29 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Executor executor,
             LlmTimeoutScheduler timeoutScheduler
     ) {
+        this(baseUrl, apiKey, model, timeout, diagnostics, reasoningProfile, httpClient, executor, timeoutScheduler,
+                LlmWireCompat.DEFAULT);
+    }
+
+    OpenAiCompatibleInferenceClient(
+            String baseUrl,
+            String apiKey,
+            String model,
+            Duration timeout,
+            Consumer<String> diagnostics,
+            LlmReasoningProfile reasoningProfile,
+            HttpClient httpClient,
+            Executor executor,
+            LlmTimeoutScheduler timeoutScheduler,
+            LlmWireCompat wireCompat
+    ) {
         this.endpoint = normalizeEndpoint(baseUrl);
         this.apiKey = requireHeaderSafe(apiKey == null ? "" : apiKey.trim());
         this.model = requireText(model, "model");
         this.timeout = clampTimeout(timeout);
         this.diagnostics = diagnostics == null ? message -> { } : diagnostics;
         this.reasoningProfile = reasoningProfile == null ? LlmReasoningProfile.NONE : reasoningProfile;
+        this.wireCompat = wireCompat == null ? LlmWireCompat.DEFAULT : wireCompat;
         this.httpClient = httpClient != null ? httpClient : LlmHttpTransport.client();
         this.timeoutScheduler = timeoutScheduler;
         this.ownedExecutor = executor == null ? newOwnedExecutor() : null;
@@ -338,7 +376,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
         try {
             HttpRequest request = buildRequest(buildChatRequestBody(
-                    model, messages, sampling, maxTokens, reasoningProfile, reasoningTier));
+                    model, messages, sampling, maxTokens, reasoningProfile, reasoningTier, wireCompat));
             HttpResponse<InputStream> response;
             try {
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -386,6 +424,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         int completionTokens = 0;
         int cacheHitTokens = -1;
         int cacheMissTokens = -1;
+        String finishReason = "";
         BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
         String line;
         while ((line = reader.readLine()) != null) {
@@ -398,6 +437,9 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             }
             if (event.done()) {
                 break;
+            }
+            if (!event.finishReason().isEmpty()) {
+                finishReason = event.finishReason();
             }
             if (event.promptTokens() != null) {
                 promptTokens = event.promptTokens();
@@ -428,6 +470,11 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 throw new IllegalStateException("REMOTE_LLM_STREAM_TIMEOUT timeoutSeconds=" + timeout.toSeconds());
             }
         }
+        if ("content_filter".equalsIgnoreCase(finishReason)) {
+            // The provider answered, but the answer was cut by its safety filter. Reporting COMPLETED
+            // here would hand an empty or partial reply to the caller as if it were a full one.
+            throw new IllegalStateException("REMOTE_LLM_CONTENT_FILTERED");
+        }
         reportCacheHitRatio(promptTokens, cacheHitTokens, cacheMissTokens);
         reportPromptCacheUsage(cacheSink, cacheHitTokens, cacheMissTokens);
         return new LlmGenerationResult(text.toString(), new LlmTokenUsage(promptTokens, completionTokens), thinking.toString());
@@ -439,6 +486,10 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
      * OpenAI-compatible chat-completions body: the four sampling fields, plus the reasoning field
      * this provider understands. The tier is an index into the profile's ladder; the name sent on the
      * wire is the provider's own level name, never an alias.
+     *
+     * <p>The two optional fields follow {@link LlmWireCompat}: a gateway that predates
+     * {@code stream_options} or rejects {@code max_tokens} says so on its own entry, instead of the
+     * request always assuming OpenAI's current shape.</p>
      */
     static String buildChatRequestBody(
             String model,
@@ -448,17 +499,33 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             LlmReasoningProfile reasoningProfile,
             Integer reasoningTier
     ) {
+        return buildChatRequestBody(model, messages, sampling, maxTokens, reasoningProfile, reasoningTier,
+                LlmWireCompat.DEFAULT);
+    }
+
+    static String buildChatRequestBody(
+            String model,
+            List<ChatMessage> messages,
+            LLMPromptRequestPayload.SamplingPayload sampling,
+            int maxTokens,
+            LlmReasoningProfile reasoningProfile,
+            Integer reasoningTier,
+            LlmWireCompat wireCompat
+    ) {
+        LlmWireCompat effective = wireCompat == null ? LlmWireCompat.DEFAULT : wireCompat;
         JsonObject root = new JsonObject();
         root.addProperty("model", model);
         root.add("messages", messageArray(messages));
         root.addProperty("stream", true);
-        JsonObject streamOptions = new JsonObject();
-        streamOptions.addProperty("include_usage", true);
-        root.add("stream_options", streamOptions);
+        if (effective.includeStreamUsage()) {
+            JsonObject streamOptions = new JsonObject();
+            streamOptions.addProperty("include_usage", true);
+            root.add("stream_options", streamOptions);
+        }
         applySampling(root, sampling);
         applyReasoning(root, reasoningProfile, reasoningTier);
         if (maxTokens > 0) {
-            root.addProperty("max_tokens", maxTokens);
+            root.addProperty(effective.maxTokensField().wireName(), maxTokens);
         }
         return GSON.toJson(root);
     }

@@ -54,6 +54,9 @@ public final class LlmModule implements TianshuManagedModule {
     private static final String REMOTE_SETTING_MODEL = "remoteModel";
     private static final String STATUS_KEY_MISSING_API_KEY = "tianshu.runtime.module.llm.missing_api_key";
     private static final String STATUS_KEY_REMOTE_INCOMPLETE = "tianshu.runtime.module.llm.remote_incomplete";
+    /** Why {@code LLM.CACHE_MANAGE} is failed while no vector lane is bound. */
+    private static final String CACHE_MANAGE_UNAVAILABLE_REASON =
+            "No vector model is installed; retrieval would fall back to lexical search";
     /** How long the reconnect line stays up past the wait it announces. */
     private static final long RETRY_STATUS_TAIL_MILLIS = 2_000L;
     /** How long presence keeps the failure line, so a player who looks up still sees it. */
@@ -203,7 +206,7 @@ public final class LlmModule implements TianshuManagedModule {
         if (config.isLlmEnabled()) {
             publishModuleStatus(ModuleStatuses.lifecycleStarting(moduleId(), lifecycleStatusGeneration));
             markGenerationCapabilityFailed("LLM model is not loaded");
-            markStorageCapabilitiesReady();
+            syncStorageCapabilities();
             if (moduleService != null) {
                 moduleService.markStopped();
             }
@@ -289,7 +292,8 @@ public final class LlmModule implements TianshuManagedModule {
         if (context == null) {
             return;
         }
-        PROVIDED_CAPABILITIES.forEach(capability -> context.runtimeState().capabilities().markReady(capability, moduleId()));
+        context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_REQUEST, moduleId());
+        syncStorageCapabilities();
     }
 
     private void markGenerationCapabilityFailed(String reason) {
@@ -303,11 +307,41 @@ public final class LlmModule implements TianshuManagedModule {
         }
     }
 
-    private void markStorageCapabilitiesReady() {
+    /**
+     * Brings the two storage capabilities to their true state.
+     *
+     * <p>Token counting and status snapshots never needed vectors, so the primitive query is always
+     * ready once the module runs. The RAG data plane is different: its useful half is vector search,
+     * and a consumer that reads capability state must see "not available" while no vector lane is
+     * bound, instead of discovering it one failed request later.</p>
+     */
+    private void syncStorageCapabilities() {
         ModuleRuntimeContext context = runtimeContext;
         if (context != null) {
-            context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_CACHE_MANAGE, moduleId());
             context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY, moduleId());
+        }
+        syncCacheManageCapability();
+    }
+
+    /**
+     * Marks the RAG data plane ready or failed according to the vector lane.
+     *
+     * <p>The handler still answers lexical and inline queries without embeddings: the status tells a
+     * consumer what to expect before it asks, it does not make the capability unreachable.</p>
+     */
+    private void syncCacheManageCapability() {
+        ModuleRuntimeContext context = runtimeContext;
+        if (context == null) {
+            return;
+        }
+        if (embeddingRuntime.available()) {
+            context.runtimeState().capabilities().markReady(LlmRuntimeCapabilities.LLM_CACHE_MANAGE, moduleId());
+        } else {
+            context.runtimeState().capabilities().markFailed(
+                    LlmRuntimeCapabilities.LLM_CACHE_MANAGE,
+                    moduleId(),
+                    CACHE_MANAGE_UNAVAILABLE_REASON
+            );
         }
     }
 
@@ -481,7 +515,8 @@ public final class LlmModule implements TianshuManagedModule {
                 Duration.ofSeconds(Math.max(1, config.getLlmRequestTimeoutSeconds())),
                 env::warn,
                 reasoning,
-                requestDeadline
+                requestDeadline,
+                config.getLlmWireCompat()
         );
     }
 
@@ -547,7 +582,7 @@ public final class LlmModule implements TianshuManagedModule {
      */
     private void reportStartFailure(String statusKey, String reason) {
         markGenerationCapabilityFailed(reason);
-        markStorageCapabilitiesReady();
+        syncStorageCapabilities();
         if (moduleService != null) {
             moduleService.markFailed(statusKey);
         }
@@ -672,7 +707,7 @@ public final class LlmModule implements TianshuManagedModule {
             }
             if (config.isLlmEnabled()) {
                 markGenerationCapabilityFailed("LLM model is not loaded");
-                markStorageCapabilitiesReady();
+                syncStorageCapabilities();
             } else {
                 disableCapabilities();
             }
@@ -695,6 +730,11 @@ public final class LlmModule implements TianshuManagedModule {
      * is retracted when a later load succeeds.</p>
      */
     private void onEmbeddingLoadSettled(EmbeddingLoadReport report) {
+        if (!config.isLlmEnabled()) {
+            // A load can settle after the player switched the module off; the disabled state owns the
+            // capability states from then on, and a late report must not revive them.
+            return;
+        }
         switch (report.outcome()) {
             case READY -> {
                 embeddingRuntime.bind(engineProvider.embeddingService());
@@ -706,9 +746,14 @@ public final class LlmModule implements TianshuManagedModule {
             }
             case UNAVAILABLE -> {
                 embeddingRuntime.bind(null);
+                // Only an attempted load reports here; "no model downloaded" never reaches this listener,
+                // so it stays quiet: retrieval off by choice is a configuration, not a failure.
                 adapter.publishRuntimeActivity(LlmPresenceActivityBridge.Kind.ERROR, RUNTIME_ERROR_TTL_MILLIS);
             }
         }
+        // The load settles after the lane is already running, so the capability state has to follow it:
+        // a model that finished loading turns the RAG data plane ready, a failed one turns it off.
+        syncStorageCapabilities();
     }
 
     /** The status a module reports when it is not — or no longer — running. */

@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
+import com.rheinmetal.tianshu.function.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.libs.llm.ChatMessage;
 import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
@@ -68,6 +69,43 @@ class OpenAiCompatibleInferenceClientTest {
     @AfterAll
     static void shutDownExecutor() {
         EXECUTOR.shutdownNow();
+    }
+
+    @Test
+    void aReplyCutByTheSafetyFilterFailsInsteadOfCompletingEmpty() throws Exception {
+        StubHttpClient transport = stub(200,
+                "data: {\"choices\":[{\"delta\":{\"content\":\"par\"},\"finish_reason\":null}]}",
+                "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}",
+                "data: [DONE]");
+        OpenAiCompatibleInferenceClient client = client(transport, "sk-test");
+
+        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+                messages(), sampling(), 0, false, null, token -> { }, null, null, null);
+
+        ExecutionException failure = assertThrows(ExecutionException.class, () -> streamed.get(5, TimeUnit.SECONDS));
+        assertTrue(failure.getCause().getMessage().contains("REMOTE_LLM_CONTENT_FILTERED"),
+                failure.getCause().getMessage());
+    }
+
+    @Test
+    void aCompactWireShapeOmitsStreamOptionsAndRenamesTheCompletionField() {
+        LLMPromptRequestPayload.SamplingPayload sampling =
+                new LLMPromptRequestPayload.SamplingPayload(0.3F, 0.9F, 0.1F, -0.1F);
+
+        String body = OpenAiCompatibleInferenceClient.buildChatRequestBody(
+                MODEL,
+                List.of(ChatMessage.user("hi")),
+                sampling,
+                64,
+                LlmReasoningProfile.NONE,
+                null,
+                new LlmWireCompat(false, LlmWireCompat.MaxTokensField.MAX_COMPLETION_TOKENS)
+        );
+
+        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+        assertFalse(root.has("stream_options"), "a gateway that rejects stream_options must not receive it");
+        assertEquals(64, root.get("max_completion_tokens").getAsInt());
+        assertFalse(root.has("max_tokens"));
     }
 
     @Test

@@ -49,8 +49,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BooleanSupplier;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.ToIntFunction;
 
 public final class WeavingSettingsRegistrySource implements TianshuSettingsRegistrySource {
     private static final String MODULE_ID = LlmProtocolAdapter.MODULE_ID;
@@ -124,20 +124,25 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
     }
 
     /**
-     * The page, top to bottom: the enable switch, the RAG vector model, then the two columns.
+     * The page: the enable switch, then the two columns.
      *
-     * <p>Everything below the vector model depends on it: without an embedding file there is no
-     * retrieval, and without retrieval the cloud lane cannot answer. The gate is therefore a
-     * <em>visibility</em> gate, not a disabled state — the columns are not built into the page at
-     * all until the model is on disk, which leaves an unready page as exactly two rows.
+     * <p>The vector model is <em>optional</em>, not a gate: chat is a cloud lane and answers without
+     * retrieval, so the provider and usage columns are always built. Without the embedding file only
+     * retrieval-dependent features are unavailable, which the vector-model section states in its own
+     * hint row. The section sits at the top of the left column because it is the local half of the
+     * lane, above the cloud profile beside it.</p>
      */
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
         panel.enable("llm.enabled", llm("enabled"), draft.enabled);
-        buildEmbeddingSection(panel, context, draft);
-        BooleanSupplier ready = draft::embeddingReady;
-        panel.columns("llm.panel.layout", 0.45D, 0.55D, () -> true, ready, columns -> columns
-                .column(0, left -> buildProviderColumn(left, context, draft))
+        panel.columns("llm.panel.layout", 0.45D, 0.55D, columns -> columns
+                .column(0, left -> buildLeftColumn(left, context, draft))
                 .column(1, right -> buildStatsColumn(right, draft)));
+    }
+
+    /** Left column: the optional vector model first, then the cloud profile. */
+    private void buildLeftColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
+        buildEmbeddingSection(panel, context, draft);
+        buildProviderColumn(panel, context, draft);
     }
 
     /**
@@ -162,29 +167,32 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
     }
 
     /**
-     * Left column: the configured providers, the add button, then the editor.
+     * The cloud half: the configured providers with their own add button, then the editor.
      *
      * <p>A card carries what identifies and activates an entry — the name, the "custom" badge of an
      * endpoint this build does not ship, the activation dot and the model the provider currently uses —
-     * and nothing more. Endpoint data lives in the editor, so no card grows a full-width paragraph.
+     * and nothing more. Endpoint data lives in the editor, so no card grows a full-width paragraph.</p>
      *
-     * <p>Those are the only three groups of the column, in that order: cards, add button, editor. The add
-     * button keeps its place while the editor is open and only the button itself is disabled, so opening a
-     * form never moves what is already on screen. The editor is the form and one read-only line: which
-     * model the provider uses, and one button that opens the picker.
+     * <p>The add button is the list's own footer instead of a section of its own: it belongs with the
+     * cards it extends, and a separate section would sit between the cards and the editor a card opens,
+     * pushing the form below a button that has nothing to do with it.</p>
+     *
+     * <p>The editor is the form and one read-only line: which model the provider uses, and one button
+     * that opens the picker. Both groups are disabled while the module itself is off, exactly like the
+     * vector-model section: an off module must not offer a control that configures a lane nothing will
+     * read.</p>
      */
     private void buildProviderColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, LlmSettingsDraft draft) {
-        panel.<WeavingModelEntry>list("llm.providers", llm("section.providers"), list -> list
+        panel.<WeavingModelEntry>list("llm.providers", llm("section.providers"), draft.enabled::get, list -> list
                         .items(draft::modelEntries)
                         .card(draft::providerCard)
                         .itemActions(draft::buildProviderActions)
-                        .emptyText(llm("models.empty")))
-                .actions("llm.providers.add", llm("section.provider_add"),
-                        () -> true, () -> true,
-                        actions -> actions.button("llm.providers.add.button", llm("action.add_provider"),
-                                SettingsButtonStyle.PRIMARY, draft::startNewProvider, () -> !draft.editing()))
+                        .emptyText(llm("models.empty"))
+                        .footerActions(actions -> actions.button("llm.providers.add.button", llm("action.add_provider"),
+                                SettingsButtonStyle.PRIMARY, draft::startNewProvider,
+                                () -> draft.enabled.get() && !draft.editing())))
                 .compound("llm.providers.editor", llm("section.editor"),
-                        () -> true, draft::editing,
+                        draft.enabled::get, draft::editing,
                         draft::buildEditorOptions,
                         actions -> draft.buildEditorActions(context, actions),
                         draft::buildEditorStatus);
@@ -205,7 +213,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 .status("llm.usage.overall", llm("section.usage_overall"), draft::buildOverallUsageStatus)
                 .status("llm.usage.spend", llm("section.usage_spend"), draft::buildSpendStatus)
                 .status("llm.usage.balance", llm("section.usage_balance"), draft::buildBalanceStatus)
-                .actions("llm.usage.actions", llm("section.usage_actions"), actions -> actions
+                .actions("llm.usage.actions", llm("section.usage_actions"), draft.enabled::get, actions -> actions
                         .button("llm.usage.refresh", llm("action.refresh_usage"), draft::refreshUsage));
     }
 
@@ -239,6 +247,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private final Map<String, String> pendingApiKeys = new LinkedHashMap<>();
         /** Ladders staged by the form, keyed by entry id; {@code null} value = inherit the profile. */
         private final Map<String, LlmReasoningProfile> pendingReasoning = new LinkedHashMap<>();
+        /** Wire compatibility staged by the form, keyed by entry id; {@code null} value = inherit it. */
+        private final Map<String, LlmWireCompat> pendingWireCompat = new LinkedHashMap<>();
         /** Credentials of deleted models, cleared on save so no orphan secret stays behind. */
         private final Set<String> retiredApiKeyIds = new LinkedHashSet<>();
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
@@ -381,6 +391,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             retiredApiKeyIds.add(entry.id());
             // A deleted entry takes its staged ladder with it, so no override outlives the entry.
             pendingReasoning.put(entry.id(), null);
+            pendingWireCompat.put(entry.id(), null);
             if (entry.id().equals(activeModelId.get())) {
                 activeModelId.set(next.get(0).id());
             }
@@ -408,7 +419,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     : EditorMode.CUSTOM;
             modelEditor = new ModelEditorBuffer(entry.id(), mode, entry.providerId(), entry.displayName(),
                     entry.baseUrl(), entry.models(), entry.activeModelId(), "",
-                    reasoningFor(entry));
+                    reasoningFor(entry), wireCompatFor(entry));
             refreshSettingsScreen();
         }
 
@@ -422,6 +433,16 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return provider == null ? LlmReasoningProfile.NONE : provider.reasoning();
         }
 
+        /** The optional request fields the entry accepts today: its override, else its provider's. */
+        private LlmWireCompat wireCompatFor(WeavingModelEntry entry) {
+            LlmWireCompat stored = config.getLlmWireCompat(entry.id());
+            if (stored != null) {
+                return stored;
+            }
+            LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(entry.providerId());
+            return provider == null ? LlmWireCompat.DEFAULT : provider.wireCompat();
+        }
+
         /** A new entry starts from the shipped default provider; custom API is one switch away. */
         private void startNewProvider() {
             if (modelEditor != null) {
@@ -430,7 +451,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.defaultProvider();
             modelEditor = new ModelEditorBuffer(null, EditorMode.BUILTIN, provider.id(), provider.id(),
                     provider.baseUrl(), provider.defaultCatalog(), provider.defaultModelId(), "",
-                    provider.reasoning());
+                    provider.reasoning(), provider.wireCompat());
             refreshSettingsScreen();
         }
 
@@ -507,10 +528,14 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     // Capacity of the model in use. Hidden in built-in mode because the shipped profile
                     // defines that entry entirely: a different window is a custom configuration, and
                     // switching to custom API is how the player says so.
-                    .select("llm.editor.context_tier", llm("option.context_tier"),
-                            contextTierChoices(editor.activeWindowTokens()),
-                            editor::activeWindowTokens, this::contextTierLabel,
-                            editor::setActiveWindowTokens, () -> true, editor::customMode)
+                    .select("llm.editor.context_window", llm("option.context_window"),
+                            contextWindowChoices(),
+                            editor::windowChoice, this::contextWindowChoiceLabel,
+                            editor::setWindowChoice, () -> true, editor::customMode)
+                    // Revealed only while the select is on "custom"; one value, one place to read it.
+                    .text("llm.editor.context_window_custom", llm("option.context_window_custom"),
+                            editor::customWindowText, editor::setCustomWindowText,
+                            editor::customWindowSelected, editor::customWindowVisible)
                     // Reasoning ladder of a custom endpoint. The shipped profiles already carry theirs,
                     // and a built-in entry is defined by its profile, so this belongs to custom mode.
                     .select("llm.editor.reasoning_wire", llm("option.reasoning_wire"),
@@ -526,29 +551,40 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     .text("llm.editor.reasoning_levels", llm("option.reasoning_levels"),
                             editor::reasoningLevels, editor::setReasoningLevels,
                             editor::reasoningHasControl, editor::customMode)
+                    // Two optional request fields relays disagree on. Custom mode because a shipped
+                    // profile defines them; a gateway that rejects either is by definition custom.
+                    .select("llm.editor.stream_usage", llm("option.stream_usage"),
+                            List.of(Boolean.TRUE, Boolean.FALSE),
+                            editor::includeStreamUsage, this::streamUsageLabel,
+                            editor::setIncludeStreamUsage, () -> true, editor::customMode)
+                    .select("llm.editor.max_tokens_field", llm("option.max_tokens_field"),
+                            List.of(LlmWireCompat.MaxTokensField.values()),
+                            editor::maxTokensField, this::maxTokensFieldLabel,
+                            editor::setMaxTokensField, () -> true, editor::customMode)
                     // Last and write-only. The widget is always empty: only the fact that a credential is
                     // stored is read back, so a blank field keeps the key and a typed value replaces it.
                     .text("llm.editor.api_key", apiKeyLabel, editor::apiKey, editor::setApiKey);
         }
 
         /**
-         * The selectable capacities, plus whatever the entry already declares so a hand-set or legacy
-         * window still renders instead of silently snapping to the nearest tier when the form opens.
+         * The dropdown: the canonical tiers, plus the "custom" sentinel. A value between tiers (a preset
+         * window such as 272,000, or a hand-typed one) is not added to this list — it is represented by
+         * the sentinel and edited in the text field below, so the two controls can never disagree.
          */
-        private List<Integer> contextTierChoices(int currentWindow) {
+        private List<Integer> contextWindowChoices() {
             List<Integer> choices = new ArrayList<>();
             for (int tier : WeavingContextTiers.values()) {
                 choices.add(tier);
             }
-            if (currentWindow > 0 && !choices.contains(currentWindow)) {
-                choices.add(currentWindow);
-                choices.sort(Integer::compareTo);
-            }
+            choices.add(ModelEditorBuffer.CUSTOM_WINDOW_CHOICE);
             return List.copyOf(choices);
         }
 
-        private UiText contextTierLabel(int windowTokens) {
-            return LlmUsageValueFormat.tokens(windowTokens);
+        private UiText contextWindowChoiceLabel(Integer choice) {
+            if (choice == null || choice == ModelEditorBuffer.CUSTOM_WINDOW_CHOICE) {
+                return llm("option.context_window.custom");
+            }
+            return LlmUsageValueFormat.tokens(choice);
         }
 
         private UiText reasoningWireLabel(LlmReasoningWire wire) {
@@ -561,6 +597,19 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         private UiText booleanOptionLabel(Boolean value) {
             return Boolean.TRUE.equals(value) ? common("yes") : common("no");
+        }
+
+        private UiText streamUsageLabel(Boolean include) {
+            return Boolean.TRUE.equals(include)
+                    ? llm("option.stream_usage.include")
+                    : llm("option.stream_usage.omit");
+        }
+
+        private UiText maxTokensFieldLabel(LlmWireCompat.MaxTokensField field) {
+            return switch (field == null ? LlmWireCompat.MaxTokensField.MAX_TOKENS : field) {
+                case MAX_TOKENS -> llm("option.max_tokens_field.max_tokens");
+                case MAX_COMPLETION_TOKENS -> llm("option.max_tokens_field.max_completion_tokens");
+            };
         }
 
         private UiText providerOptionLabel(String providerId) {
@@ -642,6 +691,11 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 // keeps the identity it is stored with, because the form does not show that field.
                 providerId = editor.entryId() == null ? WeavingModelEntry.CUSTOM_PROVIDER_ID : editor.providerId();
             }
+            if (!editor.activeWindowValid()) {
+                // Caught here, before the catalog is built: a custom text that is not a capacity must
+                // never fall through to WeavingModelSpec's default tier.
+                return EditorPlan.rejected(contextWindowRangeMessage());
+            }
             CatalogPlan catalog = catalogPlan(editor);
             if (!catalog.applicable()) {
                 return EditorPlan.rejected(catalog.failure());
@@ -653,7 +707,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     baseUrl,
                     catalog.specs(),
                     editor.activeModelId()
-            ), trimmed(editor.apiKey()), reasoningPlan(editor, providerId));
+            ), trimmed(editor.apiKey()), reasoningPlan(editor, providerId), wireCompatPlan(editor, providerId));
         }
 
         /**
@@ -669,6 +723,17 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(providerId);
             LlmReasoningProfile inherited = profile == null ? LlmReasoningProfile.NONE : profile.reasoning();
             return ladder.equals(inherited) ? null : ladder;
+        }
+
+        /**
+         * The compatibility the form describes, or {@code null} when the entry should inherit it: an
+         * untouched form never writes an override that just restates the provider's defaults.
+         */
+        private LlmWireCompat wireCompatPlan(ModelEditorBuffer editor, String providerId) {
+            LlmWireCompat compat = editor.wireCompat();
+            LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(providerId);
+            LlmWireCompat inherited = profile == null ? LlmWireCompat.DEFAULT : profile.wireCompat();
+            return compat.equals(inherited) ? null : compat;
         }
 
         /**
@@ -697,6 +762,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             // Null means "inherit the shipped profile", which is a write too: it clears any earlier
             // override instead of leaving a stale ladder behind.
             pendingReasoning.put(entry.id(), plan.reasoning());
+            pendingWireCompat.put(entry.id(), plan.wireCompat());
             // A closed form has no catalog to pick from, so any window on it ends with the form.
             modelEditor = null;
             modelPicker = null;
@@ -706,9 +772,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          * The edited catalog in the shape the storage layer wants.
          *
          * <p>Every row keeps the window it was created with, except the model in use: that one carries the
-         * capacity the form shows, which is how a custom endpoint declares something other than the
-         * shipped default. The capacity floor itself is checked once, on the provider that ends up in
-         * use ({@link #validate()}), so a legacy row another row still carries cannot block the form.
+         * window the form's control declares, which is how a custom endpoint states something other than
+         * the shipped default. That value is range-checked by {@link #editorPlan()} before this runs, so
+         * an unreadable custom text never reaches {@link WeavingModelSpec}'s fallback.
          */
         private CatalogPlan catalogPlan(ModelEditorBuffer editor) {
             if (editor.rowCount() == 0) {
@@ -724,7 +790,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     return CatalogPlan.rejected(llm("validation.duplicate_model", modelId));
                 }
                 specs.add(new WeavingModelSpec(modelId, trimmed(editor.displayNameAt(index)),
-                        editor.windowTokensAt(index)));
+                        editor.isActiveModelAt(index) ? editor.activeWindowTokens() : editor.windowTokensAt(index)));
             }
             return CatalogPlan.applied(List.copyOf(specs));
         }
@@ -744,8 +810,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         /** Accepted window range of one model entry, expressed by the tier policy and the storage bound. */
         private boolean validContextWindow(int tokens) {
-            return tokens <= WeavingConfiguration.MAX_LLM_CONTEXT_WINDOW_TOKENS
-                    && WeavingContextTiers.supportsTier(WeavingContextTiers.minimumTier(), tokens);
+            return WeavingContextTiers.isValidWindow(tokens);
         }
 
         private UiText contextWindowRangeMessage() {
@@ -872,7 +937,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
             @Override
             public void addCustomModel() {
-                buffer.addCustomModel(defaultWindowFor(editor.providerId()));
+                buffer.addCustomModel(windowForModel(editor.providerId(), buffer.customModelId()));
             }
 
             @Override
@@ -921,7 +986,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     return;
                 }
                 if (result.success()) {
-                    buffer.replaceWithFetchedModels(result.modelIds(), defaultWindowFor(editor.providerId()));
+                    buffer.replaceWithFetchedModels(result.modelIds(),
+                            modelId -> windowForModel(editor.providerId(), modelId));
                     status = llm("catalog.fetched", result.modelIds().size());
                     return;
                 }
@@ -936,12 +1002,16 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             }
         }
 
-        /** The context window a model the picker adds starts from: the shipped profile's, or the default. */
-        private int defaultWindowFor(String providerId) {
+        /**
+         * The window for one model id: the preset catalog is authoritative for a model it lists; every
+         * other id starts from the single 200K declaration rather than the provider's default model.
+         * The live list carries ids, not windows, so this is what keeps "fetched" and "shipped" models
+         * on the same declaration.
+         */
+        private int windowForModel(String providerId, String modelId) {
+            int fallback = WeavingContextTiers.defaultWindow();
             LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(providerId);
-            return provider == null
-                    ? WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS
-                    : provider.contextWindowTokens();
+            return provider == null ? fallback : provider.contextWindowFor(modelId, fallback);
         }
 
         /**
@@ -1117,17 +1187,15 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty()
-                    || !pendingReasoning.isEmpty();
+                    || !pendingReasoning.isEmpty()
+                    || !pendingWireCompat.isEmpty();
         }
 
         @Override
         public SettingsValidationResult validate() {
-            // The page hides the provider columns while the vector model is missing, but a form opened
-            // before the model was removed, or a programmatic save, must not slip past that. Only cloud
-            // profile changes are refused: the enable switch stays writable.
-            if (!embeddingReady() && cloudSettingsDirty()) {
-                return SettingsValidationResult.failure(llm("validation.embedding_missing"));
-            }
+            // The vector model is optional, so a missing embedding file is never a reason to refuse a
+            // cloud profile: chat answers without retrieval, and only retrieval-dependent features stay
+            // off until the model is downloaded.
             // An open form is not a reason to refuse the page save. save is expected to finish the job,
             // so the form is judged here as the change it would make — and applied by save(), never by
             // this method, which the load button polls while the page renders. A form that cannot be
@@ -1205,7 +1273,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     || activeModelId.dirty()
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty()
-                    || !pendingReasoning.isEmpty();
+                    || !pendingReasoning.isEmpty()
+                    || !pendingWireCompat.isEmpty();
             // Only a staged position is written. A save that never touched the button must not rewrite the
             // key from whatever this page happened to read first, which is what turned a stale page into a
             // stale file. The value is read before the transaction writes, so this is the change about to be
@@ -1235,6 +1304,12 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 transaction.write(() -> config.getLlmReasoningProfile(entryId),
                         value -> config.setLlmReasoningProfile(entryId, value), profile);
             }
+            for (Map.Entry<String, LlmWireCompat> pending : pendingWireCompat.entrySet()) {
+                String entryId = pending.getKey();
+                LlmWireCompat compat = pending.getValue();
+                transaction.write(() -> config.getLlmWireCompat(entryId),
+                        value -> config.setLlmWireCompat(entryId, value), compat);
+            }
             transaction.commit(config::save);
             // Accepted only after persistence succeeded: a failed save keeps the staged position so the
             // player can retry it instead of finding the button silently back at the stored value.
@@ -1242,6 +1317,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
             pendingReasoning.clear();
+            pendingWireCompat.clear();
             if (!enabled.get()) {
                 moduleService.unload();
             } else if (cloudSettingsChanged || embeddingPositionChanged) {
@@ -1260,6 +1336,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             pendingApiKeys.clear();
             retiredApiKeyIds.clear();
             pendingReasoning.clear();
+            pendingWireCompat.clear();
             modelEditor = null;
             modelPicker = null;
             catalogFetching = false;
@@ -1315,15 +1392,26 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private void buildEmbeddingStatus(StatusTemplate status) {
             status.row("llm.embedding.model", llm("row.embedding_model"), this::embeddingModelNameStatus)
                     .row("llm.embedding.state", llm("row.embedding_state"), this::embeddingModelStateStatus)
-                    .row("llm.embedding.hint", llm("row.embedding_hint"), () -> llm("status.embedding_gpu_hint"));
+                    .row("llm.embedding.hint", llm("row.embedding_hint"), this::embeddingHintStatus);
         }
 
         /**
-         * Whether the page may show anything below the vector model.
+         * The hint row that tells what the model is for and what is lost without it.
          *
-         * <p>The provider columns are gated on this: without the embedding file there is no
-         * retrieval, so the cloud lane cannot answer and offering its configuration would be a promise the
-         * page cannot keep.
+         * <p>Downloaded, it carries the one warning a player needs before switching to the card.
+         * Missing, it says the lane still chats and names the thing that does not work — a module that
+         * depends on retrieval (Auxilium) simply has nothing to detect and cannot run, and that must be
+         * visible here instead of surfacing as "the other module is broken".</p>
+         */
+        private UiText embeddingHintStatus() {
+            return embeddingReady() ? llm("status.embedding_gpu_hint") : llm("status.embedding_optional_note");
+        }
+
+        /**
+         * Whether the vector model is on disk.
+         *
+         * <p>Only the hint row and the download button follow this now: the rest of the page is not
+         * gated on it, because chat is a cloud lane and answers without retrieval.</p>
          */
         private boolean embeddingReady() {
             LlmModelInfo info = embeddingModel();
@@ -1531,19 +1619,28 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          *
          * @param entry   the provider the form would produce, {@code null} when it cannot be applied
          * @param apiKey  credential typed into the form, empty when none was typed
+         * @param reasoning the ladder to store, {@code null} when the entry inherits the profile
+         * @param wireCompat the compatibility to store, {@code null} when the entry inherits it
          * @param failure why the form cannot be applied, {@code null} when it can
          */
-        private record EditorPlan(WeavingModelEntry entry, String apiKey, LlmReasoningProfile reasoning, UiText failure) {
+        private record EditorPlan(
+                WeavingModelEntry entry,
+                String apiKey,
+                LlmReasoningProfile reasoning,
+                LlmWireCompat wireCompat,
+                UiText failure
+        ) {
             private static EditorPlan applied(
                     WeavingModelEntry entry,
                     String apiKey,
-                    LlmReasoningProfile reasoning
+                    LlmReasoningProfile reasoning,
+                    LlmWireCompat wireCompat
             ) {
-                return new EditorPlan(entry, apiKey == null ? "" : apiKey, reasoning, null);
+                return new EditorPlan(entry, apiKey == null ? "" : apiKey, reasoning, wireCompat, null);
             }
 
             private static EditorPlan rejected(UiText failure) {
-                return new EditorPlan(null, "", null, failure);
+                return new EditorPlan(null, "", null, null, failure);
             }
 
             private boolean applicable() {
@@ -1618,6 +1715,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
      * {@code ModelPickerSession#confirm()}.
      */
     private static final class ModelEditorBuffer {
+        /** Select sentinel for "the window is typed below, not one of the tiers". */
+        static final int CUSTOM_WINDOW_CHOICE = -1;
+
         private final String entryId;
         private EditorMode mode;
         private String providerId;
@@ -1628,15 +1728,22 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         /** The model id this provider would use if the form were applied now. */
         private String activeModelId;
         private String apiKey;
+        /** Window control of the model in use: a tier value, or {@link #CUSTOM_WINDOW_CHOICE}. */
+        private int windowChoice;
+        /** The typed window while {@link #windowChoice} is custom; never the source of truth by itself. */
+        private String customWindowText;
         /** Reasoning ladder as the form shows it; {@link LlmReasoningWire#NONE} means no control. */
         private LlmReasoningWire reasoningWire;
         private boolean reasoningIncludesNoThinking;
         private String reasoningLevels;
         private int reasoningDefaultTier;
+        /** Optional request fields as the form shows them. */
+        private boolean includeStreamUsage;
+        private LlmWireCompat.MaxTokensField maxTokensField;
 
         private ModelEditorBuffer(String entryId, EditorMode mode, String providerId, String displayName,
                                   String baseUrl, List<WeavingModelSpec> models, String activeModelId, String apiKey,
-                                  LlmReasoningProfile reasoning) {
+                                  LlmReasoningProfile reasoning, LlmWireCompat wireCompat) {
             this.entryId = entryId;
             this.mode = mode == null ? EditorMode.BUILTIN : mode;
             this.providerId = providerId;
@@ -1645,7 +1752,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             this.rows = catalogRowsOf(models);
             this.activeModelId = activeModelId;
             this.apiKey = apiKey;
+            syncWindowChoice();
             applyReasoning(reasoning);
+            applyWireCompat(wireCompat);
         }
 
         private static List<CatalogRowBuffer> catalogRowsOf(List<WeavingModelSpec> models) {
@@ -1714,7 +1823,9 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             // The profile is the definition of a built-in provider, its model catalog included.
             this.rows = catalogRowsOf(provider.defaultCatalog());
             this.activeModelId = provider.defaultModelId();
+            syncWindowChoice();
             applyReasoning(provider.reasoning());
+            applyWireCompat(provider.wireCompat());
         }
 
         // --- reasoning ladder -------------------------------------------------------------------
@@ -1770,6 +1881,36 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return new LlmReasoningProfile(reasoningWire, reasoningIncludesNoThinking, levels, reasoningDefaultTier);
         }
 
+        // --- wire compatibility -----------------------------------------------------------------
+
+        private void applyWireCompat(LlmWireCompat compat) {
+            LlmWireCompat effective = compat == null ? LlmWireCompat.DEFAULT : compat;
+            this.includeStreamUsage = effective.includeStreamUsage();
+            this.maxTokensField = effective.maxTokensField();
+        }
+
+        private boolean includeStreamUsage() {
+            return includeStreamUsage;
+        }
+
+        private void setIncludeStreamUsage(boolean includeStreamUsage) {
+            this.includeStreamUsage = includeStreamUsage;
+        }
+
+        private LlmWireCompat.MaxTokensField maxTokensField() {
+            return maxTokensField;
+        }
+
+        private void setMaxTokensField(LlmWireCompat.MaxTokensField maxTokensField) {
+            this.maxTokensField = maxTokensField == null
+                    ? LlmWireCompat.MaxTokensField.MAX_TOKENS
+                    : maxTokensField;
+        }
+
+        private LlmWireCompat wireCompat() {
+            return new LlmWireCompat(includeStreamUsage, maxTokensField);
+        }
+
         private String providerId() {
             return providerId;
         }
@@ -1809,24 +1950,96 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return rows.get(index).windowTokens();
         }
 
-        /** Declared capacity of the model in use, read from its row so the two cannot disagree. */
-        private int activeWindowTokens() {
-            String active = activeModelId();
+        /** Whether the row at {@code index} is the model the form would put to work. */
+        private boolean isActiveModelAt(int index) {
+            return index >= 0 && index < rows.size()
+                    && trimmed(rows.get(index).modelId()).equals(activeModelId());
+        }
+
+        // --- window of the model in use ---------------------------------------------------------
+        /*
+         * One control, one source of truth: the select says "a tier" or "custom", and the effective
+         * window is derived from that pair on read. The catalog rows are not rewritten per keystroke;
+         * catalogPlan substitutes this value for the active row when the form is applied.
+         */
+
+        /** Declared capacity of the model in use as stored in its row; the starting point of the control. */
+        private int activeRowWindowTokens() {
             for (CatalogRowBuffer row : rows) {
-                if (trimmed(row.modelId()).equals(active)) {
+                if (trimmed(row.modelId()).equals(activeModelId())) {
                     return row.windowTokens();
                 }
             }
-            return WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
+            return WeavingContextTiers.defaultWindow();
         }
 
-        private void setActiveWindowTokens(int windowTokens) {
-            String active = activeModelId();
-            List<CatalogRowBuffer> next = new ArrayList<>(rows.size());
-            for (CatalogRowBuffer row : rows) {
-                next.add(trimmed(row.modelId()).equals(active) ? row.withWindowTokens(windowTokens) : row);
+        /** Points the control at the row's window: a matching tier, or custom with the value prefilled. */
+        private void syncWindowChoice() {
+            int current = activeRowWindowTokens();
+            if (WeavingContextTiers.isTier(current)) {
+                windowChoice = current;
+                customWindowText = "";
+            } else {
+                windowChoice = CUSTOM_WINDOW_CHOICE;
+                customWindowText = String.valueOf(current);
             }
-            rows = next;
+        }
+
+        private int windowChoice() {
+            return windowChoice;
+        }
+
+        private void setWindowChoice(Integer choice) {
+            if (choice == null) {
+                return;
+            }
+            if (choice == CUSTOM_WINDOW_CHOICE) {
+                if (windowChoice != CUSTOM_WINDOW_CHOICE) {
+                    // Seed the text with the value the form currently declares, so "custom" is an edit,
+                    // not a reset to an empty field.
+                    customWindowText = String.valueOf(activeRowWindowTokens());
+                }
+                windowChoice = CUSTOM_WINDOW_CHOICE;
+                return;
+            }
+            windowChoice = choice;
+            customWindowText = "";
+        }
+
+        private String customWindowText() {
+            return customWindowText == null ? "" : customWindowText;
+        }
+
+        private void setCustomWindowText(String text) {
+            customWindowText = text == null ? "" : text;
+        }
+
+        private boolean customWindowSelected() {
+            return windowChoice == CUSTOM_WINDOW_CHOICE;
+        }
+
+        private boolean customWindowVisible() {
+            return customMode() && customWindowSelected();
+        }
+
+        /**
+         * The window the form would declare for the model in use; negative when the custom text is not
+         * a number. Callers check {@link #activeWindowValid()} before treating it as a capacity.
+         */
+        private int activeWindowTokens() {
+            if (windowChoice != CUSTOM_WINDOW_CHOICE) {
+                return windowChoice;
+            }
+            try {
+                return Integer.parseInt(trimmed(customWindowText));
+            } catch (NumberFormatException notANumber) {
+                return -1;
+            }
+        }
+
+        /** Whether the value can be saved: readable and inside the declared range. */
+        private boolean activeWindowValid() {
+            return WeavingContextTiers.isValidWindow(activeWindowTokens());
         }
 
         /**
@@ -1850,6 +2063,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private void replaceCatalog(List<CatalogRowBuffer> rows, String activeModelId) {
             this.rows = catalogCopiesOf(rows);
             this.activeModelId = resolveActiveModelId(activeModelId);
+            syncWindowChoice();
         }
 
         private String resolveActiveModelId(String candidate) {
@@ -1914,10 +2128,6 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         private CatalogRowBuffer copy() {
             return new CatalogRowBuffer(modelId, displayName, contextWindowTokens);
-        }
-
-        private CatalogRowBuffer withWindowTokens(int windowTokens) {
-            return new CatalogRowBuffer(modelId, displayName, windowTokens);
         }
 
         private String modelId() {
@@ -2042,9 +2252,10 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          *
          * <p>A model that is already configured keeps its display name and window: the provider lists ids
          * only, so re-reading the list must not throw away what is already known about a model. New ids
-         * arrive with the id as their display name and the provider's preset window.
+         * arrive with the id as their display name and {@code windowFor}'s window — the preset catalog's
+         * when it lists the model, the provider default otherwise.
          */
-        private void replaceWithFetchedModels(List<String> modelIds, int contextWindowTokens) {
+        private void replaceWithFetchedModels(List<String> modelIds, ToIntFunction<String> windowFor) {
             if (modelIds == null || modelIds.isEmpty()) {
                 return;
             }
@@ -2056,7 +2267,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 }
                 CatalogRowBuffer existing = rowFor(id);
                 next.add(existing == null
-                        ? CatalogRowBuffer.of(WeavingModelSpec.of(id, contextWindowTokens))
+                        ? CatalogRowBuffer.of(WeavingModelSpec.of(id, windowFor.applyAsInt(id)))
                         : existing.copy());
             }
             if (next.isEmpty()) {

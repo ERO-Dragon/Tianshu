@@ -106,8 +106,13 @@ class LlmModuleLifecycleBoundaryTest {
         }
     }
 
+    /**
+     * The RAG data plane is failed until a vector lane is bound: its useful half is vector search, and a
+     * consumer that reads capability state must see that before it asks. Token counting and status
+     * snapshots never needed vectors, so the primitive query stays ready.
+     */
     @Test
-    void storageCapabilitiesRemainReadyBeforeGenerationLoads() {
+    void theCacheManageCapabilityFollowsTheVectorLane() {
         IGameEnvironment env = new FakeGameEnvironment();
         TestLlmSupport.FakeConfig config = new TestLlmSupport.FakeConfig(tempDir);
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
@@ -118,8 +123,10 @@ class LlmModuleLifecycleBoundaryTest {
         module.prepare(new ModuleRuntimeContext(runtime, services, new TriggerRegistry(), state));
 
         assertEquals(RuntimeCapabilityState.FAILED, state.capabilities().status(LlmRuntimeCapabilities.LLM_REQUEST).state());
-        assertEquals(RuntimeCapabilityState.READY, state.capabilities().status(LlmRuntimeCapabilities.LLM_CACHE_MANAGE).state());
-        assertEquals(RuntimeCapabilityState.READY, state.capabilities().status(LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY).state());
+        assertEquals(RuntimeCapabilityState.FAILED, state.capabilities().status(LlmRuntimeCapabilities.LLM_CACHE_MANAGE).state(),
+                "no vector lane is bound yet, so the RAG data plane reports itself unavailable");
+        assertEquals(RuntimeCapabilityState.READY, state.capabilities().status(LlmRuntimeCapabilities.LLM_PRIMITIVE_QUERY).state(),
+                "token counting and status do not need vectors");
     }
 
     /** Polls until the deferred auto-load settles on the expected state or fails. */
