@@ -23,7 +23,7 @@ Tianshu is an extensible AI assistant: its base provides the UI, key bindings, s
 | **Intake (听澜)** | Speech recognition, transcript repair, **Intent** (dialogue arbitration) | Requires Presence |
 | **Echo (回响)** | Local text-to-speech | Presence optional |
 | **Weaving (织言)** | Cloud LLM (OpenAI-compatible endpoint, streaming) | Presence optional |
-| **Auxilium (辅星)** | Dialogue brain: context, memory, turn orchestration, reply presentation | Requires Weaving and Presence; Intake and Echo optional |
+| **Auxilium** | Dialogue brain: context, memory, turn orchestration, reply presentation | Requires Weaving and Presence; Intake and Echo optional |
 | **Presence (映迹)** | World-state summary, HUD layers, context queries | — |
 
 ## License and credits

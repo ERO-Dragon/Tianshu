@@ -24,7 +24,7 @@
 | 听澜（语音输入） | [ASR 协议](function/intake/ASR_协议中心使用文档.md)、[ASR 架构](function/intake/ASR_模块架构说明.md)、[IR 协议](function/intake/repair/IR_协议中心使用文档.md)、[IR 架构](function/intake/repair/IR_模块架构说明.md)、[游戏内测试说明](function/intake/听澜游戏内测试说明.md) |
 | 回响（语音输出） | [TTS 协议](function/echo/TTS_协议中心使用文档.md)、[TTS 架构](function/echo/TTS_模块架构说明.md) |
 | 织言（云端对话） | [LLM 接口设计](function/weaving/LLM接口设计.md)、[libs 接口设计](function/weaving/libs接口设计.md) |
-| 辅星（对话助手） | [文档索引](function/auxilium/AX_文档索引.md)（运行架构 / 事件系统 / 上下文编排 / 记忆策略 / Agent 运行时 / 协议） |
+| 白泽（对话助手） | [文档索引](function/auxilium/AX_文档索引.md)（运行架构 / 事件系统 / 上下文编排 / 记忆策略 / Agent 运行时 / 协议） |
 | 映迹（世界状态与 HUD） | [文档索引](function/presence/Presence_文档索引.md)（产品活动协议 / 模块设计） |
 
 ## 历史（只读）
@@ -38,7 +38,7 @@
 | [接口对齐审查（2026-11）](history/接口对齐审查-2026-11.md) | 以 javap 为证据的接口核对：Fabric 事实缺口逐条定级、"不做 mixin"的决策依据 |
 | [多版本实测记录](history/多版本实测记录.md) | 逐版本的 API 断点、构建插件坑与验证过程（活文档的实测附录） |
 | [libs 1.0.7 更新日志](history/libs-1.0.7-更新日志.md) | 本地推理库的接口变更记录 |
-| [adapter 早期文档](history/adapter-early/) | 拆分前的 adapter 架构、设置 GUI 框架/接入指南、辅星与织言的设置页设计稿——已被模块架构与外部接入指南取代 |
+| [adapter 早期文档](history/adapter-early/) | 拆分前的 adapter 架构、设置 GUI 框架/接入指南、白泽与织言的设置页设计稿——已被模块架构与外部接入指南取代 |
 
 ## 维护规则
 

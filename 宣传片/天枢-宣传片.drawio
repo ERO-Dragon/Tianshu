@@ -1,0 +1,27 @@
+<mxfile host="dsh-drawai" agent="dsh-drawai" type="device">
+  <diagram id="dsh-drawai-page-1" name="Page-1">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <object label="天枢 · 宣传片（主片）" drawaiMedia="1" drawaiMotion="1" motion="{&quot;version&quot;:1,&quot;prompt&quot;:&quot;&quot;,&quot;mode&quot;:&quot;scene&quot;,&quot;width&quot;:1280,&quot;height&quot;:720,&quot;fps&quot;:30,&quot;duration&quot;:12,&quot;results&quot;:[]}" id="n1">
+          <mxCell id="n1" style="shape=image;imageAspect=0;image=data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20160%2090%22%3E%3Crect%20width%3D%22160%22%20height%3D%2290%22%20fill%3D%22%231f1f1f%22%2F%3E%3Ccircle%20cx%3D%2280%22%20cy%3D%2245%22%20r%3D%2220%22%20fill%3D%22%23ffffff%22%20fill-opacity%3D%220.92%22%2F%3E%3Cpath%20d%3D%22M74%2035%20L74%2055%20L94%2045%20Z%22%20fill%3D%22%231f1f1f%22%2F%3E%3C%2Fsvg%3E;" vertex="1" parent="1">
+            <mxGeometry x="120" y="160" width="720" height="405" as="geometry" />
+          </mxCell>
+        </object>
+        <object label="整片风格
+赛博 HUD·FUI" drawaiMgStyle="1" mgStyleSlug="22-hud" mgStyleCommit="49052d80bfaf9fa8412cc9710530e5e95a3b8d8c" id="n2">
+          <mxCell id="n2" style="rounded=1;arcSize=10;whiteSpace=wrap;fontSize=14;fontColor=#5a4a1a;fillColor=#fdf6e3;strokeColor=#c9a227;" vertex="1" parent="1">
+            <mxGeometry x="120" y="640" width="360" height="200" as="geometry" />
+          </mxCell>
+        </object>
+        <mxCell id="n3" value="天枢 — 主标识（libs/resource/tianshu1.png）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=none;text=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="920" y="160" width="360" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" style="rounded=1;html=1;edgeStyle=orthogonalEdgeStyle;orthogonalLoop=1;jettySize=auto;endArrow=classic;drawaiRoutingMode=manual;" edge="1" parent="1" source="n2" target="n1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

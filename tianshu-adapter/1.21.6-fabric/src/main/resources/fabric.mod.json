@@ -3,6 +3,7 @@
   "id": "${mod_id}",
   "version": "${mod_version}",
   "name": "${mod_name}",
+  "icon": "icon.png",
   "description": "Tianshu AI for Fabric. The kernel, the feature modules and the console run on the client; the optional authoritative server component ships with this adapter.",
   "license": "${mod_license}",
   "environment": "*",

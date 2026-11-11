@@ -3,6 +3,7 @@
   "id": "tianshu_intake",
   "version": "${mod_version}",
   "name": "${mod_name} - Intake",
+  "icon": "icon.png",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

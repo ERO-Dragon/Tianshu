@@ -78,7 +78,7 @@ side = "CLIENT"
 
 ```toml
 [[dependencies.example_mod]]
-modId = "tianshu_echo"        # 辅星依赖回响的 TTS 契约
+modId = "tianshu_echo"        # 白泽依赖回响的 TTS 契约
 versionRange = "[1.0.0,)"
 ```
 

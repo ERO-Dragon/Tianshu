@@ -206,7 +206,7 @@ TTS 通过 `PRESENCE.ACTIVITY` 公开两类产品活动：
 - 非 `module.ax` 来源的播放请求在进入 `QUEUED/PLAYING` 后发布 `tts.request.<requestId> / PROCESSING_TASK`，在 `COMPLETED/CANCELLED/FAILED` 时结束。
 - 非 `module.ax` 来源的纯合成请求在协调器真正开始执行时发布同一格式的 `PROCESSING_TASK`，完成、取消、过期或失败时结束；仅排队或被队列拒绝不会伪报运行。
 
-AX 来源的播放与纯合成请求不重复发布产品活动，因为 AX 已根据 IA delivery 和可见输出边界负责 `THINKING/RESPONDING`。TTS 本身无权把任意音频请求解释为辅星回复。
+AX 来源的播放与纯合成请求不重复发布产品活动，因为 AX 已根据 IA delivery 和可见输出边界负责 `THINKING/RESPONDING`。TTS 本身无权把任意音频请求解释为白泽回复。
 
 ## 8. 音色注册和 owner
 

@@ -6,6 +6,7 @@ license="MIT"
 modId="tianshu_auxilium"
 version="${mod_version}"
 displayName="${mod_name} - Auxilium"
+logoFile="icon.png"
 description='''
 Dialogue brain for Tianshu: turn orchestration, memory, and game-event context.
 '''

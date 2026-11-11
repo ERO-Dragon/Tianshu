@@ -10,6 +10,7 @@ license="MIT"
 modId="tianshu_echo"
 version="${mod_version}"
 displayName="${mod_name} - Echo"
+logoFile="icon.png"
 description='''
 Speech synthesis and playback for Tianshu.
 '''

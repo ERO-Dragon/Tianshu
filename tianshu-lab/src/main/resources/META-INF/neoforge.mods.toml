@@ -6,6 +6,7 @@ license="MIT"
 modId="tianshu_lab"
 version="${mod_version}"
 displayName="${mod_name} - Lab"
+logoFile="icon.png"
 description='''
 Development-only dialogue participants for exercising Intake's arbitration.
 '''

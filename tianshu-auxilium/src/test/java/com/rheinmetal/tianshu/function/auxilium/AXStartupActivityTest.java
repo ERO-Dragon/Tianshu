@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * 辅星开机时发给映迹的那条"还没准备好"。
+ * 白泽开机时发给映迹的那条"还没准备好"。
  *
  * <p>只钉两件事：打开一次收起一次、没打开过的收敛不发包；以及装配失败时它也必须被收起——
  * 装配抛异常的模块不会进"已准备"列表，停机时没人替它收尾，只能靠这里收干净。</p>
@@ -73,7 +73,7 @@ class AXStartupActivityTest {
     /**
      * 装配失败：收起"准备中"，只留一条观察用的模块状态。
      *
-     * <p>不发映迹的 {@code ERROR}——那句文案讲的是密钥/服务地址/向量模型，辅星装配失败与它们无关，
+     * <p>不发映迹的 {@code ERROR}——那句文案讲的是密钥/服务地址/向量模型，白泽装配失败与它们无关，
      * 而玩家对此也无从操作。</p>
      */
     @Test
