@@ -1,0 +1,19 @@
+[
+  {
+    "id": "job-mwcbtf9m-1",
+    "kind": "pilot",
+    "dir": "D:\\AIPROJECT\\Tianshu\\宣传片\\.drawai-motion\\v2\\ee2e2b633ded3f326f18f0852a143754a1ea3487f4d0e7d66c4617ba60c5d084",
+    "nodeId": "n1",
+    "status": "done",
+    "phase": "done",
+    "progress": 1,
+    "createdAt": "2026-11-11T16:21:27.562Z",
+    "endedAt": "2026-11-11T16:23:48.056Z",
+    "output": "D:\\AIPROJECT\\Tianshu\\宣传片\\.drawai-motion\\v2\\ee2e2b633ded3f326f18f0852a143754a1ea3487f4d0e7d66c4617ba60c5d084\\.out\\pilot.mp4",
+    "error": null,
+    "message": "",
+    "frames": null,
+    "mix": null,
+    "mixError": null
+  }
+]
