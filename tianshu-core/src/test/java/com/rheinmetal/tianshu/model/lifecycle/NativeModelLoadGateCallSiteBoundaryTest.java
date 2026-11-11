@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.model.lifecycle;
 
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
+import com.rheinmetal.tianshu.testkit.RepositoryFiles;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -110,14 +111,10 @@ class NativeModelLoadGateCallSiteBoundaryTest {
     /** Every {@code src/main/java} tree in the build, excluding outputs and the dev-client directory. */
     private static List<Path> productionSources() throws IOException {
         List<Path> sources = new ArrayList<>();
-        try (Stream<Path> tree = Files.walk(REPO)) {
-            tree.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> normalized(path).contains("/src/main/java/"))
-                    .filter(path -> !normalized(path).contains("/build/"))
-                    .filter(path -> !normalized(path).contains("/bin/"))
-                    .filter(path -> !normalized(path).contains("/run/"))
-                    .forEach(sources::add);
+        for (Path path : RepositoryFiles.regularFiles(REPO)) {
+            if (path.toString().endsWith(".java") && normalized(path).contains("/src/main/java/")) {
+                sources.add(path);
+            }
         }
         assertTrue(sources.size() > 50, "the repository walk must actually find the sources: " + sources.size());
         return sources;

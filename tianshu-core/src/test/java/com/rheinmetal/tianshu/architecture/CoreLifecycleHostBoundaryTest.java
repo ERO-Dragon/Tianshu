@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CoreLifecycleHostBoundaryTest {
     /** The 1.21.1 pair is the reference adapter; the other versions mirror its structure. */
     private static final Path NEOFORGE_ROOT =
-            Path.of("../tianshu-adapter/1.21-1.21.1-neoforge/src/main/java");
+            Path.of("../tianshu-adapter/1.21.1-neoforge/src/main/java");
     private static final Path COMMON_ROOT =
             Path.of("../tianshu-adapter/1.21-1.21.1-common/src/main/java");
 

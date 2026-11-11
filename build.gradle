@@ -759,7 +759,7 @@ allprojects {
 tasks.register('runClient') {
     group = 'tianshu'
     description = 'Runs the development client with every feature module installed.'
-    dependsOn ':tianshu-adapter:1.21-1.21.1-neoforge:runClient'
+    dependsOn ':tianshu-adapter:1.21.1-neoforge:runClient'
 }
 
 subprojects {
@@ -768,7 +768,7 @@ subprojects {
             tasks.register('runClient') {
                 group = 'tianshu'
                 description = "Runs the development client with ${name} and the modules it requires."
-                dependsOn ':tianshu-adapter:1.21-1.21.1-neoforge:runClient'
+                dependsOn ':tianshu-adapter:1.21.1-neoforge:runClient'
             }
         }
     }

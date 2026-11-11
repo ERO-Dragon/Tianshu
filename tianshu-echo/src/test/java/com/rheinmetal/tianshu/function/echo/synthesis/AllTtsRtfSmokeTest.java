@@ -32,9 +32,9 @@ import java.util.function.BooleanSupplier;
 class AllTtsRtfSmokeTest {
     private static final String TEXT = "娆㈣繋鏉ュ埌鑰佸寳浜皯淇楀睍锛岃璺熸垜涓€璧风湅杩欎欢灞曞搧";
     private static final Path MODEL_BASE = Path.of(System.getProperty("tianshu.tts.modelBase",
-            Path.of("..", "tianshu-adapter", "1.21-1.21.1-neoforge", "run", "config", "Tianshu", "module", "tts", "model").toString()));
+            Path.of("..", "tianshu-adapter", "1.21.1-neoforge", "run", "config", "Tianshu", "module", "tts", "model").toString()));
     private static final Path VOICES = Path.of(System.getProperty("tianshu.tts.voices",
-            Path.of("..", "tianshu-adapter", "1.21-1.21.1-neoforge", "run", "config", "Tianshu", "module", "tts", "voices").toString()));
+            Path.of("..", "tianshu-adapter", "1.21.1-neoforge", "run", "config", "Tianshu", "module", "tts", "voices").toString()));
 
     @Test
     void benchmarksInstalledTtsModels() throws Exception {

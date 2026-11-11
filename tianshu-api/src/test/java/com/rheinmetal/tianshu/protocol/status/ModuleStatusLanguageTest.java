@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.protocol.status;
 
 import com.rheinmetal.tianshu.testkit.LangShards;
+import com.rheinmetal.tianshu.testkit.RepositoryFiles;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -13,7 +14,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -138,14 +138,11 @@ class ModuleStatusLanguageTest {
     /** Every complete {@code "tianshu.presence…"/"tianshu.gui…"} literal with the file that holds it. */
     private static Map<String, String> keyLiteralsInSources() throws Exception {
         Map<String, String> found = new TreeMap<>();
-        try (Stream<Path> tree = Files.walk(REPO)) {
-            tree.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> normalized(path).contains("/src/main/java/"))
-                    .filter(path -> !normalized(path).contains("/build/"))
-                    .filter(path -> !normalized(path).contains("/bin/"))
-                    .filter(path -> !normalized(path).contains("/run/"))
-                    .forEach(path -> collectLiterals(path, found));
+        for (Path path : RepositoryFiles.regularFiles(REPO)) {
+            if (!path.toString().endsWith(".java") || !normalized(path).contains("/src/main/java/")) {
+                continue;
+            }
+            collectLiterals(path, found);
         }
         return found;
     }
