@@ -1,0 +1,13 @@
+{
+  "name": "赛博 HUD·FUI",
+  "tokens": {
+    "page": "#020A0D",
+    "surface": "#0E3A42",
+    "field": "#0B7C8C",
+    "text": "#E8FEFF",
+    "muted": "#6B8C93",
+    "accent": "#00E5FF",
+    "border": "#FF2A1F"
+  },
+  "at": "2026-11-11T15:51:20.546Z"
+}

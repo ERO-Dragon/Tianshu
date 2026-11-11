@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "drawai-paper",
+      "file": "builtin/paper.svg",
+      "bytes": 404,
+      "sha256": "23a6a026640430b9eec59db7d84f128f65875415e251c5aa4e6dcee5c9174567",
+      "kind": "vector",
+      "caption": "暖色纸张纹理，可平铺",
+      "source": "DrawAI 原创程序生成（MIT）"
+    },
+    {
+      "id": "drawai-grain",
+      "file": "builtin/grain.svg",
+      "bytes": 310,
+      "sha256": "84fe1a80826c494a33616efb3e6bd3a163976a8e06b382adb4f44ba7ab740405",
+      "kind": "vector",
+      "caption": "灰度颗粒叠层，建议低不透明度混合",
+      "source": "DrawAI 原创程序生成（MIT）"
+    },
+    {
+      "id": "drawai-grid",
+      "file": "builtin/grid.svg",
+      "bytes": 249,
+      "sha256": "91ac61964def2a396c9906fd2f7257a35717232f34e4e38272c9a4fdd2c4e5e3",
+      "kind": "vector",
+      "caption": "透明白色网格，可平铺",
+      "source": "DrawAI 原创程序生成（MIT）"
+    },
+    {
+      "id": "drawai-whoosh",
+      "file": "builtin/whoosh.wav",
+      "bytes": 52964,
+      "sha256": "4442c0fb4171ebc07c7776ffae64e1c09a31367bf7eaafcccb138c5426b8bd92",
+      "kind": "audio",
+      "caption": "合成的短扫过声",
+      "source": "DrawAI 原创程序生成（MIT）",
+      "seconds": 0.6
+    },
+    {
+      "id": "drawai-impact",
+      "file": "builtin/impact.wav",
+      "bytes": 35324,
+      "sha256": "8ad49e47c401724a565e0baa64d985a18c3933d5978a8bdf55437cfa11a02252",
+      "kind": "audio",
+      "caption": "合成的短低频落点声",
+      "source": "DrawAI 原创程序生成（MIT）",
+      "seconds": 0.4
+    },
+    {
+      "id": "echo-test",
+      "file": "echo-test.png",
+      "bytes": 184560,
+      "sha256": "6e3d57f1dbd58b016e6f0c3b0a71cd3d9ad773d9070d1270f27e4f2675a085c5",
+      "source": "echo.png",
+      "caption": "test",
+      "at": "2026-11-11T16:16:04.573Z",
+      "kind": "image",
+      "width": 512,
+      "height": 512,
+      "average": "#0d1d31",
+      "colors": [
+        "#030922",
+        "#091433",
+        "#08132b",
+        "#122439",
+        "#1a344a",
+        "#03081f",
+        "#2c546b",
+        "#79e8f4"
+      ]
+    },
+    {
+      "id": "tianshu-chip-2",
+      "file": "tianshu-chip-2.png",
+      "bytes": 870860,
+      "sha256": "1cff62570a525e9a891106e81b6cdb4ea6f230d5485b534ebc11152a29973481",
+      "source": "tianshu-chip.png",
+      "caption": "天枢主标识圆角方形",
+      "at": "2026-11-11T16:16:27.237Z",
+      "kind": "image",
+      "width": 1024,
+      "height": 1024,
+      "average": "#0d213b",
+      "colors": [
+        "#040b1b",
+        "#061428",
+        "#041a37",
+        "#030e22",
+        "#062547",
+        "#355985",
+        "#021d42",
+        "#053b77"
+      ]
+    }
+  ]
+}

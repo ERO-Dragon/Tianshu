@@ -31,7 +31,7 @@ displayTest="IGNORE_SERVER_VERSION"
 
 [[dependencies.${mod_id}]]
     modId="tianshu_libs"
-    mandatory=true
+    mandatory=false
     versionRange="${tianshu_libs_version_range}"
     ordering="AFTER"
-    side="BOTH"
+    side="CLIENT"

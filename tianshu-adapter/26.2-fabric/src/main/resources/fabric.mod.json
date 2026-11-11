@@ -23,7 +23,9 @@
     "fabricloader": ">=${loader_version}",
     "minecraft": "${minecraft_version_predicate}",
     "java": ">=21",
-    "fabric-api": "*",
+    "fabric-api": "*"
+  },
+  "suggests": {
     "tianshu_libs": ">=1.0.0"
   }
 }
