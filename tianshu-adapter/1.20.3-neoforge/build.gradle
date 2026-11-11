@@ -112,10 +112,41 @@ repositories {
 // The toolchain that RUNS the pipeline has to load the tooling NeoGradle ships (its jst source transformer is Java 21
 // bytecode), while the code this package ships must stay Java 17 to match the Minecraft line. The two are separate
 // settings: the toolchain below is 21 (see java.toolchain) and every JavaCompile is pinned to release 17.
+// NeoGradle only turns the source sets a run declares into the mod's own output; classes coming from sibling
+// projects stay outside that module and the mod classloader cannot load them ("ClassNotFoundException:
+// ...api.assembly.InstalledMods" on startup). The development run therefore compiles the kernel sources into a
+// second mod source set, which is exactly what the shipped jar packs into one file.
+configurations {
+    kernelDevCompile
+}
+
+dependencies {
+    kernelDevCompile 'com.google.code.gson:gson:2.10.1'
+}
+
+sourceSets {
+    kernelDev {
+        java.srcDirs = [
+                project(':tianshu-client').file('src/main/java'),
+                project(':tianshu-core').file('src/main/java'),
+                project(':tianshu-api').file('src/main/java'),
+        ]
+        resources.srcDirs = [
+                project(':tianshu-client').file('src/main/resources'),
+                project(':tianshu-core').file('src/main/resources'),
+                project(':tianshu-api').file('src/main/resources'),
+        ]
+        resources.srcDir project(':tianshu-client').layout.buildDirectory.dir('generated/lang')
+        compileClasspath = files(fileTree('../../libs') { include 'tianshu_libs-*.jar' }) +
+                configurations.kernelDevCompile
+    }
+}
+tasks.named('processKernelDevResources') { dependsOn ':tianshu-client:mergeLang' }
+
 runs {
     client {
         // A development run needs the kernel classes; the feature modules ship as their own universal jars.
-        modSource sourceSets.main
+        modSources sourceSets.main, sourceSets.kernelDev
         systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         def quickPlayWorld = providers.gradleProperty('quickPlayWorld').getOrNull()
         if (quickPlayWorld != null && !quickPlayWorld.isBlank()) {
@@ -123,12 +154,12 @@ runs {
         }
     }
     server {
-        modSource sourceSets.main
+        modSources sourceSets.main, sourceSets.kernelDev
     }
     // Data generation is part of the build story for every other adapter; keeping the same three runs here means
     // this generation is not a special case to remember.
     data {
-        modSource sourceSets.main
+        modSources sourceSets.main, sourceSets.kernelDev
         programArguments.addAll '--mod', project.mod_id, '--all',
                 '--output', file('src/generated/resources/').getAbsolutePath(),
                 '--existing', file('src/main/resources/').getAbsolutePath()

@@ -1,23 +1,24 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    // NeoForge 20.2 is served by NeoGradle, the plugin line that predates ModDevGradle. ModDevGradle -- every
-    // published version, including the 1.0.x line -- refuses this generation because NeoForge only began publishing
-    // Gradle Module Metadata with 20.4, so the 'neoforge-moddev-bundle' variant it looks for does not exist here.
+    // The whole 20.5 line never published Gradle Module Metadata (every neoforge-20.5.x artifact has no .module file),
+    // so ModDevGradle cannot serve it and the adapter stays on NeoGradle. NeoGradle 7.1.39 is the last 7.x release and
+    // cannot drive a 20.5 client either ("Failed to find system mod: minecraft"), so this line has no usable
+    // development run: the jar builds and ships, and verification means installing that jar in a real 1.20.5 client.
     id 'net.neoforged.gradle.userdev' version '7.1.39'
     id 'idea'
 }
 
 // NeoGradle derives its run and java-execution setup from the project toolchain, so it is declared before anything
-// else the plugin touches. This is the JDK that RUNS the pipeline; what the package ships is pinned to release 17
-// further down, because that is the level the 1.20.2 line runs on.
+// else the plugin touches. This is the JDK that RUNS the pipeline; what the package ships is pinned to release 21
+// further down, because that is the level the 1.20.5 line runs on.
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(21) }
 }
 
 // Order matters: Gradle stops at the first repository that throws instead of trying the next one, and this network
 // resets TLS on several of these hosts intermittently. The vendored copy is first because it is the only source for
-// net.neoforged:minecraft-dependencies:1.20.2 (the official /mojang-meta host is unreachable here); then the mirrors,
+// net.neoforged:minecraft-dependencies:1.20.5 (the official /mojang-meta host is unreachable here); then the mirrors,
 // then the hosts that serve only part of the graph.
 repositories {
     maven {
