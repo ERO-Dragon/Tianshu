@@ -1,8 +1,8 @@
 {
-  "tianshu.gui.ax.title": "【辅星】天枢助手",
-  "tianshu.ax.participant.display_name": "辅星",
+  "tianshu.gui.ax.title": "【白泽】天枢助手",
+  "tianshu.ax.participant.display_name": "白泽",
   "tianshu.gui.ax.description": "设置天枢助手的唤醒、对话和回复方式",
-  "tianshu.gui.ax.enabled": "启用辅星",
+  "tianshu.gui.ax.enabled": "启用白泽",
   "tianshu.gui.ax.section.identity": "天枢身份",
   "tianshu.gui.ax.section.reply": "回复方式",
   "tianshu.gui.ax.section.behavior": "对话行为",
@@ -26,10 +26,10 @@
   "tianshu.runtime.module.ax.memory_maintenance_started": "AX 记忆整理中",
   "tianshu.runtime.module.ax.memory_maintenance_complete": "AX 记忆整理完成",
   "tianshu.runtime.module.ax.memory_maintenance_failed": "AX 记忆整理失败",
-  "tianshu.runtime.module.ax.starting": "辅星正在启动",
-  "tianshu.runtime.module.ax.ready": "辅星已就绪",
-  "tianshu.runtime.module.ax.stopped": "辅星已停止",
-  "tianshu.runtime.module.ax.startup_failed": "辅星没能启动",
+  "tianshu.runtime.module.ax.starting": "白泽正在启动",
+  "tianshu.runtime.module.ax.ready": "白泽已就绪",
+  "tianshu.runtime.module.ax.stopped": "白泽已停止",
+  "tianshu.runtime.module.ax.startup_failed": "白泽没能启动",
   "tianshu.ax.event.line.tianshu.death": "玩家死亡：%s",
   "tianshu.ax.event.line.tianshu.health_critical": "血量危急，%s",
   "tianshu.ax.event.line.tianshu.on_fire": "你着火了：%s",
@@ -142,8 +142,8 @@
   "tianshu.gui.ax.retry.badge.final": "需要改设置",
   "tianshu.gui.ax.action.retry": "重试",
   "tianshu.gui.ax.action.dismiss": "忽略",
-  "tianshu.gui.ax.text_input.title": "与辅星对话",
-  "tianshu.gui.ax.text_input.hint": "输入要对辅星说的话，回车发送，Esc 取消",
+  "tianshu.gui.ax.text_input.title": "与白泽对话",
+  "tianshu.gui.ax.text_input.hint": "输入要对白泽说的话，回车发送，Esc 取消",
   "tianshu.gui.ax.output.failed": "回答生成失败，详情见日志",
-  "tianshu.chat.progress.ax.input": "辅星收到：%s"
+  "tianshu.chat.progress.ax.input": "白泽收到：%s"
 }

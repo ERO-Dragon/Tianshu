@@ -1,4 +1,4 @@
-# 北辰 API 兼容策略（RFC）
+# 天枢基座 API 兼容策略（RFC）
 
 > 状态：草案，待拍板。适用起点：`tianshu 1.0.0`。
 > 关联：审计报告 A5；`doc/architecture/模块架构.md`；`EXTERNAL_INTEGRATION_GUIDE.md`。
@@ -78,7 +78,7 @@ side = "CLIENT"
 
 ```toml
 [[dependencies.example_mod]]
-modId = "tianshu_echo"        # 辅星依赖回响的 TTS 契约
+modId = "tianshu_echo"        # 白泽依赖回响的 TTS 契约
 versionRange = "[1.0.0,)"
 ```
 

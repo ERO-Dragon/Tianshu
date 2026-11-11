@@ -3,6 +3,7 @@
   "id": "tianshu_auxilium",
   "version": "${mod_version}",
   "name": "${mod_name} - Auxilium",
+  "icon": "icon.png",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

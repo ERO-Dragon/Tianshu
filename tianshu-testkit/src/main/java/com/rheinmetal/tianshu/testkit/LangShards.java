@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * The per-module language shards, read the way the build's {@code mergeLang} task reads them.
@@ -38,16 +37,13 @@ public final class LangShards {
     /** Every shard file that contributes {@code language}, in a deterministic order. */
     public static List<Path> files(String language) {
         Path root = repositoryRoot();
+        String shardName = language + ".json";
         List<Path> found = new ArrayList<>();
-        try (Stream<Path> tree = Files.walk(root)) {
-            tree.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().equals(language + ".json"))
-                    .filter(path -> isShard(root, path))
-                    .forEach(found::add);
-        } catch (IOException failure) {
-            throw new IllegalStateException("cannot read the language shards under " + root, failure);
+        for (Path path : RepositoryFiles.regularFiles(root)) {
+            if (path.getFileName().toString().equals(shardName) && isShard(root, path)) {
+                found.add(path);
+            }
         }
-        found.sort((left, right) -> left.toString().compareTo(right.toString()));
         if (found.isEmpty()) {
             throw new IllegalStateException("no language shard found for " + language + " under " + root);
         }

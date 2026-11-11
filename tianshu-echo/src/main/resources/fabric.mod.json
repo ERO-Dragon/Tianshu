@@ -3,6 +3,7 @@
   "id": "tianshu_echo",
   "version": "${mod_version}",
   "name": "${mod_name} - Echo",
+  "icon": "icon.png",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

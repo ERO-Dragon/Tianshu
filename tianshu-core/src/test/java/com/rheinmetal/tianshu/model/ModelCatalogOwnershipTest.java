@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.model;
 
+import com.rheinmetal.tianshu.testkit.RepositoryFiles;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -61,11 +62,11 @@ class ModelCatalogOwnershipTest {
     @Test
     void noCatalogExistsOutsideItsOwningModule() throws Exception {
         List<String> duplicates = new ArrayList<>();
-        try (Stream<Path> tree = Files.walk(REPO)) {
-            tree.filter(Files::isRegularFile)
-                    .filter(path -> normalized(path).contains("/src/main/resources/"))
-                    .filter(path -> normalized(path).contains("/model/catalog/"))
-                    .forEach(path -> duplicates.add(normalized(path)));
+        for (Path path : RepositoryFiles.regularFiles(REPO)) {
+            String normalized = normalized(path);
+            if (normalized.contains("/src/main/resources/") && normalized.contains("/model/catalog/")) {
+                duplicates.add(normalized);
+            }
         }
         assertEquals(List.of(
                         "tianshu-echo/src/main/resources/" + CATALOG_ROOT + "/tts-model.json",

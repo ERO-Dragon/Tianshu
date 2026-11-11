@@ -10,6 +10,7 @@ license="MIT"
 modId="tianshu_weaving"
 version="${mod_version}"
 displayName="${mod_name} - Weaving"
+logoFile="icon.png"
 description='''
 Dialogue inference for Tianshu: cloud chat plus the local embedding lane for retrieval.
 '''

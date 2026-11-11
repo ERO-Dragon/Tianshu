@@ -34,7 +34,7 @@ IA 负责：
 
 - 管理 dialogue participant 注册表。
 - 依 claim 来源档、priority 和稳定 participant ID 选择本轮 owner：上下文条件（准星、主手、装备、交互状态）高于醒词。
-- 没有硬 claim 时，上一轮中标人的租期未过期就继续归它，否则归**默认承接者**：玩家在听澜设置里从"无 + 声明了 `DEFAULT_OWNER` 的参与者"中选择，从未配置时用出厂默认（辅星）。不做动态评分，也不向参与方索取分值。
+- 没有硬 claim 时，上一轮中标人的租期未过期就继续归它，否则归**默认承接者**：玩家在听澜设置里从"无 + 声明了 `DEFAULT_OWNER` 的参与者"中选择，从未配置时用出厂默认（白泽）。不做动态评分，也不向参与方索取分值。
 - 创建和维护 dialogue session。
 - 记录 session owner、turn、processing deadline、状态和释放原因。
 - 将对话正文定向投递给当前 owner。
@@ -97,7 +97,7 @@ DialogueParticipantDescriptor(
 | `turnProcessingPolicy` | 当前轮处理期限策略，只约束本轮异步处理，不决定下一轮归属。默认初始窗口为 10 秒，默认绝对上限为 session 创建后 180 秒。 |
 | `icon` | 伙伴标记贴图（`namespace:textures/...`）。`.RULES` 参与者必须提供；`DEFAULT_OWNER` 参与者建议提供——玩家把它选成默认承接者时，映迹按"有图标就画"显示它。资源包缺图只记诊断、不画破图。 |
 | `holdTier` | 中标租期档位：`20s` / `10s` / `5s` / `0s`。中标后这段租期内、且没有新硬 claim 时，下一轮仍归本 participant；`0s` 表示不持有，每轮都必须靠硬 claim。 |
-| `factoryDefaultOwner` | 声明"没配置过默认承接者时默认是我"。只有 `DEFAULT_OWNER` 参与者可以声明；目前只有辅星声明，其他模块声明的意义是"如果玩家没配过、而辅星也没装，就归我"。 |
+| `factoryDefaultOwner` | 声明"没配置过默认承接者时默认是我"。只有 `DEFAULT_OWNER` 参与者可以声明；目前只有白泽声明，其他模块声明的意义是"如果玩家没配过、而白泽也没装，就归我"。 |
 
 如果模块参与 IA 仲裁，推荐通过 `DialogueParticipantDescriptor.triggerGroup` 声明本模块的 wake/extra 热词，不要再用同一个 `moduleId` 额外注册一份 `TriggerRegistration`；共享热词注册表按 `moduleId` 覆盖旧值，重复入口会互相踩掉。普通非 IA 语音触发仍可直接使用 `TriggerRegistration`。空 wake word 仍可注册 participant，但不会产生 wake-word claim，也不会注册空触发词。
 
@@ -339,7 +339,7 @@ PresencePayloadTypes.PARTNER
 该 topic 的载荷是映迹自己的 `PresencePartnerPayload`（不归对话契约），发布 `(playerId, moduleId, participantId, icon, defaultOwner, holdUntilMillis, holdDurationMillis, updatedAtMillis)`，不包含正文、prompt、上下文细节或仲裁原因：
 
 - `icon` 是参与者注册时提供的伙伴标记贴图；
-- `defaultOwner` 表示当前轮到默认承接者；映迹只按图标决定画不画——有图标就画（第三方被选成默认承接者时可见），没图标的（辅星）由主图标表达；
+- `defaultOwner` 表示当前轮到默认承接者；映迹只按图标决定画不画——有图标就画（第三方被选成默认承接者时可见），没图标的（白泽）由主图标表达；
 - `holdUntilMillis > 0` 表示此人正处在中标租期内，`holdDurationMillis` 是它的档位时长，倒计时环按这两者换算；
 - `holdUntilMillis = 0` 表示这是预中标（上下文命中但还没中标），没有租期，也不画环。
 

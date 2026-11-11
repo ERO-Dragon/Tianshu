@@ -3,6 +3,7 @@
   "id": "tianshu_presence",
   "version": "${mod_version}",
   "name": "${mod_name} - Presence",
+  "icon": "icon.png",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

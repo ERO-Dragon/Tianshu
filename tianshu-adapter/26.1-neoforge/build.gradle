@@ -95,7 +95,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of((adapterProperties.getPr
 // Everything that talks to Minecraft but not to a loader lives in tianshu-adapter/common and is compiled here
 // from source. A Gradle project cannot be compiled once against two loaders' Minecraft artifacts, so the tree
 // is shared and each adapter supplies its own classpath; `verifyCommonAdapterNeutral` keeps loader imports out
-// of it, which is the whole contract. A sibling adapter (1.21-1.21.1-fabric) includes the same directory.
+// of it, which is the whole contract. A sibling adapter (1.21.1-fabric) includes the same directory.
 sourceSets {
     main {
         java.srcDir "${sharedLayerRoot}/src/main/java"

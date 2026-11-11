@@ -10,6 +10,7 @@ license="MIT"
 modId="tianshu_presence"
 version="${mod_version}"
 displayName="${mod_name} - Presence"
+logoFile="icon.png"
 description='''
 In-game presence HUD for Tianshu: the product state, the status line and the dialogue partner marker.
 '''

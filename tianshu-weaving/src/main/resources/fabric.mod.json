@@ -3,6 +3,7 @@
   "id": "tianshu_weaving",
   "version": "${mod_version}",
   "name": "${mod_name} - Weaving",
+  "icon": "icon.png",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {

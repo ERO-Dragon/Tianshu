@@ -95,13 +95,13 @@ class AXParticipantRegistrarTest {
             context.complete(envelope.envelopeId());
         });
         AXParticipantRegistrar registrar = new AXParticipantRegistrar(
-                new IaDialogueBridge(new AXProtocolAdapter(runtime)), () -> "天枢", () -> "辅星");
+                new IaDialogueBridge(new AXProtocolAdapter(runtime)), () -> "天枢", () -> "白泽");
 
         registrar.register();
 
         await(() -> registered.get() != null);
         DialogueParticipantRegisterPayload payload = registered.get();
-        assertEquals("辅星", payload.descriptor().displayName());
+        assertEquals("白泽", payload.descriptor().displayName());
         assertEquals(DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.any(
                         "ax.wake_word",
                         DialogueClaimCondition.wakeWord("天枢"))),

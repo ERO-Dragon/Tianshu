@@ -97,7 +97,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of((adapterProperties.getPr
 // Everything that talks to Minecraft but not to a loader lives in tianshu-adapter/common and is compiled here
 // from source. A Gradle project cannot be compiled once against two loaders' Minecraft artifacts, so the tree
 // is shared and each adapter supplies its own classpath; `verifyCommonAdapterNeutral` keeps loader imports out
-// of it, which is the whole contract. A sibling adapter (1.21-1.21.1-fabric) includes the same directory.
+// of it, which is the whole contract. A sibling adapter (1.21.1-fabric) includes the same directory.
 sourceSets {
     main {
         java.srcDir "${sharedLayerRoot}/src/main/java"
@@ -111,6 +111,35 @@ sourceSets {
 repositories {
 }
 
+// A development run has the jars but nobody extracts the natives, so the client dies before the main menu with
+// "Failed to locate library: lwjgl.dll". They are taken from the same LWJGL version the line ships, unpacked
+// under build/, and handed to the client run through java.library.path.
+def lwjglVersion = adapterProperties.getProperty('lwjgl_version')
+configurations {
+    lwjglNatives
+}
+dependencies {
+    ['lwjgl', 'lwjgl-glfw', 'lwjgl-jemalloc', 'lwjgl-openal', 'lwjgl-opengl', 'lwjgl-stb', 'lwjgl-tinyfd'].each { module ->
+        lwjglNatives "org.lwjgl:${module}:${lwjglVersion}:natives-windows"
+    }
+}
+def lwjglNativesDir = layout.buildDirectory.dir('natives/lwjgl')
+def extractLwjglNatives = tasks.register('extractLwjglNatives', Sync) {
+    group = 'build'
+    description = 'Extracts the LWJGL native libraries the development client loads.'
+    // Every natives jar keeps its DLLs under windows/x64/org/lwjgl; the run needs them in one flat directory,
+    // which is what java.library.path points at.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({ configurations.lwjglNatives.collect { zipTree(it) } }) {
+        include 'windows/x64/org/lwjgl/**/*.dll'
+        eachFile { it.path = it.name }
+    }
+    into lwjglNativesDir
+}
+tasks.matching { it.name == 'runClient' }.configureEach {
+    dependsOn extractLwjglNatives
+}
+
 neoForge {
     version = neoVersion
 
@@ -122,6 +151,8 @@ neoForge {
     runs {
         client {
             client()
+            systemProperty 'java.library.path', lwjglNativesDir.get().asFile.absolutePath
+            systemProperty 'org.lwjgl.librarypath', lwjglNativesDir.get().asFile.absolutePath
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
             // Optional headless verification: jump straight into a world so the module lifecycle
             // actually runs. Pass -PquickPlayWorld=<save name>; absent by default.
