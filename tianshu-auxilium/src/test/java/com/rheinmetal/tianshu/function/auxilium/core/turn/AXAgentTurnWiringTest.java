@@ -20,6 +20,12 @@ import com.rheinmetal.tianshu.function.auxilium.core.delegate.AXDelegateService;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXMemoryWindowPolicy;
+import com.rheinmetal.tianshu.api.tool.TianshuTool;
+import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolCategory;
+import com.rheinmetal.tianshu.api.tool.ToolContext;
+import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.output.AXChatOutputSink;
@@ -71,6 +77,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -133,6 +140,51 @@ class AXAgentTurnWiringTest {
 
         LLMPromptRequestPayload actual = (LLMPromptRequestPayload) runtime.llmRequest.get().payload();
         assertEquals(expected, actual, "the loop must not change a single field of the prompt request");
+    }
+
+    @Test
+    void aToolCallIsExecutedAndOnlyTheFinalAnswerIsSpoken() {
+        ToolId echo = ToolId.of("test", "echo");
+        TianshuTools.register(new WiringEchoTool(echo));
+        try {
+            TestRuntime runtime = new TestRuntime(false);
+            runtime.registerLlmSink();
+            AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
+            AXLlmClient llmClient = new AXLlmClient(adapter);
+            AXScope scope = writableScope();
+            AXRecentDialogueSystem recent = emptyRecent();
+            PointOfDeliverySink sink = new PointOfDeliverySink();
+            AXTurnOrchestrator orchestrator = orchestrator(
+                    adapter, llmClient, recent, scope, sink, (taskId, task) -> RUNS.execute(task));
+
+            AXDialogueInput delivery = delivery();
+            orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
+            await(() -> runtime.llmRequest.get() != null, 5_000L, "the first CHAT request");
+
+            TianshuEnvelope first = runtime.llmRequest.get();
+            String firstRequestId = ((LLMPromptRequestPayload) first.payload()).requestId();
+            llmClient.handleResult(first.envelopeId(), LLMPromptResultPayload.completed(firstRequestId,
+                    "{\"tool\":\"test:echo\",\"args\":{\"text\":\"hi\"}}"));
+
+            await(() -> runtime.llmRequest.get() != first, 5_000L, "the follow-up request carrying the tool result");
+            TianshuEnvelope second = runtime.llmRequest.get();
+            LLMPromptRequestPayload followUp = (LLMPromptRequestPayload) second.payload();
+            assertTrue(followUp.messages().stream()
+                            .anyMatch(message -> message.content().contains("tool result for test:echo")),
+                    "the tool result must be in the conversation");
+            assertTrue(sink.delivered.isEmpty(), "the call itself must not be spoken");
+
+            llmClient.handleResult(second.envelopeId(),
+                    LLMPromptResultPayload.completed(followUp.requestId(), "你好，我在。"));
+
+            await(() -> sink.completed.get() == 1, 5_000L, "the final answer");
+            assertTrue(sink.delivered.stream().anyMatch(text -> text.contains("你好")),
+                    "the final answer reaches the player");
+            assertTrue(sink.delivered.stream().noneMatch(text -> text.contains("test:echo")),
+                    "the tool call is never spoken");
+        } finally {
+            TianshuTools.unregister(echo);
+        }
     }
 
     @Test
@@ -478,6 +530,46 @@ class AXAgentTurnWiringTest {
     }
 
     /** Counts the deliveries the player would see; a second one would show up here. */
+    private static final class WiringEchoTool implements TianshuTool<JsonObject, JsonObject> {
+        private final ToolId id;
+
+        private WiringEchoTool(ToolId id) {
+            this.id = id;
+        }
+
+        @Override
+        public ToolId id() {
+            return id;
+        }
+
+        @Override
+        public ToolCategory category() {
+            return ToolCategory.LOCAL;
+        }
+
+        @Override
+        public String description() {
+            return "Echo; a test double.";
+        }
+
+        @Override
+        public java.lang.reflect.Type argsType() {
+            return JsonObject.class;
+        }
+
+        @Override
+        public java.lang.reflect.Type resultType() {
+            return JsonObject.class;
+        }
+
+        @Override
+        public CompletableFuture<JsonObject> invoke(ToolContext context, JsonObject args) {
+            JsonObject result = new JsonObject();
+            result.add("args", args);
+            return CompletableFuture.completedFuture(result);
+        }
+    }
+
     private static final class PointOfDeliverySink implements AXChatOutputSink {
         private final AtomicInteger completed = new AtomicInteger();
         private final List<String> delivered = new CopyOnWriteArrayList<>();
