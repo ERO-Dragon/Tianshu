@@ -28,6 +28,7 @@ public final class ClientTools {
         TianshuTools.register(new InventoryInspectTool());
         // Server-side tools are declared here but appear only after the server's catalog names them.
         ServerToolDeclarations.declare(new LootQueryTool());
+        ServerToolDeclarations.declare(new BlockInteractTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */
