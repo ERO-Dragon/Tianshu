@@ -10,6 +10,9 @@ import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
 import com.rheinmetal.tianshu.mc.host.ServerActionClient;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.api.tool.ToolTransport;
+import com.rheinmetal.tianshu.neoforge.server.ServerToolHandler;
 import com.rheinmetal.tianshu.neoforge.server.GameFactCollector;
 import com.rheinmetal.tianshu.mc.ui.VanillaKeyBindings;
 import net.neoforged.api.distmarker.Dist;
@@ -60,8 +63,12 @@ public final class TianshuNeoForge {
                 ? new ServerActionClient(
                         net.neoforged.neoforge.client.network.ClientPacketDistributor::sendToServer)
                 : new ServerActionClient(payload -> { });
+        ToolCallClient toolCalls = FMLEnvironment.getDist() == Dist.CLIENT
+                ? new ToolCallClient(net.neoforged.neoforge.client.network.ClientPacketDistributor::sendToServer)
+                : new ToolCallClient(payload -> { });
+        TianshuRuntimePorts.register(ToolTransport.class, toolCalls);
         modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
-                TianshuNetwork.register(registerPayloads, serverActions));
+                TianshuNetwork.register(registerPayloads, serverActions, toolCalls));
         // Server-side action switches: independent of the client config, off by default, reloaded with the server.
         // 26.3 renamed the loader's config scopes (COMMON -> LOCAL, SERVER -> SYNCED): a server-owned config whose
         // values a client may also read is "synced", which is what this one always was.
@@ -74,7 +81,11 @@ public final class TianshuNeoForge {
         serverCollector.register(NeoForge.EVENT_BUS);
         // The action channel announces its enabled set on join; the client side builds its toolbar from that.
         com.rheinmetal.tianshu.neoforge.server.ServerActionHandler.register(NeoForge.EVENT_BUS);
+        ServerToolHandler.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.getDist() == Dist.CLIENT) {
+            NeoForge.EVENT_BUS.addListener(
+                    (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) ->
+                            toolCalls.onDisconnect());
             clientBootstrap = new NeoForgeClientBootstrap(serverActions);
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.
