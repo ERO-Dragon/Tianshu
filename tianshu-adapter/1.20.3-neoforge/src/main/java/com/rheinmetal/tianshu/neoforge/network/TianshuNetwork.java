@@ -6,6 +6,10 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 
 import net.minecraft.resources.ResourceLocation;
@@ -87,6 +91,27 @@ public final class TianshuNetwork {
                 ServerActionRequestPacket::encode, ServerActionRequestPacket::decode,
                 (packet, context) -> com.rheinmetal.tianshu.neoforge.server.ServerActionHandler.handle(
                         packet, context));
+        CHANNEL.registerMessage(4, ToolCallRequestPacket.class,
+                ToolCallRequestPacket::encode, ToolCallRequestPacket::decode,
+                (packet, context) -> {
+                    context.enqueueWork(() -> com.rheinmetal.tianshu.neoforge.server.ServerToolHandler.respond(
+                            context.getSender(), packet));
+                    context.setPacketHandled(true);
+                });
+        CHANNEL.registerMessage(5, ToolCallResultPacket.class,
+                ToolCallResultPacket::encode, ToolCallResultPacket::decode,
+                (packet, context) -> {
+                    context.enqueueWork(() -> com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
+                            .receiveResult(packet));
+                    context.setPacketHandled(true);
+                });
+        CHANNEL.registerMessage(6, ToolCatalogPacket.class,
+                ToolCatalogPacket::encode, ToolCatalogPacket::decode,
+                (packet, context) -> {
+                    context.enqueueWork(() -> com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
+                            .receiveCatalog(packet));
+                    context.setPacketHandled(true);
+                });
     }
 
     /** Sends one message to the server the client is connected to. */
@@ -107,5 +132,20 @@ public final class TianshuNetwork {
      */
     public static boolean canSend(ServerPlayer player) {
         return player != null && player.connection != null && CHANNEL.isRemotePresent(player.connection.connection);
+    }
+
+    /** Sends one tool call to the server. */
+    public static void sendToolCall(ToolCallRequestPacket packet) {
+        CHANNEL.sendToServer(packet);
+    }
+
+    /** Sends the tool catalog to a joining player. */
+    public static void sendToolCatalog(ServerPlayer player, ToolCatalogPacket packet) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
+    }
+
+    /** Sends one tool result to the asking player. */
+    public static void sendToolResult(ServerPlayer player, ToolCallResultPacket packet) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
     }
 }

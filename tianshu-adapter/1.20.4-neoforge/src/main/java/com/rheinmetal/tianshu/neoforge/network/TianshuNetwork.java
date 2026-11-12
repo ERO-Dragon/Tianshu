@@ -5,6 +5,10 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -67,6 +71,18 @@ public final class TianshuNetwork {
                                 .receiveCatalog(packet, context.workHandler()::execute)));
         registrar.play(ServerActionRequestPacket.CHANNEL, ServerActionRequestPacket::decode,
                 builder -> builder.server(com.rheinmetal.tianshu.neoforge.server.ServerActionHandler::handle));
+        registrar.play(ToolCallRequestPacket.CHANNEL, ToolCallRequestPacket::decode,
+                builder -> builder.server((packet, context) ->
+                        com.rheinmetal.tianshu.neoforge.server.ServerToolHandler.respond(
+                                (net.minecraft.server.level.ServerPlayer) context.player().orElse(null), packet)));
+        registrar.play(ToolCallResultPacket.CHANNEL, ToolCallResultPacket::decode,
+                builder -> builder.client((packet, context) ->
+                        com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
+                                .receiveResult(packet)));
+        registrar.play(ToolCatalogPacket.CHANNEL, ToolCatalogPacket::decode,
+                builder -> builder.client((packet, context) ->
+                        com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
+                                .receiveCatalog(packet)));
     }
 
     /** Sends one request to the server the client is connected to. */
@@ -89,5 +105,20 @@ public final class TianshuNetwork {
      */
     public static boolean canSend(ServerPlayer player) {
         return player != null && player.connection != null;
+    }
+
+    /** Sends one tool call to the server. */
+    public static void sendToolCall(ToolCallRequestPacket packet) {
+        PacketDistributor.SERVER.noArg().send(packet);
+    }
+
+    /** Sends the tool catalog to a joining player. */
+    public static void sendToolCatalog(ServerPlayer player, ToolCatalogPacket packet) {
+        PacketDistributor.PLAYER.with(player).send(packet);
+    }
+
+    /** Sends one tool result to the asking player. */
+    public static void sendToolResult(ServerPlayer player, ToolCallResultPacket packet) {
+        PacketDistributor.PLAYER.with(player).send(packet);
     }
 }

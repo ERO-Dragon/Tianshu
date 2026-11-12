@@ -12,6 +12,9 @@ import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.api.tool.ToolTransport;
+import com.rheinmetal.tianshu.neoforge.server.ServerToolHandler;
 import com.rheinmetal.tianshu.neoforge.server.GameFactCollector;
 import com.rheinmetal.tianshu.neoforge.server.ServerActionHandler;
 
@@ -44,6 +47,7 @@ public final class TianshuNeoForge {
 
     /** The action channel client: one per process, shared by the network handlers and the client subsystem. */
     private static ServerActionClient actionClient;
+    private static ToolCallClient toolCalls;
 
     public static ServerActionClient actionClient() {
         return actionClient;
@@ -61,6 +65,10 @@ public final class TianshuNeoForge {
      */
     private final GameFactCollector serverCollector;
 
+    public static ToolCallClient toolCalls() {
+        return toolCalls;
+    }
+
     public TianshuNeoForge() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         // Modules are platform-free: when they integrate with an optional partner, the only sane answer to
@@ -70,6 +78,8 @@ public final class TianshuNeoForge {
         // The brain: one action client per process. The network handlers deliver answers to it and the client
         // bootstrap reads its snapshots, so no static has to describe the client object.
         actionClient = new ServerActionClient(TianshuNetwork::sendToServer);
+        toolCalls = new ToolCallClient(TianshuNetwork::sendToolCall);
+        TianshuRuntimePorts.register(ToolTransport.class, toolCalls);
         // The one channel is registered on both sides: whoever hosts the server component still has to know how a
         // fact is shaped, and a client has to know how to receive it.
         TianshuNetwork.register();
