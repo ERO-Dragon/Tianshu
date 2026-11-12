@@ -272,7 +272,7 @@ CoreManager 在生命周期失败时会清理活动运行资源，但不会抹�
 
 ### 11.1 配置所有权
 
-NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一读写宿主，但它只剩下内核自己的 debug 开关与语音资源路径：功能设置（含映迹 HUD）都放在 `config/Tianshu/module/<moduleId>.properties`，由模块通过 `ModuleConfigStore` 自持。`TianshuClient` 在组合根把同一个宿主配置映射为 ASR、LLM、TTS 和 AX 的窄读取端口；`TianshuModuleAssemblyContext` 只提供环境、音频桥、模块运行时和生命周期信号，不提供配置总接口。
+NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu_ferry-client.toml` 的唯一读写宿主，但它只剩下内核自己的 debug 开关与语音资源路径：功能设置（含映迹 HUD）都放在 `config/Tianshu/module/<moduleId>.properties`，由模块通过 `ModuleConfigStore` 自持。`TianshuClient` 在组合根把同一个宿主配置映射为 ASR、LLM、TTS 和 AX 的窄读取端口；`TianshuModuleAssemblyContext` 只提供环境、音频桥、模块运行时和生命周期信号，不提供配置总接口。
 
 ## 12. 装配边界（后续修订）
 
@@ -287,7 +287,7 @@ NeoForge 的 `ClientConfig` 仍是游戏 `config/tianshu-client.toml` 的唯一�
 | 内容 | 归属 |
 |---|---|
 | 各功能模组的设置 | `config/Tianshu/module/<moduleId>.properties`，键名、默认值、路径全部在模块内 |
-| 内核设置 | `config/tianshu-client.toml`（只剩 debug）；`ClientConfig` 只实现内核自己的 1 个接口 |
+| 内核设置 | `config/tianshu_ferry-client.toml`（只剩 debug）；`ClientConfig` 只实现内核自己的 1 个接口 |
 | 映迹 HUD 设置 | `config/Tianshu/module/module.presence.properties`，键名与默认值在映迹内 |
 | 具名对象索引 | 听澜自建、自持生命周期、缓存到 `<module>/asr/index`；内核只能通过 `NamedObjectIndex` 端口观测 |
 | 模型清单与读取器 | intake / weaving / echo 各自持有；`tianshu-core/model` 只留传输与状态机 |

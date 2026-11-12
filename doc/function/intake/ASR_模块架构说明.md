@@ -335,7 +335,7 @@ ASR common 只依赖只读 `AsrConfiguration`，读取启用状态、麦克风�
 
 ## 11. 游戏内调试出口
 
-开发构建有两条只对调试开关（`config/tianshu-client.toml` 的 `debug.enabled`，且必须是 debug 构建）开放的测试通路。它们都不是产品功能，但都走产品自己的契约：
+开发构建有两条只对调试开关（`config/tianshu_ferry-client.toml` 的 `debug.enabled`，且必须是 debug 构建）开放的测试通路。它们都不是产品功能，但都走产品自己的契约：
 
 - **聊天回显**：模块把自己的诊断事件注册进 `DiagnosticChatCatalogue`，宿主只在调试开关打开时把事件转成聊天行。当前覆盖 ASR 识别原文、IR 修复结果与命中证据、IA 仲裁（owner / claims / reason）、会话生命周期（开始、认领、释放、拒绝、过期）以及 participant 注册结果。模块不直接调用聊天接口，因此回显的措辞归 lang shard 所有，开关关闭时一行都不会出现。
 - **文本注入**：设置页的“调试（文本注入）”分组把一段文本按 `INPUT.ASR_FINAL_TEXT` 的同一路径发布出去，再由 IR 与 IA 正常消费；它不打开麦克风、不经过 ASR 引擎、不进入 listening 状态。这样可以在没有录音设备时确定性地测试修复与仲裁，注入的 turn 带 `inputMode=debug`，消费方可以据此区分。
