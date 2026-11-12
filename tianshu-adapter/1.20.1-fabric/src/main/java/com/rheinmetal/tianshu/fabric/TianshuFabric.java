@@ -7,6 +7,11 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
+import com.rheinmetal.tianshu.api.tool.ToolTransport;
 import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 
 import io.netty.buffer.Unpooled;
@@ -38,9 +43,14 @@ public final class TianshuFabric implements ModInitializer {
 
     /** The action channel client: one per process, shared by the network registration and the event layer. */
     private static ServerActionClient actionClient;
+    private static ToolCallClient toolClient;
 
     public static ServerActionClient actionClient() {
         return actionClient;
+    }
+
+    public static ToolCallClient toolClient() {
+        return toolClient;
     }
 
     @Override
@@ -52,6 +62,8 @@ public final class TianshuFabric implements ModInitializer {
         if (net.fabricmc.loader.api.FabricLoader.getInstance().getEnvironmentType()
                 == net.fabricmc.api.EnvType.CLIENT) {
             actionClient = new ServerActionClient(TianshuFabric::sendToServer);
+            toolClient = new ToolCallClient(TianshuFabric::sendToolCall);
+            TianshuRuntimePorts.register(ToolTransport.class, toolClient);
             registerClientReceivers();
         }
         // The optional server component: present on every distribution, listens only to server events, and sends
@@ -60,6 +72,7 @@ public final class TianshuFabric implements ModInitializer {
         // The action channel's server half: off by default, one switch per action, operator-only, idempotent.
         FabricServerActionConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
         FabricServerActionHandler.register();
+        FabricServerToolHandler.register();
     }
 
     /** Encodes one request and hands it to the client's play channel. */
@@ -87,5 +100,12 @@ public final class TianshuFabric implements ModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ServerActionCatalogPacket.CHANNEL,
                 (client, handler, buffer, responseSender) ->
                         actionClient.receiveCatalog(ServerActionCatalogPacket.decode(buffer), client::execute));
+    }
+
+    /** Encodes one tool call and hands it to the client's play channel. */
+    static void sendToolCall(ToolCallRequestPacket payload) {
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        payload.encode(buffer);
+        ClientPlayNetworking.send(ToolCallRequestPacket.CHANNEL, buffer);
     }
 }
