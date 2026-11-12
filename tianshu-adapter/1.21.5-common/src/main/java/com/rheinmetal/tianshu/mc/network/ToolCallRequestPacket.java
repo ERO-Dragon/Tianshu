@@ -1,0 +1,46 @@
+package com.rheinmetal.tianshu.mc.network;
+
+import com.rheinmetal.tianshu.api.ModIdentity;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+
+/**
+ * One tool call a client sends to the optional server component.
+ *
+ * <p>{@code toolId} is a namespaced tool id; the server validates it against its own registry, so an unknown id is
+ * answerable rather than dangerous. {@code argsJson} is the argument object as text.</p>
+ */
+public record ToolCallRequestPacket(String requestId, String toolId, String argsJson) implements CustomPacketPayload {
+
+    public static final Type<ToolCallRequestPacket> TYPE = new Type<>(
+            ResourceLocation.fromNamespaceAndPath(ModIdentity.MOD_ID, "tool_call"));
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, ToolCallRequestPacket> STREAM_CODEC =
+            StreamCodec.ofMember(ToolCallRequestPacket::encode, ToolCallRequestPacket::decode);
+
+    public ToolCallRequestPacket {
+        requestId = ToolCallLimits.text(requestId, "requestId", ToolCallLimits.MAX_REQUEST_ID);
+        toolId = ToolCallLimits.text(toolId, "toolId", ToolCallLimits.MAX_TOOL_ID);
+        argsJson = argsJson == null ? "{}" : argsJson;
+        if (argsJson.length() > ToolCallLimits.MAX_JSON) {
+            throw new IllegalArgumentException("tool arguments are too large: " + argsJson.length());
+        }
+    }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
+
+    void encode(RegistryFriendlyByteBuf buffer) {
+        buffer.writeUtf(requestId);
+        buffer.writeUtf(toolId);
+        buffer.writeUtf(argsJson);
+    }
+
+    static ToolCallRequestPacket decode(RegistryFriendlyByteBuf buffer) {
+        return new ToolCallRequestPacket(buffer.readUtf(), buffer.readUtf(), buffer.readUtf());
+    }
+}
