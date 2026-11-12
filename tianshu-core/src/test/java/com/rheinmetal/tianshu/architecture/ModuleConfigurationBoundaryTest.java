@@ -70,7 +70,7 @@ class ModuleConfigurationBoundaryTest {
         assertTrue(bootstrap.contains("registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC)"));
         assertTrue(bootstrap.contains("ModConfig.Type.SERVER"));
         assertTrue(bootstrap.contains("ServerActionConfig.SPEC"));
-        assertTrue(bootstrap.contains("MOD_ID = \"tianshu\""));
+        assertTrue(bootstrap.contains("MOD_ID = \"tianshu_ferry\""));
     }
 
     private static void assertNoConfigurationDependency(String module, String... forbiddenTypes) throws Exception {
