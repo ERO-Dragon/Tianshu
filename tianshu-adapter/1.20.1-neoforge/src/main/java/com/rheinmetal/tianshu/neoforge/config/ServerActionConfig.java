@@ -19,6 +19,8 @@ public final class ServerActionConfig {
     public static final ForgeConfigSpec.BooleanValue SET_WEATHER;
     public static final ForgeConfigSpec.BooleanValue SPAWN_ENTITY;
     public static final ForgeConfigSpec.BooleanValue BROADCAST;
+    public static final ForgeConfigSpec.BooleanValue BLOCK_INTERACT;
+    public static final ForgeConfigSpec.BooleanValue CONTAINER_TRANSFER;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -30,6 +32,12 @@ public final class ServerActionConfig {
         SET_WEATHER = builder.comment("Change the level's weather.").define("set_weather", false);
         SPAWN_ENTITY = builder.comment("Spawn entities at the requesting player.").define("spawn_entity", false);
         BROADCAST = builder.comment("Broadcast one line to every player.").define("broadcast", false);
+        builder.pop();
+        builder.comment("Server-side tools. Every switch is separate and off by default.").push("tools");
+        BLOCK_INTERACT = builder.comment("Press buttons, toggle levers, open doors/trapdoors/fence gates.")
+                .define("block_interact", false);
+        CONTAINER_TRANSFER = builder.comment("Move items between a container and the player inventory.")
+                .define("container_transfer", false);
         builder.pop();
         SPEC = builder.build();
     }
