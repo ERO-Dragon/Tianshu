@@ -30,6 +30,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new LootQueryTool());
         ServerToolDeclarations.declare(new BlockInteractTool());
         ServerToolDeclarations.declare(new CraftRecipeTool());
+        ServerToolDeclarations.declare(new ContainerTransferTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */

@@ -16,12 +16,14 @@ public final class FabricToolConfig {
 
     private static final String BLOCK_INTERACT = "block_interact";
     private static final String CRAFT_RECIPE = "craft_recipe";
+    private static final String CONTAINER_TRANSFER = "container_transfer";
 
     private static final Properties VALUES = new Properties();
 
     static {
         VALUES.setProperty(BLOCK_INTERACT, "false");
         VALUES.setProperty(CRAFT_RECIPE, "false");
+        VALUES.setProperty(CONTAINER_TRANSFER, "false");
     }
 
     private FabricToolConfig() {
@@ -54,5 +56,9 @@ public final class FabricToolConfig {
 
     public static boolean craftRecipe() {
         return Boolean.parseBoolean(VALUES.getProperty(CRAFT_RECIPE, "false").trim());
+    }
+
+    public static boolean containerTransfer() {
+        return Boolean.parseBoolean(VALUES.getProperty(CONTAINER_TRANSFER, "false").trim());
     }
 }

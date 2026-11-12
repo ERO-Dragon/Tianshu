@@ -21,6 +21,7 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue BROADCAST;
     public static final ModConfigSpec.BooleanValue BLOCK_INTERACT;
     public static final ModConfigSpec.BooleanValue CRAFT_RECIPE;
+    public static final ModConfigSpec.BooleanValue CONTAINER_TRANSFER;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -41,6 +42,9 @@ public final class ServerActionConfig {
         CRAFT_RECIPE = builder
                 .comment("Let the assistant craft a named recipe at a nearby crafting table, consuming the player's ingredients.")
                 .define("craft_recipe", false);
+        CONTAINER_TRANSFER = builder
+                .comment("Let the assistant move items between a container and the player inventory.")
+                .define("container_transfer", false);
         builder.pop();
         SPEC = builder.build();
     }
