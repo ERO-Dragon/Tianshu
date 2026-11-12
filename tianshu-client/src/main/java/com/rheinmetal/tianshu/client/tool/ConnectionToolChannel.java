@@ -60,7 +60,7 @@ public final class ConnectionToolChannel implements ServerToolChannel {
 
     @Override
     public boolean available() {
-        return TianshuRuntimePorts.find(ToolTransport.class).isPresent();
+        return TianshuRuntimePorts.find(ToolTransport.class).map(ToolTransport::available).orElse(false);
     }
 
     @Override

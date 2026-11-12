@@ -11,5 +11,10 @@ import com.google.gson.JsonElement;
  */
 public interface ToolTransport {
 
+    /** Whether the transport currently reaches a server component. */
+    default boolean available() {
+        return true;
+    }
+
     void send(String requestId, ToolId id, JsonElement args, ToolCaller caller, long timeoutMillis);
 }
