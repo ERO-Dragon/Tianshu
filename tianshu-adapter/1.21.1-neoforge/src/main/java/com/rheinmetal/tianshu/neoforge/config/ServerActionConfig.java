@@ -20,6 +20,7 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue SPAWN_ENTITY;
     public static final ModConfigSpec.BooleanValue BROADCAST;
     public static final ModConfigSpec.BooleanValue BLOCK_INTERACT;
+    public static final ModConfigSpec.BooleanValue CRAFT_RECIPE;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -37,6 +38,9 @@ public final class ServerActionConfig {
         BLOCK_INTERACT = builder
                 .comment("Let the assistant press buttons, toggle levers and open doors/trapdoors/fence gates as the player.")
                 .define("block_interact", false);
+        CRAFT_RECIPE = builder
+                .comment("Let the assistant craft a named recipe at a nearby crafting table, consuming the player's ingredients.")
+                .define("craft_recipe", false);
         builder.pop();
         SPEC = builder.build();
     }

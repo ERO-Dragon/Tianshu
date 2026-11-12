@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -13,6 +14,7 @@ import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
+import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
@@ -22,6 +24,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
+import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
@@ -54,13 +57,18 @@ public final class ServerToolHandler {
     private static void onServerStarting(ServerStartingEvent event) {
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractSource(event.getServer()));
+        TianshuRuntimePorts.register(CraftPort.class, new CraftSource(event.getServer()));
         if (TianshuTools.find(LootQueryTool.ID) == null) {
             TianshuTools.register(new LootQueryTool());
         }
         if (TianshuTools.find(BlockInteractTool.ID) == null) {
             TianshuTools.register(new BlockInteractTool());
         }
+        if (TianshuTools.find(CraftRecipeTool.ID) == null) {
+            TianshuTools.register(new CraftRecipeTool());
+        }
         TianshuTools.setEnabled(BlockInteractTool.ID, ServerActionConfig.BLOCK_INTERACT.get());
+        TianshuTools.setEnabled(CraftRecipeTool.ID, ServerActionConfig.CRAFT_RECIPE.get());
     }
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {

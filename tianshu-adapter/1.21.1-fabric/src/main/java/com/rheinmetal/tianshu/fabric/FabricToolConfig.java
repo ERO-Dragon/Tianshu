@@ -15,11 +15,13 @@ import java.util.Properties;
 public final class FabricToolConfig {
 
     private static final String BLOCK_INTERACT = "block_interact";
+    private static final String CRAFT_RECIPE = "craft_recipe";
 
     private static final Properties VALUES = new Properties();
 
     static {
         VALUES.setProperty(BLOCK_INTERACT, "false");
+        VALUES.setProperty(CRAFT_RECIPE, "false");
     }
 
     private FabricToolConfig() {
@@ -48,5 +50,9 @@ public final class FabricToolConfig {
 
     public static boolean blockInteract() {
         return Boolean.parseBoolean(VALUES.getProperty(BLOCK_INTERACT, "false").trim());
+    }
+
+    public static boolean craftRecipe() {
+        return Boolean.parseBoolean(VALUES.getProperty(CRAFT_RECIPE, "false").trim());
     }
 }

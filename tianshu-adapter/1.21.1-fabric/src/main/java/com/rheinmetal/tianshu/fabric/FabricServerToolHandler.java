@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -13,12 +14,14 @@ import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
+import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
+import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -45,13 +48,18 @@ public final class FabricServerToolHandler {
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
             TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractSource(server));
+            TianshuRuntimePorts.register(CraftPort.class, new CraftSource(server));
             if (TianshuTools.find(LootQueryTool.ID) == null) {
                 TianshuTools.register(new LootQueryTool());
             }
             if (TianshuTools.find(BlockInteractTool.ID) == null) {
                 TianshuTools.register(new BlockInteractTool());
             }
+            if (TianshuTools.find(CraftRecipeTool.ID) == null) {
+                TianshuTools.register(new CraftRecipeTool());
+            }
             TianshuTools.setEnabled(BlockInteractTool.ID, FabricToolConfig.blockInteract());
+            TianshuTools.setEnabled(CraftRecipeTool.ID, FabricToolConfig.craftRecipe());
         });
         ServerPlayNetworking.registerGlobalReceiver(ToolCallRequestPacket.TYPE, (packet, context) ->
                 context.server().execute(() -> respond(context.player(), packet)));
