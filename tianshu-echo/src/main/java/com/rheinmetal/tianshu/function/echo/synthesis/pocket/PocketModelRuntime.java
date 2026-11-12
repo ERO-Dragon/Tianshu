@@ -6,7 +6,7 @@ import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
-import com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader;
+import com.rheinmetal.tianshu.foundry.nativelib.NativeLibraryLoader;
 import com.sentencepiece.SentencePieceProcessor;
 
 import java.nio.ByteBuffer;

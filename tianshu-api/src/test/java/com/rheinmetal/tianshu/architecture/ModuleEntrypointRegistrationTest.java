@@ -52,9 +52,9 @@ class ModuleEntrypointRegistrationTest {
     private static final Pattern FABRIC_MOD_ID = Pattern.compile("\"id\"\\s*:\\s*\"([a-z0-9_]+)\"");
     private static final Pattern FABRIC_ENTRYPOINT = Pattern.compile("\"main\"\\s*:\\s*\\[\\s*\"([^\"]+)\"");
     private static final Pattern FABRIC_KERNEL_DEPENDENCY = Pattern.compile(
-            "(?s)\"depends\"\\s*:\\s*\\{.*?\"tianshu\"\\s*:");
+            "(?s)\"depends\"\\s*:\\s*\\{.*?\"tianshu_ferry\"\\s*:");
     private static final Pattern NEOFORGE_KERNEL_DEPENDENCY = Pattern.compile(
-            "(?s)modId\\s*=\\s*\"tianshu\".*?type\\s*=\\s*\"([a-zA-Z]+)\"");
+            "(?s)modId\\s*=\\s*\"tianshu_ferry\".*?type\\s*=\\s*\"([a-zA-Z]+)\"");
 
     @Test
     void everyLoaderShellDelegatesToTheModulesOwnAnnouncement() throws Exception {
@@ -129,14 +129,14 @@ class ModuleEntrypointRegistrationTest {
             if (loadersOf(module).contains("neoforge")) {
                 Matcher kernel = NEOFORGE_KERNEL_DEPENDENCY.matcher(read(neoForgeManifestOf(module)));
                 if (!kernel.find()) {
-                    offenders.add(module.getFileName() + " does not declare the tianshu kernel for NeoForge");
+                    offenders.add(module.getFileName() + " does not declare the Tianshu - Ferry kernel for NeoForge");
                 } else if (!"required".equals(kernel.group(1))) {
                     offenders.add(module.getFileName() + " declares the NeoForge kernel as " + kernel.group(1));
                 }
             }
             if (loadersOf(module).contains("fabric")
                     && !FABRIC_KERNEL_DEPENDENCY.matcher(read(fabricManifestOf(module))).find()) {
-                offenders.add(module.getFileName() + " does not declare the tianshu kernel for Fabric");
+                offenders.add(module.getFileName() + " does not declare the Tianshu - Ferry kernel for Fabric");
             }
         }
 

@@ -11,11 +11,11 @@ import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
-import com.rheinmetal.tianshu.libs.llm.ChatMessage;
-import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
-import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
-import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
-import com.rheinmetal.tianshu.libs.llm.StreamFinishType;
+import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
+import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
+import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
+import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
 
 import java.io.BufferedReader;
 import java.io.IOException;

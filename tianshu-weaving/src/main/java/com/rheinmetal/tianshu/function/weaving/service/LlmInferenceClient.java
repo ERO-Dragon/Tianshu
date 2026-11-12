@@ -2,9 +2,9 @@ package com.rheinmetal.tianshu.function.weaving.service;
 
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
-import com.rheinmetal.tianshu.libs.llm.ChatMessage;
-import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
-import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
+import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
+import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;

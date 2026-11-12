@@ -27,16 +27,16 @@ displayTest="IGNORE_SERVER_VERSION"
     side="CLIENT"
 
 [[dependencies.tianshu_echo]]
-    modId="tianshu"
+    modId="tianshu_ferry"
     type="required"
     versionRange="[1.0.0,2.0.0)"
     ordering="AFTER"
     side="CLIENT"
 
 [[dependencies.tianshu_echo]]
-    modId="tianshu_libs"
+    modId="tianshu_foundry"
     type="required"
-    versionRange="${tianshu_libs_version_range}"
+    versionRange="${tianshu_foundry_version_range}"
     ordering="AFTER"
     side="CLIENT"
 

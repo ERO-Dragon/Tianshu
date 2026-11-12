@@ -36,8 +36,8 @@ class AXLogKnowledgePromptFixtureTest {
     private static final List<String> FALLBACK_SAMPLE_LOG_LINES = List.of(
             "[Render thread/INFO] [com.rheinmetal.tianshu.function.intake.index.ClientNamedObjectIndexManager/]: IR named object index loaded from cache, objects=1462, reason=client resource reload, file=.\\config\\Tianshu\\module\\ir\\cache\\named-object-ir-cache.bin",
             "[Render thread/WARN] [net.minecraft.client.sounds.SoundEngine/]: Missing sound for event: minecraft:item.goat_horn.play",
-            "[modloading-worker-0/INFO] [com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader/]: [jjml] LlamaCpp native: OK",
-            "[modloading-worker-0/INFO] [com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader/]: [sherpa-onnx] Native: OK",
+            "[modloading-worker-0/INFO] [com.rheinmetal.tianshu.foundry.nativelib.NativeLibraryLoader/]: [jjml] LlamaCpp native: OK",
+            "[modloading-worker-0/INFO] [com.rheinmetal.tianshu.foundry.nativelib.NativeLibraryLoader/]: [sherpa-onnx] Native: OK",
             "[Render thread/INFO] [com.rheinmetal.tianshu.client.TianshuClient/]: 检测到客户端退出世界，开始清理...",
             "[Server thread/INFO] [net.minecraft.server.MinecraftServer/]: Preparing start region for dimension minecraft:overworld"
     );

@@ -10,7 +10,7 @@ package com.rheinmetal.tianshu.api;
 public final class ModIdentity {
 
     /** The mod id, as declared in {@code neoforge.mods.toml} and {@code fabric.mod.json}. */
-    public static final String MOD_ID = "tianshu";
+    public static final String MOD_ID = "tianshu_ferry";
 
     private ModIdentity() {
     }

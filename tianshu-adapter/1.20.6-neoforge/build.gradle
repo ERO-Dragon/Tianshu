@@ -230,7 +230,7 @@ neoForge {
             }
         }
         if ('auxilium' in devFeatureMods) {
-            tianshu_auxilium {
+            tianshu {
                 sourceSet(project(':tianshu-auxilium').sourceSets.main)
                 sourceSet(project(':tianshu-auxilium').sourceSets.neoforgeEntry)
             }
@@ -250,8 +250,8 @@ configurations {
 
 dependencies {
     implementation project(':tianshu-client')
-    compileOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
-    localRuntime fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../../libs') { include 'tianshu_foundry-*.jar' }
+    localRuntime fileTree('../../libs') { include 'tianshu_foundry-*.jar' }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -284,7 +284,7 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             mod_name               : mod_name,
             mod_license            : mod_license,
             mod_version            : mod_version,
-            tianshu_libs_version_range: tianshu_libs_version_range,
+            tianshu_foundry_version_range: tianshu_foundry_version_range,
     ]
     inputs.properties replaceProperties
     expand replaceProperties

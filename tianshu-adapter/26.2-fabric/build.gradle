@@ -48,8 +48,8 @@ dependencies {
     implementation "net.fabricmc.fabric-api:fabric-api:${apiVersion}"
 
     implementation project(':tianshu-client')
-    compileOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
-    runtimeOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../../libs') { include 'tianshu_foundry-*.jar' }
+    runtimeOnly fileTree('../../libs') { include 'tianshu_foundry-*.jar' }
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

@@ -233,7 +233,7 @@ api.submit(envelope);
 
 ### 提交一句世界事件（AX）
 
-要交给白泽"说一句"，需硬性依赖 `tianshu-auxilium` 才能拿到能力名与载荷类：
+要交给天枢"说一句"，需硬性依赖 `tianshu-auxilium` 才能拿到能力名与载荷类：
 
 ```java
 AXWorldEventPayload payload = new AXWorldEventPayload(

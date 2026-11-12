@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
-import com.rheinmetal.tianshu.libs.core.JavaLlamaServer;
+import com.rheinmetal.tianshu.foundry.core.JavaLlamaServer;
 
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;

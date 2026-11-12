@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving.runtime;
 
-import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 
 import java.util.List;
 

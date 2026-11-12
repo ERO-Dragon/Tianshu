@@ -10,7 +10,7 @@ import net.minecraftforge.fml.common.Mod;
  * there and {@link AuxiliumNeoForgeMod} is invisible here. Both call {@link AuxiliumModuleRegistration#announce()},
  * which keeps the two shells from drifting.</p>
  */
-@Mod("tianshu_auxilium")
+@Mod("tianshu")
 public final class AuxiliumForgeMod {
 
     public AuxiliumForgeMod() {

@@ -27,7 +27,7 @@ displayTest="IGNORE_ALL_VERSION"
     side="CLIENT"
 
 [[dependencies.tianshu_lab]]
-    modId="tianshu"
+    modId="tianshu_ferry"
     type="required"
     versionRange="[1.0.0,2.0.0)"
     ordering="AFTER"
@@ -41,8 +41,8 @@ displayTest="IGNORE_ALL_VERSION"
     side="CLIENT"
 
 [[dependencies.tianshu_lab]]
-    modId="tianshu_libs"
+    modId="tianshu_foundry"
     type="required"
-    versionRange="${tianshu_libs_version_range}"
+    versionRange="${tianshu_foundry_version_range}"
     ordering="AFTER"
     side="CLIENT"

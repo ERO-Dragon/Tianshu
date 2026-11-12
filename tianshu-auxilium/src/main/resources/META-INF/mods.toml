@@ -7,58 +7,58 @@ loaderVersion="[1,)"
 license="MIT"
 
 [[mods]]
-modId="tianshu_auxilium"
+modId="tianshu"
 version="${mod_version}"
-displayName="${mod_name} - Auxilium"
+displayName="${mod_name}"
 logoFile="icon.png"
 description='''
 Dialogue brain for Tianshu: turn orchestration, memory, and game-event context.
 '''
 displayTest="IGNORE_SERVER_VERSION"
 
-[[dependencies.tianshu_auxilium]]
+[[dependencies.tianshu]]
     modId="minecraft"
     mandatory=true
     versionRange="${minecraft_version_range_legacy}"
     ordering="NONE"
     side="CLIENT"
 
-[[dependencies.tianshu_auxilium]]
-    modId="tianshu"
+[[dependencies.tianshu]]
+    modId="tianshu_ferry"
     mandatory=true
     versionRange="[1.0.0,2.0.0)"
     ordering="AFTER"
     side="CLIENT"
 
-[[dependencies.tianshu_auxilium]]
-    modId="tianshu_libs"
+[[dependencies.tianshu]]
+    modId="tianshu_foundry"
     mandatory=true
-    versionRange="${tianshu_libs_version_range}"
+    versionRange="${tianshu_foundry_version_range}"
     ordering="AFTER"
     side="CLIENT"
 
-[[dependencies.tianshu_auxilium]]
+[[dependencies.tianshu]]
     modId="tianshu_presence"
     mandatory=true
     versionRange="[${mod_version},)"
     ordering="NONE"
     side="CLIENT"
 
-[[dependencies.tianshu_auxilium]]
+[[dependencies.tianshu]]
 modId="tianshu_intake"
 mandatory=false
 versionRange="[${mod_version},)"
 ordering="NONE"
 side="CLIENT"
 
-[[dependencies.tianshu_auxilium]]
+[[dependencies.tianshu]]
 modId="tianshu_weaving"
 mandatory=true
 versionRange="[${mod_version},)"
 ordering="NONE"
 side="CLIENT"
 
-[[dependencies.tianshu_auxilium]]
+[[dependencies.tianshu]]
 modId="tianshu_echo"
 mandatory=false
 versionRange="[${mod_version},)"

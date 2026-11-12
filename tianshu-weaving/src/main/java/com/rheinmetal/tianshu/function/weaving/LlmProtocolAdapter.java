@@ -18,7 +18,7 @@ import com.rheinmetal.tianshu.function.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.function.weaving.service.RagCacheManager;
 import com.rheinmetal.tianshu.function.weaving.service.RagLibraryRegistry;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmUsageLedger;
-import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;

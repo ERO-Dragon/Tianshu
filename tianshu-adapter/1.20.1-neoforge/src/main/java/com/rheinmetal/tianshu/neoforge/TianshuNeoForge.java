@@ -40,7 +40,7 @@ import net.minecraftforge.fml.loading.FMLEnvironment;
  */
 @Mod(TianshuNeoForge.MOD_ID)
 public final class TianshuNeoForge {
-    public static final String MOD_ID = "tianshu";
+    public static final String MOD_ID = "tianshu_ferry";
 
     /** The action channel client: one per process, shared by the network handlers and the client subsystem. */
     private static ServerActionClient actionClient;

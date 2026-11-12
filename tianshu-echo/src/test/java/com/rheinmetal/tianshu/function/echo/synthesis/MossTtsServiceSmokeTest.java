@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsCodecExecution;
-import com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader;
+import com.rheinmetal.tianshu.foundry.nativelib.NativeLibraryLoader;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 

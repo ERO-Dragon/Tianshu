@@ -39,7 +39,7 @@ tasks.register('exportHudPreviewAssets', JavaExec) {
 // `HudSurface`, and the shader programs stay with the platform that draws them.
 def tianshuModVersion = providers.gradleProperty('mod_version').get()
 def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
-def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
+def tianshuLibsRange = providers.gradleProperty('tianshu_foundry_version_range').get()
 def tianshuModName = providers.gradleProperty('mod_name').get()
 def tianshuMcRangeFabric = providers.gradleProperty('minecraft_version_range_fabric').get()
 def tianshuMcRangeLegacy = providers.gradleProperty('minecraft_version_range_legacy').get()
@@ -57,7 +57,7 @@ processResources {
         expand(
                 mod_version               : tianshuModVersion,
                 minecraft_version_range   : tianshuMcRange,
-                tianshu_libs_version_range: tianshuLibsRange,
+                tianshu_foundry_version_range: tianshuLibsRange,
                 mod_name                  : tianshuModName
         )
     }
@@ -72,7 +72,7 @@ processResources {
         expand(
                 mod_version                   : tianshuModVersion,
                 minecraft_version_range_legacy: tianshuMcRangeLegacy,
-                tianshu_libs_version_range    : tianshuLibsRange,
+                tianshu_foundry_version_range    : tianshuLibsRange,
                 mod_name                      : tianshuModName
         )
     }

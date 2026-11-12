@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.libs.llm.ChatMessage;
+import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 
 import java.util.List;
 

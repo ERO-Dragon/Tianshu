@@ -131,7 +131,7 @@ public final class AXModule implements TianshuManagedModule {
     /**
      * 装配失败时那条模块状态的语言键。
      *
-     * <p>它只说"白泽没起来"，不指路：指路的话（检查密钥/模型）只对织言成立，对白泽是误导。</p>
+     * <p>它只说"天枢没起来"，不指路：指路的话（检查密钥/模型）只对织言成立，对天枢是误导。</p>
      */
     private static final String STARTUP_FAILED_KEY = "tianshu.runtime.module.ax.startup_failed";
 
@@ -264,7 +264,7 @@ public final class AXModule implements TianshuManagedModule {
         if (dialogueGateway != null) {
             return;
         }
-        // 两条腿各说各的：模块状态说的是"白泽的健康与生命周期"，这条产品活动说的是"玩家现在能不能用"。
+        // 两条腿各说各的：模块状态说的是"天枢的健康与生命周期"，这条产品活动说的是"玩家现在能不能用"。
         // 映迹不从模块状态反推画面，所以"准备中"必须由这里显式发出去。
         adapter.publishLoadingActivity(true);
         try {

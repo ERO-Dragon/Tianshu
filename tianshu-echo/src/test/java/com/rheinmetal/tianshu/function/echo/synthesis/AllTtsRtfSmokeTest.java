@@ -40,7 +40,7 @@ class AllTtsRtfSmokeTest {
     void benchmarksInstalledTtsModels() throws Exception {
         Assumptions.assumeTrue(Boolean.getBoolean("tianshu.tts.rtf"),
                 "Set -Dtianshu.tts.rtf=true to run the real cross-engine RTF benchmark");
-        com.rheinmetal.tianshu.libs.nativelib.NativeLibraryLoader.ensureLoaded();
+        com.rheinmetal.tianshu.foundry.nativelib.NativeLibraryLoader.ensureLoaded();
         FakeGameEnvironment env = new FakeGameEnvironment();
         ExecutorService executor = Executors.newSingleThreadExecutor();
         TtsCodecExecution lane = lane(executor);

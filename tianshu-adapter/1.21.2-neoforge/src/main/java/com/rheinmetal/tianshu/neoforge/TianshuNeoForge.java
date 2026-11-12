@@ -31,7 +31,7 @@ import net.neoforged.neoforge.event.GameShuttingDownEvent;
  */
 @Mod(TianshuNeoForge.MOD_ID)
 public final class TianshuNeoForge {
-    public static final String MOD_ID = "tianshu";
+    public static final String MOD_ID = "tianshu_ferry";
 
     /** {@code null} on a dedicated server: every client subsystem is constructed only on the client. */
     private final NeoForgeClientBootstrap clientBootstrap;

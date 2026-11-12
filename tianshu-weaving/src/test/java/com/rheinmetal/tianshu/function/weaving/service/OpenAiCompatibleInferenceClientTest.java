@@ -8,8 +8,8 @@ import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.libs.llm.ChatMessage;
-import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
+import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 

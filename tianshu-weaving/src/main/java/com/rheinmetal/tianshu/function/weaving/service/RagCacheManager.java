@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
-import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
+import com.rheinmetal.tianshu.foundry.rag.RagSearchResult;
 
 import java.util.List;
 

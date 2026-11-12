@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.function.weaving.service;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.libs.rag.RagSearchResult;
+import com.rheinmetal.tianshu.foundry.rag.RagSearchResult;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -14,7 +14,7 @@ repositories {
 dependencies {
     api project(':tianshu-core')
     compileOnly project(':tianshu-presence')
-    compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../libs') { include 'tianshu_foundry-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation project(':tianshu-testkit')
@@ -22,7 +22,7 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testImplementation 'org.apache.commons:commons-compress:1.26.0'
-    testImplementation fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    testImplementation fileTree('../libs') { include 'tianshu_foundry-*.jar' }
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.9'
 }
@@ -35,9 +35,9 @@ test {
     useJUnitPlatform()
 }
 
-// jjml arrives as a jarJar nested jar inside tianshu_libs; tests need it unpacked on the classpath.
+// jjml arrives as a jarJar nested jar inside tianshu_foundry; tests need it unpacked on the classpath.
 def extractTianshuLibsJarJar = tasks.register('extractTianshuLibsJarJar', Sync) {
-    def libsJars = fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    def libsJars = fileTree('../libs') { include 'tianshu_foundry-*.jar' }
     from(libsJars.collect { zipTree(it) }) {
         include 'META-INF/jarjar/*.jar'
         eachFile { details -> details.path = details.name }
@@ -57,7 +57,7 @@ test {
 // Values are resolved here, at configuration time, so the closure never touches the project object.
 def tianshuModVersion = providers.gradleProperty('mod_version').get()
 def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
-def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
+def tianshuLibsRange = providers.gradleProperty('tianshu_foundry_version_range').get()
 def tianshuModName = providers.gradleProperty('mod_name').get()
 def tianshuMcRangeFabric = providers.gradleProperty('minecraft_version_range_fabric').get()
 def tianshuMcRangeLegacy = providers.gradleProperty('minecraft_version_range_legacy').get()
@@ -75,7 +75,7 @@ processResources {
         expand(
                 mod_version               : tianshuModVersion,
                 minecraft_version_range   : tianshuMcRange,
-                tianshu_libs_version_range: tianshuLibsRange,
+                tianshu_foundry_version_range: tianshuLibsRange,
                 mod_name                  : tianshuModName
         )
     }
@@ -90,7 +90,7 @@ processResources {
         expand(
                 mod_version                   : tianshuModVersion,
                 minecraft_version_range_legacy: tianshuMcRangeLegacy,
-                tianshu_libs_version_range    : tianshuLibsRange,
+                tianshu_foundry_version_range    : tianshuLibsRange,
                 mod_name                      : tianshuModName
         )
     }

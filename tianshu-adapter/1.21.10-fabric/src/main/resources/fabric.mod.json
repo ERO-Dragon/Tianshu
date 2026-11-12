@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "${mod_id}",
   "version": "${mod_version}",
-  "name": "${mod_name}",
+  "name": "${mod_name} - Ferry",
   "icon": "icon.png",
   "description": "Tianshu AI for Fabric. The kernel, the feature modules and the console run on the client; the optional authoritative server component ships with this adapter.",
   "license": "${mod_license}",
@@ -26,6 +26,6 @@
     "fabric-api": "*"
   },
   "suggests": {
-    "tianshu_libs": ">=1.0.0"
+    "tianshu_foundry": ">=1.0.0"
   }
 }

@@ -146,8 +146,8 @@ tasks.withType(JavaCompile).configureEach {
 dependencies {
     implementation "net.neoforged:neoforge:${neoVersion}"
     implementation project(':tianshu-client')
-    compileOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
-    runtimeOnly fileTree('../../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../../libs') { include 'tianshu_foundry-*.jar' }
+    runtimeOnly fileTree('../../libs') { include 'tianshu_foundry-*.jar' }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -180,7 +180,7 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             mod_name               : mod_name,
             mod_license            : mod_license,
             mod_version            : mod_version,
-            tianshu_libs_version_range: tianshu_libs_version_range,
+            tianshu_foundry_version_range: tianshu_foundry_version_range,
     ]
     inputs.properties replaceProperties
     expand replaceProperties

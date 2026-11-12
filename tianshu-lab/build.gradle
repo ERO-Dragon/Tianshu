@@ -16,7 +16,7 @@ repositories {
 // player tests the speech module in a development client.
 dependencies {
     api project(':tianshu-intake')
-    compileOnly fileTree('../libs') { include 'tianshu_libs-*.jar' }
+    compileOnly fileTree('../libs') { include 'tianshu_foundry-*.jar' }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -31,7 +31,7 @@ test {
 
 def tianshuModVersion = providers.gradleProperty('mod_version').get()
 def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
-def tianshuLibsRange = providers.gradleProperty('tianshu_libs_version_range').get()
+def tianshuLibsRange = providers.gradleProperty('tianshu_foundry_version_range').get()
 def tianshuModName = providers.gradleProperty('mod_name').get()
 
 processResources {
@@ -43,7 +43,7 @@ processResources {
         expand(
                 mod_version               : tianshuModVersion,
                 minecraft_version_range   : tianshuMcRange,
-                tianshu_libs_version_range: tianshuLibsRange,
+                tianshu_foundry_version_range: tianshuLibsRange,
                 mod_name                  : tianshuModName
         )
     }

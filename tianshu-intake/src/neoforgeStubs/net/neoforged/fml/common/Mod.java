@@ -10,7 +10,7 @@ import java.lang.annotation.Target;
  *
  * <p>The real annotation is supplied by the loader at runtime; this copy exists only so an entrypoint
  * can compile without pulling the whole NeoForge artifact into a platform-neutral module. It is never
- * packaged: the stub source set is compile-only, exactly like {@code tianshu_libs} does for its
+ * packaged: the stub source set is compile-only, exactly like {@code tianshu_foundry} does for its
  * Forge compatibility stubs.</p>
  */
 @Retention(RetentionPolicy.RUNTIME)

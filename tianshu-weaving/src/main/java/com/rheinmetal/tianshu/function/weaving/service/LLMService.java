@@ -13,10 +13,10 @@ import com.rheinmetal.tianshu.function.weaving.runtime.LlmContextBudget;
 import com.rheinmetal.tianshu.function.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.function.weaving.usage.LlmPromptCacheUsage;
-import com.rheinmetal.tianshu.libs.llm.ChatMessage;
-import com.rheinmetal.tianshu.libs.llm.LlmGenerationResult;
-import com.rheinmetal.tianshu.libs.llm.LlmStreamFinish;
-import com.rheinmetal.tianshu.libs.llm.LlmTokenUsage;
+import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
+import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
+import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
+import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -189,7 +189,7 @@ foreach ($adapter in $adapters) {
 
     if ($status -eq 'TIMEOUT' -and (Test-Path $runLog)) {
         $text = Get-Content $runLog -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-        if ($text -match 'TIANSHU_LIBS_BOOTSTRAP_OK') {
+        if ($text -match 'TIANSHU_(LIBS|FOUNDRY)_BOOTSTRAP_OK') {
             $status = 'PARTIAL'
             $detail = 'bootstrap ok, no main menu within timeout'
         } else {
