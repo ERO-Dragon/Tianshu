@@ -41,6 +41,8 @@ import com.rheinmetal.tianshu.mc.host.UiHost;
 import com.rheinmetal.tianshu.mc.host.GameEnvironment;
 import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
+import com.rheinmetal.tianshu.mc.tool.RecipeQuerySource;
 import com.rheinmetal.tianshu.api.game.WorldFactsSource;
 import com.rheinmetal.tianshu.api.game.WorldEventPublisher;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventPayload;
@@ -190,6 +192,7 @@ public final class NeoForgeClientBootstrap {
             var gameContextPort = new LiveGameContext(languageSnapshot, diagnosticRouter);
             WorldIdentityCapture worldIdentityCapture = new WorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
+            TianshuRuntimePorts.register(RecipeQueryPort.class, new RecipeQuerySource());
 
             audioManager = new AudioManager(diagnosticRouter, diagnosticRouter);
             ClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
