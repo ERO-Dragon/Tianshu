@@ -5,6 +5,10 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.neoforge.TianshuNeoForge;
 import com.rheinmetal.tianshu.neoforge.server.ServerActionHandler;
 import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
@@ -50,7 +54,7 @@ public final class TianshuNetwork {
      * <p>The registrar delivers on the main thread, so the batch reaches its consumers in the order the server
      * produced it, never interleaved with another payload, and no further thread hop is needed.</p>
      */
-    public static void register(RegisterPayloadHandlersEvent event) {
+    public static void register(RegisterPayloadHandlersEvent event, ToolCallClient tools) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION).optional();
         registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC,
                 (packet, context) -> packet.toEvents().forEach(WorldEventHooks::publish));
@@ -60,10 +64,16 @@ public final class TianshuNetwork {
                 (packet, context) -> TianshuNeoForge.actionClient().receiveCatalog(packet, Runnable::run));
         registrar.playToServer(ServerActionRequestPacket.TYPE, ServerActionRequestPacket.STREAM_CODEC,
                 ServerActionHandler::handle);
+        registrar.playToClient(ToolCallResultPacket.TYPE, ToolCallResultPacket.STREAM_CODEC,
+                (packet, context) -> tools.receiveResult(packet));
+        registrar.playToClient(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC,
+                (packet, context) -> tools.receiveCatalog(packet));
+        registrar.playToServer(ToolCallRequestPacket.TYPE, ToolCallRequestPacket.STREAM_CODEC,
+                com.rheinmetal.tianshu.neoforge.server.ServerToolHandler::handle);
     }
 
     /** Sends one request to the server the client is connected to. */
-    public static void sendToServer(ServerActionRequestPacket packet) {
+    public static void sendToServer(CustomPacketPayload packet) {
         PacketDistributor.sendToServer(packet);
     }
 

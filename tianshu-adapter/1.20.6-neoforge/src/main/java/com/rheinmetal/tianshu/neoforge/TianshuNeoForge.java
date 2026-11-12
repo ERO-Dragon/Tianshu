@@ -12,6 +12,9 @@ import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.api.tool.ToolTransport;
+import com.rheinmetal.tianshu.neoforge.server.ServerToolHandler;
 import com.rheinmetal.tianshu.neoforge.server.GameFactCollector;
 import com.rheinmetal.tianshu.neoforge.server.ServerActionHandler;
 
@@ -44,6 +47,7 @@ public final class TianshuNeoForge {
 
     /** The action channel client: one per process, shared by the network handlers and the client subsystem. */
     private static ServerActionClient actionClient;
+    private static ToolCallClient toolCalls;
 
     public static ServerActionClient actionClient() {
         return actionClient;
@@ -70,9 +74,13 @@ public final class TianshuNeoForge {
         // The brain: one action client per process. The network handlers deliver answers to it and the client
         // bootstrap reads its snapshots, so no static has to describe the client object.
         actionClient = new ServerActionClient(TianshuNetwork::sendToServer);
+        // The tool channel's client half. "Available" turns on only after the server's catalog arrives.
+        toolCalls = new ToolCallClient(TianshuNetwork::sendToServer);
+        TianshuRuntimePorts.register(ToolTransport.class, toolCalls);
         // The one channel is registered on both sides: whoever hosts the server component still has to know how a
         // fact is shaped, and a client has to know how to receive it.
-        modEventBus.addListener(TianshuNetwork::register);
+        modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
+                TianshuNetwork.register(registerPayloads, toolCalls));
         // Server-side action switches: independent of the client config, off by default, reloaded with the server.
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, ServerActionConfig.SPEC);
         // The collector is registered on both distributions: in single player the integrated server lives in this
@@ -82,7 +90,11 @@ public final class TianshuNeoForge {
         serverCollector.register(NeoForge.EVENT_BUS);
         // The action channel announces its enabled set on join; the client side builds its toolbar from that.
         ServerActionHandler.register(NeoForge.EVENT_BUS);
+        ServerToolHandler.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            NeoForge.EVENT_BUS.addListener(
+                    (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) ->
+                            toolCalls.onDisconnect());
             clientBootstrap = new NeoForgeClientBootstrap(actionClient);
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.
