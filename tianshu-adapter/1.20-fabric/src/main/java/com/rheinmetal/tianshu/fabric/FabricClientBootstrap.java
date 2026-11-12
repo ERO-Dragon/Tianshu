@@ -8,6 +8,8 @@ import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.game.TagQueryPort;
 import com.rheinmetal.tianshu.mc.tool.RecipeQuerySource;
 import com.rheinmetal.tianshu.mc.tool.TagQuerySource;
+import com.rheinmetal.tianshu.api.game.InventoryQueryPort;
+import com.rheinmetal.tianshu.mc.tool.InventoryQuerySource;
 import com.rheinmetal.tianshu.api.client.host.hud.HudProgramId;
 import com.rheinmetal.tianshu.api.client.host.hud.HudShaderCatalog;
 import com.rheinmetal.tianshu.api.game.NamedObjectDictionary;
@@ -153,6 +155,7 @@ public final class FabricClientBootstrap {
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
             TianshuRuntimePorts.register(RecipeQueryPort.class, new RecipeQuerySource());
             TianshuRuntimePorts.register(TagQueryPort.class, new TagQuerySource());
+            TianshuRuntimePorts.register(InventoryQueryPort.class, new InventoryQuerySource());
 
             audioManager = new AudioManager(diagnosticRouter, diagnosticRouter);
             session.own(audioManager::shutdown);

@@ -25,12 +25,14 @@ public final class ClientTools {
         }
         TianshuTools.register(new RecipeQueryTool());
         TianshuTools.register(new TagQueryTool());
+        TianshuTools.register(new InventoryInspectTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */
     public static void unregisterForTests() {
         TianshuTools.unregister(RecipeQueryTool.ID);
         TianshuTools.unregister(TagQueryTool.ID);
+        TianshuTools.unregister(InventoryInspectTool.ID);
         REGISTERED.set(false);
     }
 }
