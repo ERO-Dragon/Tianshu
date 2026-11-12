@@ -56,6 +56,7 @@ import com.rheinmetal.tianshu.function.auxilium.AXTurnCancellation;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmClient;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.function.auxilium.core.llm.AXLlmRequestHandler;
+import com.rheinmetal.tianshu.function.auxilium.core.tool.AXToolRoundHandler;
 import com.rheinmetal.tianshu.function.auxilium.failure.AXFailureCause;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
@@ -474,12 +475,18 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         // for the envelope happens on the submitter's long-running thread, never on the caller's lane.
         AXStepSignal<LLMPromptResultPayload> step = new AXStepSignal<>();
         PendingTurn pending = new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn, step, historyMark);
+        // Tool-enabled turns keep the same delivery handler; the round handler only intercepts model calls.
+        AXToolRoundHandler toolRound = AXToolRoundHandler.prepare(llmPayload, pending,
+                (payload, handler) -> submitAgentRequest(execution, deliveryEnvelope, payload, handler),
+                pending::discardHeldStream);
+        LLMPromptRequestPayload firstPayload = toolRound == null ? llmPayload : toolRound.firstPayload(llmPayload);
+        AXLlmRequestHandler firstHandler = toolRound == null ? pending : toolRound;
         // Clear first so a stale id from a previous turn can never be cancelled (§12.2).
         execution.llmRequestId("");
         try {
             agentRunSubmitter.submit(
                     execution.activityId(),
-                    () -> runAgentTurn(execution, deliveryEnvelope, llmPayload, pending, step)
+                    () -> runAgentTurn(execution, deliveryEnvelope, firstPayload, firstHandler, step)
             );
         } catch (RuntimeException rejected) {
             // The run never started (lane saturated or shut down). Retire the turn now instead of
@@ -499,12 +506,12 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXTurnExecution execution,
             TianshuEnvelope deliveryEnvelope,
             LLMPromptRequestPayload llmPayload,
-            PendingTurn pending,
+            AXLlmRequestHandler handler,
             AXStepSignal<LLMPromptResultPayload> step
     ) {
         AXAgentLoop loop = new AXAgentLoop(AXRunPolicy.simple());
         AXRunOutcome<LLMPromptResultPayload> outcome = loop.run(
-                context -> nextStep(execution, deliveryEnvelope, llmPayload, pending, step, context),
+                context -> nextStep(execution, deliveryEnvelope, llmPayload, handler, step, context),
                 AXRunCancellation.of(
                         () -> execution.cancellationIfCancelled() != null,
                         execution::cancellationIfCancelled
@@ -527,7 +534,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             AXTurnExecution execution,
             TianshuEnvelope deliveryEnvelope,
             LLMPromptRequestPayload llmPayload,
-            PendingTurn pending,
+            AXLlmRequestHandler handler,
             AXStepSignal<LLMPromptResultPayload> step,
             AXStepContext context
     ) throws InterruptedException, TimeoutException {
@@ -536,7 +543,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             // Cancelled before submit: do not send the request at all.
             return new AXStepOutcome.Aborted<>(earlyCancel, AXRunExpiry.NONE);
         }
-        TianshuEnvelope llmEnvelope = llmClient.submitInTurn(deliveryEnvelope, llmPayload, pending);
+        TianshuEnvelope llmEnvelope = llmClient.submitInTurn(deliveryEnvelope, llmPayload, handler);
         execution.llmRequestId(llmEnvelope == null ? "" : llmEnvelope.envelopeId());
         AXTurnCancellation lateCancel = execution.cancellationIfCancelled();
         if (lateCancel != null && !execution.llmRequestId().isBlank()) {
@@ -544,6 +551,16 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             llmClient.cancelRequestAwaitTerminal(execution.llmRequestId(), lateCancel);
         }
         return step.await(context.remainingMillis(), context.cancellation());
+    }
+
+    /** One request on behalf of the tool round handler; the latest id is what cancellation must target. */
+    private void submitAgentRequest(AXTurnExecution execution, TianshuEnvelope deliveryEnvelope,
+                                    LLMPromptRequestPayload payload, AXLlmRequestHandler handler) {
+        if (!isCurrent(execution)) {
+            return;
+        }
+        TianshuEnvelope envelope = llmClient.submitInTurn(deliveryEnvelope, payload, handler);
+        execution.llmRequestId(envelope == null ? "" : envelope.envelopeId());
     }
 
     /**
@@ -761,6 +778,11 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
          * <p>回滚范围是本轮水位之后的一切，唯独保留期间落进来的游戏事件：那些是世界自己发生的事，
          * 与这一问成不成功无关。</p>
          */
+        /** Drops a held reply that the tool round handler intercepted; nothing of it is spoken. */
+        void discardHeldStream() {
+            replyGate.discardHeld();
+        }
+
         private void rollbackHistory() {
             if (recentDialogueSystem == null || historyMark < 0) {
                 return;

@@ -32,11 +32,22 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
     private final AXToolTurn turn;
     private final AXLlmRequestHandler delivery;
     private final Submit submit;
+    private final Runnable discardHeld;
+    private final boolean stream;
+    private final Integer maxTokens;
+    private final Integer reasoningTier;
+    private final LLMPromptRequestPayload.SamplingPayload sampling;
 
-    private AXToolRoundHandler(AXToolTurn turn, AXLlmRequestHandler delivery, Submit submit) {
+    private AXToolRoundHandler(AXToolTurn turn, AXLlmRequestHandler delivery, Submit submit, Runnable discardHeld,
+                               LLMPromptRequestPayload base) {
         this.turn = turn;
         this.delivery = delivery;
         this.submit = submit;
+        this.discardHeld = discardHeld;
+        this.stream = base.stream();
+        this.maxTokens = base.maxTokens();
+        this.reasoningTier = base.reasoningTier();
+        this.sampling = base.sampling();
     }
 
     /**
@@ -47,10 +58,11 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
      * @return the handler to submit, or {@code null} when no tool is enabled (the caller keeps its normal path)
      */
     public static AXToolRoundHandler prepare(LLMPromptRequestPayload base, AXLlmRequestHandler delivery,
-                                             Submit submit) {
+                                             Submit submit, Runnable discardHeld) {
         Objects.requireNonNull(base, "base");
         Objects.requireNonNull(delivery, "delivery");
         Objects.requireNonNull(submit, "submit");
+        Objects.requireNonNull(discardHeld, "discardHeld");
         List<ToolSpec> catalogue = TianshuTools.catalog(ToolCaller.agent(false), ToolSide.CLIENT);
         AXToolTurn turn = AXToolTurn.start(catalogue, base, call -> new AXToolExecutor().call(call)
                 .handle((result, failure) -> {
@@ -67,20 +79,22 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
         if (!turn.toolsAvailable()) {
             return null;
         }
-        return new AXToolRoundHandler(turn, delivery, submit);
+        return new AXToolRoundHandler(turn, delivery, submit, discardHeld, base);
     }
 
     /** The payload to send first: the catalogue plus the conversation, non-streaming. */
     public LLMPromptRequestPayload firstPayload(LLMPromptRequestPayload base) {
-        return turn.payload(base.requestId(), false, base.maxTokens(), base.reasoningTier(), base.sampling());
+        return turn.payload(base.requestId(), stream, maxTokens, reasoningTier, sampling);
     }
 
     @Override
     public void onResult(LLMPromptResultPayload payload) {
         if (payload != null && payload.isCompleted() && turn.toolsAvailable()) {
-            AXToolTurn.Decision decision = turn.onReply(payload.text(), payload.requestId(), false, 0, null,
-                    LLMPromptRequestPayload.SamplingPayload.empty());
+            AXToolTurn.Decision decision = turn.onReply(payload.text(), payload.requestId(), stream, maxTokens,
+                    reasoningTier, sampling);
             if (decision instanceof AXToolTurn.Decision.Continue continuation) {
+                // The muted stream held this reply back; the call itself must not be spoken either.
+                discardHeld.run();
                 submit.submit(continuation.next(), this);
                 return;
             }

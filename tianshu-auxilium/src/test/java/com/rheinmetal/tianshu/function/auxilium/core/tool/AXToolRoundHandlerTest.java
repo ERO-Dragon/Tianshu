@@ -76,16 +76,16 @@ class AXToolRoundHandlerTest {
 
     @Test
     void withoutEnabledToolsThereIsNoToolRound() {
-        assertNull(AXToolRoundHandler.prepare(base(), ignored -> { }, (payload, handler) -> { }));
+        assertNull(AXToolRoundHandler.prepare(base(), ignored -> { }, (payload, handler) -> { }, () -> { }));
     }
 
     @Test
     void theFirstPayloadCarriesTheCatalogueAndDoesNotStream() {
         registerEcho();
-        AXToolRoundHandler handler = AXToolRoundHandler.prepare(base(), ignored -> { }, (payload, h) -> { });
+        AXToolRoundHandler handler = AXToolRoundHandler.prepare(base(), ignored -> { }, (payload, h) -> { }, () -> { });
         assertNotNull(handler);
         LLMPromptRequestPayload first = handler.firstPayload(base());
-        assertEquals(false, first.stream());
+        assertTrue(first.stream());
         assertTrue(first.messages().get(0).content().contains("test:echo"));
     }
 
@@ -102,7 +102,7 @@ class AXToolRoundHandlerTest {
             }
         };
         AXToolRoundHandler handler = AXToolRoundHandler.prepare(base(), delivery,
-                (payload, h) -> submitted.set(payload));
+                (payload, h) -> submitted.set(payload), () -> { });
         assertNotNull(handler);
 
         handler.onResult(LLMPromptResultPayload.completed("req",
@@ -125,7 +125,7 @@ class AXToolRoundHandlerTest {
                 delivered.set(payload);
             }
         };
-        AXToolRoundHandler handler = AXToolRoundHandler.prepare(base(), delivery, (payload, h) -> { });
+        AXToolRoundHandler handler = AXToolRoundHandler.prepare(base(), delivery, (payload, h) -> { }, () -> { });
         assertNotNull(handler);
 
         LLMPromptResultPayload failure = new LLMPromptResultPayload("req", "FAILED", "", "", "e", "boom", null);
@@ -147,7 +147,7 @@ class AXToolRoundHandlerTest {
                 cancelled.set(cancellation);
             }
         };
-        AXToolRoundHandler handler = AXToolRoundHandler.prepare(base(), delivery, (payload, h) -> { });
+        AXToolRoundHandler handler = AXToolRoundHandler.prepare(base(), delivery, (payload, h) -> { }, () -> { });
         AXTurnCancellation reason = AXTurnCancellation.playerInterrupted("stop");
         handler.onCancelled(reason);
         assertEquals(reason, cancelled.get());

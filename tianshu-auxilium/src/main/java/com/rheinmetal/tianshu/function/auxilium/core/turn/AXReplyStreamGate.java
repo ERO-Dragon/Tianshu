@@ -23,6 +23,12 @@ package com.rheinmetal.tianshu.function.auxilium.core.turn;
 public final class AXReplyStreamGate {
 
     private final StringBuilder emitted = new StringBuilder();
+    /**
+     * A reply that starts like JSON or a fence could be a tool call. While undecided, every chunk is held here
+     * instead of spoken: a call is discarded later, and a genuine answer is released by {@link #flush()}.
+     */
+    private final StringBuilder heldJson = new StringBuilder();
+    private boolean holdingJson;
     /** 可能是标签前缀、也可能是标签内部尾部的一小段不完整文本；每次 {@link #accept} 都重新判定。 */
     private String buffered = "";
     /** 已吞下的标签内容：闭标签到达时作废，流结束时由 {@link #flush()} 交回。 */
@@ -37,6 +43,15 @@ public final class AXReplyStreamGate {
      */
     public String accept(String chunk) {
         if (chunk == null || chunk.isEmpty()) {
+            return "";
+        }
+        if (holdingJson) {
+            heldJson.append(chunk);
+            return "";
+        }
+        if (emitted.isEmpty() && buffered.isEmpty() && startsLikeToolCall(chunk)) {
+            holdingJson = true;
+            heldJson.append(chunk);
             return "";
         }
         buffered = buffered + chunk;
@@ -97,6 +112,13 @@ public final class AXReplyStreamGate {
      * @return 收尾时要补念的文本（可能为空）
      */
     public String flush() {
+        if (holdingJson) {
+            holdingJson = false;
+            String held = heldJson.toString();
+            heldJson.setLength(0);
+            emitted.append(held);
+            return held;
+        }
         String tail = insideTag ? tagBody + buffered : buffered;
         insideTag = false;
         tagBody = "";
@@ -108,6 +130,29 @@ public final class AXReplyStreamGate {
     /** 闸到目前为主已经放出去的文本（含 {@link #flush()} 交回的部分），供调用方补齐差额。 */
     public String emitted() {
         return emitted.toString();
+    }
+
+    /** Drops a held reply that turned out to be a tool call; nothing is spoken for it. */
+    public void discardHeld() {
+        holdingJson = false;
+        heldJson.setLength(0);
+    }
+
+    /** Whether the current reply is being held; tests use this to prove nothing leaks. */
+    public boolean holding() {
+        return holdingJson;
+    }
+
+    /** First non-blank character decides: a JSON object or a fence may be a call. */
+    private static boolean startsLikeToolCall(String chunk) {
+        for (int index = 0; index < chunk.length(); index++) {
+            char character = chunk.charAt(index);
+            if (Character.isWhitespace(character)) {
+                continue;
+            }
+            return character == '{' || chunk.startsWith("```", index);
+        }
+        return false;
     }
 
     /** 最长的一段"是闭标记前缀"的尾巴长度：它必须继续压住，否则跨片断开的 {@code </delegate>} 会被念出去。 */
