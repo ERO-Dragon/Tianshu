@@ -6,6 +6,10 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
+import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -31,7 +35,8 @@ public final class TianshuNetwork {
         return PROTOCOL_VERSION;
     }
 
-    public static void register(RegisterPayloadHandlersEvent event, ServerActionClient actions) {
+    public static void register(RegisterPayloadHandlersEvent event, ServerActionClient actions,
+                                ToolCallClient tools) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
         // One enqueue keeps a batch atomic with respect to other client work: consumers see the facts in the
         // order the server produced them, not interleaved with another packet.
@@ -48,5 +53,11 @@ public final class TianshuNetwork {
                 (packet, context) -> actions.receiveCatalog(packet, context::enqueueWork));
         registrar.playToServer(ServerActionRequestPacket.TYPE, ServerActionRequestPacket.STREAM_CODEC,
                 com.rheinmetal.tianshu.neoforge.server.ServerActionHandler::handle);
+        registrar.playToClient(ToolCallResultPacket.TYPE, ToolCallResultPacket.STREAM_CODEC,
+                (packet, context) -> context.enqueueWork(() -> tools.receiveResult(packet)));
+        registrar.playToClient(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC,
+                (packet, context) -> context.enqueueWork(() -> tools.receiveCatalog(packet)));
+        registrar.playToServer(ToolCallRequestPacket.TYPE, ToolCallRequestPacket.STREAM_CODEC,
+                com.rheinmetal.tianshu.neoforge.server.ServerToolHandler::handle);
     }
 }

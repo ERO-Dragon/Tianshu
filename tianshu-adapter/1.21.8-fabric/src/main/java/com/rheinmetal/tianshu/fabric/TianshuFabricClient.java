@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.mc.ui.VanillaKeyBindings;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.minecraft.server.packs.PackType;
@@ -32,6 +33,11 @@ public final class TianshuFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         bootstrap = new FabricClientBootstrap();
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            if (TianshuFabric.toolClient() != null) {
+                TianshuFabric.toolClient().onDisconnect();
+            }
+        });
         // A module's settings row may want to send the player to the controls screen; the binding is a Minecraft
         // object, so opening that screen is a platform job offered through a port.
         TianshuRuntimePorts.register(ClientKeyBindings.class, new VanillaKeyBindings());

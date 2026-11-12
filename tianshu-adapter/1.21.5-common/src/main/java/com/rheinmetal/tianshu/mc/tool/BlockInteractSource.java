@@ -53,7 +53,7 @@ public final class BlockInteractSource implements BlockInteractPort {
         if (player == null) {
             return new BlockInteractResult("", false, "the player is not online");
         }
-        ServerLevel level = player.serverLevel();
+        ServerLevel level = (ServerLevel) player.level();
         BlockPos pos = new BlockPos(request.x(), request.y(), request.z());
         if (!level.hasChunkAt(pos)) {
             return new BlockInteractResult("", false, "that chunk is not loaded");
