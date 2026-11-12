@@ -15,6 +15,9 @@ public enum ToolError {
     /** A server-side tool was called where no server component is present. */
     UNSUPPORTED_SIDE,
 
+    /** The capability is not installed on this side: the tool exists but its data source is absent. */
+    UNAVAILABLE,
+
     /** The argument object could not be deserialized. */
     INVALID_ARGS,
 
