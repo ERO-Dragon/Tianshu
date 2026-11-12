@@ -68,7 +68,8 @@ public final class TianshuTools {
     }
 
     public static boolean serverAvailable() {
-        return serverChannel != null;
+        ServerToolChannel channel = serverChannel;
+        return channel != null && channel.available();
     }
 
     /** Turns one tool on or off, overriding its category default. */
@@ -105,7 +106,7 @@ public final class TianshuTools {
         Objects.requireNonNull(side, "side");
         List<ToolSpec> specs = new ArrayList<>();
         for (TianshuTool<?, ?> tool : TOOLS.values()) {
-            if (tool.category().isServerSide() && side == ToolSide.CLIENT && serverChannel == null) {
+            if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
                 continue;
             }
             if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
@@ -246,7 +247,7 @@ public final class TianshuTools {
         if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
             throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " needs an operator");
         }
-        if (tool.category().isServerSide() && side == ToolSide.CLIENT && serverChannel == null) {
+        if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
             throw new ToolException(ToolError.UNSUPPORTED_SIDE,
                     "tool " + id + " needs the Tianshu server component");
         }

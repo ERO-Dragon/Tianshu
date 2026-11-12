@@ -14,6 +14,14 @@ import java.util.concurrent.CompletableFuture;
 public interface ServerToolChannel {
 
     /**
+     * Whether a connection exists right now. The registry hides server tools while this is false, and answers
+     * {@link ToolError#UNSUPPORTED_SIDE} for them, so a channel can stay installed across sessions.
+     */
+    default boolean available() {
+        return true;
+    }
+
+    /**
      * Sends one call to the server component.
      *
      * @param id      the tool id

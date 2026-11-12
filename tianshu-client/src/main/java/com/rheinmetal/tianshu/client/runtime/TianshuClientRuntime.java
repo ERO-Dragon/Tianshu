@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.runtime;
 
 import com.rheinmetal.tianshu.client.tool.ClientTools;
+import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 
 import java.util.Objects;
@@ -76,6 +77,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             state = ClientSessionState.CLIENT_READY;
         }
         ClientTools.register();
+        ConnectionToolChannel.install();
         startClientResources.run();
     }
 
