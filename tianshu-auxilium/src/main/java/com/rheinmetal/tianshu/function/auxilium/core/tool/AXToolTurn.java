@@ -5,6 +5,9 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
+import com.rheinmetal.tianshu.api.tool.ToolCall;
+import com.rheinmetal.tianshu.api.tool.ToolCallParser;
+import com.rheinmetal.tianshu.api.tool.ToolCatalogText;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload.MessageItemPayload;
 
@@ -56,11 +59,11 @@ public final class AXToolTurn {
         boolean hasTools = catalogue != null && catalogue.stream().anyMatch(ToolSpec::enabled);
         List<MessageItemPayload> conversation = new ArrayList<>();
         if (hasTools) {
-            conversation.add(new MessageItemPayload("system", AXToolCatalog.describe(catalogue)));
+            conversation.add(new MessageItemPayload("system", ToolCatalogText.describe(catalogue)));
         }
         conversation.addAll(messages);
         return new AXToolTurn(ToolCaller.agent(false), executor,
-                hasTools ? AXToolCatalog.describe(catalogue) : "", conversation, DEFAULT_MAX_TOOL_ROUNDS);
+                hasTools ? ToolCatalogText.describe(catalogue) : "", conversation, DEFAULT_MAX_TOOL_ROUNDS);
     }
 
     /** The request payload for the next model call. */
@@ -89,7 +92,7 @@ public final class AXToolTurn {
         if (!toolsAvailable() || toolRounds >= maxToolRounds) {
             return new Decision.Finish(assistantText);
         }
-        Optional<AXToolCall> call = AXToolCallParser.parse(assistantText);
+        Optional<ToolCall> call = ToolCallParser.parse(assistantText);
         if (call.isEmpty()) {
             return new Decision.Finish(assistantText);
         }
@@ -105,7 +108,7 @@ public final class AXToolTurn {
     /** Runs one parsed call; production is {@link AXToolExecutor}. */
     @FunctionalInterface
     public interface ToolExecutor {
-        JsonObject execute(AXToolCall call);
+        JsonObject execute(ToolCall call);
     }
 
     /** What the orchestrator should do with one assistant reply. */
@@ -113,7 +116,7 @@ public final class AXToolTurn {
         record Finish(String text) implements Decision {
         }
 
-        record Continue(AXToolCall call, JsonObject result, LLMPromptRequestPayload next) implements Decision {
+        record Continue(ToolCall call, JsonObject result, LLMPromptRequestPayload next) implements Decision {
         }
     }
 }

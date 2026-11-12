@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.auxilium.core.tool;
+package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -14,12 +14,12 @@ import java.util.Optional;
  * code blocks are tolerated because models wrap JSON in them even when told not to; anything else is an answer, not
  * a call.</p>
  */
-public final class AXToolCallParser {
+public final class ToolCallParser {
 
-    private AXToolCallParser() {
+    private ToolCallParser() {
     }
 
-    public static Optional<AXToolCall> parse(String reply) {
+    public static Optional<ToolCall> parse(String reply) {
         if (reply == null) {
             return Optional.empty();
         }
@@ -59,6 +59,6 @@ public final class AXToolCallParser {
             }
             args = value.getAsJsonObject();
         }
-        return Optional.of(new AXToolCall(id, args));
+        return Optional.of(new ToolCall(id, args));
     }
 }

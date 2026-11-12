@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.auxilium.core.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
+import com.rheinmetal.tianshu.api.tool.ToolCall;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
@@ -55,7 +56,7 @@ class AXToolTurnTest {
 
     @Test
     void aToolCallContinuesWithTheResultAppended() {
-        AtomicReference<AXToolCall> seen = new AtomicReference<>();
+        AtomicReference<ToolCall> seen = new AtomicReference<>();
         AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> {
             seen.set(call);
             JsonObject result = new JsonObject();

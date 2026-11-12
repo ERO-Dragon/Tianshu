@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.function.auxilium.core.tool;
+package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -12,7 +12,7 @@ import java.util.List;
  * <p>Only enabled tools are listed. A disabled tool is not described, because a model that cannot use a capability
  * should not be taught that it exists — the caller is the one who can explain the switch to the player.</p>
  */
-public final class AXToolCatalog {
+public final class ToolCatalogText {
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -22,7 +22,7 @@ public final class AXToolCatalog {
             Otherwise reply normally. Never invent a tool id; use only the ids below.
             """;
 
-    private AXToolCatalog() {
+    private ToolCatalogText() {
     }
 
     public static String describe(List<ToolSpec> catalogue) {

@@ -64,18 +64,17 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
         Objects.requireNonNull(submit, "submit");
         Objects.requireNonNull(discardHeld, "discardHeld");
         List<ToolSpec> catalogue = TianshuTools.catalog(ToolCaller.agent(false), ToolSide.CLIENT);
-        AXToolTurn turn = AXToolTurn.start(catalogue, base, call -> new AXToolExecutor().call(call)
-                .handle((result, failure) -> {
-                    if (failure == null) {
-                        return result;
-                    }
-                    com.google.gson.JsonObject error = new com.google.gson.JsonObject();
-                    error.addProperty("ok", false);
-                    error.addProperty("code", "FAILED");
-                    error.addProperty("message", String.valueOf(failure));
-                    return error;
-                })
-                .join());
+        AXToolTurn turn = AXToolTurn.start(catalogue, base, call -> {
+            try {
+                return TianshuTools.callJson(call.toolId(), call.args(), ToolCaller.agent(false)).join();
+            } catch (RuntimeException failure) {
+                com.google.gson.JsonObject error = new com.google.gson.JsonObject();
+                error.addProperty("ok", false);
+                error.addProperty("code", "FAILED");
+                error.addProperty("message", String.valueOf(failure));
+                return error;
+            }
+        });
         if (!turn.toolsAvailable()) {
             return null;
         }
