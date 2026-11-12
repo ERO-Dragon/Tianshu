@@ -22,6 +22,7 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue BLOCK_INTERACT;
     public static final ModConfigSpec.BooleanValue CRAFT_RECIPE;
     public static final ModConfigSpec.BooleanValue CONTAINER_TRANSFER;
+    public static final ModConfigSpec.BooleanValue BLOCK_MACHINE;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -45,6 +46,9 @@ public final class ServerActionConfig {
         CONTAINER_TRANSFER = builder
                 .comment("Let the assistant move items between a container and the player inventory.")
                 .define("container_transfer", false);
+        BLOCK_MACHINE = builder
+                .comment("Let the assistant operate furnace-family machines: insert fuel, insert input, take output.")
+                .define("block_machine", false);
         builder.pop();
         SPEC = builder.build();
     }

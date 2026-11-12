@@ -31,6 +31,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BlockInteractTool());
         ServerToolDeclarations.declare(new CraftRecipeTool());
         ServerToolDeclarations.declare(new ContainerTransferTool());
+        ServerToolDeclarations.declare(new BlockMachineTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */
