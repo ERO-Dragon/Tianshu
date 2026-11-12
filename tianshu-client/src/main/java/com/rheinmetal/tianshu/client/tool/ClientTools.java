@@ -26,6 +26,8 @@ public final class ClientTools {
         TianshuTools.register(new RecipeQueryTool());
         TianshuTools.register(new TagQueryTool());
         TianshuTools.register(new InventoryInspectTool());
+        // Server-side tools are declared here but appear only after the server's catalog names them.
+        ServerToolDeclarations.declare(new LootQueryTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */
@@ -33,6 +35,7 @@ public final class ClientTools {
         TianshuTools.unregister(RecipeQueryTool.ID);
         TianshuTools.unregister(TagQueryTool.ID);
         TianshuTools.unregister(InventoryInspectTool.ID);
+        ServerToolDeclarations.clearForTests();
         REGISTERED.set(false);
     }
 }

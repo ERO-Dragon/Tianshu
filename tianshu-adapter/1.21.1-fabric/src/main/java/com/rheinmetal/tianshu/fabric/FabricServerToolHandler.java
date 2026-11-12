@@ -3,16 +3,21 @@ package com.rheinmetal.tianshu.fabric;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
+import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 
+import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
@@ -33,6 +38,12 @@ public final class FabricServerToolHandler {
     }
 
     public static void register() {
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
+            if (TianshuTools.find(LootQueryTool.ID) == null) {
+                TianshuTools.register(new LootQueryTool());
+            }
+        });
         ServerPlayNetworking.registerGlobalReceiver(ToolCallRequestPacket.TYPE, (packet, context) ->
                 context.server().execute(() -> respond(context.player(), packet)));
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {

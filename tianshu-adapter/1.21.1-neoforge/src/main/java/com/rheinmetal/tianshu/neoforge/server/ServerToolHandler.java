@@ -3,19 +3,24 @@ package com.rheinmetal.tianshu.neoforge.server;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
+import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
+import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -38,6 +43,15 @@ public final class ServerToolHandler {
     /** Sends the catalog when a player joins, like the action channel does. */
     public static void register(IEventBus gameBus) {
         gameBus.addListener(ServerToolHandler::onPlayerLogin);
+        gameBus.addListener(ServerToolHandler::onServerStarting);
+    }
+
+    /** Installs the server-side tool sources and registers the tools they back. */
+    private static void onServerStarting(ServerStartingEvent event) {
+        TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
+        if (TianshuTools.find(LootQueryTool.ID) == null) {
+            TianshuTools.register(new LootQueryTool());
+        }
     }
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {

@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolTransport;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
+import com.rheinmetal.tianshu.client.tool.ServerToolDeclarations;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,6 +39,7 @@ public final class ToolCallClient implements ToolTransport {
     }
 
     public void receiveCatalog(ToolCatalogPacket packet) {
+        ServerToolDeclarations.activate(packet.toolIds());
         catalogReceived.set(true);
     }
 
@@ -59,6 +61,7 @@ public final class ToolCallClient implements ToolTransport {
     /** The client left the server; queued calls will be failed by the channel uninstall path. */
     public void onDisconnect() {
         catalogReceived.set(false);
+        ServerToolDeclarations.deactivateAll();
     }
 
     private static ToolError codeOf(String code) {
