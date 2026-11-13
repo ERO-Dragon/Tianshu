@@ -31,6 +31,31 @@ class TianshuToolsTest {
         TianshuTools.uninstallServerChannel();
     }
 
+
+    @Test
+    void aPlayerCallingInARapidLoopIsThrottledButTheAgentIsNot() throws Exception {
+        TianshuTools.register(new EchoTool());
+        TianshuTools.clearRateLimits();
+        JsonObject args = JsonParser.parseString("{\"text\":\"hi\",\"count\":1}").getAsJsonObject();
+
+        int limited = 0;
+        for (int call = 0; call < 40; call++) {
+            JsonObject envelope = TianshuTools.callJson(ECHO, args, ToolCaller.player("p1", false))
+                    .get(2, TimeUnit.SECONDS);
+            if (!envelope.get("ok").getAsBoolean()) {
+                assertEquals("RATE_LIMITED", envelope.get("code").getAsString());
+                limited++;
+            }
+        }
+        assertTrue(limited > 0, "a player hammering one tool must eventually be throttled");
+
+        for (int call = 0; call < 40; call++) {
+            JsonObject envelope = TianshuTools.callJson(ECHO, args, ToolCaller.agent(false))
+                    .get(2, TimeUnit.SECONDS);
+            assertTrue(envelope.get("ok").getAsBoolean(), "the agent is a trusted peer, not a network surface");
+        }
+    }
+
     @Test
     void aLocalToolWorksForAnyCallerAndBothPaths() throws Exception {
         TianshuTools.register(new EchoTool());

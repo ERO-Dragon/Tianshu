@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.mc.network;
 
 import com.rheinmetal.tianshu.api.ModIdentity;
+import com.rheinmetal.tianshu.api.tool.ToolWireLimits;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -17,13 +18,12 @@ public record ToolCallResultPacket(String requestId, boolean ok, String valueJso
             StreamCodec.ofMember(ToolCallResultPacket::encode, ToolCallResultPacket::decode);
 
     public ToolCallResultPacket {
-        requestId = ToolCallLimits.text(requestId, "requestId", ToolCallLimits.MAX_REQUEST_ID);
-        valueJson = valueJson == null ? "" : valueJson;
-        errorCode = errorCode == null ? "" : ToolCallLimits.text(errorCode, "errorCode", ToolCallLimits.MAX_CODE);
-        message = message == null ? "" : ToolCallLimits.text(message, "message", ToolCallLimits.MAX_MESSAGE);
-        if (valueJson.length() > ToolCallLimits.MAX_JSON) {
-            throw new IllegalArgumentException("tool result is too large: " + valueJson.length());
-        }
+        requestId = ToolWireLimits.text(requestId, "requestId", ToolWireLimits.MAX_REQUEST_ID);
+        ToolWireLimits.Fitted fitted = ToolWireLimits.fitResult(ok, valueJson, errorCode, message);
+        ok = fitted.ok();
+        valueJson = fitted.valueJson();
+        errorCode = fitted.errorCode();
+        message = fitted.message();
     }
 
     @Override

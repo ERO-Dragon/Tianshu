@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.mc.network;
 
 import com.rheinmetal.tianshu.api.ModIdentity;
+import com.rheinmetal.tianshu.api.tool.ToolWireLimits;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
@@ -15,7 +16,7 @@ public record ToolCatalogPacket(List<String> toolIds) implements CustomPacketPay
 
     public ToolCatalogPacket {
         toolIds = toolIds == null ? List.of() : List.copyOf(toolIds);
-        if (toolIds.size() > ToolCallLimits.MAX_TOOLS) {
+        if (toolIds.size() > ToolWireLimits.MAX_TOOLS) {
             throw new IllegalArgumentException("too many server tools: " + toolIds.size());
         }
     }
@@ -39,12 +40,12 @@ public record ToolCatalogPacket(List<String> toolIds) implements CustomPacketPay
 
     public static ToolCatalogPacket decode(FriendlyByteBuf buffer) {
         int count = buffer.readVarInt();
-        if (count < 0 || count > ToolCallLimits.MAX_TOOLS) {
+        if (count < 0 || count > ToolWireLimits.MAX_TOOLS) {
             throw new IllegalArgumentException("invalid server tool catalog size: " + count);
         }
         List<String> ids = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
-            ids.add(ToolCallLimits.text(buffer.readUtf(), "toolId", ToolCallLimits.MAX_TOOL_ID));
+            ids.add(ToolWireLimits.text(buffer.readUtf(), "toolId", ToolWireLimits.MAX_TOOL_ID));
         }
         return new ToolCatalogPacket(ids);
     }

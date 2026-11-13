@@ -53,6 +53,24 @@ class CapabilityCatalogTest {
         };
     }
 
+
+    @Test
+    void aDisabledToolDisappearsFromTheExposure() {
+        TianshuTools.register(new EchoTool());
+        CapabilityId id = CapabilityId.of("test", "echo");
+        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
+                .anyMatch(descriptor -> descriptor.id().equals(id)));
+
+        TianshuTools.setEnabled(ECHO, false);
+        assertFalse(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
+                .anyMatch(descriptor -> descriptor.id().equals(id)));
+        assertFalse(CapabilityCatalog.find(id).orElseThrow().attributes().get("enabled").getAsBoolean());
+
+        TianshuTools.clearEnabledOverride(ECHO);
+        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
+                .anyMatch(descriptor -> descriptor.id().equals(id)));
+    }
+
     @Test
     void toolsAreMirroredIntoTheTableAndExecutedThroughTheRegistry() throws Exception {
         TianshuTools.register(new EchoTool());

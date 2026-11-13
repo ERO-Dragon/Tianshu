@@ -70,8 +70,8 @@ public final class TianshuNeoForge {
         modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
                 TianshuNetwork.register(registerPayloads, serverActions, toolCalls));
         // Server-side action switches: independent of the client config, off by default, reloaded with the server.
-        // 26.3 renamed the loader's config scopes (COMMON -> LOCAL, SERVER -> SYNCED): a server-owned config whose
-        // values a client may also read is "synced", which is what this one always was.
+        // 26.3 renamed the loader's config scopes (COMMON -> LOCAL, SERVER -> SYNCED). There is no
+        // Type.SERVER on this line any more; SYNCED is the server-owned scope and what this config always was.
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SYNCED,
                 com.rheinmetal.tianshu.neoforge.config.ServerActionConfig.SPEC);
         // The collector is registered on both distributions: in single player the integrated server lives in this

@@ -41,6 +41,8 @@ public final class TianshuTools {
     private static final Map<ToolId, Boolean> OVERRIDES = new ConcurrentHashMap<>();
     private static volatile ServerToolChannel serverChannel;
 
+    private static final ToolRateLimiter RATE_LIMITER = new ToolRateLimiter();
+
     private TianshuTools() {
     }
 
@@ -59,6 +61,7 @@ public final class TianshuTools {
         TOOLS.remove(id);
         OVERRIDES.remove(id);
         CapabilityCatalog.removeTool(CapabilityId.parse(id.toString()));
+        RATE_LIMITER.forget(id);
     }
 
     /** Installs the client-to-server bridge. Called by the platform when the server component is present. */
@@ -82,11 +85,13 @@ public final class TianshuTools {
             throw new IllegalArgumentException("cannot change the state of an unknown tool: " + id);
         }
         OVERRIDES.put(id, enabled);
+        CapabilityCatalog.setToolEnabled(id, enabled);
     }
 
     /** Clears the override, returning the tool to its category default. */
     public static void clearEnabledOverride(ToolId id) {
         OVERRIDES.remove(id);
+        CapabilityCatalog.setToolEnabled(id, isEnabled(id));
     }
 
     public static boolean isEnabled(ToolId id) {
@@ -251,11 +256,31 @@ public final class TianshuTools {
         if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
             throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " needs an operator");
         }
+        requireWithinRateLimit(tool, caller);
         if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
             throw new ToolException(ToolError.UNSUPPORTED_SIDE,
                     "tool " + id + " needs the Tianshu server component");
         }
         return tool;
+    }
+
+    /** Only player-driven calls are throttled: the agent and other mods are trusted peers, not a network surface. */
+    private static void requireWithinRateLimit(TianshuTool<?, ?> tool, ToolCaller caller) {
+        if (caller.kind() != ToolCaller.Kind.PLAYER) {
+            return;
+        }
+        if (!RATE_LIMITER.allow(tool.id(), tool.category(), caller)) {
+            throw new ToolException(ToolError.RATE_LIMITED, "too many calls to " + tool.id());
+        }
+    }
+
+    /** Drops the throttling state; used by tests and when a caller identity goes away. */
+    public static void clearRateLimits() {
+        RATE_LIMITER.clear();
+    }
+
+    public static void clearRateLimits(String callerId) {
+        RATE_LIMITER.clearCaller(callerId);
     }
 
     private static CompletableFuture<JsonElement> callOverChannel(ToolId id, JsonElement args, ToolCaller caller,

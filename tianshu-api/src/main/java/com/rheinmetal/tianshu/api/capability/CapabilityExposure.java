@@ -29,6 +29,9 @@ public final class CapabilityExposure {
     public static List<CapabilityDescriptor> exposed(ToolCaller caller, ToolSide side) {
         return CapabilityCatalog.list().stream()
                 .filter(descriptor -> !descriptor.kind().equals(CapabilityKind.CONNECTOR))
+                .filter(descriptor -> !descriptor.kind().isTool()
+                        || !descriptor.attributes().has("enabled")
+                        || descriptor.attributes().get("enabled").getAsBoolean())
                 .filter(descriptor -> descriptor.side() != ToolSide.SERVER
                         || side == ToolSide.SERVER
                         || TianshuTools.serverAvailable())

@@ -22,6 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ContainerTransferToolTest {
 
     @BeforeEach
+    void clearThrottle() {
+        TianshuTools.clearRateLimits();
+    }
+
+    @BeforeEach
     void declare() {
         ClientTools.register();
     }
@@ -72,13 +77,13 @@ class ContainerTransferToolTest {
         TianshuTools.setEnabled(ContainerTransferTool.ID, true);
 
         String badSlot = "{\"x\":1,\"y\":2,\"z\":3,\"containerSlot\":-1,\"playerSlot\":0,\"count\":1,\"toPlayer\":true}";
-        assertEquals("INVALID_ARGS", envelope(badSlot, ToolCaller.player("p", true)).get("code").getAsString());
+        assertEquals("INVALID_ARGS", envelope(badSlot, ToolCaller.player("v1", true)).get("code").getAsString());
 
         String badPlayerSlot = "{\"x\":1,\"y\":2,\"z\":3,\"containerSlot\":0,\"playerSlot\":40,\"count\":1,\"toPlayer\":true}";
-        assertEquals("INVALID_ARGS", envelope(badPlayerSlot, ToolCaller.player("p", true)).get("code").getAsString());
+        assertEquals("INVALID_ARGS", envelope(badPlayerSlot, ToolCaller.player("v2", true)).get("code").getAsString());
 
         String badCount = "{\"x\":1,\"y\":2,\"z\":3,\"containerSlot\":0,\"playerSlot\":0,\"count\":0,\"toPlayer\":true}";
-        assertEquals("INVALID_ARGS", envelope(badCount, ToolCaller.player("p", true)).get("code").getAsString());
+        assertEquals("INVALID_ARGS", envelope(badCount, ToolCaller.player("v3", true)).get("code").getAsString());
     }
 
     @Test

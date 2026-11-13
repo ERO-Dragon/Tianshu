@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
@@ -122,6 +123,7 @@ public final class CapabilityCatalog {
             attributes.add("argsSchema", tool.argsSchema().deepCopy());
         }
         attributes.addProperty("category", tool.category().name().toLowerCase(java.util.Locale.ROOT));
+        attributes.addProperty("enabled", tool.policy().enabledByDefault());
         CapabilityDescriptor descriptor = new CapabilityDescriptor(
                 CapabilityId.parse(tool.id().toString()),
                 CapabilityKind.TOOL,
@@ -138,6 +140,21 @@ public final class CapabilityCatalog {
                     "capability id " + descriptor.id() + " is already used by a non-tool capability");
         }
         ENTRIES.put(descriptor.id(), new Entry(descriptor, null));
+    }
+
+    /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */
+    public static void setToolEnabled(ToolId id, boolean enabled) {
+        CapabilityId capabilityId = CapabilityId.parse(id.toString());
+        Entry entry = ENTRIES.get(capabilityId);
+        if (entry == null || !entry.descriptor().kind().isTool()) {
+            return;
+        }
+        JsonObject attributes = entry.descriptor().attributes().deepCopy();
+        attributes.addProperty("enabled", enabled);
+        CapabilityDescriptor updated = new CapabilityDescriptor(entry.descriptor().id(), entry.descriptor().kind(),
+                entry.descriptor().binding(), entry.descriptor().description(), entry.descriptor().side(),
+                entry.descriptor().permission(), entry.descriptor().provider(), attributes);
+        ENTRIES.put(capabilityId, new Entry(updated, null));
     }
 
     /** Kernel use: drops a mirrored tool entry. Not part of the consumer contract. */

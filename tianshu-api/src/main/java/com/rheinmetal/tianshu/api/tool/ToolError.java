@@ -23,6 +23,7 @@ public enum ToolError {
 
     /** The tool did not finish inside its timeout. */
     TIMEOUT,
+    RATE_LIMITED,
 
     /** The tool itself failed. */
     FAILED

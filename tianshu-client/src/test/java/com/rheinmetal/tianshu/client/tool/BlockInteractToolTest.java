@@ -22,6 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BlockInteractToolTest {
 
     @BeforeEach
+    void clearThrottle() {
+        TianshuTools.clearRateLimits();
+    }
+
+    @BeforeEach
     void registerTool() {
         ClientTools.register();
     }

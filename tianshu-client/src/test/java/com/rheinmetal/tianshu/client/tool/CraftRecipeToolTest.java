@@ -22,6 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CraftRecipeToolTest {
 
     @BeforeEach
+    void clearThrottle() {
+        TianshuTools.clearRateLimits();
+    }
+
+    @BeforeEach
     void registerDeclaration() {
         ClientTools.register();
     }

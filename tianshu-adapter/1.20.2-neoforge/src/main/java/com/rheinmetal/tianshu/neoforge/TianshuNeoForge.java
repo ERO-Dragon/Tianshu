@@ -93,6 +93,9 @@ public final class TianshuNeoForge {
         // The action channel announces its enabled set on join; the client side builds its toolbar from that.
         ServerActionHandler.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            NeoForge.EVENT_BUS.addListener(
+                    (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) ->
+                            toolCalls.onDisconnect());
             clientBootstrap = new NeoForgeClientBootstrap(actionClient);
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.

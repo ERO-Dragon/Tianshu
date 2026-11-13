@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.mc.network;
 
 import com.rheinmetal.tianshu.api.ModIdentity;
+import com.rheinmetal.tianshu.api.tool.ToolWireLimits;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -21,10 +22,10 @@ public record ToolCallRequestPacket(String requestId, String toolId, String args
             StreamCodec.ofMember(ToolCallRequestPacket::encode, ToolCallRequestPacket::decode);
 
     public ToolCallRequestPacket {
-        requestId = ToolCallLimits.text(requestId, "requestId", ToolCallLimits.MAX_REQUEST_ID);
-        toolId = ToolCallLimits.text(toolId, "toolId", ToolCallLimits.MAX_TOOL_ID);
+        requestId = ToolWireLimits.text(requestId, "requestId", ToolWireLimits.MAX_REQUEST_ID);
+        toolId = ToolWireLimits.text(toolId, "toolId", ToolWireLimits.MAX_TOOL_ID);
         argsJson = argsJson == null ? "{}" : argsJson;
-        if (argsJson.length() > ToolCallLimits.MAX_JSON) {
+        if (argsJson.length() > ToolWireLimits.MAX_JSON) {
             throw new IllegalArgumentException("tool arguments are too large: " + argsJson.length());
         }
     }
