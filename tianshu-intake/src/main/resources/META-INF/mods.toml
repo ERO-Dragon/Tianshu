@@ -4,7 +4,7 @@
 
 modLoader="javafml"
 loaderVersion="[1,)"
-license="MIT"
+license="LGPL-3.0"
 
 [[mods]]
 modId="tianshu_intake"

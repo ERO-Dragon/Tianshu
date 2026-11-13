@@ -33,7 +33,7 @@ The overall ranking weighs size, speed and voice cloning together; on sound qual
 
 ## License and credits
 
-This mod is open source under the MIT license (© 2026 Ero-Dragon).
+This mod is open source under the GNU Lesser General Public License v3.0 (© 2026 Ero-Dragon).
 
 The bundled voice models come from public projects on Hugging Face and remain the property of their respective authors:
 

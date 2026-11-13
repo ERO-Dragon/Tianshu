@@ -29,6 +29,6 @@ Ferry is the base of Tianshu, the conversational agent: it provides the UI, key 
 
 ## License and credits
 
-This mod is open source under the MIT license (© 2026 Ero-Dragon).
+This mod is open source under the GNU Lesser General Public License v3.0 (© 2026 Ero-Dragon).
 
 More: [documentation index](../doc/README.md) · [architecture overview](../doc/architecture/模块架构.md) · [external integration guide](../EXTERNAL_INTEGRATION_GUIDE.md)

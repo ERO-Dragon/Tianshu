@@ -116,7 +116,9 @@
 
 ## 📄 许可证
 
-MIT License - 详见 [LICENSE](LICENSE)
+代码以 **GNU 宽通用公共许可证第 3 版（LGPL-3.0）** 发布：许可全文见 [LICENSE](LICENSE)，其中援引的 GPL-3.0 全文见 [COPYING](COPYING)。
+
+`libs/` 下的第三方模型与工具保留各自许可，不因本仓库的 LGPL 声明而改变（MOSS-TTS-Nano、pocket-tts-zh-4l-onnx 为 Apache-2.0；llama.cpp、BGE-M3 为 MIT），以各自上游为准。
 
 ---
 

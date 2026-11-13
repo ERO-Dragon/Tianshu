@@ -29,6 +29,6 @@
 
 ## 许可与致谢
 
-本模组以 MIT 协议开源（© 2026 Ero-Dragon）。
+本模组以 GNU 宽通用公共许可证第 3 版（LGPL-3.0）开源（© 2026 Ero-Dragon）。
 
 更多文档：[文档索引](../doc/README.md) · [架构总览](../doc/architecture/模块架构.md) · [外部接入指南](../EXTERNAL_INTEGRATION_GUIDE.md)
