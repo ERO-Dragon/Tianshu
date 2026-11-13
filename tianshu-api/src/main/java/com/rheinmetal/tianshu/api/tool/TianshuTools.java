@@ -118,6 +118,10 @@ public final class TianshuTools {
             if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
                 continue;
             }
+            if (tool.category() == ToolCategory.SERVER_WRITE && side == ToolSide.CLIENT
+                    && !ToolAutonomyGate.writeToolsVisible()) {
+                continue;
+            }
             if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
                 continue;
             }
@@ -158,24 +162,37 @@ public final class TianshuTools {
                                                          ToolSide side) {
         try {
             TianshuTool<?, ?> tool = requireUsable(id, caller, side);
-            ToolContext context = new ToolContext(caller, side);
-            if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
-                return callOverChannel(id, args, caller, tool.policy().timeoutMillis())
-                        .handle((result, failure) -> failure == null
-                                ? successEnvelope(result)
-                                : failureEnvelope(failure));
+            if (ToolAutonomyGate.needsConfirmation(tool.category(), side)) {
+                JsonObject shown = args != null && args.isJsonObject() ? args.getAsJsonObject() : new JsonObject();
+                return ToolAutonomyGate.confirm(id, tool.category(), tool.description(), shown, caller)
+                        .thenCompose(approved -> approved
+                                ? executeJson(tool, args, caller, side)
+                                : CompletableFuture.completedFuture(
+                                        errorEnvelope(ToolError.NO_PERMISSION, "the player denied " + id)));
             }
-            Object typedArgs = GSON.fromJson(args, tool.argsType());
-            return invokeRaw(tool, context, typedArgs)
-                    .handle((result, failure) -> failure == null
-                            ? successEnvelope(GSON.toJsonTree(result))
-                            : failureEnvelope(failure));
+            return executeJson(tool, args, caller, side);
         } catch (ToolException failure) {
             return CompletableFuture.completedFuture(failureEnvelope(failure));
         } catch (JsonParseException malformed) {
             return CompletableFuture.completedFuture(errorEnvelope(
                     ToolError.INVALID_ARGS, "arguments do not match " + id + ": " + malformed.getMessage()));
         }
+    }
+
+    private static CompletableFuture<JsonObject> executeJson(TianshuTool<?, ?> tool, JsonElement args,
+                                                             ToolCaller caller, ToolSide side) {
+        ToolContext context = new ToolContext(caller, side);
+        if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
+            return callOverChannel(tool.id(), args, caller, tool.policy().timeoutMillis())
+                    .handle((result, failure) -> failure == null
+                            ? successEnvelope(result)
+                            : failureEnvelope(failure));
+        }
+        Object typedArgs = GSON.fromJson(args, tool.argsType());
+        return invokeRaw(tool, context, typedArgs)
+                .handle((result, failure) -> failure == null
+                        ? successEnvelope(GSON.toJsonTree(result))
+                        : failureEnvelope(failure));
     }
 
     /** The registered tool, or {@code null}. Read-only view for diagnostics. */
@@ -231,15 +248,28 @@ public final class TianshuTools {
                                                          ToolSide side) {
         try {
             TianshuTool<?, ?> usable = requireUsable(tool.id(), caller, side);
-            ToolContext context = new ToolContext(caller, side);
-            if (usable.category().isServerSide() && side == ToolSide.CLIENT) {
-                return callOverChannel(usable.id(), toJson(args), caller, usable.policy().timeoutMillis())
-                        .thenApply(result -> GSON.fromJson(result, usable.resultType()));
+            if (ToolAutonomyGate.needsConfirmation(usable.category(), side)) {
+                JsonObject shown = args == null ? new JsonObject() : toJson(args).getAsJsonObject();
+                return ToolAutonomyGate.confirm(usable.id(), usable.category(), usable.description(), shown, caller)
+                        .thenCompose(approved -> approved
+                                ? executeTyped(usable, args, caller, side)
+                                : CompletableFuture.failedFuture(new ToolException(
+                                        ToolError.NO_PERMISSION, "the player denied " + usable.id())));
             }
-            return invokeRaw(usable, context, args);
+            return executeTyped(usable, args, caller, side);
         } catch (ToolException failure) {
             return CompletableFuture.failedFuture(failure);
         }
+    }
+
+    private static <A, R> CompletableFuture<R> executeTyped(TianshuTool<?, ?> tool, A args, ToolCaller caller,
+                                                            ToolSide side) {
+        ToolContext context = new ToolContext(caller, side);
+        if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
+            return callOverChannel(tool.id(), toJson(args), caller, tool.policy().timeoutMillis())
+                    .thenApply(result -> GSON.fromJson(result, tool.resultType()));
+        }
+        return invokeRaw(tool, context, args);
     }
 
     private static TianshuTool<?, ?> requireUsable(ToolId id, ToolCaller caller, ToolSide side) {
@@ -255,6 +285,9 @@ public final class TianshuTools {
         }
         if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
             throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " needs an operator");
+        }
+        if (tool.category() == ToolCategory.SERVER_WRITE && !ToolAutonomyGate.writeToolsVisible()) {
+            throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " is a write and the mode is read-only");
         }
         requireWithinRateLimit(tool, caller);
         if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {

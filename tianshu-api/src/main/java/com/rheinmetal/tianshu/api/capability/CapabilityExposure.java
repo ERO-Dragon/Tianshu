@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolAutonomyGate;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
@@ -29,6 +30,10 @@ public final class CapabilityExposure {
     public static List<CapabilityDescriptor> exposed(ToolCaller caller, ToolSide side) {
         return CapabilityCatalog.list().stream()
                 .filter(descriptor -> !descriptor.kind().equals(CapabilityKind.CONNECTOR))
+                .filter(descriptor -> side != ToolSide.CLIENT || !descriptor.kind().isTool()
+                        || ToolAutonomyGate.writeToolsVisible()
+                        || !"server_write".equals(descriptor.attributes().has("category")
+                                ? descriptor.attributes().get("category").getAsString() : ""))
                 .filter(descriptor -> !descriptor.kind().isTool()
                         || !descriptor.attributes().has("enabled")
                         || descriptor.attributes().get("enabled").getAsBoolean())
