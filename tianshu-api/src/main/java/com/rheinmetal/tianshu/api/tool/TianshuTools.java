@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.Gson;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -49,12 +51,14 @@ public final class TianshuTools {
         if (existing != null && existing != tool) {
             throw new IllegalArgumentException("tool " + tool.id() + " is already registered");
         }
+        CapabilityCatalog.publishTool(tool);
     }
 
     /** Removes a tool and its enable override. Intended for tests and for a mod that unloads. */
     public static void unregister(ToolId id) {
         TOOLS.remove(id);
         OVERRIDES.remove(id);
+        CapabilityCatalog.removeTool(CapabilityId.parse(id.toString()));
     }
 
     /** Installs the client-to-server bridge. Called by the platform when the server component is present. */
