@@ -27,6 +27,17 @@
 3. 调 HUD、伙伴标记或 shader，读模块设计 §5 与 HUD 预览 README。
 4. 跨模块契约以协议中心为准；历史决策看拆分实施记录。
 
+## 构建与验证
+
+```powershell
+.\gradlew.bat :tianshu-presence:test
+.\gradlew.bat :tianshu-presence:check
+.\gradlew.bat :tianshu-presence:exportHudPreviewAssets
+```
+
+`exportHudPreviewAssets` 重新生成 HUD 预览页面里的模型块与着色器块；改过 HUD 却忘记生成时，
+`check` 中的 `PresenceHudPreviewAssetTest` 会失败，而不是让页面悄悄过期。命令行与门禁细节不进模块 README。
+
 ## 写作约定
 
 - **行为以代码为准**：字段、默认值、时序都以当前实现为准；设计文档描述意图与权衡。

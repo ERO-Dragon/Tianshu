@@ -8,7 +8,7 @@ version="${mod_version}"
 displayName="${mod_name} - Presence"
 logoFile="icon.png"
 description='''
-In-game presence HUD for Tianshu: the product state, the status line and the dialogue partner marker.
+In-game HUD and world-state context on the Ferry base: product activities, the status line and the dialogue partner marker.
 '''
 displayTest="IGNORE_SERVER_VERSION"
 

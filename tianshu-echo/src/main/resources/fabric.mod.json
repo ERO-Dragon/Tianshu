@@ -4,7 +4,7 @@
   "version": "${mod_version}",
   "name": "${mod_name} - Echo",
   "icon": "icon.png",
-  "license": "MIT",
+  "license": "LGPL-3.0",
   "environment": "client",
   "entrypoints": {
     "main": [

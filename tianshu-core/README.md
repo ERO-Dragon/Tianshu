@@ -1,4 +1,4 @@
-# Ferry
+# Ferry · 舟楫
 
 Ferry is the base of Tianshu, the conversational agent: it provides the UI, key bindings, settings, world state and local audio, and feature modules run on top of it.
 
@@ -24,7 +24,6 @@ Ferry is the base of Tianshu, the conversational agent: it provides the UI, key 
 | **Intake (听澜)** | Speech recognition, transcript repair, **Intent** (dialogue arbitration) | Requires Presence |
 | **Echo (回响)** | Local text-to-speech | Presence optional |
 | **Weaving (织言)** | Cloud LLM (OpenAI-compatible endpoint, streaming) | Presence optional |
-| **Auxilium** | Dialogue brain: context, memory, turn orchestration, reply presentation | Requires Weaving and Presence; Intake and Echo optional |
 | **Presence (映迹)** | World-state summary, HUD layers, context queries | — |
 
 ## License and credits

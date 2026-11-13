@@ -14,7 +14,7 @@
     "speakerIdByScript": { "LATIN": 0 },
     "synthesisQualityScore": 8,
     "performanceScore": 8,
-    "recommendationScore": 9,
+    "recommendationScore": 6,
     "size": 426581541,
     "downloadUri": null
   },
@@ -29,7 +29,7 @@
     "ruleFsts": ["date.fst", "new_heteronym.fst", "number.fst", "phone.fst"],
     "synthesisQualityScore": 7,
     "performanceScore": 8,
-    "recommendationScore": 8,
+    "recommendationScore": 7,
     "size": 231020664,
     "downloadUri": null
   },
@@ -68,7 +68,7 @@
     "defaultVoiceSample": "kefu.wav",
     "synthesisQualityScore": 7,
     "performanceScore": 9,
-    "recommendationScore": 7,
+    "recommendationScore": 9,
     "size": 177487469,
     "downloadUri": null
   }

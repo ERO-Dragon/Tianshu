@@ -1,4 +1,4 @@
-# Intake (听澜)
+# Intake · 听澜
 
 Intake is Tianshu's voice input and dialogue arbitration module. It recognizes speech locally, repairs Minecraft-specific mishearings, and lets Intent hand each turn to the right participant.
 
