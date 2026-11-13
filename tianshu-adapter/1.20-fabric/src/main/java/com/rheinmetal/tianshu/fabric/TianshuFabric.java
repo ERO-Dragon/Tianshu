@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
-import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
@@ -62,7 +62,8 @@ public final class TianshuFabric implements ModInitializer {
         if (net.fabricmc.loader.api.FabricLoader.getInstance().getEnvironmentType()
                 == net.fabricmc.api.EnvType.CLIENT) {
             actionClient = new ServerActionClient(TianshuFabric::sendToServer);
-            toolClient = new ToolCallClient(TianshuFabric::sendToolCall);
+            toolClient = new ToolCallClient((requestId, toolId, argsJson) -> sendToolCall(
+                new ToolCallRequestPacket(requestId, toolId, argsJson)));
             TianshuRuntimePorts.register(ToolTransport.class, toolClient);
             registerClientReceivers();
         }

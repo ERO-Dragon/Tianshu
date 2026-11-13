@@ -10,7 +10,8 @@ import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
 import com.rheinmetal.tianshu.mc.host.ServerActionClient;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
-import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
+import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.api.tool.ToolTransport;
 import com.rheinmetal.tianshu.neoforge.server.ServerToolHandler;
 import com.rheinmetal.tianshu.neoforge.server.GameFactCollector;
@@ -59,7 +60,9 @@ public final class TianshuNeoForge {
         // client bootstrap reads its snapshots, so no static has to describe this object.
         ServerActionClient serverActions = new ServerActionClient(
                 net.neoforged.neoforge.network.PacketDistributor::sendToServer);
-        ToolCallClient toolCalls = new ToolCallClient(net.neoforged.neoforge.network.PacketDistributor::sendToServer);
+        ToolCallClient toolCalls = new ToolCallClient((requestId, toolId, argsJson) ->
+                net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                        new ToolCallRequestPacket(requestId, toolId, argsJson)));
         TianshuRuntimePorts.register(ToolTransport.class, toolCalls);
         modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
                 TianshuNetwork.register(registerPayloads, serverActions, toolCalls));

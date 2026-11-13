@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
-import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
@@ -63,7 +63,8 @@ public final class TianshuFabric implements ModInitializer {
         // A dedicated server has no client classes to touch: everything that names one lives in the client branch.
         if (FabricLoader.getInstance().getEnvironmentType() == net.fabricmc.api.EnvType.CLIENT) {
             actionClient = new ServerActionClient(ClientPlayNetworking::send);
-            toolClient = new ToolCallClient(ClientPlayNetworking::send);
+            toolClient = new ToolCallClient((requestId, toolId, argsJson) -> ClientPlayNetworking.send(
+                new ToolCallRequestPacket(requestId, toolId, argsJson)));
             TianshuRuntimePorts.register(ToolTransport.class, toolClient);
             registerClientReceivers();
         }
@@ -107,8 +108,8 @@ public final class TianshuFabric implements ModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ServerActionCatalogPacket.TYPE,
                 (packet, context) -> actionClient.receiveCatalog(packet, context.client()::execute));
         ClientPlayNetworking.registerGlobalReceiver(ToolCallResultPacket.TYPE,
-                (packet, context) -> context.client().execute(() -> toolClient.receiveResult(packet)));
+                (packet, context) -> context.client().execute(() -> toolClient.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         ClientPlayNetworking.registerGlobalReceiver(ToolCatalogPacket.TYPE,
-                (packet, context) -> context.client().execute(() -> toolClient.receiveCatalog(packet)));
+                (packet, context) -> context.client().execute(() -> toolClient.receiveCatalog(packet.toolIds())));
     }
 }

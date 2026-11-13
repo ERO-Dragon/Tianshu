@@ -1,15 +1,12 @@
 package com.rheinmetal.tianshu.neoforge.server;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
-import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
@@ -90,44 +87,15 @@ public final class ServerToolHandler {
         }
         context.enqueueWork(() -> respond(player, packet));
     }
-
     private static void respond(ServerPlayer player, ToolCallRequestPacket packet) {
-        ToolId id;
-        try {
-            id = ToolId.parse(packet.toolId());
-        } catch (IllegalArgumentException malformed) {
-            send(player, failure(packet.requestId(), ToolError.UNKNOWN_TOOL, "malformed tool id"));
+        if (player == null) {
             return;
         }
-        JsonElement args;
-        try {
-            args = JsonParser.parseString(packet.argsJson());
-        } catch (RuntimeException malformed) {
-            send(player, failure(packet.requestId(), ToolError.INVALID_ARGS, "malformed arguments"));
-            return;
-        }
-        ToolCaller caller = ToolCaller.player(player.getUUID().toString(),
-                player.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR));
-        TianshuTools.callJson(id, args, caller, ToolSide.SERVER)
-                .thenAccept(envelope -> send(player, toResult(packet.requestId(), envelope)))
-                .exceptionally(thrown -> {
-                    send(player, failure(packet.requestId(), ToolError.FAILED, String.valueOf(thrown)));
-                    return null;
-                });
+        ToolCaller caller = ToolCaller.player(player.getUUID().toString(), player.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR));
+        ServerToolDispatch.respond(caller, packet.requestId(), packet.toolId(), packet.argsJson())
+                .thenAccept(reply -> send(player, new ToolCallResultPacket(reply.requestId(), reply.ok(),
+                        reply.valueJson(), reply.errorCode(), reply.message())));
     }
-
-    private static ToolCallResultPacket toResult(String requestId, JsonObject envelope) {
-        if (envelope.get("ok").getAsBoolean()) {
-            return new ToolCallResultPacket(requestId, true, envelope.get("result").toString(), "", "");
-        }
-        return new ToolCallResultPacket(requestId, false, "",
-                envelope.get("code").getAsString(), envelope.get("message").getAsString());
-    }
-
-    private static ToolCallResultPacket failure(String requestId, ToolError code, String message) {
-        return new ToolCallResultPacket(requestId, false, "", code.name(), message);
-    }
-
     private static void send(ServerPlayer player, ToolCallResultPacket result) {
         MinecraftServer server = player.level().getServer();
         if (server == null) {

@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
-import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
@@ -54,9 +54,9 @@ public final class TianshuNetwork {
         registrar.playToServer(ServerActionRequestPacket.TYPE, ServerActionRequestPacket.STREAM_CODEC,
                 com.rheinmetal.tianshu.neoforge.server.ServerActionHandler::handle);
         registrar.playToClient(ToolCallResultPacket.TYPE, ToolCallResultPacket.STREAM_CODEC,
-                (packet, context) -> context.enqueueWork(() -> tools.receiveResult(packet)));
+                (packet, context) -> context.enqueueWork(() -> tools.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         registrar.playToClient(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC,
-                (packet, context) -> context.enqueueWork(() -> tools.receiveCatalog(packet)));
+                (packet, context) -> context.enqueueWork(() -> tools.receiveCatalog(packet.toolIds())));
         registrar.playToServer(ToolCallRequestPacket.TYPE, ToolCallRequestPacket.STREAM_CODEC,
                 com.rheinmetal.tianshu.neoforge.server.ServerToolHandler::handle);
     }

@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
-import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
@@ -102,14 +102,14 @@ public final class TianshuNetwork {
                 ToolCallResultPacket::encode, ToolCallResultPacket::decode,
                 (packet, context) -> {
                     context.enqueueWork(() -> com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
-                            .receiveResult(packet));
+                            .receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message()));
                     context.setPacketHandled(true);
                 });
         CHANNEL.registerMessage(6, ToolCatalogPacket.class,
                 ToolCatalogPacket::encode, ToolCatalogPacket::decode,
                 (packet, context) -> {
                     context.enqueueWork(() -> com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
-                            .receiveCatalog(packet));
+                            .receiveCatalog(packet.toolIds()));
                     context.setPacketHandled(true);
                 });
     }

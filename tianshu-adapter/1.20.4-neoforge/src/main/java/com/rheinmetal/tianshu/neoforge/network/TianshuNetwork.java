@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
-import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
@@ -78,11 +78,11 @@ public final class TianshuNetwork {
         registrar.play(ToolCallResultPacket.CHANNEL, ToolCallResultPacket::decode,
                 builder -> builder.client((packet, context) ->
                         com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
-                                .receiveResult(packet)));
+                                .receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         registrar.play(ToolCatalogPacket.CHANNEL, ToolCatalogPacket::decode,
                 builder -> builder.client((packet, context) ->
                         com.rheinmetal.tianshu.neoforge.TianshuNeoForge.toolCalls()
-                                .receiveCatalog(packet)));
+                                .receiveCatalog(packet.toolIds())));
     }
 
     /** Sends one request to the server the client is connected to. */

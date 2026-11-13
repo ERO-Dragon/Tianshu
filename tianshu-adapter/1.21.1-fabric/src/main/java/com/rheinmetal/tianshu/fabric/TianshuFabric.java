@@ -5,7 +5,7 @@ import com.rheinmetal.tianshu.api.assembly.InstalledMods;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.mc.host.ServerActionClient;
 import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
-import com.rheinmetal.tianshu.mc.network.ToolCallClient;
+import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
@@ -63,7 +63,8 @@ public final class TianshuFabric implements ModInitializer {
         if (net.fabricmc.loader.api.FabricLoader.getInstance().getEnvironmentType()
                 == net.fabricmc.api.EnvType.CLIENT) {
             actionClient = new ServerActionClient(ClientPlayNetworking::send);
-            toolClient = new ToolCallClient(ClientPlayNetworking::send);
+            toolClient = new ToolCallClient((requestId, toolId, argsJson) -> ClientPlayNetworking.send(
+                new ToolCallRequestPacket(requestId, toolId, argsJson)));
             TianshuRuntimePorts.register(ToolTransport.class, toolClient);
             registerClientReceivers();
         }
@@ -113,9 +114,9 @@ public final class TianshuFabric implements ModInitializer {
                 com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket.TYPE,
                 (packet, context) -> actionClient.receiveCatalog(packet, context.client()::execute));
         ClientPlayNetworking.registerGlobalReceiver(ToolCallResultPacket.TYPE,
-                (packet, context) -> context.client().execute(() -> toolClient.receiveResult(packet)));
+                (packet, context) -> context.client().execute(() -> toolClient.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         ClientPlayNetworking.registerGlobalReceiver(ToolCatalogPacket.TYPE,
-                (packet, context) -> context.client().execute(() -> toolClient.receiveCatalog(packet)));
+                (packet, context) -> context.client().execute(() -> toolClient.receiveCatalog(packet.toolIds())));
     }
 
 
