@@ -138,7 +138,7 @@ class AXAgentLoopTest {
         AXRunPolicy simple = AXRunPolicy.simple();
         assertEquals(AXRunPolicy.SIMPLE_ID, simple.id());
         assertEquals(3, simple.maxSteps());
-        assertEquals(10_000L, simple.timeoutMillis());
+        assertEquals(AXRunPolicy.SIMPLE_TIMEOUT_MILLIS, simple.timeoutMillis());
         assertFalse(simple.toolsAllowed());
         assertFalse(simple.noProgressDetection());
         assertEquals(CancellationScope.SELF_ONLY, simple.cancellationScope());

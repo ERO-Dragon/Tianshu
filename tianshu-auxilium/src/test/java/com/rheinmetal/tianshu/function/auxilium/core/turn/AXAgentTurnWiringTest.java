@@ -270,7 +270,7 @@ class AXAgentTurnWiringTest {
     }
 
     @Test
-    void loopDeadlineRetiresTheTurnAtTenSecondsInsteadOfTheEnvelopeExpiry() {
+    void loopDeadlineRetiresTheTurnAtTheLoopBudgetInsteadOfTheEnvelopeExpiry() {
         TestRuntime runtime = new TestRuntime(false);
         runtime.registerLlmSink();
         AXProtocolAdapter adapter = new AXProtocolAdapter(runtime);
@@ -284,13 +284,15 @@ class AXAgentTurnWiringTest {
         await(() -> runtime.llmRequest.get() != null, 5_000L, "the CHAT request");
 
         // No answer is ever delivered: only the loop's own deadline can retire this turn.
-        await(() -> !runtime.sessionControls.isEmpty(), 15_000L, "the loop deadline to expire the turn");
+        await(() -> !runtime.sessionControls.isEmpty(), AXRunPolicy.SIMPLE_TIMEOUT_MILLIS + 5_000L,
+                "the loop deadline to expire the turn");
         long elapsed = System.currentTimeMillis() - startedAt;
 
         assertEquals(DialogueReleaseReason.EXPIRED, runtime.sessionControls.get(0).reason());
         assertTrue(elapsed >= AXRunPolicy.SIMPLE_TIMEOUT_MILLIS - 500L,
                 "the fallback must not fire before the loop budget is spent");
-        assertTrue(elapsed < 15_000L, "the turn retires at the loop deadline, not at the 60s envelope expiry");
+        assertTrue(elapsed < AXRunPolicy.SIMPLE_TIMEOUT_MILLIS + 5_000L,
+                "the turn retires at the loop deadline, not at the envelope expiry");
         assertEquals(0, orchestrator.pollRescuedTurns(), "a deadline is not a poll rescue");
         assertEquals(1, runtime.sessionControls.size());
     }

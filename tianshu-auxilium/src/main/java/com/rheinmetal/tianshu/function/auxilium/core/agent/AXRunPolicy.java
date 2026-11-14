@@ -36,7 +36,12 @@ public record AXRunPolicy(
     public static final int SIMPLE_MAX_STEPS = 3;
 
     /** Simple 时长上限：撞到它说明卡住了，不是慢（设计 §3.2）。 */
-    public static final long SIMPLE_TIMEOUT_MILLIS = 10_000L;
+    /**
+     * A simple turn may include up to three tool round-trips (each one model call), so one 10-second request budget
+     * would abort a healthy tool turn. The ceiling only bounds a stuck turn; a normal turn still ends on its first
+     * answer.
+     */
+    public static final long SIMPLE_TIMEOUT_MILLIS = 30_000L;
 
     /** Complex 步数安全阀（设计 §3.2）。 */
     public static final int COMPLEX_MAX_STEPS = 25;
