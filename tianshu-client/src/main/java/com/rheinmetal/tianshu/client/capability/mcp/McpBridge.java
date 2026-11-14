@@ -29,9 +29,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Connects the configured MCP servers, publishes their tools as normal Tianshu tools, and exposes health.
  *
- * <p>A failed server does not disappear: it stays in {@link #status()} with its last error, and a watchdog retries
- * with exponential backoff (manual {@link #reconnect(String)} forces one). A transport failure observed by a tool
- * call marks that server disconnected; a remote method rejection ({@link McpRemoteException}) does not.</p>
+ * <p>Each server is independent: a failed server keeps its state, a watchdog retries only that server with
+ * exponential backoff, and the others stay connected. A transport failure observed by a tool call marks its server
+ * disconnected; a remote method rejection ({@link McpRemoteException}) does not.</p>
  */
 public final class McpBridge implements McpStatus, AutoCloseable {
 
@@ -40,11 +40,8 @@ public final class McpBridge implements McpStatus, AutoCloseable {
     private static final long MAX_BACKOFF_MILLIS = 300_000L;
     private static final int MAX_PROBLEMS = 64;
 
-    private final List<McpConnection> clients = new ArrayList<>();
-    private final List<ToolId> tools = new ArrayList<>();
-    private final List<CapabilityId> capabilities = new ArrayList<>();
+    private final Map<String, ServerState> states = new LinkedHashMap<>();
     private final List<String> problems = new ArrayList<>();
-    private final Map<String, McpServerStatus> statuses = new LinkedHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "tianshu-mcp");
@@ -52,18 +49,13 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         return thread;
     });
 
-    private volatile List<McpServerSpec> specs = List.of();
-    private volatile long nextAttemptMillis;
-    private int consecutiveFailures;
-
     private McpBridge() {
     }
 
     /** Connects synchronously; tests and explicit reloads use this. */
     public static McpBridge install(List<McpServerSpec> specs) {
         McpBridge bridge = new McpBridge();
-        bridge.specs = List.copyOf(specs);
-        bridge.prepareStatuses();
+        bridge.prepare(specs);
         bridge.connectAll();
         return bridge;
     }
@@ -71,8 +63,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
     /** Connects off the game thread and keeps retrying failed servers in the background. */
     public static McpBridge start(Path config) {
         McpBridge bridge = new McpBridge();
-        bridge.specs = McpConfig.load(config);
-        bridge.prepareStatuses();
+        bridge.prepare(McpConfig.load(config));
         bridge.scheduler.scheduleWithFixedDelay(bridge::watchdog, 0, WATCHDOG_MILLIS, TimeUnit.MILLISECONDS);
         return bridge;
     }
@@ -82,22 +73,31 @@ public final class McpBridge implements McpStatus, AutoCloseable {
     }
 
     public int toolCount() {
-        return tools.size();
+        int total = 0;
+        synchronized (this) {
+            for (ServerState state : states.values()) {
+                total += state.tools.size();
+            }
+        }
+        return total;
     }
 
     @Override
     public synchronized List<McpServerStatus> status() {
-        return List.copyOf(statuses.values());
+        List<McpServerStatus> snapshot = new ArrayList<>(states.size());
+        for (ServerState state : states.values()) {
+            snapshot.add(new McpServerStatus(state.spec.name(), state.spec.type(), state.connected,
+                    state.tools.size(), state.lastError));
+        }
+        return List.copyOf(snapshot);
     }
 
-    /** Re-evaluates all configured servers; the name is only the trigger (per-server retry is a later refinement). */
     @Override
     public void reconnect(String name) {
-        nextAttemptMillis = 0;
         if (!scheduler.isShutdown()) {
-            scheduler.execute(this::connectAll);
+            scheduler.execute(() -> reconnectNow(name));
         } else {
-            connectAll();
+            reconnectNow(name);
         }
     }
 
@@ -108,86 +108,122 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         }
         scheduler.shutdownNow();
         synchronized (this) {
-            cleanup();
-            for (Map.Entry<String, McpServerStatus> entry : statuses.entrySet()) {
-                McpServerStatus current = entry.getValue();
-                entry.setValue(new McpServerStatus(current.name(), current.type(), false, 0, current.lastError()));
+            for (ServerState state : states.values()) {
+                cleanup(state);
             }
         }
+    }
+
+    private void prepare(List<McpServerSpec> specs) {
+        synchronized (this) {
+            states.clear();
+            for (McpServerSpec spec : specs) {
+                states.put(spec.name(), new ServerState(spec));
+            }
+        }
+    }
+
+    private synchronized void reconnectNow(String name) {
+        if (closed.get()) {
+            return;
+        }
+        ServerState target = name == null ? null : states.get(name);
+        if (target != null) {
+            connect(target);
+            return;
+        }
+        connectAll();
     }
 
     private synchronized void connectAll() {
         if (closed.get()) {
             return;
         }
-        cleanup();
-        consecutiveFailures = 0;
-        for (McpServerSpec spec : specs) {
-            if (closed.get()) {
-                return;
-            }
-            if (!connectOne(spec)) {
-                consecutiveFailures++;
-            }
-        }
-        if (consecutiveFailures == 0) {
-            nextAttemptMillis = 0;
-        } else {
-            long backoff = Math.min(MAX_BACKOFF_MILLIS,
-                    BASE_BACKOFF_MILLIS << Math.min(consecutiveFailures, 4));
-            nextAttemptMillis = System.currentTimeMillis() + backoff;
+        for (ServerState state : states.values()) {
+            connect(state);
         }
     }
 
-    private boolean connectOne(McpServerSpec spec) {
+    private void connect(ServerState state) {
+        if (closed.get()) {
+            return;
+        }
+        cleanup(state);
         McpConnection client = null;
         try {
-            client = spec.type() == McpServerSpec.Type.STDIO
-                    ? new McpStdioClient(spec.command())
-                    : new McpHttpClient(spec.url());
+            client = state.spec.type() == McpServerSpec.Type.STDIO
+                    ? new McpStdioClient(state.spec.command())
+                    : new McpHttpClient(state.spec.url());
             client.initialize();
-            int toolCount = 0;
             for (JsonObject remote : client.listTools()) {
                 if (closed.get()) {
                     client.close();
-                    return false;
+                    return;
                 }
-                if (register(spec, client, remote)) {
-                    toolCount++;
-                }
+                register(state, client, remote);
             }
-            registerResources(spec, client);
-            registerPrompts(spec, client);
-            clients.add(client);
-            updateStatus(spec, true, toolCount, "");
-            return true;
+            registerResources(state, client);
+            registerPrompts(state, client);
+            state.client = client;
+            state.connected = true;
+            state.failures = 0;
+            state.nextAttemptMillis = 0;
+            state.lastError = "";
         } catch (Exception failure) {
             if (client != null) {
                 client.close();
             }
             String message = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
-            problem(spec.name() + ": " + message);
-            updateStatus(spec, false, 0, message);
-            return false;
+            state.connected = false;
+            state.client = null;
+            state.lastError = message;
+            state.failures++;
+            state.nextAttemptMillis = System.currentTimeMillis()
+                    + Math.min(MAX_BACKOFF_MILLIS, BASE_BACKOFF_MILLIS << Math.min(state.failures, 4));
+            problem(state.spec.name() + ": " + message);
         }
     }
 
-    private synchronized void cleanup() {
-        for (ToolId id : tools) {
+    private void cleanup(ServerState state) {
+        for (ToolId id : state.tools) {
             TianshuTools.unregister(id);
         }
-        tools.clear();
-        for (CapabilityId id : capabilities) {
+        state.tools.clear();
+        for (CapabilityId id : state.capabilities) {
             CapabilityCatalog.unregister(id);
         }
-        capabilities.clear();
-        for (McpConnection client : clients) {
-            client.close();
+        state.capabilities.clear();
+        if (state.client != null) {
+            state.client.close();
+            state.client = null;
         }
-        clients.clear();
-        for (Map.Entry<String, McpServerStatus> entry : statuses.entrySet()) {
-            McpServerStatus current = entry.getValue();
-            entry.setValue(new McpServerStatus(current.name(), current.type(), false, 0, current.lastError()));
+        state.connected = false;
+    }
+
+    private void watchdog() {
+        if (closed.get()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        synchronized (this) {
+            for (ServerState state : states.values()) {
+                if (!state.connected && now >= state.nextAttemptMillis) {
+                    connect(state);
+                }
+            }
+        }
+    }
+
+    private synchronized void onTransportFailure(String server) {
+        ServerState state = states.get(server);
+        if (state == null) {
+            return;
+        }
+        state.lastError = "connection lost";
+        state.nextAttemptMillis = System.currentTimeMillis();
+        cleanup(state);
+        if (!scheduler.isShutdown()) {
+            scheduler.execute(() -> reconnectNow(server));
         }
     }
 
@@ -198,49 +234,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         }
     }
 
-    private void watchdog() {
-        if (closed.get()) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        synchronized (this) {
-            if (now < nextAttemptMillis) {
-                return;
-            }
-            if (statuses.values().stream().allMatch(McpServerStatus::connected)) {
-                return;
-            }
-        }
-        connectAll();
-    }
-
-    private void onTransportFailure(String server) {
-        synchronized (this) {
-            for (McpServerSpec spec : specs) {
-                if (spec.name().equals(server)) {
-                    updateStatus(spec, false, 0, "connection lost");
-                    break;
-                }
-            }
-            nextAttemptMillis = System.currentTimeMillis();
-        }
-        if (!scheduler.isShutdown()) {
-            scheduler.execute(this::connectAll);
-        }
-    }
-
-    private void prepareStatuses() {
-        statuses.clear();
-        for (McpServerSpec spec : specs) {
-            statuses.put(spec.name(), new McpServerStatus(spec.name(), spec.type(), false, 0, ""));
-        }
-    }
-
-    private void updateStatus(McpServerSpec spec, boolean connected, int toolCount, String error) {
-        statuses.put(spec.name(), new McpServerStatus(spec.name(), spec.type(), connected, toolCount, error));
-    }
-
-    private boolean register(McpServerSpec spec, McpConnection client, JsonObject remote) {
+    private boolean register(ServerState state, McpConnection client, JsonObject remote) {
         String remoteName = remote.has("name") ? remote.get("name").getAsString() : "";
         if (remoteName.isBlank()) {
             return false;
@@ -248,20 +242,20 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         String description = remote.has("description") ? remote.get("description").getAsString() : remoteName;
         JsonObject schema = remote.has("inputSchema") && remote.get("inputSchema").isJsonObject()
                 ? remote.getAsJsonObject("inputSchema") : null;
-        ToolId id = toolId(spec.name(), remoteName);
-        McpTool tool = new McpTool(spec.name(), id, client, remoteName, description, schema, spec.autonomy(),
-                this::onTransportFailure);
+        ToolId id = toolId(state.spec.name(), remoteName);
+        McpTool tool = new McpTool(state.spec.name(), id, client, remoteName, description, schema,
+                state.spec.autonomy(), this::onTransportFailure);
         try {
             TianshuTools.register(tool);
-            tools.add(id);
+            state.tools.add(id);
             return true;
         } catch (RuntimeException conflict) {
-            problem(spec.name() + "/" + remoteName + ": " + conflict.getMessage());
+            problem(state.spec.name() + "/" + remoteName + ": " + conflict.getMessage());
             return false;
         }
     }
 
-    private void registerResources(McpServerSpec spec, McpConnection client) {
+    private void registerResources(ServerState state, McpConnection client) {
         try {
             for (JsonObject remote : client.listResources()) {
                 String uri = remote.has("uri") ? remote.get("uri").getAsString() : "";
@@ -269,7 +263,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
                 if (uri.isBlank() || name.isBlank()) {
                     continue;
                 }
-                CapabilityId id = capabilityId(spec.name(), "res", name);
+                CapabilityId id = capabilityId(state.spec.name(), "res", name);
                 JsonObject attributes = new JsonObject();
                 attributes.addProperty("name", name);
                 attributes.addProperty("source", "mcp");
@@ -285,21 +279,21 @@ public final class McpBridge implements McpStatus, AutoCloseable {
                         return CompletableFuture.completedFuture(errorEnvelope(failure));
                     }
                 });
-                capabilities.add(id);
+                state.capabilities.add(id);
             }
         } catch (Exception unsupported) {
             // A server may not implement resources; that is not a reason to lose its tools.
         }
     }
 
-    private void registerPrompts(McpServerSpec spec, McpConnection client) {
+    private void registerPrompts(ServerState state, McpConnection client) {
         try {
             for (JsonObject remote : client.listPrompts()) {
                 String name = remote.has("name") ? remote.get("name").getAsString() : "";
                 if (name.isBlank()) {
                     continue;
                 }
-                CapabilityId id = capabilityId(spec.name(), "prompt", name);
+                CapabilityId id = capabilityId(state.spec.name(), "prompt", name);
                 JsonObject attributes = new JsonObject();
                 attributes.addProperty("name", name);
                 attributes.addProperty("source", "mcp");
@@ -314,7 +308,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
                         return CompletableFuture.completedFuture(errorEnvelope(failure));
                     }
                 });
-                capabilities.add(id);
+                state.capabilities.add(id);
             }
         } catch (Exception unsupported) {
             // Same as resources: prompts are optional.
@@ -397,5 +391,20 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         }
         String name = safe.length() > 64 ? safe.substring(0, 64) : safe.toString();
         return ToolId.of("mcp", name);
+    }
+
+    private static final class ServerState {
+        private final McpServerSpec spec;
+        private final List<ToolId> tools = new ArrayList<>();
+        private final List<CapabilityId> capabilities = new ArrayList<>();
+        private McpConnection client;
+        private boolean connected;
+        private String lastError = "";
+        private int failures;
+        private long nextAttemptMillis;
+
+        private ServerState(McpServerSpec spec) {
+            this.spec = spec;
+        }
     }
 }

@@ -34,6 +34,8 @@ class McpClientTest {
     private HttpServer server;
     private String url;
     private final AtomicBoolean sessionSeen = new AtomicBoolean();
+    private final java.util.concurrent.atomic.AtomicInteger initializations =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     @BeforeEach
     void startServer() throws IOException {
@@ -82,6 +84,29 @@ class McpClientTest {
     }
 
     @Test
+    void reconnectingOneServerLeavesTheOtherAlone() throws Exception {
+        ToolAutonomyGate.setMode(ToolAutonomy.FULL);
+        McpBridge bridge = McpBridge.install(List.of(
+                McpServerSpec.http("a", url, ToolAutonomy.FULL),
+                McpServerSpec.http("b", url, ToolAutonomy.FULL)));
+        try {
+            assertEquals(2, initializations.get());
+            int before = initializations.get();
+
+            bridge.reconnect("a");
+            for (int attempt = 0; attempt < 100 && initializations.get() == before; attempt++) {
+                Thread.sleep(10);
+            }
+            Thread.sleep(200);
+
+            assertEquals(before + 1, initializations.get(), "only the named server should reconnect");
+            assertTrue(bridge.status().stream().allMatch(McpServerStatus::connected));
+        } finally {
+            bridge.close();
+        }
+    }
+
+    @Test
     void bridgePublishesRemoteToolsAndRemovesThemOnClose() throws Exception {
         ToolAutonomyGate.setMode(ToolAutonomy.FULL);
         McpBridge bridge = McpBridge.install(List.of(McpServerSpec.http("srv", url, ToolAutonomy.FULL)));
@@ -121,6 +146,7 @@ class McpClientTest {
             sessionSeen.set(true);
         }
         if ("initialize".equals(method)) {
+            initializations.incrementAndGet();
             exchange.getResponseHeaders().add("Mcp-Session-Id", "sess-1");
             respond(exchange, request, result("initialize"));
             return;
