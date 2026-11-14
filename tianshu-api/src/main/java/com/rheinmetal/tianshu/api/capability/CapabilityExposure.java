@@ -47,14 +47,31 @@ public final class CapabilityExposure {
 
     /** Renders the exposed rows as a prompt block; connectors never appear. */
     public static String describe(List<CapabilityDescriptor> descriptors) {
+        final int maxRows = 200;
+        final int maxChars = 8_000;
         StringBuilder text = new StringBuilder();
+        int rows = 0;
         for (CapabilityDescriptor descriptor : descriptors) {
             if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
+                continue;
+            }
+            if (rows >= maxRows || text.length() >= maxChars) {
+                text.append("… (").append(descriptors.size() - rows).append(" more; narrow the list)\n");
+                break;
+            }
+            String name = descriptor.attributes().has("name")
+                    ? descriptor.attributes().get("name").getAsString() : "";
+            if (descriptor.kind().equals(CapabilityKind.SKILL) && !name.isBlank()) {
+                text.append("- ").append(descriptor.id()).append(" — ").append(name).append(" — ")
+                        .append(descriptor.description());
+                text.append('\n');
+                rows++;
                 continue;
             }
             text.append("- ").append(descriptor.id())
                     .append(" [").append(descriptor.kind()).append('/').append(descriptor.binding()).append("]: ")
                     .append(descriptor.description());
+            rows++;
             JsonElement schema = descriptor.attributes().get("argsSchema");
             if (schema != null && schema.isJsonObject()) {
                 text.append(" args: ").append(GSON.toJson(schema));

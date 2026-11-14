@@ -28,7 +28,7 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
 
     public static final ToolId ID = ToolId.of("tianshu", "capability.read");
 
-    public record Request(String id, JsonObject arguments) {
+    public record Request(String id, JsonObject arguments, String file, Integer page) {
     }
 
     public record Reply(String text) {
@@ -74,6 +74,14 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
         arguments.addProperty("type", "object");
         arguments.addProperty("description", "Arguments for a skill or prompt template.");
         properties.add("arguments", arguments);
+        JsonObject file = new JsonObject();
+        file.addProperty("type", "string");
+        file.addProperty("description", "Reference file inside the skill, e.g. references/bosses.md.");
+        properties.add("file", file);
+        JsonObject page = new JsonObject();
+        page.addProperty("type", "integer");
+        page.addProperty("description", "Page of a long text, starting at 1.");
+        properties.add("page", page);
         schema.add("properties", properties);
         return schema;
     }
@@ -106,7 +114,13 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
                     com.rheinmetal.tianshu.api.tool.ToolError.INVALID_ARGS,
                     "capability " + capabilityId + " is a tool; call it directly"));
         }
-        JsonObject args = request.arguments() == null ? new JsonObject() : request.arguments();
+        JsonObject args = request.arguments() == null ? new JsonObject() : request.arguments().deepCopy();
+        if (request.file() != null && !request.file().isBlank()) {
+            args.addProperty("file", request.file());
+        }
+        if (request.page() != null) {
+            args.addProperty("page", request.page());
+        }
         return CapabilityCatalog.invoke(capabilityId, args, caller, side)
                 .thenCompose(envelope -> {
                     if (envelope.has("ok") && envelope.get("ok").getAsBoolean()) {

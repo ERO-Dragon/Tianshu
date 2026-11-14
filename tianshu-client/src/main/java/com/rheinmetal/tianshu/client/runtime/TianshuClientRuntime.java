@@ -2,6 +2,8 @@ package com.rheinmetal.tianshu.client.runtime;
 
 import com.rheinmetal.tianshu.client.tool.ClientTools;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
+import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
+import java.nio.file.Path;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 
 import java.util.Objects;
@@ -25,6 +27,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final Runnable onWorldReady;
     private final Consumer<Throwable> onWorldFailure;
     private final AtomicLong generation = new AtomicLong();
+    private volatile SkillFileProvider skills;
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
     private boolean worldSessionRequested;
@@ -77,6 +80,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             state = ClientSessionState.CLIENT_READY;
         }
         ClientTools.register();
+        skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills"));
         ConnectionToolChannel.install();
         startClientResources.run();
     }
@@ -123,6 +127,11 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
 
     @Override
     public void shutdown() {
+        SkillFileProvider provider = skills;
+        if (provider != null) {
+            provider.unload();
+            skills = null;
+        }
         synchronized (lifecycleMonitor) {
             if (state == ClientSessionState.SHUTDOWN) {
                 return;
