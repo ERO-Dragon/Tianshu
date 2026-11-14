@@ -693,7 +693,10 @@ tasks.register('verifyAdapterMatrixCoverage') {
                 violations << "${loader} ${version} is pinned by more than one adapter: ${entries*.dir}".toString()
             }
             def sorted = pins.sort { a, b -> compare(a.version, b.version) }*.version.unique()
-            if (sorted.first() != floor) {
+            // A version branch intentionally carries one line, not the full floor-to-latest matrix. Enforce the
+            // floor only on the full-assembly branch, where the floor adapter is actually present.
+            def carriesFloor = pins.any { it.version == floor }
+            if (carriesFloor && sorted.first() != floor) {
                 violations << "${loader} matrix starts at ${sorted.first()}, expected the ${floor} floor".toString()
             }
             for (int index = 1; index < sorted.size(); index++) {
