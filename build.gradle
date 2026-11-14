@@ -860,6 +860,14 @@ tasks.register('runClient') {
     dependsOn ":tianshu-adapter:${selectedAdapter}:runClient"
 }
 
+allprojects {
+    tasks.withType(Test).configureEach {
+        systemProperty 'tianshu.workspaceRoot', rootProject.projectDir.absolutePath
+    systemProperty 'tianshu.ferryRoot', new File(rootProject.projectDir.parentFile, 'Tianshu-ferry').absolutePath
+        systemProperty 'tianshu.featuresRoot', new File(rootProject.projectDir.parentFile, 'Tianshu-features').absolutePath
+    }
+}
+
 subprojects {
     plugins.withType(JavaPlugin).configureEach {
         if (name in featureModules) {
