@@ -61,6 +61,19 @@ class CraftRecipeToolTest {
     }
 
     @Test
+    void aRefusedCraftIsAFailedCall() throws Exception {
+        TianshuRuntimePorts.register(CraftPort.class, (playerId, request) -> CompletableFuture.completedFuture(
+                new CraftResult("", 0, false, "a crafting table is required nearby")));
+        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.setEnabled(CraftRecipeTool.ID, true);
+
+        JsonObject refused = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.player("p", true));
+        assertFalse(refused.get("ok").getAsBoolean());
+        assertEquals("FAILED", refused.get("code").getAsString());
+        assertTrue(refused.get("message").getAsString().contains("crafting table"));
+    }
+
+    @Test
     void onlyAPlayerMayCraft() throws Exception {
         TianshuTools.register(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);

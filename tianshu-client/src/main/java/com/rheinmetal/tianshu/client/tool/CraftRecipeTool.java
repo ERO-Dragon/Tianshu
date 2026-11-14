@@ -83,7 +83,11 @@ public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftRes
                     new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
         }
         return TianshuRuntimePorts.find(CraftPort.class)
-                .map(port -> port.craft(caller.id(), new CraftRequest(args.recipeId().trim())))
+                .map(port -> port.craft(caller.id(), new CraftRequest(args.recipeId().trim()))
+                        .thenCompose(result -> result.crafted()
+                                ? CompletableFuture.completedFuture(result)
+                                : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,
+                                        result.message().isBlank() ? "crafting failed" : result.message()))))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "crafting is only available on the server")));
     }

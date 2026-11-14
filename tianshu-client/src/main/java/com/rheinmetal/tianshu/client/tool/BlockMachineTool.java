@@ -107,7 +107,11 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
         MachineOpRequest normalised = new MachineOpRequest(args.x(), args.y(), args.z(), operation,
                 operation.equals("take_output") ? -1 : args.playerSlot());
         return TianshuRuntimePorts.find(BlockMachinePort.class)
-                .map(port -> port.operate(caller.id(), normalised))
+                .map(port -> port.operate(caller.id(), normalised)
+                        .thenCompose(result -> result.moved() > 0
+                                ? CompletableFuture.completedFuture(result)
+                                : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,
+                                        result.message().isBlank() ? "machine operation failed" : result.message()))))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "machine access is only available on the server")));
     }
