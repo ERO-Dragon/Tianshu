@@ -16,6 +16,8 @@ import net.minecraft.world.item.crafting.display.ShapedCraftingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.ShapelessCraftingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.SlotDisplay;
 import net.minecraft.world.item.crafting.display.SlotDisplayContext;
+import net.minecraft.world.item.crafting.display.SmithingRecipeDisplay;
+import net.minecraft.world.item.crafting.display.StonecutterRecipeDisplay;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,6 +91,10 @@ public final class ServerRecipeQuerySource implements RecipeQueryPort {
             slots = shapeless.ingredients();
         } else if (display instanceof FurnaceRecipeDisplay furnace) {
             slots = List.of(furnace.ingredient());
+        } else if (display instanceof StonecutterRecipeDisplay stonecutter) {
+            slots = List.of(stonecutter.input());
+        } else if (display instanceof SmithingRecipeDisplay smithing) {
+            slots = List.of(smithing.template(), smithing.base(), smithing.addition());
         } else {
             slots = List.of();
         }
