@@ -29,7 +29,7 @@ class AXAssistantSettingsBoundaryTest {
     }
 
     private static Path findNeoForgeClientConfig() throws Exception {
-        Path adapters = Path.of("../../tianshu-adapter");
+        Path adapters = Path.of(System.getProperty("tianshu.workspaceRoot", "../..")).resolve("tianshu-adapter");
         try (Stream<Path> entries = Files.list(adapters)) {
             Optional<Path> config = entries
                     .filter(Files::isDirectory)
