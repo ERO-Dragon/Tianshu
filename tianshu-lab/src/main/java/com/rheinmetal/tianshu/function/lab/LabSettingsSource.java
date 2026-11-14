@@ -25,11 +25,12 @@ import java.util.Locale;
  */
 public final class LabSettingsSource implements TianshuSettingsRegistrySource {
     private final LabModuleControl module;
-    private final LabToolConsole tools = new LabToolConsole();
+    private final LabToolConsole tools;
     private final LabCapabilityCheck capabilities;
 
     public LabSettingsSource(LabModuleControl module, DiagnosticSink diagnostics) {
         this.module = module;
+        this.tools = new LabToolConsole(diagnostics);
         this.capabilities = new LabCapabilityCheck(diagnostics);
     }
 

@@ -133,15 +133,12 @@ public final class CraftSource implements CraftPort {
 
     private static int[] assignIngredients(Inventory inventory, List<List<ItemStack>> ingredients) {
         int[] assignment = new int[ingredients.size()];
-        boolean[] used = new boolean[MAIN_INVENTORY_SIZE];
+        int[] used = new int[MAIN_INVENTORY_SIZE];
         for (int index = 0; index < ingredients.size(); index++) {
             int slot = -1;
             for (int candidate = 0; candidate < MAIN_INVENTORY_SIZE && slot < 0; candidate++) {
-                if (used[candidate]) {
-                    continue;
-                }
                 ItemStack stack = inventory.getItem(candidate);
-                if (stack.isEmpty()) {
+                if (stack.isEmpty() || used[candidate] >= stack.getCount()) {
                     continue;
                 }
                 for (ItemStack option : ingredients.get(index)) {
@@ -154,7 +151,7 @@ public final class CraftSource implements CraftPort {
             if (slot < 0) {
                 return null;
             }
-            used[slot] = true;
+            used[slot]++;
             assignment[index] = slot;
         }
         return assignment;

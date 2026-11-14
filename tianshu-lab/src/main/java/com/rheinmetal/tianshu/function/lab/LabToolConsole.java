@@ -2,6 +2,10 @@ package com.rheinmetal.tianshu.function.lab;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolId;
@@ -18,8 +22,13 @@ public final class LabToolConsole {
 
     private volatile String toolId = "tianshu:inventory.inspect";
     private volatile String argsJson = "{}";
+    private final DiagnosticSink diagnostics;
     private volatile String result = "";
     private volatile boolean running;
+
+    public LabToolConsole(DiagnosticSink diagnostics) {
+        this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
+    }
 
     public String toolId() {
         return toolId;
@@ -43,6 +52,37 @@ public final class LabToolConsole {
 
     public boolean running() {
         return running;
+    }
+
+    private void publish(ToolId id, JsonElement envelope, Throwable failure) {
+        var attributes = new java.util.LinkedHashMap<String, String>();
+        attributes.put("tool", id.toString());
+        if (failure != null) {
+            attributes.put("ok", "false");
+            attributes.put("error", failure.getClass().getSimpleName());
+            String message = failure.getMessage();
+            attributes.put("message", message == null ? "" : truncate(message));
+        } else if (envelope != null && envelope.isJsonObject()) {
+            var object = envelope.getAsJsonObject();
+            attributes.put("ok", object.has("ok") ? object.get("ok").getAsString() : "?");
+            if (object.has("code")) {
+                attributes.put("code", object.get("code").getAsString());
+            }
+            if (object.has("message")) {
+                attributes.put("message", truncate(object.get("message").getAsString()));
+            }
+            attributes.put("result", truncate(object.toString()));
+        }
+        try {
+            diagnostics.publish(DiagnosticEvent.now(LabModule.MODULE_ID, "tool.console",
+                    DiagnosticSeverity.INFO, DiagnosticPrivacy.REDACTED, attributes));
+        } catch (RuntimeException ignored) {
+            // Diagnostics must not change the tool result.
+        }
+    }
+
+    private static String truncate(String value) {
+        return value.length() <= 2000 ? value : value.substring(0, 2000) + "…";
     }
 
     /** Runs once; the status row shows the envelope (or why it could not be parsed). */
@@ -70,6 +110,7 @@ public final class LabToolConsole {
                 .whenComplete((envelope, failure) -> {
                     result = failure == null ? envelope.toString() : String.valueOf(failure);
                     running = false;
+                    publish(id, envelope, failure);
                 });
     }
 }
