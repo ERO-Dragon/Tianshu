@@ -218,6 +218,12 @@ neoForge {
                 sourceSet(project(':tianshu-presence').sourceSets.neoforgeEntry)
             }
         }
+        if ('lab' in devFeatureMods) {
+            tianshu_lab {
+                sourceSet(project(':tianshu-lab').sourceSets.main)
+                sourceSet(project(':tianshu-lab').sourceSets.neoforgeEntry)
+            }
+        }
     }
 }
 
