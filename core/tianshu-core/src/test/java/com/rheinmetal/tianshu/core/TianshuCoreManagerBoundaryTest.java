@@ -23,7 +23,7 @@ class TianshuCoreManagerBoundaryTest {
 
     @Test
     void neoforgeDoesNotBypassCoreManagerBoundary() throws Exception {
-        Path adapterRoot = Path.of("../tianshu-adapter");
+        Path adapterRoot = Path.of("../../tianshu-adapter");
         try (Stream<Path> files = Files.walk(adapterRoot)) {
             String bypasses = files
                     .filter(path -> path.toString().endsWith(".java"))
