@@ -21,6 +21,8 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue BROADCAST;
     public static final ModConfigSpec.BooleanValue BLOCK_INTERACT;
     public static final ModConfigSpec.BooleanValue CONTAINER_TRANSFER;
+    public static final ModConfigSpec.BooleanValue CRAFT_RECIPE;
+    public static final ModConfigSpec.BooleanValue BLOCK_MACHINE;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -38,6 +40,10 @@ public final class ServerActionConfig {
                 .define("block_interact", false);
         CONTAINER_TRANSFER = builder.comment("Move items between a container and the player inventory.")
                 .define("container_transfer", false);
+        CRAFT_RECIPE = builder.comment("Craft one recipe from the player's inventory at a nearby crafting table.")
+                .define("craft_recipe", false);
+        BLOCK_MACHINE = builder.comment("Insert fuel/input or take output from a furnace-family machine.")
+                .define("block_machine", false);
         builder.pop();
         SPEC = builder.build();
     }

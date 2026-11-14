@@ -2,7 +2,9 @@ package com.rheinmetal.tianshu.neoforge.server;
 
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
+import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -10,14 +12,18 @@ import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
+import com.rheinmetal.tianshu.client.tool.BlockMachineTool;
 import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
+import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
+import com.rheinmetal.tianshu.mc.tool.BlockMachineSource;
 import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
+import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
@@ -59,6 +65,16 @@ public final class ServerToolHandler {
         TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractSource(event.getServer()));
         TianshuRuntimePorts.register(ContainerTransferPort.class,
                 new ContainerTransferSource(event.getServer()));
+        TianshuRuntimePorts.register(CraftPort.class, new CraftSource(event.getServer()));
+        TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(event.getServer()));
+        if (TianshuTools.find(CraftRecipeTool.ID) == null) {
+            TianshuTools.register(new CraftRecipeTool());
+        }
+        if (TianshuTools.find(BlockMachineTool.ID) == null) {
+            TianshuTools.register(new BlockMachineTool());
+        }
+        TianshuTools.setEnabled(CraftRecipeTool.ID, ServerActionConfig.CRAFT_RECIPE.get());
+        TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
         register(new LootQueryTool());
         register(new BlockInteractTool());
         register(new ContainerTransferTool());
