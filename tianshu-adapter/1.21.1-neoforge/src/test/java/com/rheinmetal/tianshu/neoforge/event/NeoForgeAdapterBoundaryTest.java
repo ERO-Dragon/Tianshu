@@ -23,14 +23,14 @@ final class NeoForgeAdapterBoundaryTest {
     void backgroundModuleConfigurationOnlyReadsTheCapturedLanguageSnapshot() throws Exception {
         String bootstrap = Files.readString(Path.of(BOOTSTRAP), StandardCharsets.UTF_8);
         String config = Files.readString(
-                Path.of("../../tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/settings/WeavingConfig.java"),
+                Path.of("../../core/tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/settings/WeavingConfig.java"),
                 StandardCharsets.UTF_8
         );
 
         // The mapping from a platform locale to a prompt language moved into the module that owns it.
         assertFalse(bootstrap.contains("AXPromptLanguageProvider"));
         assertTrue(Files.readString(
-                Path.of("../../tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/AuxiliumModuleProvider.java"),
+                Path.of("../../core/tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/AuxiliumModuleProvider.java"),
                 StandardCharsets.UTF_8
         ).contains("AXPromptLanguageProvider.ofCode(ports.texts()::currentLanguage)"));
         assertFalse(bootstrap.contains("ClientLanguagePolicy::currentPromptLanguage"));
