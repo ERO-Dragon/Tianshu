@@ -90,6 +90,18 @@ class ServerToolDispatchTest {
     }
 
     @Test
+    void theReservedCatalogRequestReturnsTheServerTools() throws Exception {
+        ServerToolDispatch.Reply reply = ServerToolDispatch.respond(ToolCaller.player("p1", true), "catalog",
+                        ServerToolDispatch.CATALOG_TOOL_ID, "{}")
+                .get(2, TimeUnit.SECONDS);
+
+        assertTrue(reply.ok());
+        com.google.gson.JsonArray tools = com.google.gson.JsonParser.parseString(reply.valueJson())
+                .getAsJsonObject().getAsJsonArray("tools");
+        assertTrue(tools.toString().contains(WRITE.toString()));
+    }
+
+    @Test
     void aCancelRequestCancelsTheInFlightCall() throws Exception {
         ToolCaller player = ToolCaller.player("p1", false);
         ServerToolDispatch.respond(player, "target", BLOCKING.toString(), "{}");

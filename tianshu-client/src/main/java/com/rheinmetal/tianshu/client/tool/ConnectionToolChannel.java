@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonArray;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.ServerToolChannel;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -11,6 +12,8 @@ import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolTransport;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,9 +57,40 @@ public final class ConnectionToolChannel implements ServerToolChannel {
         INSTANCE.completePending(requestId, result);
     }
 
+    /**
+     * Asks the server for its current catalogue and activates the declarations it names. This is how a tool that
+     * appeared after login (a reloaded server plugin, for example) becomes visible without a new packet type.
+     */
+    public static CompletableFuture<Void> refreshCatalog() {
+        JsonObject args = new JsonObject();
+        return INSTANCE.call(ToolId.of("tianshu", "tool.catalog"), args, ToolCaller.mod("tianshu"), 5_000L)
+                .thenAccept(value -> {
+                    if (value == null || !value.isJsonObject()) {
+                        return;
+                    }
+                    JsonObject result = value.getAsJsonObject();
+                    if (!result.has("tools") || !result.get("tools").isJsonArray()) {
+                        return;
+                    }
+                    JsonArray tools = result.getAsJsonArray("tools");
+                    List<String> ids = new ArrayList<>();
+                    for (JsonElement element : tools) {
+                        if (element.isJsonPrimitive()) {
+                            ids.add(element.getAsString());
+                        }
+                    }
+                    ServerToolDeclarations.synchronize(ids);
+                });
+    }
+
     /** The platform reports a failed call (refused, malformed, transport error). */
     public static void fail(String requestId, ToolError code, String message) {
         INSTANCE.failPending(requestId, code, message);
+    }
+
+    /** True when the current session has a transport that can reach the server component. */
+    public static boolean isAvailable() {
+        return INSTANCE.available();
     }
 
     @Override

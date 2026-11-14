@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.tool;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -24,6 +25,8 @@ public final class ServerToolDispatch {
     private static final int MAX_CACHED_REPLIES = 512;
     /** Reserved id understood by the dispatcher itself; it is not a registered tool. */
     public static final String CANCEL_TOOL_ID = "tianshu:tool.cancel";
+    /** Reserved id understood by the dispatcher itself: returns the server catalogue for the calling player. */
+    public static final String CATALOG_TOOL_ID = "tianshu:tool.catalog";
 
     /** What the adapter puts on the wire; already fitted to {@link ToolWireLimits}. */
     public record Reply(String requestId, boolean ok, String valueJson, String errorCode, String message) {
@@ -52,6 +55,9 @@ public final class ServerToolDispatch {
                                                    String argsJson) {
         if (CANCEL_TOOL_ID.equals(toolId)) {
             return CompletableFuture.completedFuture(cancelReply(caller, requestId, argsJson));
+        }
+        if (CATALOG_TOOL_ID.equals(toolId)) {
+            return CompletableFuture.completedFuture(catalogReply(caller, requestId));
         }
         String key = caller.id() + "|" + (requestId == null ? "" : requestId);
         Reply replay = completed(key);
@@ -88,6 +94,14 @@ public final class ServerToolDispatch {
         }
         running.cancel(true);
         return true;
+    }
+
+    private static Reply catalogReply(ToolCaller caller, String requestId) {
+        JsonArray ids = new JsonArray();
+        TianshuTools.catalog(caller, ToolSide.SERVER).forEach(spec -> ids.add(spec.id().toString()));
+        JsonObject result = new JsonObject();
+        result.add("tools", ids);
+        return Reply.of(requestId, true, result.toString(), "", "");
     }
 
     private static Reply cancelReply(ToolCaller caller, String requestId, String argsJson) {

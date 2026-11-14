@@ -16,6 +16,8 @@ import com.rheinmetal.tianshu.core.TianshuCoreManager;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -25,6 +27,8 @@ import java.util.function.Consumer;
 public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     /** How long shutdown waits for the kernel to tear its modules down before releasing client resources anyway. */
     private static final long DESTROY_TIMEOUT_MILLIS = 5_000L;
+    /** Server tools may change after login; polling the reserved catalogue call keeps declarations current. */
+    private static final long CATALOG_REFRESH_SECONDS = 60L;
 
     private final CoreLifecycle core;
     private final Runnable startClientResources;
@@ -43,6 +47,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private volatile TextCapabilityProvider builtInPrompts;
     private volatile McpBridge mcp;
     private volatile McpServer mcpServer;
+    private volatile ScheduledExecutorService catalogRefresher;
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
     private boolean worldSessionRequested;
@@ -120,6 +125,13 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             }
         }
         ConnectionToolChannel.install();
+        catalogRefresher = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "tianshu-catalog");
+            thread.setDaemon(true);
+            return thread;
+        });
+        catalogRefresher.scheduleWithFixedDelay(TianshuClientRuntime::refreshCatalogQuietly,
+                CATALOG_REFRESH_SECONDS, CATALOG_REFRESH_SECONDS, TimeUnit.SECONDS);
         startClientResources.run();
     }
 
@@ -165,6 +177,11 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
 
     @Override
     public void shutdown() {
+        ScheduledExecutorService refresher = catalogRefresher;
+        if (refresher != null) {
+            refresher.shutdownNow();
+            catalogRefresher = null;
+        }
         SkillFileProvider provider = skills;
         if (provider != null) {
             provider.unload();
@@ -228,6 +245,17 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             shutdownAudio.run();
             closeDiagnostics.run();
             closeIndex.run();
+        }
+    }
+
+    private static void refreshCatalogQuietly() {
+        if (!ConnectionToolChannel.isAvailable()) {
+            return;
+        }
+        try {
+            ConnectionToolChannel.refreshCatalog().exceptionally(failure -> null);
+        } catch (RuntimeException ignored) {
+            // A failed refresh leaves the previous declarations in place; the next tick tries again.
         }
     }
 

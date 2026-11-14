@@ -62,6 +62,36 @@ public final class ServerToolDeclarations {
         }
     }
 
+    /**
+     * Makes the active set match the catalogue exactly: activates new ids and withdraws ones the server no longer
+     * names. Login and a periodic refresh both use this, so a removed tool does not linger after its server changed.
+     */
+    public static void synchronize(List<String> serverToolIds) {
+        if (serverToolIds == null) {
+            return;
+        }
+        java.util.Set<ToolId> desired = new java.util.HashSet<>();
+        for (String raw : serverToolIds) {
+            if (raw == null) {
+                continue;
+            }
+            try {
+                desired.add(ToolId.parse(raw));
+            } catch (IllegalArgumentException malformed) {
+                // Ignore malformed ids; the server will correct them on the next catalogue.
+            }
+        }
+        for (ToolId id : java.util.List.copyOf(REGISTERED)) {
+            if (desired.contains(id)) {
+                continue;
+            }
+            TianshuTools.unregister(id);
+            REGISTERED.remove(id);
+            ACTIVATED.remove(id);
+        }
+        activate(serverToolIds);
+    }
+
     /** Withdraws everything the catalog had activated; declarations stay, so the next server can re-activate. */
     public static void deactivateAll() {
         for (ToolId id : REGISTERED) {

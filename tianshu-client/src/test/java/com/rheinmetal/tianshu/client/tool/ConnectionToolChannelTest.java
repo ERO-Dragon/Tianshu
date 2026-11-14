@@ -33,6 +33,7 @@ class ConnectionToolChannelTest {
 
     private static final ToolId REMOTE = ToolId.of("test", "remote");
     private static final ToolId OPERATOR_ONLY = ToolId.of("test", "operator-remote");
+    private static final ToolId DECLARED = ToolId.of("test", "declared");
 
     private final AtomicReference<String> lastRequestId = new AtomicReference<>();
     private final AtomicReference<JsonElement> lastArgs = new AtomicReference<>();
@@ -57,6 +58,7 @@ class ConnectionToolChannelTest {
         ConnectionToolChannel.uninstall();
         TianshuTools.unregister(REMOTE);
         TianshuTools.unregister(OPERATOR_ONLY);
+        ServerToolDeclarations.clearForTests();
         TianshuRuntimePorts.clear();
         TianshuTools.uninstallServerChannel();
     }
@@ -73,6 +75,20 @@ class ConnectionToolChannelTest {
         assertTrue(result.get("ok").getAsBoolean());
         assertEquals("world", result.getAsJsonObject("result").get("reply").getAsString());
         assertEquals("hello", lastArgs.get().getAsJsonObject().get("text").getAsString());
+    }
+
+    @Test
+    void aCatalogRefreshActivatesTheDeclarationsTheServerNames() throws Exception {
+        ServerToolDeclarations.declare(new RemoteTool(DECLARED, ToolCategory.SERVER_READ,
+                ToolPolicy.forCategory(ToolCategory.SERVER_READ)));
+
+        CompletableFuture<Void> refresh = ConnectionToolChannel.refreshCatalog();
+        assertEquals(ToolId.of("tianshu", "tool.catalog"), lastToolId.get());
+        ConnectionToolChannel.complete(lastRequestId.get(),
+                JsonParser.parseString("{\"tools\":[\"test:declared\"]}"));
+
+        refresh.get(2, TimeUnit.SECONDS);
+        assertEquals(DECLARED, TianshuTools.find(DECLARED).id());
     }
 
     @Test

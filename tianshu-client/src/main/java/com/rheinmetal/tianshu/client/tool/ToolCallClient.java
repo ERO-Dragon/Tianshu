@@ -45,7 +45,7 @@ public final class ToolCallClient implements ToolTransport {
     }
 
     public void receiveCatalog(List<String> toolIds) {
-        ServerToolDeclarations.activate(toolIds);
+        ServerToolDeclarations.synchronize(toolIds);
         catalogReceived.set(true);
     }
 
