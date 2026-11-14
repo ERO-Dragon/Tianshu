@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.architecture;
 
 import com.rheinmetal.tianshu.testkit.AdapterSources;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -19,7 +20,9 @@ class ModuleConfigurationBoundaryTest {
      */
     private static final Path REPO_ROOT = Path.of("../..");
     private static final Map<String, Path> FUNCTION_SOURCES = functionSources();
-    private static final Path NEOFORGE_SOURCES = AdapterSources.adapter("-neoforge", "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java").resolve("src/main/java");
+    private static final Path NEOFORGE_SOURCES = AdapterSources.findAdapter("-neoforge",
+            "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java")
+            .map(path -> path.resolve("src/main/java")).orElse(null);
 
     @Test
     void functionModulesMustNotDependOnAggregateHostConfiguration() throws Exception {
@@ -56,6 +59,7 @@ class ModuleConfigurationBoundaryTest {
 
     @Test
     void neoforgeKeepsOneTomlConfigurationOwnerPerSide() throws Exception {
+        Assumptions.assumeTrue(NEOFORGE_SOURCES != null, "this branch has no NeoForge adapter");
         List<String> specOwners = violations(NEOFORGE_SOURCES, "new ModConfigSpec.Builder()").stream()
                 .map(owner -> owner.replace('\\', '/'))
                 .toList();

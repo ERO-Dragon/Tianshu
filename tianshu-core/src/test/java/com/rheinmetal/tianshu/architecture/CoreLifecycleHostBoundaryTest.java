@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.architecture;
 
 import com.rheinmetal.tianshu.testkit.AdapterSources;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -14,12 +15,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CoreLifecycleHostBoundaryTest {
     /** The 1.21.1 pair is the reference adapter; the other versions mirror its structure. */
     private static final Path NEOFORGE_ROOT =
-            AdapterSources.adapter("-neoforge", "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java").resolve("src/main/java");
+            AdapterSources.findAdapter("-neoforge", "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java")
+                    .map(path -> path.resolve("src/main/java")).orElse(null);
     private static final Path COMMON_ROOT =
             AdapterSources.common("src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java").resolve("src/main/java");
 
     @Test
     void coreLifecycleQueueDoesNotBecomeASecondProtocolTaskScheduler() throws Exception {
+        Assumptions.assumeTrue(NEOFORGE_ROOT != null, "this branch has no NeoForge adapter");
         String queue = coreSource("com/rheinmetal/tianshu/core/runtime/CoreLifecycleCommandQueue.java");
 
         assertFalse(queue.contains("ProtocolRuntime"));
@@ -84,6 +87,7 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void onnxBootstrapIsAnOptionalLifecycleModuleInsteadOfLoginThreadWork() throws Exception {
+        Assumptions.assumeTrue(NEOFORGE_ROOT != null, "this branch has no NeoForge adapter");
         Path neoforgeRoot = NEOFORGE_ROOT;
         String bootstrap = Files.readString(
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
@@ -114,6 +118,7 @@ class CoreLifecycleHostBoundaryTest {
 
     @Test
     void namedObjectIndexBelongsToTheModuleThatReadsSpeech() throws Exception {
+        Assumptions.assumeTrue(NEOFORGE_ROOT != null, "this branch has no NeoForge adapter");
         Path neoforgeRoot = NEOFORGE_ROOT.resolve("com/rheinmetal/tianshu/neoforge");
         Path platformClientRoot = Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
         String bootstrap = Files.readString(
