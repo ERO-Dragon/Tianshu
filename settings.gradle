@@ -19,60 +19,28 @@ plugins {
 rootProject.name = 'Tianshu'
 
 include 'tianshu-api'
+project(':tianshu-api').projectDir = file('core/tianshu-api')
 include 'tianshu-core'
+project(':tianshu-core').projectDir = file('core/tianshu-core')
 include 'tianshu-testkit'
+project(':tianshu-testkit').projectDir = file('core/tianshu-testkit')
 include 'tianshu-intake'
+project(':tianshu-intake').projectDir = file('core/tianshu-intake')
 include 'tianshu-echo'
+project(':tianshu-echo').projectDir = file('core/tianshu-echo')
 include 'tianshu-weaving'
+project(':tianshu-weaving').projectDir = file('core/tianshu-weaving')
 include 'tianshu-auxilium'
+project(':tianshu-auxilium').projectDir = file('core/tianshu-auxilium')
 include 'tianshu-presence'
+project(':tianshu-presence').projectDir = file('core/tianshu-presence')
 include 'tianshu-client'
+project(':tianshu-client').projectDir = file('core/tianshu-client')
 // Dev-only arbitration bench; never packaged by an adapter and not part of `featureModules`.
 include 'tianshu-lab'
+project(':tianshu-lab').projectDir = file('core/tianshu-lab')
 
 // One project per shipped Minecraft version. The shared `*-common` trees are not projects: each adapter compiles
 // the tree its `shared_layer` property names, so this list is the build surface and `verifyAdapterMatrixCoverage`
 // checks it against the shipped matrix. Adding a version means adding its directory and this line.
 include 'tianshu-adapter:1.20-fabric'
-include 'tianshu-adapter:1.20.1-fabric'
-include 'tianshu-adapter:1.20.1-neoforge'
-include 'tianshu-adapter:1.20.2-fabric'
-include 'tianshu-adapter:1.20.2-neoforge'
-include 'tianshu-adapter:1.20.3-fabric'
-include 'tianshu-adapter:1.20.3-neoforge'
-include 'tianshu-adapter:1.20.4-fabric'
-include 'tianshu-adapter:1.20.4-neoforge'
-include 'tianshu-adapter:1.20.5-fabric'
-include 'tianshu-adapter:1.20.5-neoforge'
-include 'tianshu-adapter:1.20.6-fabric'
-include 'tianshu-adapter:1.20.6-neoforge'
-include 'tianshu-adapter:1.21-fabric'
-include 'tianshu-adapter:1.21.1-fabric'
-include 'tianshu-adapter:1.21-neoforge'
-include 'tianshu-adapter:1.21.1-neoforge'
-include 'tianshu-adapter:1.21.2-fabric'
-include 'tianshu-adapter:1.21.2-neoforge'
-include 'tianshu-adapter:1.21.3-fabric'
-include 'tianshu-adapter:1.21.3-neoforge'
-include 'tianshu-adapter:1.21.4-fabric'
-include 'tianshu-adapter:1.21.4-neoforge'
-include 'tianshu-adapter:1.21.5-fabric'
-include 'tianshu-adapter:1.21.5-neoforge'
-include 'tianshu-adapter:1.21.6-fabric'
-include 'tianshu-adapter:1.21.6-neoforge'
-include 'tianshu-adapter:1.21.7-fabric'
-include 'tianshu-adapter:1.21.7-neoforge'
-include 'tianshu-adapter:1.21.8-fabric'
-include 'tianshu-adapter:1.21.8-neoforge'
-include 'tianshu-adapter:1.21.9-fabric'
-include 'tianshu-adapter:1.21.9-neoforge'
-include 'tianshu-adapter:1.21.10-fabric'
-include 'tianshu-adapter:1.21.10-neoforge'
-include 'tianshu-adapter:1.21.11-fabric'
-include 'tianshu-adapter:1.21.11-neoforge'
-include 'tianshu-adapter:26.1-fabric'
-include 'tianshu-adapter:26.1-neoforge'
-include 'tianshu-adapter:26.2-fabric'
-include 'tianshu-adapter:26.2-neoforge'
-include 'tianshu-adapter:26.3-fabric'
-include 'tianshu-adapter:26.3-neoforge'
