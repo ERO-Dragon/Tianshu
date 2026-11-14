@@ -1,0 +1,15 @@
+[
+  {
+    "name": "deepseek-flash",
+    "displayName": "DeepSeek Flash",
+    "sampling": {
+      "standard": {
+        "temperature": 0.0,
+        "topP": 0.95,
+        "frequencyPenalty": 0.0,
+        "presencePenalty": 0.0
+      }
+    },
+    "lang": ["zh", "en"]
+  }
+]
