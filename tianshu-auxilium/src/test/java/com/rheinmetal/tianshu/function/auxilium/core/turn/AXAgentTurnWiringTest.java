@@ -143,6 +143,7 @@ class AXAgentTurnWiringTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Disabled("A3: main dialogue has no tools until the Tianshu phase; the tool turn is covered by AXToolRoundHandlerTest")
     void aToolCallIsExecutedAndOnlyTheFinalAnswerIsSpoken() {
         ToolId echo = ToolId.of("test", "echo");
         TianshuTools.register(new WiringEchoTool(echo));

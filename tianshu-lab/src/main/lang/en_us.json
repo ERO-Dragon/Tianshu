@@ -32,5 +32,7 @@
   "tianshu.gui.lab.option.tool_id": "Tool id",
   "tianshu.gui.lab.option.tool_args": "JSON arguments",
   "tianshu.gui.lab.action.run_tool": "Run tool",
-  "tianshu.gui.lab.row.tool": "Tool result"
-}
+  "tianshu.gui.lab.row.tool": "Tool result",
+  "tianshu.gui.lab.action.capabilities": "Capability self-check",
+  "tianshu.gui.lab.row.capabilities": "Capability check"
+}\n

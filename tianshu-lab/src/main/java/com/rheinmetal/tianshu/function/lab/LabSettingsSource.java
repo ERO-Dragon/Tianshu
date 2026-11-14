@@ -25,6 +25,7 @@ import java.util.Locale;
 public final class LabSettingsSource implements TianshuSettingsRegistrySource {
     private final LabModuleControl module;
     private final LabToolConsole tools = new LabToolConsole();
+    private final LabCapabilityCheck capabilities = new LabCapabilityCheck();
 
     public LabSettingsSource(LabModuleControl module) {
         this.module = module;
@@ -65,7 +66,13 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                         .button("lab.release", lab("action.release"), module::releaseCurrentSession, module::sessionHeld)
                         .button("lab.extend", lab("action.extend"), module::extendCurrentSession, module::sessionHeld)
                         .button("lab.tool.run", lab("action.run_tool"), SettingsButtonStyle.PRIMARY,
-                                tools::run, () -> true))
+                                tools::run, () -> true)
+                        .button("lab.capabilities", lab("action.capabilities"), SettingsButtonStyle.PRIMARY,
+                                () -> {
+                                    Thread worker = new Thread(capabilities::run, "tianshu-lab-check");
+                                    worker.setDaemon(true);
+                                    worker.start();
+                                }, () -> true))
                 .status("lab.status", lab("section.status"), module::debugEnabled, module::debugEnabled, status -> status
                         .row("lab.status.participants", lab("row.participants"), () -> {
                             String ids = module.registeredParticipants();
@@ -85,6 +92,10 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                         })
                         .row("lab.status.tool", lab("row.tool"), () -> {
                             String text = tools.result();
+                            return text.isBlank() ? common("dash") : UiText.literal(text);
+                        })
+                        .row("lab.status.capabilities", lab("row.capabilities"), () -> {
+                            String text = capabilities.report();
                             return text.isBlank() ? common("dash") : UiText.literal(text);
                         }));
     }

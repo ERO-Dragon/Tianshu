@@ -475,10 +475,13 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         // for the envelope happens on the submitter's long-running thread, never on the caller's lane.
         AXStepSignal<LLMPromptResultPayload> step = new AXStepSignal<>();
         PendingTurn pending = new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn, step, historyMark);
-        // Tool-enabled turns keep the same delivery handler; the round handler only intercepts model calls.
-        AXToolRoundHandler toolRound = AXToolRoundHandler.prepare(llmPayload, pending,
-                (payload, handler) -> submitAgentRequest(execution, deliveryEnvelope, payload, handler),
-                pending::discardHeldStream);
+        // A3: the main dialogue is tool-free until the Tianshu phase. The policy is the source of truth; when a
+        // later phase flips toolsAllowed, the round handler comes back without touching this method again.
+        AXToolRoundHandler toolRound = AXRunPolicy.simple().toolsAllowed()
+                ? AXToolRoundHandler.prepare(llmPayload, pending,
+                        (payload, handler) -> submitAgentRequest(execution, deliveryEnvelope, payload, handler),
+                        pending::discardHeldStream)
+                : null;
         LLMPromptRequestPayload firstPayload = toolRound == null ? llmPayload : toolRound.firstPayload(llmPayload);
         AXLlmRequestHandler firstHandler = toolRound == null ? pending : toolRound;
         // Clear first so a stale id from a previous turn can never be cancelled (§12.2).

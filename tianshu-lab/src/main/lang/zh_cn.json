@@ -32,5 +32,7 @@
   "tianshu.gui.lab.option.tool_id": "工具 id",
   "tianshu.gui.lab.option.tool_args": "JSON 参数",
   "tianshu.gui.lab.action.run_tool": "执行工具",
-  "tianshu.gui.lab.row.tool": "工具结果"
-}
+  "tianshu.gui.lab.row.tool": "工具结果",
+  "tianshu.gui.lab.action.capabilities": "能力自检",
+  "tianshu.gui.lab.row.capabilities": "能力自检结果"
+}\n
