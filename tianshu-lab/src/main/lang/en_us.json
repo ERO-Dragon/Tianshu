@@ -27,5 +27,10 @@
   "tianshu.lab.participant.alpha": "Alpha (Crosshair)",
   "tianshu.lab.participant.beta": "Beta (Held Item)",
   "tianshu.lab.participant.gamma": "Gamma (Wake Word)",
-  "tianshu.chat.progress.lab.delivery": "LAB delivered to %s: %s (session %s)"
+  "tianshu.chat.progress.lab.delivery": "LAB delivered to %s: %s (session %s)",
+  "tianshu.gui.lab.section.tool": "Tool console (dev)",
+  "tianshu.gui.lab.option.tool_id": "Tool id",
+  "tianshu.gui.lab.option.tool_args": "JSON arguments",
+  "tianshu.gui.lab.action.run_tool": "Run tool",
+  "tianshu.gui.lab.row.tool": "Tool result"
 }

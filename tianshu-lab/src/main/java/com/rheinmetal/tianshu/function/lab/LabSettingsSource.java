@@ -24,6 +24,7 @@ import java.util.Locale;
  */
 public final class LabSettingsSource implements TianshuSettingsRegistrySource {
     private final LabModuleControl module;
+    private final LabToolConsole tools = new LabToolConsole();
 
     public LabSettingsSource(LabModuleControl module) {
         this.module = module;
@@ -53,13 +54,18 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                 .toggles("lab.behaviour", lab("section.behaviour"), module::debugEnabled, module::debugEnabled, group -> group
                         .toggle("lab.auto_release", lab("option.auto_release"),
                                 module::autoRelease, module::setAutoRelease, module::debugEnabled))
+                .options("lab.tool", lab("section.tool"), module::debugEnabled, module::debugEnabled, options -> options
+                        .text("lab.tool.id", lab("option.tool_id"), tools::toolId, tools::setToolId, module::debugEnabled)
+                        .text("lab.tool.args", lab("option.tool_args"), tools::argsJson, tools::setArgsJson, module::debugEnabled))
                 .actions("lab.actions", lab("section.actions"), module::debugEnabled, module::debugEnabled, actions -> actions
                         .button("lab.register", lab("action.register"), SettingsButtonStyle.PRIMARY,
                                 module::registerParticipants, () -> true)
                         .button("lab.unregister", lab("action.unregister"), SettingsButtonStyle.DANGER,
                                 module::unregisterParticipants, module::participantsRegistered)
                         .button("lab.release", lab("action.release"), module::releaseCurrentSession, module::sessionHeld)
-                        .button("lab.extend", lab("action.extend"), module::extendCurrentSession, module::sessionHeld))
+                        .button("lab.extend", lab("action.extend"), module::extendCurrentSession, module::sessionHeld)
+                        .button("lab.tool.run", lab("action.run_tool"), SettingsButtonStyle.PRIMARY,
+                                tools::run, () -> true))
                 .status("lab.status", lab("section.status"), module::debugEnabled, module::debugEnabled, status -> status
                         .row("lab.status.participants", lab("row.participants"), () -> {
                             String ids = module.registeredParticipants();
@@ -76,6 +82,10 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                         .row("lab.status.error", lab("row.error"), () -> {
                             String error = module.status().lastError();
                             return error.isBlank() ? common("dash") : UiText.literal(error);
+                        })
+                        .row("lab.status.tool", lab("row.tool"), () -> {
+                            String text = tools.result();
+                            return text.isBlank() ? common("dash") : UiText.literal(text);
                         }));
     }
 

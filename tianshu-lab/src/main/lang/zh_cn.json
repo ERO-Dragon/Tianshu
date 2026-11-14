@@ -27,5 +27,10 @@
   "tianshu.lab.participant.alpha": "Alpha（准星）",
   "tianshu.lab.participant.beta": "Beta（手持）",
   "tianshu.lab.participant.gamma": "Gamma（唤醒词）",
-  "tianshu.chat.progress.lab.delivery": "LAB 投递 → %s：%s（会话 %s）"
+  "tianshu.chat.progress.lab.delivery": "LAB 投递 → %s：%s（会话 %s）",
+  "tianshu.gui.lab.section.tool": "工具控制台（开发）",
+  "tianshu.gui.lab.option.tool_id": "工具 id",
+  "tianshu.gui.lab.option.tool_args": "JSON 参数",
+  "tianshu.gui.lab.action.run_tool": "执行工具",
+  "tianshu.gui.lab.row.tool": "工具结果"
 }
