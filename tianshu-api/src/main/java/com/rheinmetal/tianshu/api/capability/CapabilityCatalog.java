@@ -42,6 +42,8 @@ public final class CapabilityCatalog {
     }
 
     private static final Map<CapabilityId, Entry> ENTRIES = new ConcurrentHashMap<>();
+    private static final java.util.concurrent.atomic.AtomicLong REVISION =
+            new java.util.concurrent.atomic.AtomicLong();
 
     private CapabilityCatalog() {
     }
@@ -57,11 +59,19 @@ public final class CapabilityCatalog {
         if (existing != null) {
             throw new IllegalArgumentException("capability " + descriptor.id() + " is already registered");
         }
+        REVISION.incrementAndGet();
     }
 
     /** Removes a capability; the entry disappears from every consumer's view immediately. */
     public static void unregister(CapabilityId id) {
-        ENTRIES.remove(id);
+        if (ENTRIES.remove(id) != null) {
+            REVISION.incrementAndGet();
+        }
+    }
+
+    /** Monotonic change counter: consumers can poll it and refresh their view when it moves. */
+    public static long revision() {
+        return REVISION.get();
     }
 
     public static Optional<CapabilityDescriptor> find(CapabilityId id) {
@@ -141,6 +151,7 @@ public final class CapabilityCatalog {
                     "capability id " + descriptor.id() + " is already used by a non-tool capability");
         }
         ENTRIES.put(descriptor.id(), new Entry(descriptor, null));
+        REVISION.incrementAndGet();
     }
 
     /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */
@@ -160,12 +171,15 @@ public final class CapabilityCatalog {
 
     /** Kernel use: drops a mirrored tool entry. Not part of the consumer contract. */
     public static void removeTool(CapabilityId id) {
-        ENTRIES.remove(id);
+        if (ENTRIES.remove(id) != null) {
+            REVISION.incrementAndGet();
+        }
     }
 
     /** Tests only. */
     public static void clear() {
         ENTRIES.clear();
+        REVISION.incrementAndGet();
     }
 
     private static long timeoutOf(CapabilityDescriptor descriptor) {

@@ -161,7 +161,13 @@ public final class TianshuTools {
                                                          ToolSide side) {
         try {
             TianshuTool<?, ?> tool = requireUsable(id, caller, side);
-            return executeJson(tool, args, caller, side);
+            JsonElement safeArgs = args == null ? new JsonObject() : args;
+            List<String> schemaErrors = ToolArgumentValidator.validate(tool.argsSchema(), safeArgs);
+            if (!schemaErrors.isEmpty()) {
+                return CompletableFuture.completedFuture(errorEnvelope(ToolError.INVALID_ARGS,
+                        "invalid arguments for " + id + ": " + String.join("; ", schemaErrors)));
+            }
+            return executeJson(tool, safeArgs, caller, side);
         } catch (ToolException failure) {
             return CompletableFuture.completedFuture(failureEnvelope(failure));
         } catch (JsonParseException malformed) {

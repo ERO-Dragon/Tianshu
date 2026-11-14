@@ -72,6 +72,19 @@ class CapabilityCatalogTest {
     }
 
     @Test
+    void theRevisionMovesWhenTheTableChanges() {
+        long start = CapabilityCatalog.revision();
+        CapabilityId id = CapabilityId.of("test", "revision");
+        CapabilityCatalog.register(descriptor(id, CapabilityKind.SKILL, ToolPermission.EVERYONE, ToolSide.CLIENT),
+                textHandler("x"));
+        long registered = CapabilityCatalog.revision();
+        assertTrue(registered > start);
+
+        CapabilityCatalog.unregister(id);
+        assertTrue(CapabilityCatalog.revision() > registered);
+    }
+
+    @Test
     void toolsAreMirroredIntoTheTableAndExecutedThroughTheRegistry() throws Exception {
         TianshuTools.register(new EchoTool());
 
