@@ -21,5 +21,6 @@ class LabCapabilityCheckTest {
         assertEquals("capability.self_check", event.code());
         assertTrue(event.attributes().containsKey("counts"));
         assertTrue(event.attributes().get("tool").startsWith("tool tianshu:inventory.inspect:"));
+        assertTrue(event.attributes().get("runtimeSkill").startsWith("skill lab:runtime-skill: OK"));
     }
 }

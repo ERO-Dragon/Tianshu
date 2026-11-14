@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.lab;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
@@ -11,6 +12,7 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
@@ -52,12 +54,13 @@ public final class LabCapabilityCheck {
                 + " resource=" + counts.getOrDefault(CapabilityKind.RESOURCE, 0)
                 + " prompt=" + counts.getOrDefault(CapabilityKind.PROMPT, 0);
         String skill = read("skill", CapabilityId.of("tianshu", "tianshu-tools"), new JsonObject(), 200);
+        String runtimeSkill = runtimeSkill();
         String resource = read("resource", CapabilityId.of("tianshu", "game-basics"), new JsonObject(), 120);
         JsonObject promptArgs = new JsonObject();
         promptArgs.addProperty("lines", "3");
         String prompt = read("prompt", CapabilityId.of("tianshu", "concise"), promptArgs, 120);
         String tool = tool();
-        report = String.join("\n", List.of(countLine, skill, resource, prompt, tool));
+        report = String.join("\n", List.of(countLine, skill, resource, prompt, tool, runtimeSkill));
 
         Map<String, String> attributes = new LinkedHashMap<>();
         attributes.put("counts", countLine);
@@ -65,8 +68,13 @@ public final class LabCapabilityCheck {
         attributes.put("resource", resource);
         attributes.put("prompt", prompt);
         attributes.put("tool", tool);
-        diagnostics.publish(DiagnosticEvent.now(LabModule.MODULE_ID, "capability.self_check",
-                DiagnosticSeverity.INFO, DiagnosticPrivacy.PUBLIC, attributes));
+        attributes.put("runtimeSkill", runtimeSkill);
+        try {
+            diagnostics.publish(DiagnosticEvent.now(LabModule.MODULE_ID, "capability.self_check",
+                    DiagnosticSeverity.INFO, DiagnosticPrivacy.PUBLIC, attributes));
+        } catch (RuntimeException ignored) {
+            // Diagnostics is observability; a broken sink must not hide the UI result.
+        }
         LOGGER.log(System.Logger.Level.INFO, "capability self-check:\n{0}", report);
     }
 
@@ -82,6 +90,33 @@ public final class LabCapabilityCheck {
                     + oneLine(text, limit) + '\n';
         } catch (Exception failure) {
             return label + " " + id + ": FAILED " + failure.getClass().getSimpleName() + '\n';
+        }
+    }
+
+    private static String runtimeSkill() {
+        CapabilityId id = CapabilityId.of("lab", "runtime-skill");
+        CapabilityCatalog.unregister(id);
+        try {
+            JsonObject attributes = new JsonObject();
+            attributes.addProperty("name", "Runtime skill");
+            CapabilityCatalog.register(new CapabilityDescriptor(id, CapabilityKind.SKILL,
+                            CapabilityBinding.LOCAL, "Registered by the lab self-check", ToolSide.CLIENT,
+                            ToolPermission.EVERYONE, "lab", attributes),
+                    (context, args) -> {
+                        JsonObject envelope = new JsonObject();
+                        envelope.addProperty("ok", true);
+                        envelope.addProperty("text", "registered skill body");
+                        return java.util.concurrent.CompletableFuture.completedFuture(envelope);
+                    });
+            JsonObject envelope = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.player("lab", true),
+                    ToolSide.CLIENT).get(5, TimeUnit.SECONDS);
+            boolean ok = envelope.has("ok") && envelope.get("ok").getAsBoolean()
+                    && envelope.has("text") && "registered skill body".equals(envelope.get("text").getAsString());
+            return "skill " + id + ": " + (ok ? "OK" : "FAILED " + shortText(envelope));
+        } catch (Exception failure) {
+            return "skill " + id + ": FAILED " + failure.getClass().getSimpleName();
+        } finally {
+            CapabilityCatalog.unregister(id);
         }
     }
 
