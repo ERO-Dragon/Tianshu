@@ -25,6 +25,24 @@ tasks.withType(JavaCompile).configureEach {
 def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium', 'tianshu-presence']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
 
+// A feature module owns no loader; its development run delegates to the current adapter branch. The adapter
+// decides the loader, and the existing -PfeatureMods task-path detection then installs only that feature and
+// its hard dependencies.
+def availableAdapters = file('tianshu-adapter').listFiles()?.findAll {
+    it.isDirectory() && new File(it, 'adapter.properties').isFile()
+} ?: []
+def requestedAdapter = findProperty('adapter')?.toString()
+def requestedLoader = (findProperty('loader') ?: 'neoforge').toString()
+def selectedAdapter = requestedAdapter ?: {
+    def matching = availableAdapters.findAll { it.name.endsWith("-${requestedLoader}") }
+    def fallback = availableAdapters.findAll { it.name.endsWith('-fabric') }
+    return (matching ?: fallback)?.sort { it.name }?.first()?.name
+}()
+if (selectedAdapter == null || !availableAdapters.any { it.name == selectedAdapter }) {
+    throw new GradleException("no adapter selected; pass -Padapter=<adapter directory> or -Ploader=fabric|neoforge")
+}
+
+
 // One jar per Minecraft line, and the oldest line the product ships for (1.20.1) runs Java 17: the platform-neutral
 // modules therefore emit 17-compatible bytecode. That is the common denominator — a 21/25 JVM runs 17 bytecode
 // unchanged, while a 17 adapter could not read classes compiled for 21. The adapters are deliberately not covered:
@@ -760,7 +778,7 @@ tasks.register('verifyProtocolVersionSingleSource') {
 tasks.register('verifySettingsRenderersCoverOptionEntries') {
     group = 'verification'
     description = 'Every shared settings renderer must draw every option-entry variant the kernel model declares.'
-    def modelFile = file('core/tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
+    def modelFile = file('../Tianshu-ferry/tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
     def commonTrees = (file('tianshu-adapter').listFiles() ?: [] as File[])
             .findAll { it.isDirectory() && it.name.endsWith('-common') }
             .sort { it.name }
@@ -839,7 +857,7 @@ allprojects {
 tasks.register('runClient') {
     group = 'tianshu'
     description = 'Runs the development client with every feature module installed.'
-    dependsOn ':tianshu-adapter:1.21.1-neoforge:runClient'
+    dependsOn ":tianshu-adapter:${selectedAdapter}:runClient"
 }
 
 subprojects {
@@ -848,7 +866,7 @@ subprojects {
             tasks.register('runClient') {
                 group = 'tianshu'
                 description = "Runs the development client with ${name} and the modules it requires."
-                dependsOn ':tianshu-adapter:1.21.1-neoforge:runClient'
+                dependsOn ":tianshu-adapter:${selectedAdapter}:runClient"
             }
         }
     }
