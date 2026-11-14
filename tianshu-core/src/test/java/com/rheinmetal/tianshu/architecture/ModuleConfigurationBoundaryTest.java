@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.architecture;
 
 import com.rheinmetal.tianshu.testkit.AdapterSources;
 import org.junit.jupiter.api.Assumptions;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -18,7 +19,7 @@ class ModuleConfigurationBoundaryTest {
      * Feature sources live beside the kernel, not inside it. The old root pointed at tianshu-core's own
      * {@code src/main/java}, so every scan below read an empty tree and the gate could never fail.
      */
-    private static final Path REPO_ROOT = Path.of("../..");
+    private static final Path REPO_ROOT = WorkspacePaths.require("..");
     private static final Map<String, Path> FUNCTION_SOURCES = functionSources();
     private static final Path NEOFORGE_SOURCES = AdapterSources.findAdapter("-neoforge",
             "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java")

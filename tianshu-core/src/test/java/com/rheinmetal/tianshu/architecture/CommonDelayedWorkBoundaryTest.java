@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.architecture;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -19,10 +20,7 @@ class CommonDelayedWorkBoundaryTest {
                 "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/module/gamecontext/AXDynamicFactClient.java"
         );
         for (String relativeSource : relativeSources) {
-            Path source = Path.of(relativeSource);
-            if (!Files.exists(source)) {
-                source = Path.of("..", relativeSource);
-            }
+            Path source = WorkspacePaths.require(relativeSource);
             String text = Files.readString(source, StandardCharsets.UTF_8);
             assertFalse(text.contains("CompletableFuture.delayedExecutor"), relativeSource);
         }

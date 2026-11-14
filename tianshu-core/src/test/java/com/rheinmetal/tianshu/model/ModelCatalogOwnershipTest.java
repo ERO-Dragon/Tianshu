@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.testkit.RepositoryFiles;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -31,7 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModelCatalogOwnershipTest {
 
     /** Repository root, relative to this module's test working directory. */
-    private static final Path REPO = Path.of("..");
 
     private static final String CATALOG_ROOT = "com/rheinmetal/tianshu/model/catalog";
 
@@ -45,8 +45,8 @@ class ModelCatalogOwnershipTest {
 
     @Test
     void theKernelShipsNoCatalogOfItsOwn() throws Exception {
-        Path resources = REPO.resolve("tianshu-core/src/main/resources");
-        if (!Files.isDirectory(resources)) {
+        Path resources = WorkspacePaths.find("tianshu-core/src/main/resources").orElse(null);
+        if (resources == null || !Files.isDirectory(resources)) {
             return;
         }
         try (Stream<Path> tree = Files.walk(resources)) {
@@ -62,10 +62,12 @@ class ModelCatalogOwnershipTest {
     @Test
     void noCatalogExistsOutsideItsOwningModule() throws Exception {
         List<String> duplicates = new ArrayList<>();
-        for (Path path : RepositoryFiles.regularFiles(REPO)) {
+        for (Path root : WorkspacePaths.roots()) {
+            for (Path path : RepositoryFiles.regularFiles(root)) {
             String normalized = normalized(path);
             if (normalized.contains("/src/main/resources/") && normalized.contains("/model/catalog/")) {
                 duplicates.add(normalized);
+            }
             }
         }
         assertEquals(List.of(
@@ -92,15 +94,15 @@ class ModelCatalogOwnershipTest {
 
     @Test
     void theIntentKeywordTableShipsWithTheModuleThatReadsIt() throws Exception {
-        Path owned = REPO.resolve(
+        Path owned = WorkspacePaths.require(
                 "tianshu-intake/src/main/resources/com/rheinmetal/tianshu/function/intake/repair/ir_intent_keywords.json");
         assertTrue(Files.isRegularFile(owned), "the intent keyword table must ship beside its loader: " + owned);
 
-        Path platformAsset = REPO.resolve("tianshu-client/src/main/resources/assets/tianshu/ir-intent-keywords.json");
-        assertFalse(Files.exists(platformAsset),
+        Path platformAsset = WorkspacePaths.find("tianshu-client/src/main/resources/assets/tianshu/ir-intent-keywords.json").orElse(null);
+        assertFalse(platformAsset != null && Files.exists(platformAsset),
                 "the table must not stay in the client's resource-pack assets: two copies would race");
 
-        String loader = Files.readString(REPO.resolve(
+        String loader = Files.readString(WorkspacePaths.require(
                 "tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/repair/core/IntentKeywordLoader.java"),
                 StandardCharsets.UTF_8);
         assertTrue(loader.contains(
@@ -113,15 +115,15 @@ class ModelCatalogOwnershipTest {
     }
 
     private static void assertShipsWith(String module, String fileName) {
-        Path owned = REPO.resolve(module + "/src/main/resources/" + CATALOG_ROOT + "/" + fileName);
+        Path owned = WorkspacePaths.require(module + "/src/main/resources/" + CATALOG_ROOT + "/" + fileName);
         assertTrue(Files.isRegularFile(owned), module + " must ship " + fileName + ": " + owned);
 
-        Path legacy = REPO.resolve("tianshu-core/src/main/resources/com/rheinmetal/tianshu/constant/" + fileName);
-        assertFalse(Files.exists(legacy), "the legacy kernel copy has to be gone, not duplicated: " + legacy);
+        Path legacy = WorkspacePaths.find("tianshu-core/src/main/resources/com/rheinmetal/tianshu/constant/" + fileName).orElse(null);
+        assertFalse(legacy != null && Files.exists(legacy), "the legacy kernel copy has to be gone, not duplicated: " + legacy);
     }
 
     private static void assertReaderNames(String readerPath, String expectedResource) throws Exception {
-        String reader = Files.readString(REPO.resolve(readerPath), StandardCharsets.UTF_8);
+        String reader = Files.readString(WorkspacePaths.require(readerPath), StandardCharsets.UTF_8);
         assertTrue(reader.contains("\"" + expectedResource + "\""),
                 readerPath + " has to read its catalog from " + expectedResource
                         + ": the module ships the data, the kernel keeps the reader");
@@ -137,8 +139,12 @@ class ModelCatalogOwnershipTest {
      */
     private static String normalized(Path path) {
         Path absolute = path.toAbsolutePath().normalize();
-        Path root = REPO.toAbsolutePath().normalize();
-        Path relative = absolute.startsWith(root) ? root.relativize(absolute) : absolute;
-        return relative.toString().replace('\\', '/');
+        for (Path root : WorkspacePaths.roots()) {
+            Path normalizedRoot = root.toAbsolutePath().normalize();
+            if (absolute.startsWith(normalizedRoot)) {
+                return normalizedRoot.relativize(absolute).toString().replace('\\', '/');
+            }
+        }
+        return absolute.toString().replace('\\', '/');
     }
 }

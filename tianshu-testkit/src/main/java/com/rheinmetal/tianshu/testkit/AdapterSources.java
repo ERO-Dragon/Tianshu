@@ -23,23 +23,23 @@ public final class AdapterSources {
     }
 
     public static Optional<Path> findAdapter(String suffix, String relativeFile) {
-        return find(adaptersRoot(), suffix, relativeFile);
+        return find(adaptersRoot(), suffix, relativeFile, true);
     }
 
     public static Path common(String relativeFile) {
-        return find(adaptersRoot(), "-common", relativeFile)
+        return find(adaptersRoot(), "-common", relativeFile, false)
                 .orElseThrow(() -> new IllegalStateException(
                         "no *-common adapter with " + relativeFile + " under " + adaptersRoot()));
     }
 
-    private static Optional<Path> find(Path root, String suffix, String relativeFile) {
+    private static Optional<Path> find(Path root, String suffix, String relativeFile, boolean requireAdapterProperties) {
         if (!Files.isDirectory(root)) {
             return Optional.empty();
         }
         try (Stream<Path> entries = Files.list(root)) {
             return entries
                     .filter(Files::isDirectory)
-                    .filter(path -> Files.isRegularFile(path.resolve("adapter.properties")))
+                    .filter(path -> !requireAdapterProperties || Files.isRegularFile(path.resolve("adapter.properties")))
                     .filter(path -> path.getFileName().toString().endsWith(suffix))
                     .filter(path -> !relativeFile.isBlank() && Files.isRegularFile(path.resolve(relativeFile)))
                     .findFirst();

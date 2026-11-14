@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.architecture;
 
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -33,10 +34,10 @@ class ModelDownloadProgressBoundaryTest {
     @Test
     void commonProductionDoesNotExposeLocalizedProgressLabels() throws Exception {
         List<Path> roots = List.of(
-                Path.of("tianshu-core/src/main/java/com/rheinmetal/tianshu/model"),
-                Path.of("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake"),
-                Path.of("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving"),
-                Path.of("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo")
+                WorkspacePaths.require("tianshu-core/src/main/java/com/rheinmetal/tianshu/model"),
+                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake"),
+                WorkspacePaths.require("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving"),
+                WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo")
         );
         for (Path relativeRoot : roots) {
             Path root = resolveFromWorkspace(relativeRoot);

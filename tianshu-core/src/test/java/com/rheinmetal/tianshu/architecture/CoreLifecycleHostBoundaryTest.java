@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.architecture;
 
 import com.rheinmetal.tianshu.testkit.AdapterSources;
 import org.junit.jupiter.api.Assumptions;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -55,7 +56,7 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String runtime = Files.readString(
-                Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client/runtime/TianshuClientRuntime.java"),
+                WorkspacePaths.require("tianshu-client/src/main/java/com/rheinmetal/tianshu/client/runtime/TianshuClientRuntime.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -93,7 +94,7 @@ class CoreLifecycleHostBoundaryTest {
                 neoforgeRoot.resolve("com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java"),
                 StandardCharsets.UTF_8
         );
-        Path clientRoot = Path.of("../tianshu-client/src/main/java");
+        Path clientRoot = WorkspacePaths.require("tianshu-client/src/main/java");
         Path modulePath = clientRoot.resolve(
                 "com/rheinmetal/tianshu/client/runtime/module/ClientOnnxRuntimeModule.java"
         );
@@ -120,7 +121,7 @@ class CoreLifecycleHostBoundaryTest {
     void namedObjectIndexBelongsToTheModuleThatReadsSpeech() throws Exception {
         Assumptions.assumeTrue(NEOFORGE_ROOT != null, "this branch has no NeoForge adapter");
         Path neoforgeRoot = NEOFORGE_ROOT.resolve("com/rheinmetal/tianshu/neoforge");
-        Path platformClientRoot = Path.of("../tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
+        Path platformClientRoot = WorkspacePaths.require("tianshu-client/src/main/java/com/rheinmetal/tianshu/client");
         String bootstrap = Files.readString(
                 neoforgeRoot.resolve("bootstrap/NeoForgeClientBootstrap.java"),
                 StandardCharsets.UTF_8
@@ -130,11 +131,11 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String manager = Files.readString(
-                Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/index/ClientNamedObjectIndexManager.java"),
+                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/index/ClientNamedObjectIndexManager.java"),
                 StandardCharsets.UTF_8
         );
         String provider = Files.readString(
-                Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/IntakeModuleProvider.java"),
+                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/IntakeModuleProvider.java"),
                 StandardCharsets.UTF_8
         );
         String reloadListener = Files.readString(
@@ -157,7 +158,7 @@ class CoreLifecycleHostBoundaryTest {
         assertTrue(reloadListener.contains("TianshuRuntimePorts.find(NamedObjectIndex.class)"));
     }
     private static String apiSource(String relativePath) throws Exception {
-        return Files.readString(Path.of("../tianshu-api/src/main/java").resolve(relativePath), StandardCharsets.UTF_8);
+        return Files.readString(WorkspacePaths.require("tianshu-api/src/main/java").resolve(relativePath), StandardCharsets.UTF_8);
     }
 
     private static String coreSource(String relativePath) throws Exception {

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.core;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,7 @@ class TianshuCoreManagerBoundaryTest {
 
     @Test
     void neoforgeDoesNotBypassCoreManagerBoundary() throws Exception {
-        Path adapterRoot = Path.of("../../tianshu-adapter");
+        Path adapterRoot = WorkspacePaths.require("tianshu-adapter");
         try (Stream<Path> files = Files.walk(adapterRoot)) {
             String bypasses = files
                     .filter(path -> path.toString().endsWith(".java"))

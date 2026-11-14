@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.model.lifecycle;
 
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.testkit.RepositoryFiles;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -35,13 +36,13 @@ class NativeModelLoadGateCallSiteBoundaryTest {
     private static final Path REPO = Path.of("..");
 
     private static final Path LLM_LANE =
-            Path.of("../tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/LlmEngineProvider.java");
+            WorkspacePaths.require("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/LlmEngineProvider.java");
     private static final Path LLM_MODULE =
-            Path.of("../tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/LlmModule.java");
+            WorkspacePaths.require("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/LlmModule.java");
     private static final Path ASR_LANE =
-            Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/AsrModule.java");
+            WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/AsrModule.java");
     private static final Path TTS_LANE =
-            Path.of("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/runtime/TtsModelLifecycleCoordinator.java");
+            WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/runtime/TtsModelLifecycleCoordinator.java");
 
     @Test
     void theGateIsConstructedOnceInTheWholeBuild() throws Exception {

@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.integration;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -11,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExternalIntegrationGuideBoundaryTest {
-    private static final Path GUIDE = Path.of("../EXTERNAL_INTEGRATION_GUIDE.md");
+    private static final Path GUIDE = WorkspacePaths.require("EXTERNAL_INTEGRATION_GUIDE.md");
 
     @Test
     void guideCoversEveryPublicIntegrationOperation() throws Exception {

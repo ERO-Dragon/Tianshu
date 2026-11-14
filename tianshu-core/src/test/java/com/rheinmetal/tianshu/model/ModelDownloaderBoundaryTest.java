@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.model;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -27,7 +28,7 @@ class ModelDownloaderBoundaryTest {
     @Test
     void asrFacadeDoesNotOwnRawHttpTransportOrHuggingFaceUrls() throws Exception {
         String source = Files.readString(
-                Path.of("../tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/model/AsrModelDownloader.java"),
+                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/model/AsrModelDownloader.java"),
                 StandardCharsets.UTF_8
         );
 

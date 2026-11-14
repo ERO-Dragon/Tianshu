@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.architecture;
 
 import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -14,12 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModuleProtocolUsageDocumentationBoundaryTest {
     private static final Map<Path, String> FUNCTION_PROTOCOL_GUIDES = Map.of(
-            Path.of("../doc/function/intake/ASR_协议中心使用文档.md"), "IntakeTopics.INPUT_ASR_FINAL_TEXT",
-            Path.of("../doc/function/intake/repair/IR_协议中心使用文档.md"), "IntakeTopics.IR_RESULT",
-            Path.of("../doc/function/intake/ia/IA_外部模组仲裁接入说明.md"), "DIALOGUE_PARTICIPANT_REGISTER",
-            Path.of("../doc/function/auxilium/AX_协议中心使用文档.md"), "AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY",
-            Path.of("../doc/function/weaving/LLM接口设计.md"), "LLM_REQUEST",
-            Path.of("../doc/function/echo/TTS_协议中心使用文档.md"), "TTS_SPEAK"
+            WorkspacePaths.require("doc/function/intake/ASR_协议中心使用文档.md"), "IntakeTopics.INPUT_ASR_FINAL_TEXT",
+            WorkspacePaths.require("doc/function/intake/repair/IR_协议中心使用文档.md"), "IntakeTopics.IR_RESULT",
+            WorkspacePaths.require("doc/function/intake/ia/IA_外部模组仲裁接入说明.md"), "DIALOGUE_PARTICIPANT_REGISTER",
+            WorkspacePaths.require("doc/function/auxilium/AX_协议中心使用文档.md"), "AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY",
+            WorkspacePaths.require("doc/function/weaving/LLM接口设计.md"), "LLM_REQUEST",
+            WorkspacePaths.require("doc/function/echo/TTS_协议中心使用文档.md"), "TTS_SPEAK"
     );
 
     @Test
@@ -36,7 +37,7 @@ class ModuleProtocolUsageDocumentationBoundaryTest {
 
     @Test
     void externalIaGuideDoesNotRecommendDirectImplementationServiceAccess() throws Exception {
-        Path guidePath = Path.of("../doc/function/intake/ia/IA_外部模组仲裁接入说明.md");
+        Path guidePath = WorkspacePaths.require("doc/function/intake/ia/IA_外部模组仲裁接入说明.md");
         String guide = Files.readString(guidePath, StandardCharsets.UTF_8);
 
         assertFalse(guide.contains("IaModuleService"));

@@ -40,6 +40,7 @@ final class SettingsSourcePaths {
     }
 
     private static Path moduleSource(String gradleModule, String packagePath) {
-        return WorkspacePaths.require(gradleModule + "/src/main/java/com/rheinmetal/tianshu/" + packagePath);
+        String relative = gradleModule + "/src/main/java/com/rheinmetal/tianshu/" + packagePath;
+        return WorkspacePaths.find(relative).orElse(Path.of(relative));
     }
 }

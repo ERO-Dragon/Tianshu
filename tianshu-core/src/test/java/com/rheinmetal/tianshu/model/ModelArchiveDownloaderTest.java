@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.testkit.ModelDownloadTestServer;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,10 +30,10 @@ class ModelArchiveDownloaderTest {
     void ttsArchiveDownloadUsesDedicatedUriFacadeWithoutLegacyUrlApi() throws Exception {
         assertTrue(Files.isRegularFile(FACADE_SOURCE), "model domain must own a narrow archive downloader facade");
 
-        String modelInfo = source("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/model/TtsModelInfo.java");
-        String coordinator = source("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/download/TtsModelDownloadCoordinator.java");
-        String service = source("../tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/TtsModelService.java");
-        String catalog = source("../tianshu-echo/src/main/resources/com/rheinmetal/tianshu/model/catalog/tts-model.json");
+        String modelInfo = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/model/TtsModelInfo.java").toString());
+        String coordinator = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/download/TtsModelDownloadCoordinator.java").toString());
+        String service = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/TtsModelService.java").toString());
+        String catalog = source(WorkspacePaths.require("tianshu-echo/src/main/resources/com/rheinmetal/tianshu/model/catalog/tts-model.json").toString());
 
         assertTrue(modelInfo.contains("downloadUri"));
         assertTrue(coordinator.contains("ModelArchiveDownloader"));
