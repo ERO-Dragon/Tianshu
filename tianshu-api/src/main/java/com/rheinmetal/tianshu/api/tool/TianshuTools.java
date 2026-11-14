@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -160,21 +161,35 @@ public final class TianshuTools {
 
     public static CompletableFuture<JsonObject> callJson(ToolId id, JsonElement args, ToolCaller caller,
                                                          ToolSide side) {
+        long started = System.nanoTime();
         try {
             TianshuTool<?, ?> tool = requireUsable(id, caller, side);
             JsonElement safeArgs = args == null ? new JsonObject() : args;
             List<String> schemaErrors = ToolArgumentValidator.validate(tool.argsSchema(), safeArgs);
             if (!schemaErrors.isEmpty()) {
-                return CompletableFuture.completedFuture(errorEnvelope(ToolError.INVALID_ARGS,
-                        "invalid arguments for " + id + ": " + String.join("; ", schemaErrors)));
+                return CompletableFuture.completedFuture(withMetadata(errorEnvelope(ToolError.INVALID_ARGS,
+                        "invalid arguments for " + id + ": " + String.join("; ", schemaErrors)), started));
             }
-            return executeJson(tool, safeArgs, caller, side);
+            return executeJson(tool, safeArgs, caller, side).thenApply(envelope -> withMetadata(envelope, started));
         } catch (ToolException failure) {
-            return CompletableFuture.completedFuture(failureEnvelope(failure));
+            return CompletableFuture.completedFuture(withMetadata(failureEnvelope(failure), started));
         } catch (JsonParseException malformed) {
-            return CompletableFuture.completedFuture(errorEnvelope(
-                    ToolError.INVALID_ARGS, "arguments do not match " + id + ": " + malformed.getMessage()));
+            return CompletableFuture.completedFuture(withMetadata(errorEnvelope(
+                    ToolError.INVALID_ARGS, "arguments do not match " + id + ": " + malformed.getMessage()), started));
         }
+    }
+
+    /** Timing and payload size travel with the envelope so an orchestrator can budget without parsing the result. */
+    private static JsonObject withMetadata(JsonObject envelope, long startedNanos) {
+        JsonObject safe = envelope == null
+                ? errorEnvelope(ToolError.FAILED, "the tool produced no answer") : envelope;
+        safe.addProperty("durationMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos));
+        if (safe.has("ok") && safe.get("ok").getAsBoolean()) {
+            JsonElement result = safe.get("result");
+            int bytes = result == null ? 0 : result.toString().getBytes(StandardCharsets.UTF_8).length;
+            safe.addProperty("bytes", bytes);
+        }
+        return safe;
     }
 
     private static CompletableFuture<JsonObject> executeJson(TianshuTool<?, ?> tool, JsonElement args,
@@ -212,31 +227,34 @@ public final class TianshuTools {
 
     /** A JSON call with a handle, so the caller can cancel an in-flight server call. */
     public static ToolCallHandle callHandled(ToolId id, JsonElement args, ToolCaller caller, ToolSide side) {
+        long started = System.nanoTime();
         try {
             TianshuTool<?, ?> tool = requireUsable(id, caller, side);
             JsonElement safeArgs = args == null ? new JsonObject() : args;
             List<String> schemaErrors = ToolArgumentValidator.validate(tool.argsSchema(), safeArgs);
             if (!schemaErrors.isEmpty()) {
-                return new CallResult("", CompletableFuture.completedFuture(errorEnvelope(ToolError.INVALID_ARGS,
-                        "invalid arguments for " + id + ": " + String.join("; ", schemaErrors))));
+                return new CallResult("", CompletableFuture.completedFuture(withMetadata(
+                        errorEnvelope(ToolError.INVALID_ARGS,
+                                "invalid arguments for " + id + ": " + String.join("; ", schemaErrors)), started)));
             }
             if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
                 ServerToolChannel channel = serverChannel;
                 if (channel == null) {
-                    return new CallResult("", CompletableFuture.completedFuture(errorEnvelope(
-                            ToolError.UNSUPPORTED_SIDE, "tool " + id + " needs the server component")));
+                    return new CallResult("", CompletableFuture.completedFuture(withMetadata(errorEnvelope(
+                            ToolError.UNSUPPORTED_SIDE, "tool " + id + " needs the server component"), started)));
                 }
                 String requestId = "tool-" + UUID.randomUUID();
                 CompletableFuture<JsonObject> result = channel.call(requestId, id, safeArgs, caller,
                                 tool.policy().timeoutMillis())
-                        .handle((value, failure) -> failure == null
+                        .handle((value, failure) -> withMetadata(failure == null
                                 ? successEnvelope(value)
-                                : failureEnvelope(translate(failure, id)));
+                                : failureEnvelope(translate(failure, id)), started));
                 return new CallResult(requestId, result);
             }
-            return new CallResult("", executeJson(tool, safeArgs, caller, side));
+            return new CallResult("", executeJson(tool, safeArgs, caller, side)
+                    .thenApply(envelope -> withMetadata(envelope, started)));
         } catch (ToolException failure) {
-            return new CallResult("", CompletableFuture.completedFuture(failureEnvelope(failure)));
+            return new CallResult("", CompletableFuture.completedFuture(withMetadata(failureEnvelope(failure), started)));
         }
     }
 

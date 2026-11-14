@@ -74,6 +74,21 @@ class TianshuToolsTest {
     }
 
     @Test
+    void envelopesCarryTimingAndPayloadSize() throws Exception {
+        TianshuTools.register(new EchoTool());
+        JsonObject success = TianshuTools.callJson(ECHO,
+                        JsonParser.parseString("{\"text\":\"hello\"}"), ToolCaller.agent(false))
+                .get(2, TimeUnit.SECONDS);
+        assertTrue(success.get("durationMs").getAsLong() >= 0);
+        assertTrue(success.get("bytes").getAsInt() > 0);
+
+        JsonObject failure = TianshuTools.callJson(ToolId.of("test", "missing"), new JsonObject(),
+                ToolCaller.agent(false)).get(2, TimeUnit.SECONDS);
+        assertTrue(failure.get("durationMs").getAsLong() >= 0);
+        assertFalse(failure.has("bytes"));
+    }
+
+    @Test
     void categoryDefaultsMatchThePolicyTable() {
         assertTrue(ToolPolicy.forCategory(ToolCategory.LOCAL).enabledByDefault());
         assertTrue(ToolPolicy.forCategory(ToolCategory.SERVER_READ).enabledByDefault());
