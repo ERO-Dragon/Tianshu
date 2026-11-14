@@ -1,6 +1,13 @@
 package com.rheinmetal.tianshu.function.auxilium.core.tool;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.tool.ToolPermission;
+import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolCall;
 import com.rheinmetal.tianshu.api.tool.ToolId;
@@ -9,6 +16,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,6 +53,22 @@ class AXToolTurnTest {
         AXToolTurn withoutTools = AXToolTurn.start(List.of(), base(), call -> new JsonObject());
         assertFalse(withoutTools.toolsAvailable());
         assertEquals(1, withoutTools.payload("req", false, 0, null, SAMPLING).messages().size());
+    }
+
+    @Test
+    void readableSkillsAreInjectedIntoTheSystemMessage() {
+        CapabilityId id = CapabilityId.of("test", "skill");
+        CapabilityCatalog.register(new CapabilityDescriptor(id, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
+                        "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", new JsonObject()),
+                (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
+        try {
+            AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> new JsonObject());
+            String system = turn.payload("req", false, 0, null, SAMPLING).messages().get(0).content();
+            assertTrue(system.contains("test:skill"));
+            assertTrue(system.contains("tianshu:capability.read"));
+        } finally {
+            CapabilityCatalog.unregister(id);
+        }
     }
 
     @Test

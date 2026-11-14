@@ -3,7 +3,9 @@ package com.rheinmetal.tianshu.function.auxilium.core.tool;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.CapabilityExposure;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
 import com.rheinmetal.tianshu.api.tool.ToolCall;
 import com.rheinmetal.tianshu.api.tool.ToolCallParser;
@@ -57,9 +59,23 @@ public final class AXToolTurn {
         Objects.requireNonNull(executor, "executor");
         List<MessageItemPayload> messages = base.messages();
         boolean hasTools = catalogue != null && catalogue.stream().anyMatch(ToolSpec::enabled);
+        ToolCaller caller = ToolCaller.agent(false);
+        String readable = CapabilityExposure.describe(CapabilityExposure.exposed(caller, ToolSide.CLIENT).stream()
+                .filter(descriptor -> !descriptor.kind().isTool())
+                .toList());
         List<MessageItemPayload> conversation = new ArrayList<>();
+        StringBuilder system = new StringBuilder();
         if (hasTools) {
-            conversation.add(new MessageItemPayload("system", ToolCatalogText.describe(catalogue)));
+            system.append(ToolCatalogText.describe(catalogue));
+        }
+        if (!readable.isBlank()) {
+            if (!system.isEmpty()) {
+                system.append("\n\n");
+            }
+            system.append("Readable skills (call tianshu:capability.read with an id):\n").append(readable);
+        }
+        if (!system.isEmpty()) {
+            conversation.add(new MessageItemPayload("system", system.toString()));
         }
         conversation.addAll(messages);
         return new AXToolTurn(ToolCaller.agent(false), executor,

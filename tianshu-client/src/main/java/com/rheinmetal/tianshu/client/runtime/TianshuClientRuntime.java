@@ -28,6 +28,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final Consumer<Throwable> onWorldFailure;
     private final AtomicLong generation = new AtomicLong();
     private volatile SkillFileProvider skills;
+    private volatile SkillFileProvider builtInSkills;
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
     private boolean worldSessionRequested;
@@ -80,6 +81,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             state = ClientSessionState.CLIENT_READY;
         }
         ClientTools.register();
+        builtInSkills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
         skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills"));
         ConnectionToolChannel.install();
         startClientResources.run();
@@ -131,6 +133,11 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         if (provider != null) {
             provider.unload();
             skills = null;
+        }
+        SkillFileProvider builtIn = builtInSkills;
+        if (builtIn != null) {
+            builtIn.unload();
+            builtInSkills = null;
         }
         synchronized (lifecycleMonitor) {
             if (state == ClientSessionState.SHUTDOWN) {

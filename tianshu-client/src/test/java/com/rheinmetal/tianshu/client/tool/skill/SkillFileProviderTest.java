@@ -108,6 +108,14 @@ class SkillFileProviderTest {
         assertTrue(CapabilityCatalog.find(CapabilityId.of("user", "other")).isEmpty());
     }
 
+    @Test
+    void builtInSkillsComeFromTheClasspath() throws Exception {
+        provider = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
+        CapabilityId id = CapabilityId.of("tianshu", "tianshu-tools");
+        assertTrue(CapabilityCatalog.find(id).isPresent(), "the classpath index must list the built-in skill");
+        assertTrue(text(invoke(id, new JsonObject())).contains("天枢工具"));
+    }
+
     private JsonObject invoke(CapabilityId id, JsonObject args) throws Exception {
         return CapabilityCatalog.invoke(id, args, ToolCaller.agent(true), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
