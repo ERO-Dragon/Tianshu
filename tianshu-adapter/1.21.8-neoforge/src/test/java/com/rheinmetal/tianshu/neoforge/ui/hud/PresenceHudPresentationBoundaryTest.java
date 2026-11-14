@@ -62,7 +62,7 @@ final class PresenceHudPresentationBoundaryTest {
     void theSurfaceOwnsGuiDepthAndColorState() throws Exception {
         String surface = read(SURFACE);
 
-        assertTrue(surface.contains("RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F)"));
+        assertTrue(surface.contains("RenderPipelines.GUI"));
         assertTrue(surface.contains("HudShaderPrograms.get"));
         assertFalse(surface.contains("presence"), "the platform's surface names no feature");
     }
