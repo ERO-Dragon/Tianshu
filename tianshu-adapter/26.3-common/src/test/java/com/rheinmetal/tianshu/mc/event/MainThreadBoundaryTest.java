@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * cannot break a rule it does not implement.</p>
  */
 final class MainThreadBoundaryTest {
-    private static final String CLIENT_EVENTS = "../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java";
+    private static final String CLIENT_EVENTS = "../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java";
 
     @Test
     void tickAndWorldEventsOnlyForwardBoundedWork() throws Exception {
@@ -37,7 +37,7 @@ final class MainThreadBoundaryTest {
     @Test
     void resourceReloadReadsKeywordsInTheBackgroundPrepareStage() throws Exception {
         String listener = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
+                Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -55,11 +55,11 @@ final class MainThreadBoundaryTest {
     @Test
     void namedObjectReloadRefreshesPlatformSnapshotBeforeBackgroundIndexing() throws Exception {
         String provider = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/host/RegistryDictionaryProvider.java"),
+                Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/host/RegistryDictionaryProvider.java"),
                 StandardCharsets.UTF_8
         );
         String listener = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
+                Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/event/NamedObjectReloadListener.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -71,7 +71,7 @@ final class MainThreadBoundaryTest {
     @Test
     void worldIdentityIsCapturedOnTheClientThreadOnly() throws Exception {
         String capture = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/host/WorldIdentityCapture.java"),
+                Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/host/WorldIdentityCapture.java"),
                 StandardCharsets.UTF_8
         );
         String events = Files.readString(Path.of(CLIENT_EVENTS), StandardCharsets.UTF_8);
@@ -88,7 +88,7 @@ final class MainThreadBoundaryTest {
     @Test
     void userTriggeredFolderOpeningDoesNotPerformSynchronousFilesystemInspection() throws Exception {
         String environment = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
+                Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
                 StandardCharsets.UTF_8
         );
 
@@ -101,7 +101,7 @@ final class MainThreadBoundaryTest {
     void hudRenderFramesAreSampledAtRenderFrequency() throws Exception {
         String events = Files.readString(Path.of(CLIENT_EVENTS), StandardCharsets.UTF_8);
         String host = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudLayerHost.java"),
+                Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudLayerHost.java"),
                 StandardCharsets.UTF_8
         );
         String layer = Files.readString(
@@ -121,7 +121,7 @@ final class MainThreadBoundaryTest {
     @Test
     void staleWorldEventCleanupCannotClearANewerPublisherBinding() throws Exception {
         String hooks = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/event/WorldEventHooks.java"),
+                Path.of("../26.3-common/src/main/java/com/rheinmetal/tianshu/mc/event/WorldEventHooks.java"),
                 StandardCharsets.UTF_8
         );
 
