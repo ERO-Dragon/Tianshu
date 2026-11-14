@@ -49,6 +49,7 @@ public final class ServerToolDispatch {
 
     private static final Map<String, Cached> COMPLETED = new ConcurrentHashMap<>();
     private static final Map<String, CompletableFuture<Reply>> IN_FLIGHT = new ConcurrentHashMap<>();
+    private static final Map<String, CancellationToken> IN_FLIGHT_TOKENS = new ConcurrentHashMap<>();
 
     private ServerToolDispatch() {
     }
@@ -75,13 +76,16 @@ public final class ServerToolDispatch {
             return CompletableFuture.completedFuture(
                     Reply.failure(requestId, ToolError.BUSY, "too many calls in flight"));
         }
-        CompletableFuture<Reply> future = execute(caller, requestId, toolId, argsJson);
+        CancellationToken token = new CancellationToken();
+        IN_FLIGHT_TOKENS.put(key, token);
+        CompletableFuture<Reply> future = execute(caller, requestId, toolId, argsJson, token);
         CompletableFuture<Reply> previous = IN_FLIGHT.putIfAbsent(key, future);
         if (previous != null) {
             return previous;
         }
         future.whenComplete((reply, failure) -> {
             IN_FLIGHT.remove(key, future);
+            IN_FLIGHT_TOKENS.remove(key, token);
             if (reply != null) {
                 remember(key, reply);
             }
@@ -98,6 +102,10 @@ public final class ServerToolDispatch {
         CompletableFuture<Reply> running = IN_FLIGHT.remove(key);
         if (running == null) {
             return false;
+        }
+        CancellationToken token = IN_FLIGHT_TOKENS.remove(key);
+        if (token != null) {
+            token.cancel();
         }
         running.cancel(true);
         return true;
@@ -131,10 +139,11 @@ public final class ServerToolDispatch {
     public static void clear() {
         COMPLETED.clear();
         IN_FLIGHT.clear();
+        IN_FLIGHT_TOKENS.clear();
     }
 
     private static CompletableFuture<Reply> execute(ToolCaller caller, String requestId, String toolId,
-                                                    String argsJson) {
+                                                    String argsJson, CancellationToken token) {
         ToolId id;
         try {
             id = ToolId.parse(toolId);
@@ -150,7 +159,7 @@ public final class ServerToolDispatch {
                     Reply.failure(requestId, ToolError.INVALID_ARGS, "malformed arguments"));
         }
         try {
-            return TianshuTools.callJson(id, args, caller, ToolSide.SERVER)
+            return TianshuTools.callJson(id, args, caller, ToolSide.SERVER, token)
                     .handle((envelope, failure) -> failure == null
                             ? fromEnvelope(requestId, envelope)
                             : Reply.failure(requestId, ToolError.FAILED, describe(failure)));

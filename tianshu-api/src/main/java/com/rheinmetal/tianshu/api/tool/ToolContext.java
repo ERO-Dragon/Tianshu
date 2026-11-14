@@ -9,10 +9,15 @@ import java.util.Objects;
  * registers, which keeps this type usable from the platform-neutral layer. The context exists so a tool can
  * adapt its result to the caller and the side, not so it can reach around the ports.</p>
  */
-public record ToolContext(ToolCaller caller, ToolSide side) {
+public record ToolContext(ToolCaller caller, ToolSide side, CancellationSignal cancellation) {
 
     public ToolContext {
         Objects.requireNonNull(caller, "caller");
         Objects.requireNonNull(side, "side");
+        cancellation = cancellation == null ? CancellationSignal.NEVER : cancellation;
+    }
+
+    public ToolContext(ToolCaller caller, ToolSide side) {
+        this(caller, side, CancellationSignal.NEVER);
     }
 }

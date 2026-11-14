@@ -21,6 +21,7 @@ class ServerToolDispatchTest {
     private static final ToolId ECHO = ToolId.of("test", "dispatch.echo");
     private static final ToolId WRITE = ToolId.of("test", "dispatch.write");
     private static final ToolId BLOCKING = ToolId.of("test", "dispatch.blocking");
+    private static final ToolId COOPERATIVE = ToolId.of("test", "dispatch.cooperative");
 
     @BeforeEach
     void setUp() {
@@ -30,6 +31,7 @@ class ServerToolDispatchTest {
         TianshuTools.register(new EchoTool());
         TianshuTools.register(new WriteTool());
         TianshuTools.register(new BlockingTool());
+        TianshuTools.register(new CooperativeTool());
         TianshuTools.setEnabled(WRITE, true);
     }
 
@@ -38,6 +40,7 @@ class ServerToolDispatchTest {
         TianshuTools.unregister(ECHO);
         TianshuTools.unregister(WRITE);
         TianshuTools.unregister(BLOCKING);
+        TianshuTools.unregister(COOPERATIVE);
         ServerToolDispatch.clear();
     }
 
@@ -112,6 +115,18 @@ class ServerToolDispatchTest {
         com.google.gson.JsonArray tools = com.google.gson.JsonParser.parseString(reply.valueJson())
                 .getAsJsonObject().getAsJsonArray("tools");
         assertTrue(tools.toString().contains(WRITE.toString()));
+    }
+
+    @Test
+    void aCooperativeToolSeesTheCancellationSignal() throws Exception {
+        ToolCaller player = ToolCaller.player("p3", false);
+        ServerToolDispatch.respond(player, "coop", COOPERATIVE.toString(), "{}");
+
+        assertTrue(ServerToolDispatch.cancel(player.id(), "coop"));
+        for (int attempt = 0; attempt < 100 && !CooperativeTool.observed.get(); attempt++) {
+            Thread.sleep(10);
+        }
+        assertTrue(CooperativeTool.observed.get(), "the tool must see the token flip");
     }
 
     @Test
@@ -190,6 +205,47 @@ class ServerToolDispatchTest {
             Reply reply = new Reply();
             reply.text = args == null ? "" : args.text;
             return CompletableFuture.completedFuture(reply);
+        }
+    }
+
+    private static final class CooperativeTool implements TianshuTool<Args, Reply> {
+        static final java.util.concurrent.atomic.AtomicBoolean observed =
+                new java.util.concurrent.atomic.AtomicBoolean();
+
+        @Override
+        public ToolId id() {
+            return COOPERATIVE;
+        }
+
+        @Override
+        public ToolCategory category() {
+            return ToolCategory.LOCAL;
+        }
+
+        @Override
+        public String description() {
+            return "Polls the cancellation signal.";
+        }
+
+        @Override
+        public Type argsType() {
+            return Args.class;
+        }
+
+        @Override
+        public Type resultType() {
+            return Reply.class;
+        }
+
+        @Override
+        public CompletableFuture<Reply> invoke(ToolContext context, Args args) {
+            return CompletableFuture.supplyAsync(() -> {
+                while (!context.cancellation().isCancelled()) {
+                    Thread.onSpinWait();
+                }
+                observed.set(true);
+                return new Reply();
+            });
         }
     }
 

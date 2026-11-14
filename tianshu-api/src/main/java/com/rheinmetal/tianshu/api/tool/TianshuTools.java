@@ -161,6 +161,11 @@ public final class TianshuTools {
 
     public static CompletableFuture<JsonObject> callJson(ToolId id, JsonElement args, ToolCaller caller,
                                                          ToolSide side) {
+        return callJson(id, args, caller, side, CancellationSignal.NEVER);
+    }
+
+    public static CompletableFuture<JsonObject> callJson(ToolId id, JsonElement args, ToolCaller caller,
+                                                         ToolSide side, CancellationSignal cancellation) {
         long started = System.nanoTime();
         try {
             TianshuTool<?, ?> tool = requireUsable(id, caller, side);
@@ -170,7 +175,7 @@ public final class TianshuTools {
                 return CompletableFuture.completedFuture(withMetadata(errorEnvelope(ToolError.INVALID_ARGS,
                         "invalid arguments for " + id + ": " + String.join("; ", schemaErrors)), started));
             }
-            return executeJson(tool, safeArgs, caller, side).thenApply(envelope -> withMetadata(envelope, started));
+            return executeJson(tool, safeArgs, caller, side, cancellation).thenApply(envelope -> withMetadata(envelope, started));
         } catch (ToolException failure) {
             return CompletableFuture.completedFuture(withMetadata(failureEnvelope(failure), started));
         } catch (JsonParseException malformed) {
@@ -193,8 +198,9 @@ public final class TianshuTools {
     }
 
     private static CompletableFuture<JsonObject> executeJson(TianshuTool<?, ?> tool, JsonElement args,
-                                                             ToolCaller caller, ToolSide side) {
-        ToolContext context = new ToolContext(caller, side);
+                                                             ToolCaller caller, ToolSide side,
+                                                             CancellationSignal cancellation) {
+        ToolContext context = new ToolContext(caller, side, cancellation);
         CompletableFuture<JsonObject> result;
         if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
             result = callOverChannel(tool.id(), args, caller, tool.policy().timeoutMillis())
@@ -251,7 +257,7 @@ public final class TianshuTools {
                                 : failureEnvelope(translate(failure, id)), started));
                 return new CallResult(requestId, result);
             }
-            return new CallResult("", executeJson(tool, safeArgs, caller, side)
+            return new CallResult("", executeJson(tool, safeArgs, caller, side, CancellationSignal.NEVER)
                     .thenApply(envelope -> withMetadata(envelope, started)));
         } catch (ToolException failure) {
             return new CallResult("", CompletableFuture.completedFuture(withMetadata(failureEnvelope(failure), started)));
