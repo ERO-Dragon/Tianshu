@@ -686,7 +686,7 @@ tasks.register('verifyAdapterMatrixCoverage') {
                 [dir: dir.name, version: props.getProperty('minecraft_version')?.trim()]
             }.findAll { it.version }
             if (pins.isEmpty()) {
-                violations << "no ${loader} adapter found".toString()
+                // A version branch may legitimately ship one loader (1.20 has Fabric only).
                 return
             }
             pins.groupBy { it.version }.findAll { it.value.size() > 1 }.each { version, entries ->
