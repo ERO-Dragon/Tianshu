@@ -7,6 +7,6 @@ public interface McpStatus {
 
     List<McpServerStatus> status();
 
-    /** Forces a reconnect of one server (or all when {@code name} is unknown). Runs off the calling thread. */
+    /** Forces a reconnect attempt of the configured servers; {@code name} identifies the trigger. */
     void reconnect(String name);
 }

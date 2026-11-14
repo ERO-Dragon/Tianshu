@@ -23,12 +23,11 @@ public final class ServerToolDispatch {
 
     private static final long REPLAY_WINDOW_NANOS = 120_000_000_000L;
     private static final int MAX_CACHED_REPLIES = 512;
-    /** Mirrors the client quota; a hand-written client cannot bypass the per-player bound. */
-    private static final int MAX_IN_FLIGHT_PER_CALLER = 8;
+    private static final int MAX_IN_FLIGHT_PER_CALLER = ToolConcurrency.MAX_IN_FLIGHT_PER_CALLER;
     /** Reserved id understood by the dispatcher itself; it is not a registered tool. */
-    public static final String CANCEL_TOOL_ID = "tianshu:tool.cancel";
+    public static final String CANCEL_TOOL_ID = ReservedToolCalls.CANCEL_ID;
     /** Reserved id understood by the dispatcher itself: returns the server catalogue for the calling player. */
-    public static final String CATALOG_TOOL_ID = "tianshu:tool.catalog";
+    public static final String CATALOG_TOOL_ID = ReservedToolCalls.CATALOG_ID;
 
     /** What the adapter puts on the wire; already fitted to {@link ToolWireLimits}. */
     public record Reply(String requestId, boolean ok, String valueJson, String errorCode, String message) {
@@ -54,8 +53,8 @@ public final class ServerToolDispatch {
     private ServerToolDispatch() {
     }
 
-    public static CompletableFuture<Reply> respond(ToolCaller caller, String requestId, String toolId,
-                                                   String argsJson) {
+    public static synchronized CompletableFuture<Reply> respond(ToolCaller caller, String requestId, String toolId,
+                                                               String argsJson) {
         if (CANCEL_TOOL_ID.equals(toolId)) {
             return CompletableFuture.completedFuture(cancelReply(caller, requestId, argsJson));
         }
@@ -81,6 +80,9 @@ public final class ServerToolDispatch {
         CompletableFuture<Reply> future = execute(caller, requestId, toolId, argsJson, token);
         CompletableFuture<Reply> previous = IN_FLIGHT.putIfAbsent(key, future);
         if (previous != null) {
+            IN_FLIGHT_TOKENS.remove(key, token);
+            token.cancel();
+            future.cancel(true);
             return previous;
         }
         future.whenComplete((reply, failure) -> {
@@ -97,7 +99,7 @@ public final class ServerToolDispatch {
      * Best effort: removes the in-flight future and cancels it. A tool already executing on the server thread will
      * finish before it can observe the cancellation; the client still gets {@link ToolError#CANCELLED} for its wait.
      */
-    public static boolean cancel(String playerId, String requestId) {
+    public static synchronized boolean cancel(String playerId, String requestId) {
         String key = playerId + "|" + (requestId == null ? "" : requestId);
         CompletableFuture<Reply> running = IN_FLIGHT.remove(key);
         if (running == null) {

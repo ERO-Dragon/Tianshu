@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.api.tool.ServerToolChannel;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCallHandle;
+import com.rheinmetal.tianshu.api.tool.ReservedToolCalls;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -95,7 +96,7 @@ class ConnectionToolChannelTest {
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ)));
 
         CompletableFuture<Void> refresh = ConnectionToolChannel.refreshCatalog();
-        assertEquals(ToolId.of("tianshu", "tool.catalog"), lastToolId.get());
+        assertEquals(ReservedToolCalls.CATALOG, lastToolId.get());
         ConnectionToolChannel.complete(lastRequestId.get(),
                 JsonParser.parseString("{\"tools\":[\"test:declared\"]}"));
 

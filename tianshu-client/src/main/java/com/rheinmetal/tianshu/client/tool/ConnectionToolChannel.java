@@ -11,6 +11,8 @@ import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolTransport;
+import com.rheinmetal.tianshu.api.tool.ToolConcurrency;
+import com.rheinmetal.tianshu.api.tool.ReservedToolCalls;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,9 +36,8 @@ import java.util.concurrent.TimeUnit;
 public final class ConnectionToolChannel implements ServerToolChannel {
 
     private static final ConnectionToolChannel INSTANCE = new ConnectionToolChannel();
-    private static final int MAX_PENDING = 64;
-    /** One caller cannot occupy the whole pending window; this keeps an agent from starving other callers. */
-    private static final int MAX_IN_FLIGHT_PER_CALLER = 8;
+    private static final int MAX_PENDING = ToolConcurrency.MAX_PENDING;
+    private static final int MAX_IN_FLIGHT_PER_CALLER = ToolConcurrency.MAX_IN_FLIGHT_PER_CALLER;
 
     private final Map<String, CompletableFuture<JsonElement>> pending = new ConcurrentHashMap<>();
     private final Map<String, java.util.concurrent.atomic.AtomicInteger> inFlight = new ConcurrentHashMap<>();
@@ -66,7 +67,7 @@ public final class ConnectionToolChannel implements ServerToolChannel {
      */
     public static CompletableFuture<Void> refreshCatalog() {
         JsonObject args = new JsonObject();
-        return INSTANCE.call(ToolId.of("tianshu", "tool.catalog"), args, ToolCaller.mod("tianshu"), 5_000L)
+        return INSTANCE.call(ReservedToolCalls.CATALOG, args, ToolCaller.mod("tianshu"), 5_000L)
                 .thenAccept(value -> {
                     if (value == null || !value.isJsonObject()) {
                         return;
@@ -159,7 +160,7 @@ public final class ConnectionToolChannel implements ServerToolChannel {
         JsonObject args = new JsonObject();
         args.addProperty("requestId", requestId);
         try {
-            transport.get().send("cancel-" + UUID.randomUUID(), ToolId.of("tianshu", "tool.cancel"), args,
+            transport.get().send("cancel-" + UUID.randomUUID(), ReservedToolCalls.CANCEL, args,
                     ToolCaller.mod("tianshu"), 2_000L);
         } catch (RuntimeException ignored) {
             // The local future is already cancelled; the server simply keeps doing its best-effort work.

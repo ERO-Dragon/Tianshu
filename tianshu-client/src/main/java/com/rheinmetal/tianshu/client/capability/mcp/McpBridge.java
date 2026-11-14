@@ -38,6 +38,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
     private static final long WATCHDOG_MILLIS = 15_000L;
     private static final long BASE_BACKOFF_MILLIS = 15_000L;
     private static final long MAX_BACKOFF_MILLIS = 300_000L;
+    private static final int MAX_PROBLEMS = 64;
 
     private final List<McpConnection> clients = new ArrayList<>();
     private final List<ToolId> tools = new ArrayList<>();
@@ -89,6 +90,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         return List.copyOf(statuses.values());
     }
 
+    /** Re-evaluates all configured servers; the name is only the trigger (per-server retry is a later refinement). */
     @Override
     public void reconnect(String name) {
         nextAttemptMillis = 0;
@@ -164,7 +166,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
                 client.close();
             }
             String message = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
-            problems.add(spec.name() + ": " + message);
+            problem(spec.name() + ": " + message);
             updateStatus(spec, false, 0, message);
             return false;
         }
@@ -186,6 +188,13 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         for (Map.Entry<String, McpServerStatus> entry : statuses.entrySet()) {
             McpServerStatus current = entry.getValue();
             entry.setValue(new McpServerStatus(current.name(), current.type(), false, 0, current.lastError()));
+        }
+    }
+
+    private void problem(String message) {
+        problems.add(message);
+        while (problems.size() > MAX_PROBLEMS) {
+            problems.remove(0);
         }
     }
 
@@ -247,7 +256,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
             tools.add(id);
             return true;
         } catch (RuntimeException conflict) {
-            problems.add(spec.name() + "/" + remoteName + ": " + conflict.getMessage());
+            problem(spec.name() + "/" + remoteName + ": " + conflict.getMessage());
             return false;
         }
     }
