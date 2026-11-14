@@ -34,7 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ModuleEntrypointRegistrationTest {
 
-    private static final Path REPOSITORY_ROOT = Path.of("..");
+    private static final Path REPOSITORY_ROOT = Path.of("../..");
+    private static final Path CORE_ROOT = REPOSITORY_ROOT.resolve("core");
     private static final String FUNCTION_PACKAGE = "com/rheinmetal/tianshu/function";
     /**
      * Directories under the repository root that look like modules but are not shipped features.
@@ -208,7 +209,7 @@ class ModuleEntrypointRegistrationTest {
      * and this test does not need editing. Dev-only benches are the one documented exception.
      */
     private static List<Path> featureModules() throws IOException {
-        try (Stream<Path> children = Files.list(REPOSITORY_ROOT)) {
+        try (Stream<Path> children = Files.list(CORE_ROOT)) {
             return children
                     .filter(Files::isDirectory)
                     .filter(module -> module.getFileName().toString().startsWith("tianshu-"))

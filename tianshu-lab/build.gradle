@@ -17,7 +17,7 @@ repositories {
 dependencies {
     api project(':tianshu-intake')
     compileOnly 'com.google.code.gson:gson:2.10.1'
-    compileOnly fileTree('../libs') { include 'tianshu_foundry-*.jar' }
+    compileOnly fileTree(rootProject.file('libs')) { include 'tianshu_foundry-*.jar' }
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

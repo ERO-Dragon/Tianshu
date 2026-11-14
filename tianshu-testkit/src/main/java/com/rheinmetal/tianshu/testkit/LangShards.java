@@ -82,10 +82,13 @@ public final class LangShards {
      * that ships no text owns no keys.</p>
      */
     public static Set<String> keysIn(String moduleDirectory, String language) {
-        Path file = repositoryRoot()
-                .resolve(moduleDirectory)
-                .resolve("src/main/lang")
-                .resolve(language + ".json");
+        Path root = repositoryRoot();
+        Path module = root.resolve(moduleDirectory);
+        Path file = module.resolve("src/main/lang").resolve(language + ".json");
+        if (!Files.isRegularFile(file)) {
+            module = root.resolve("core").resolve(moduleDirectory);
+            file = module.resolve("src/main/lang").resolve(language + ".json");
+        }
         if (!Files.isRegularFile(file)) {
             return Set.of();
         }
@@ -133,7 +136,9 @@ public final class LangShards {
                 || normalized.contains("/.git/")) {
             return false;
         }
-        if (path.getParent() != null && path.getParent().equals(root.resolve("lang"))) {
+        if (path.getParent() != null
+                && (path.getParent().equals(root.resolve("lang"))
+                || path.getParent().equals(root.resolve("core/lang")))) {
             return true;
         }
         return normalized.contains("/src/main/lang/");
