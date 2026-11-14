@@ -45,7 +45,7 @@ final class NeoForgeAdapterBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String environment = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
+                Path.of("../1.21.9-1.21.10-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
                 StandardCharsets.UTF_8
         );
 
