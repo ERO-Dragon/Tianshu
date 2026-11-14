@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.core.runtime.InferenceResourcePolicy;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsVoiceProfile;
+import com.rheinmetal.tianshu.function.echo.synthesis.LocalTtsBackend;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsAudioSink;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsBackend;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsCodecExecution;
@@ -23,7 +24,7 @@ import java.util.function.Consumer;
  * Pocket-TTS-ZH-4L backend. Complete-result delivery synthesizes one waveform; streaming delivery
  * overlaps FlowLM generation with Mimi decode on the shared codec lane.
  */
-public final class PocketTtsBackend implements TtsBackend {
+public final class PocketTtsBackend implements LocalTtsBackend {
     private static final List<String> REQUIRED_FILES = List.of(
             "conditioner.onnx",
             "flowlm_prefill.onnx",

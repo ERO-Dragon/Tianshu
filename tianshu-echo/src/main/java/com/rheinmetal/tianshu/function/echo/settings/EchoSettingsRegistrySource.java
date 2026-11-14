@@ -29,6 +29,9 @@ import com.rheinmetal.tianshu.function.echo.model.TtsModelSettings;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
 import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
+import com.rheinmetal.tianshu.function.echo.synthesis.cloud.TtsCloudProfile;
+import com.rheinmetal.tianshu.function.echo.synthesis.cloud.TtsCloudProviders;
+import com.rheinmetal.tianshu.function.echo.synthesis.cloud.TtsCloudSettings;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
 
@@ -96,9 +99,30 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
     }
 
     private void buildPanel(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
+        // Two values, so the renderer rebuilds the page on change and the rest of the panel follows the mode.
+        panel.options("tts.backend", tts("section.backend"), draft::buildBackendModeOptions);
+        if (draft.isCloudMode()) {
+            panel.columns("tts.cloud.layout", List.of(1.0D), columns -> columns
+                    .column(0, column -> buildCloudColumn(column, context, draft)));
+            return;
+        }
         panel.columns("tts.layout", 0.42D, 0.58D, columns -> columns
                 .column(0, left -> buildSettingsColumn(left, context, draft))
                 .column(1, right -> buildDownloadColumn(right, context, draft)));
+    }
+
+    /** The cloud panel is the whole page in cloud mode: the local model sections would not describe it. */
+    private void buildCloudColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
+        panel.options("tts.cloud", tts("section.cloud"), draft::buildCloudOptions)
+                .actions("tts.cloud.preview", tts("section.preview"), actions -> actions
+                        .button("tts.preview.start", tts("action.preview_start"),
+                                () -> draft.startCloudPreview(context), () -> draft.enabled.get() && draft.canPreviewCloud())
+                        .button("tts.preview.stop", tts("action.preview_stop"), draft::stopPreview, draft::previewRunning))
+                .status("tts.cloud.status", tts("section.cloud_status"), status -> status
+                        .row("tts.cloud.provider", tts("row.cloud_provider"), draft::cloudProviderStatus)
+                        .row("tts.cloud.voice", tts("row.cloud_voice"), draft::cloudVoiceStatus)
+                        .row("tts.cloud.endpoint", tts("row.cloud_endpoint"), draft::cloudEndpointStatus)
+                        .row("tts.preview.status", tts("row.preview_status"), draft::previewStatus));
     }
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, ModuleSettingsContext context, TtsSettingsDraft draft) {
@@ -155,6 +179,10 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
         private final MutableSettingsValue<String> speakerId;
         private final MutableSettingsValue<String> selectedVoiceSample;
         private final MutableSettingsValue<String> githubProxyUrl;
+    private final MutableSettingsValue<String> backendMode;
+    private final MutableSettingsValue<String> cloudProvider;
+    private final MutableSettingsValue<String> cloudEndpoint;
+    private final MutableSettingsValue<String> cloudVoice;
         private final MutableSettingsValue<String> performanceFilter;
         private final MutableSettingsValue<String> qualityFilter;
         private final MutableSettingsValue<String> recommendedFilter;
@@ -196,6 +224,10 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             this.speakerId = new MutableSettingsValue<>(() -> Integer.toString(Math.max(0, settings.speakerId)), ignored -> { }, this::validSpeakerId);
             this.selectedVoiceSample = new MutableSettingsValue<>(() -> normalizeVoiceSample(settings.selectedVoiceSample), ignored -> {});
             this.githubProxyUrl = new MutableSettingsValue<>(config::getTtsGithubProxyUrl, config::setTtsGithubProxyUrl, Objects::nonNull);
+            this.backendMode = new MutableSettingsValue<>(config::getTtsBackendMode, config::setTtsBackendMode, value -> value != null && !value.isBlank());
+            this.cloudProvider = new MutableSettingsValue<>(config::getCloudProviderId, config::setCloudProviderId, Objects::nonNull);
+            this.cloudEndpoint = new MutableSettingsValue<>(config::getCloudEndpoint, config::setCloudEndpoint, value -> validCloudEndpoint(value));
+            this.cloudVoice = new MutableSettingsValue<>(config::getCloudVoice, config::setCloudVoice, Objects::nonNull);
             this.performanceFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.qualityFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
             this.recommendedFilter = new MutableSettingsValue<>(() -> ALL, ignored -> {});
@@ -211,7 +243,22 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             }));
         }
 
-        private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
+        private void buildBackendModeOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
+        options.select("tts.backend.mode", tts("option.backend_mode"),
+                List.of(TtsCloudSettings.MODE_LOCAL, TtsCloudSettings.MODE_CLOUD),
+                backendMode, mode -> UiText.key("tianshu.gui.tts.backend." + mode.trim().toLowerCase(Locale.ROOT)),
+                enabled::get);
+    }
+
+    private void buildCloudOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
+        options.select("tts.cloud.provider", tts("option.cloud_provider"),
+                        TtsCloudProviders.providerIds(), cloudProvider, this::providerLabel, enabled::get)
+                .text("tts.cloud.endpoint", tts("option.cloud_endpoint"), cloudEndpoint, enabled::get)
+                .select("tts.cloud.voice", tts("option.cloud_voice"), cloudVoices(), cloudVoice,
+                        this::voiceLabel, enabled::get);
+    }
+
+    private void buildMainOptions(com.rheinmetal.tianshu.client.api.settings.OptionTemplate options) {
             options.select("tts.model", tts("option.model"), modelNames(), selectedModelName, this::modelOptionLabel, enabled::get)
                     .text("tts.preview.text", tts("option.preview_text"), previewText, enabled::get)
                     .slider("tts.speed", tts("option.speed"), speed, 0.5D, 2.0D, enabled::get);
@@ -248,11 +295,29 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
                     || speed.dirty()
                     || speakerId.dirty()
                     || selectedVoiceSample.dirty()
-                    || githubProxyUrl.dirty();
+                    || githubProxyUrl.dirty()
+                    || backendMode.dirty()
+                    || cloudProvider.dirty()
+                    || cloudEndpoint.dirty()
+                    || cloudVoice.dirty();
         }
 
         @Override
         public SettingsValidationResult validate() {
+            if (isCloudMode()) {
+                // The local model is not what this mode runs: validating it would block a player who never
+                // downloaded one from saving a perfectly usable cloud configuration.
+                if (enabled.get() && !validCloudEndpoint(cloudEndpoint.get())) {
+                    return SettingsValidationResult.failure(tts("validation.cloud_endpoint"));
+                }
+                if (enabled.get() && !previewText.valid()) {
+                    return SettingsValidationResult.failure(tts("validation.preview_empty"));
+                }
+                if (enabled.get() && cloudProviderEntry().isPresent() && !cloudVoices().contains(cloudVoice.get())) {
+                    return SettingsValidationResult.failure(tts("validation.cloud_settings"));
+                }
+                return SettingsValidationResult.successful();
+            }
             TtsModelInfo selected = resolveModel(selectedModelName.get());
             if (enabled.get() && selectedModelName.get() != null && !selectedModelName.get().isBlank() && (!selectedModelName.valid() || selected == null)) {
                 return SettingsValidationResult.failure(tts("validation.invalid_model"));
@@ -277,7 +342,11 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             TtsSettingsSnapshot before = TtsSettingsSnapshot.from(config);
             var transaction = new SettingsSaveTransaction(enabled, streamingSynthesis, previewText, githubProxyUrl,
                     selectedModelName, speed, speakerId, selectedVoiceSample)
-                    .write(config::getCustomTtsName, config::setCustomTtsName, selectedModelName.get());
+                    .write(config::getCustomTtsName, config::setCustomTtsName, selectedModelName.get())
+                    .write(config::getTtsBackendMode, config::setTtsBackendMode, backendMode.get())
+                    .write(config::getCloudProviderId, config::setCloudProviderId, cloudProvider.get())
+                    .write(config::getCloudEndpoint, config::setCloudEndpoint, cloudEndpoint.get())
+                    .write(config::getCloudVoice, config::setCloudVoice, cloudVoice.get());
             TtsModelInfo info = resolveModel(selectedModelName.get());
             if (info != null) {
                 TtsModelSettings settings = new TtsModelSettings();
@@ -302,6 +371,10 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             speakerId.reset();
             selectedVoiceSample.reset();
             githubProxyUrl.reset();
+            backendMode.reset();
+            cloudProvider.reset();
+            cloudEndpoint.reset();
+            cloudVoice.reset();
         }
 
         private List<String> modelNames() {
@@ -349,7 +422,89 @@ public final class EchoSettingsRegistrySource implements TianshuSettingsRegistry
             return ttsModelService().loadSettings(info);
         }
 
-        private boolean canPreview() {
+        private boolean isCloudMode() {
+        return TtsCloudSettings.MODE_CLOUD.equalsIgnoreCase(backendMode.get() == null ? "" : backendMode.get().trim());
+    }
+
+    private java.util.Optional<TtsCloudProviders.Provider> cloudProviderEntry() {
+        return new TtsCloudSettings(cloudProvider.get(), cloudEndpoint.get(), cloudVoice.get()).provider();
+    }
+
+    private List<String> cloudVoices() {
+        return cloudProviderEntry()
+                .map(provider -> provider.voices().stream().map(TtsCloudProviders.Voice::id).toList())
+                .orElse(List.of());
+    }
+
+    private UiText providerLabel(String providerId) {
+        return TtsCloudProviders.byId(providerId)
+                .map(provider -> UiText.key(provider.labelKey()))
+                .orElse(UiText.literal(providerId));
+    }
+
+    private UiText voiceLabel(String voiceId) {
+        return cloudProviderEntry()
+                .flatMap(provider -> provider.voice(voiceId))
+                .map(voice -> UiText.key(voice.labelKey()))
+                .orElse(UiText.literal(voiceId));
+    }
+
+    private boolean validCloudEndpoint(String value) {
+        String endpoint = value == null ? "" : value.trim();
+        return endpoint.isEmpty() || endpoint.startsWith("ws://") || endpoint.startsWith("wss://");
+    }
+
+    private boolean canPreviewCloud() {
+        return cloudProviderEntry().isPresent()
+                && !cloudVoice.get().isBlank()
+                && validCloudEndpoint(cloudEndpoint.get())
+                && previewText.valid()
+                && !previewRunning.get();
+    }
+
+    private UiText cloudProviderStatus() {
+        return cloudProviderEntry().map(provider -> UiText.literal(provider.id())).orElse(tts("status.idle"));
+    }
+
+    private UiText cloudVoiceStatus() {
+        return cloudVoice.get().isBlank() ? tts("status.idle") : voiceLabel(cloudVoice.get());
+    }
+
+    private UiText cloudEndpointStatus() {
+        if (!cloudEndpoint.get().isBlank()) {
+            return UiText.literal(cloudEndpoint.get());
+        }
+        return cloudProviderEntry()
+                .map(provider -> UiText.literal(provider.defaultEndpoint()))
+                .orElse(tts("status.idle"));
+    }
+
+    private void startCloudPreview(ModuleSettingsContext context) {
+        if (!canPreviewCloud()) {
+            context.showStatus(tts("validation.cloud_settings"), 3000);
+            return;
+        }
+        previewRunning.set(true);
+        previewStatus = tts("status.preview_preparing");
+        TtsCloudProfile profile = new TtsCloudSettings(cloudProvider.get(), cloudEndpoint.get(), cloudVoice.get())
+                .toProfile();
+        TtsOperationResult result = ttsModuleService().previewCloud(profile, previewText.get(),
+                TtsVoiceProfile.defaults(), () -> runOnClient(() -> {
+                    previewRunning.set(false);
+                    previewStatus = tts("status.preview_complete");
+                }), failure -> runOnClient(() -> {
+                    previewRunning.set(false);
+                    previewStatus = failureStatus(failure);
+                    context.showStatus(previewStatus, 4000);
+                }));
+        if (!result.accepted()) {
+            previewRunning.set(false);
+            previewStatus = failureStatus(result.failure());
+            context.showStatus(previewStatus, 4000);
+        }
+    }
+
+    private boolean canPreview() {
             TtsModelInfo info = resolveModel(selectedModelName.get());
             return info != null
                     && speakerId.valid()

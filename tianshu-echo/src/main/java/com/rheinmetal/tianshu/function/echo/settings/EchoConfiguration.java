@@ -24,4 +24,24 @@ public interface EchoConfiguration {
     default boolean isTtsStreamingSynthesisEnabled() {
         return true;
     }
+
+    /** @return {@code "local"} or {@code "cloud"}; the backend the player selected. */
+    default String getTtsBackendMode() {
+        return "local";
+    }
+
+    /** Empty means "use the provider catalog default". */
+    default String getCloudProviderId() {
+        return "";
+    }
+
+    /** Empty means "use the provider catalog default endpoint". */
+    default String getCloudEndpoint() {
+        return "";
+    }
+
+    /** Empty means "use the provider catalog default voice". */
+    default String getCloudVoice() {
+        return "";
+    }
 }

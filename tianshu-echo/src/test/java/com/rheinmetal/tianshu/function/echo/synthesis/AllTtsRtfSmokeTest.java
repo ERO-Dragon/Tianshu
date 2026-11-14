@@ -70,7 +70,7 @@ class AllTtsRtfSmokeTest {
         }
         TtsResolvedModel model = new TtsResolvedModel(dir, info, null);
         long loadStart = System.nanoTime();
-        TtsEngineProvider.Load load = provider.acquire(model, true);
+        TtsEngineProvider.Load load = provider.acquire(new LocalTtsBackendSelection(model), true);
         if (load.outcome() == TtsEngineProvider.Outcome.FAILED) {
             System.out.println("TTS_RTF skip " + name + ": backend initialization failed " + env.errors);
             return;

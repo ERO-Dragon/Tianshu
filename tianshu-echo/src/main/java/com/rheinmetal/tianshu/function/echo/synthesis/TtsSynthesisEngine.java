@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsBackendSnapshot;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface TtsSynthesisEngine {
     boolean initialize();
@@ -25,6 +26,32 @@ public interface TtsSynthesisEngine {
     }
 
     boolean useModel(String modelName);
+
+    /**
+     * Switches to an explicit selection.
+     *
+     * <p>The coordinator carries a selection through a switch or a preview; resolving the name again inside
+     * the engine would let the two disagree mid-flight.</p>
+     */
+    default boolean useSelection(TtsBackendSelection selection) {
+        // Implementations that only know model names keep working for local selections; the engine this
+        // build ships overrides this so a cloud selection is not silently dropped.
+        if (selection instanceof LocalTtsBackendSelection local) {
+            return useModel(local.label());
+        }
+        return false;
+    }
+
+    /**
+     * Resolves what a configured model name denotes, or empty when nothing resolvable matches.
+     *
+     * <p>Model names are a settings-level concept; the load path speaks selections, because a backend is not
+     * always a local model. This is the one conversion point, so callers that only hold a name (the preview
+     * path, the "running model" row) do not each re-implement the resolution rules.</p>
+     */
+    default Optional<TtsBackendSelection> selectionFor(String modelName) {
+        return Optional.empty();
+    }
 
     /**
      * The model the running backend actually speaks with; empty when the engine cannot tell.

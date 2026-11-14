@@ -204,7 +204,28 @@ TTS 原文、模型、音色和播放诊断只进入宿主集中诊断服务。D
 
 设置页的“运行中”一行读取 `TtsRuntimeSnapshot.activeModelName()`，与配置不一致时显式标出两者：试听还原失败会让引擎停在预览模型上，这行是玩家唯一能看出“声音为什么变了”的地方。
 
-## 11. 验收重点
+## 11. 云端后端
+
+可选后端，默认关闭。它与本地后端共用同一条加载与播放链路，差别只在"选择"与"资源获取方式"。
+
+- **选择（selection）**：`TtsBackendSelection` 是 sealed 类型，只有 `LocalTtsBackendSelection`（模型目录）与
+  `CloudTtsBackendSelection`（provider + 端点 + 音色）。`TtsEngineProvider` 对两种 selection 走同一个三态
+  加载（UNCHANGED / RELOADED / FAILED），新增一种后端必须在分派处编译失败，而不是落进默认分支。
+- **构造点唯一**：后端只在 `TtsEngineProvider` 构造；初始化器与该后端在同一个分支里成对产生，避免
+  "后端 A 配初始化器 B"。
+- **分层**：`CloudTtsTransport` 只懂 provider 协议（发帧、收编码块、取消、超时）；`Mp3Decoder` 只懂把编码块
+  变成 PCM16；`TransportCloudTtsBackend` 组合两者，并把 transport 抛出的失败码原样上抛。
+- **音频格式**：端点只提供 MP3 / WebM-Opus，不提供 PCM。解码用 JLayer（LGPL-2.1，嵌套在 jar 内）。Layer III
+  的位池让"逐帧独立解码"产生静音，因此解码器对每帧重放最多 8 帧历史再取最新帧，保持跨 chunk 无状态。
+- **令牌**：`Sec-MS-GEC` v2，由 `EdgeTtsToken` 以纯计算实现（种子化 SHA-256 + CS64 混合），输入为按 5 分钟
+  取整的时间戳，固定向量测试对拍。`User-Agent` 的 Edg 主版本必须与令牌版本一致，否则握手 403。
+- **配置**：`backendMode`（local/cloud）、`cloudProvider`、`cloudEndpoint`、`cloudVoice`；空值表示使用 provider
+  目录默认。切换模式或任一项变化都会触发运行时重启。
+- **隔离规则**：`model/` 与 `download/` 不得出现任何 cloud 概念（`TtsCloudBoundaryTest` 固定）；令牌不得触网。
+- **失败码**：`CLOUD_UNAVAILABLE` / `CLOUD_AUTH_FAILED` / `CLOUD_RATE_LIMITED` / `CLOUD_TIMEOUT` /
+  `CLOUD_INVALID_RESPONSE`，界面文案按 `failure.<code>` 取键，试听处直接显示。
+
+## 12. 验收重点
 
 - 一个 Session 无论多少句都只 admission 一次。
 - A/B/C 嵌套严格按 C、B、A 恢复。

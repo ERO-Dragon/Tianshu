@@ -17,6 +17,9 @@
     "tianshu_ferry": ">=1.0.0 <2.0.0",
     "tianshu_foundry": ">=1.0.0"
   },
+  "jars": [
+    { "file": "META-INF/jarjar/jlayer-1.0.1.jar" }
+  ],
   "suggests": {
     "tianshu_presence": ">=${mod_version}"
   }

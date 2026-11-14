@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.function.echo.synthesis;
 
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
+import com.rheinmetal.tianshu.function.echo.synthesis.cloud.TtsCloudProfile;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
 import org.junit.jupiter.api.Test;
 
@@ -27,15 +28,15 @@ class TtsEngineProviderTest {
         candidate.failWith(fatal);
         TtsEngineProvider provider = providerUsing(running, candidate);
 
-        assertSame(running, provider.acquire(model("model-a", TtsBackendType.SHERPA), false).backend());
+        assertSame(running, provider.acquire(selection("model-a", TtsBackendType.SHERPA), false).backend());
 
         Error thrown = assertThrows(Error.class,
-                () -> provider.acquire(model("model-b", TtsBackendType.MOSS), false));
+                () -> provider.acquire(selection("model-b", TtsBackendType.MOSS), false));
 
         assertSame(fatal, thrown, "the fatal from initialize has to reach the caller unchanged");
         assertEquals(1, candidate.shutdowns, "the candidate that never became current must be released once");
         assertEquals(0, running.shutdowns, "a failed switch must not touch the backend that is serving");
-        assertSame(running, provider.acquire(model("model-a", TtsBackendType.SHERPA), false).backend(),
+        assertSame(running, provider.acquire(selection("model-a", TtsBackendType.SHERPA), false).backend(),
                 "the previous backend must still be the one in charge");
     }
 
@@ -45,8 +46,8 @@ class TtsEngineProviderTest {
         RecordingBackend candidate = new RecordingBackend(TtsBackendType.MOSS, false);
         TtsEngineProvider provider = providerUsing(running, candidate);
 
-        provider.acquire(model("model-a", TtsBackendType.SHERPA), false);
-        TtsEngineProvider.Load failed = provider.acquire(model("model-b", TtsBackendType.MOSS), false);
+        provider.acquire(selection("model-a", TtsBackendType.SHERPA), false);
+        TtsEngineProvider.Load failed = provider.acquire(selection("model-b", TtsBackendType.MOSS), false);
 
         assertEquals(TtsEngineProvider.Outcome.FAILED, failed.outcome());
         assertSame(running, failed.backend());
@@ -61,14 +62,14 @@ class TtsEngineProviderTest {
         TtsEngineProvider provider = providerUsing(first, second);
 
         assertEquals(TtsEngineProvider.Outcome.RELOADED,
-                provider.acquire(model("model-a", TtsBackendType.SHERPA), false).outcome());
+                provider.acquire(selection("model-a", TtsBackendType.SHERPA), false).outcome());
         assertEquals(TtsEngineProvider.Outcome.RELOADED,
-                provider.acquire(model("model-b", TtsBackendType.MOSS), false).outcome());
+                provider.acquire(selection("model-b", TtsBackendType.MOSS), false).outcome());
 
         assertEquals(1, first.shutdowns, "the replaced backend must be closed");
         assertEquals(0, second.shutdowns, "the adopted backend must stay open");
 
-        TtsEngineProvider.Load again = provider.acquire(model("model-b", TtsBackendType.MOSS), false);
+        TtsEngineProvider.Load again = provider.acquire(selection("model-b", TtsBackendType.MOSS), false);
         assertEquals(TtsEngineProvider.Outcome.UNCHANGED, again.outcome());
         assertSame(second, again.backend());
         assertEquals(1, first.shutdowns, "an unchanged acquire must not close anything");
@@ -88,12 +89,12 @@ class TtsEngineProviderTest {
         RecordingBackend first = new RecordingBackend(TtsBackendType.SHERPA, true, events, "first");
         RecordingBackend second = new RecordingBackend(TtsBackendType.SHERPA, true, events, "second");
         TtsEngineProvider provider = providerUsing(first, second);
-        TtsResolvedModel model = model("model-a", TtsBackendType.SHERPA);
+        TtsBackendSelection target = selection("model-a", TtsBackendType.SHERPA);
 
-        provider.acquire(model, false);
+        provider.acquire(target, false);
         assertEquals(List.of("init:first"), List.copyOf(events));
 
-        assertEquals(TtsEngineProvider.Outcome.RELOADED, provider.acquire(model, true).outcome());
+        assertEquals(TtsEngineProvider.Outcome.RELOADED, provider.acquire(target, true).outcome());
 
         assertEquals(List.of("init:first", "shutdown:first", "init:second"), List.copyOf(events),
                 "the running copy has to be closed before the replacement starts loading");
@@ -101,16 +102,98 @@ class TtsEngineProviderTest {
         assertEquals(0, second.shutdowns);
     }
 
+    @Test
+    void aCloudSelectionLoadsThroughTheSameTransactionalPath() {
+        CloudRecordingBackend cloud = new CloudRecordingBackend();
+        TtsEngineProvider provider = providerUsing(cloud);
+        CloudTtsBackendSelection first = new CloudTtsBackendSelection(
+                new TtsCloudProfile("edge", "", "zh-CN-XiaoxiaoNeural", 1_000L));
+
+        TtsEngineProvider.Load load = provider.acquire(first, false);
+
+        assertEquals(TtsEngineProvider.Outcome.RELOADED, load.outcome());
+        assertSame(cloud, load.backend());
+        assertEquals("edge", cloud.initializedProvider);
+
+        TtsEngineProvider.Load again = provider.acquire(first, false);
+        assertEquals(TtsEngineProvider.Outcome.UNCHANGED, again.outcome(),
+                "the same profile must not rebuild the backend");
+        assertEquals(1, cloud.initializations, "a cloud backend is initialized once per distinct selection");
+    }
+
+    @Test
+    void switchingToAnotherCloudVoiceReplacesTheBackend() {
+        CloudRecordingBackend first = new CloudRecordingBackend();
+        CloudRecordingBackend second = new CloudRecordingBackend();
+        TtsEngineProvider provider = providerUsing(first, second);
+        CloudTtsBackendSelection a = new CloudTtsBackendSelection(
+                new TtsCloudProfile("edge", "", "zh-CN-XiaoxiaoNeural", 1_000L));
+        CloudTtsBackendSelection b = new CloudTtsBackendSelection(
+                new TtsCloudProfile("edge", "", "zh-CN-YunxiNeural", 1_000L));
+
+        provider.acquire(a, false);
+        TtsEngineProvider.Load switched = provider.acquire(b, false);
+
+        assertEquals(TtsEngineProvider.Outcome.RELOADED, switched.outcome());
+        assertEquals(1, first.shutdowns, "the voice that is no longer selected has to be closed");
+        assertEquals("zh-CN-YunxiNeural", second.initializedVoice);
+    }
+
+    private static final class CloudRecordingBackend implements com.rheinmetal.tianshu.function.echo.synthesis.cloud.CloudTtsBackend {
+        private boolean initialized;
+        private String initializedProvider;
+        private String initializedVoice;
+        private int initializations;
+        int shutdowns;
+
+        @Override
+        public boolean initialize(com.rheinmetal.tianshu.function.echo.synthesis.cloud.TtsCloudProfile profile) {
+            initialized = true;
+            initializations++;
+            initializedProvider = profile.providerId();
+            initializedVoice = profile.voiceId();
+            return true;
+        }
+
+        @Override
+        public boolean isInitialized() {
+            return initialized;
+        }
+
+        @Override
+        public int sampleRate() {
+            return 24_000;
+        }
+
+        @Override
+        public void synthesize(TtsRequest request, TtsAudioSink sink) {
+            throw new UnsupportedOperationException("cloud backend cannot synthesize in a unit test");
+        }
+
+        @Override
+        public void interrupt() {
+        }
+
+        @Override
+        public void shutdown() {
+            initialized = false;
+            shutdowns++;
+        }
+    }
     private static TtsEngineProvider providerUsing(TtsBackend... backends) {
         Deque<TtsBackend> queue = new ArrayDeque<>(List.of(backends));
         return new TtsEngineProvider(new FakeGameEnvironment(), null, backendType -> queue.removeFirst());
+    }
+
+    private static TtsBackendSelection selection(String directory, TtsBackendType backendType) {
+        return new LocalTtsBackendSelection(model(directory, backendType));
     }
 
     private static TtsResolvedModel model(String directory, TtsBackendType backendType) {
         return new TtsResolvedModel(Path.of(directory), null, backendType);
     }
 
-    private static final class RecordingBackend implements TtsBackend {
+    private static final class RecordingBackend implements LocalTtsBackend {
         private final TtsBackendType backendType;
         private final boolean initializes;
         private final List<String> events;

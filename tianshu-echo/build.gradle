@@ -16,11 +16,14 @@ dependencies {
     compileOnly project(':tianshu-presence')
     compileOnly fileTree('../libs') { include 'tianshu_foundry-*.jar' }
     compileOnly 'com.google.code.gson:gson:2.10.1'
+    // LGPL-2.1: the cloud backend decodes the provider's MP3 into the PCM16 the playback bridge wants.
+    compileOnly 'javazoom:jlayer:1.0.1'
     compileOnly 'org.apache.commons:commons-compress:1.26.0'
     testImplementation project(':tianshu-testkit')
     testImplementation project(':tianshu-presence')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation 'javazoom:jlayer:1.0.1'
     testImplementation 'org.apache.commons:commons-compress:1.26.0'
     testImplementation fileTree('../libs') { include 'tianshu_foundry-*.jar' }
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -130,4 +133,24 @@ jar {
     from neoforgeEntryOutput
     from fabricEntryOutput
     from legacyEntryOutput
+}
+// ---------------------------------------------------------------- nested dependency
+// JLayer is nested rather than shaded: NeoForge reads META-INF/jarjar/metadata.json and Fabric reads the
+// "jars" entry in fabric.mod.json, and both point at the same file — which is what keeps one jar universal
+// across loaders. Nesting also keeps the library separately replaceable, which LGPL-2.1 expects.
+configurations {
+    jarJarPayload {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
+dependencies {
+    jarJarPayload 'javazoom:jlayer:1.0.1'
+}
+
+jar {
+    from(configurations.jarJarPayload) {
+        into 'META-INF/jarjar'
+    }
 }

@@ -6,7 +6,7 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeFailurePolicy;
 import com.rheinmetal.tianshu.function.echo.model.TtsModelSettings;
 
-public final class SherpaOnnxTtsBackend implements TtsBackend {
+public final class SherpaOnnxTtsBackend implements LocalTtsBackend {
     private final IGameEnvironment env;
     private final SherpaOnnxTtsConfigFactory configFactory;
     private OfflineTts tts;

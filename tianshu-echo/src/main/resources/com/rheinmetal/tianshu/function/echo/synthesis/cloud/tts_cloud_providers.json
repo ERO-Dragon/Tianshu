@@ -1,0 +1,16 @@
+[
+  {
+    "id": "edge",
+    "labelKey": "tianshu.gui.tts.cloud.provider.edge",
+    "defaultEndpoint": "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1",
+    "defaultVoice": "zh-CN-XiaoxiaoNeural",
+    "voices": [
+      { "id": "zh-CN-XiaoxiaoNeural", "labelKey": "tianshu.gui.tts.cloud.voice.zh_cn_xiaoxiao" },
+      { "id": "zh-CN-XiaoyiNeural", "labelKey": "tianshu.gui.tts.cloud.voice.zh_cn_xiaoyi" },
+      { "id": "zh-CN-YunxiNeural", "labelKey": "tianshu.gui.tts.cloud.voice.zh_cn_yunxi" },
+      { "id": "zh-CN-YunjianNeural", "labelKey": "tianshu.gui.tts.cloud.voice.zh_cn_yunjian" },
+      { "id": "en-US-AriaNeural", "labelKey": "tianshu.gui.tts.cloud.voice.en_us_aria" },
+      { "id": "en-US-GuyNeural", "labelKey": "tianshu.gui.tts.cloud.voice.en_us_guy" }
+    ]
+  }
+]

@@ -18,12 +18,17 @@ public final class EchoConfig implements EchoConfiguration, EchoSettingsAccess {
     private static final String KEY_PREVIEW_TEXT = "previewText";
     private static final String KEY_GITHUB_PROXY = "githubProxyUrl";
     private static final String KEY_CUSTOM_NAME = "customTtsName";
+    private static final String KEY_BACKEND_MODE = "backendMode";
+    private static final String KEY_CLOUD_PROVIDER = "cloudProvider";
+    private static final String KEY_CLOUD_ENDPOINT = "cloudEndpoint";
+    private static final String KEY_CLOUD_VOICE = "cloudVoice";
 
     private static final boolean DEFAULT_ENABLED = true;
     private static final boolean DEFAULT_STREAMING = true;
     private static final String DEFAULT_PREVIEW_TEXT = "";
     private static final String DEFAULT_GITHUB_PROXY = "https://gh-proxy.org/";
     private static final String DEFAULT_CUSTOM_NAME = "";
+    private static final String DEFAULT_BACKEND_MODE = "local";
 
     private final ModuleConfigStore store;
     private final Path basePath;
@@ -94,6 +99,46 @@ public final class EchoConfig implements EchoConfiguration, EchoSettingsAccess {
     @Override
     public void setCustomTtsName(String name) {
         store.setString(KEY_CUSTOM_NAME, name == null ? "" : name);
+    }
+
+    @Override
+    public String getTtsBackendMode() {
+        return store.getString(KEY_BACKEND_MODE, DEFAULT_BACKEND_MODE);
+    }
+
+    @Override
+    public String getCloudProviderId() {
+        return store.getString(KEY_CLOUD_PROVIDER, "");
+    }
+
+    @Override
+    public String getCloudEndpoint() {
+        return store.getString(KEY_CLOUD_ENDPOINT, "");
+    }
+
+    @Override
+    public String getCloudVoice() {
+        return store.getString(KEY_CLOUD_VOICE, "");
+    }
+
+    @Override
+    public void setTtsBackendMode(String mode) {
+        store.setString(KEY_BACKEND_MODE, mode == null || mode.isBlank() ? DEFAULT_BACKEND_MODE : mode.trim());
+    }
+
+    @Override
+    public void setCloudProviderId(String providerId) {
+        store.setString(KEY_CLOUD_PROVIDER, providerId == null ? "" : providerId.trim());
+    }
+
+    @Override
+    public void setCloudEndpoint(String endpoint) {
+        store.setString(KEY_CLOUD_ENDPOINT, endpoint == null ? "" : endpoint.trim());
+    }
+
+    @Override
+    public void setCloudVoice(String voice) {
+        store.setString(KEY_CLOUD_VOICE, voice == null ? "" : voice.trim());
     }
 
     @Override

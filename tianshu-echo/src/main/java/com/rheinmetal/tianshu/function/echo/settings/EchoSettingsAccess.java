@@ -9,5 +9,9 @@ public interface EchoSettingsAccess extends EchoConfiguration {
     String getTtsGithubProxyUrl();
     void setTtsGithubProxyUrl(String url);
     void setCustomTtsName(String name);
+    void setTtsBackendMode(String mode);
+    void setCloudProviderId(String providerId);
+    void setCloudEndpoint(String endpoint);
+    void setCloudVoice(String voice);
     void save();
 }

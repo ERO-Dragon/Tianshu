@@ -1,6 +1,6 @@
 # Echo · 回响
 
-Echo is the text-to-speech capability on the Ferry base: it turns text into speech on the local machine, and once a model has been downloaded it works offline. It is open to every module — read a whole document, speak each sentence as it is generated, or take the audio and play it yourself.
+Echo is the text-to-speech capability on the Ferry base: it turns text into speech on the local machine and, once a model has been downloaded, works offline; an optional cloud backend can be selected in the settings instead, which needs a connection. It is open to every module — read a whole document, speak each sentence as it is generated, or take the audio and play it yourself.
 
 **Game versions**: unrestricted. Distributed as a single universal jar with both NeoForge and Fabric entrypoints; per-version compatibility is handled by Tianshu.
 **Loaders**: NeoForge / Fabric
@@ -11,7 +11,7 @@ Echo is the text-to-speech capability on the Ferry base: it turns text into spee
 
 ## What it gives you
 
-- **Speaks offline** — one model download, then synthesis stays on the local machine.
+- **Speaks offline** — the default path: one model download, then synthesis stays on the local machine. The cloud backend is optional and needs a connection.
 - **A voice for your machine** — four models from 178 MB to 764 MB: the lightest starts almost instantly, the heaviest sounds closest to a person.
 - **Your own voice** — clone-capable models accept a WAV recording as a reference voice, and speech comes out in that voice.
 - **Speaks while writing** — feed sentences as they are generated and playback starts with the first finished sentence, instead of waiting for the whole text.

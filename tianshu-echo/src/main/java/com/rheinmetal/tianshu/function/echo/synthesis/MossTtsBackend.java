@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public final class MossTtsBackend implements TtsBackend {
+public final class MossTtsBackend implements LocalTtsBackend {
     private final IGameEnvironment env;
     private MossTtsService service;
     private boolean initialized;

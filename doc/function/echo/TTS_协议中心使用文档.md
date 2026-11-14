@@ -198,7 +198,9 @@ payload 携带稳定的 `requestId/sourceId/sessionId/turnId/failureCode`。`TTS
 
 `failureCode=GENERATION_LIMIT_REACHED` 表示 MOSS 在单个内部文本块内耗尽生成帧上限，并且整段没有留下可用的语音，本次纯合成没有可交付的结果；调用方按失败结束，不应自行拼接残缺音频。
 
-协议层的失败码只有一个词表：`TTS_` 加上 `TtsFailureCode`，例如 `TTS_QUEUE_FULL`、`TTS_EXPIRED`、`TTS_INVALID_REQUEST`、`TTS_REQUEST_NOT_FOUND`、`TTS_SYNTHESIS_ENGINE_UNAVAILABLE`、`TTS_EMPTY_TEXT`、`TTS_VOICE_CLONE_UNAVAILABLE`、`TTS_GENERATION_LIMIT_REACHED`。载荷类不匹配由协议中心在派发前拒绝，信封进入 `DEAD_LETTERED/PAYLOAD_CLASS_MISMATCH`，不会到达本模块。
+协议层的失败码只有一个词表：`TTS_` 加上 `TtsFailureCode`，例如 `TTS_QUEUE_FULL`、`TTS_EXPIRED`、`TTS_INVALID_REQUEST`、`TTS_REQUEST_NOT_FOUND`、`TTS_SYNTHESIS_ENGINE_UNAVAILABLE`、`TTS_EMPTY_TEXT`、`TTS_VOICE_CLONE_UNAVAILABLE`、`TTS_GENERATION_LIMIT_REACHED`。
+
+云端后端（可选，见《云端后端接入计划》）另加五个码，玩家在试听处看到的提示由它们决定：`TTS_CLOUD_UNAVAILABLE`（网络不可达）、`TTS_CLOUD_AUTH_FAILED`（令牌被拒或版本过旧）、`TTS_CLOUD_RATE_LIMITED`（限流）、`TTS_CLOUD_TIMEOUT`（超时）、`TTS_CLOUD_INVALID_RESPONSE`（返回的音频无法解析或解码）。载荷类不匹配由协议中心在派发前拒绝，信封进入 `DEAD_LETTERED/PAYLOAD_CLASS_MISMATCH`，不会到达本模块。
 
 TTS 通过 `PRESENCE.ACTIVITY` 公开两类产品活动：
 

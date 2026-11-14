@@ -110,7 +110,7 @@ class TtsModelLoadPathBoundaryTest {
     void theBackendIsBuiltInExactlyOnePlace() throws Exception {
         String provider = read(PROVIDER);
 
-        assertEquals(1, occurrences(provider, ".initialize(model)"),
+        assertEquals(1, occurrences(provider, ".initialize(local.model())"),
                 "a backend may be initialized from exactly one place, so every load is gated the same way");
         assertEquals(1, occurrences(provider, "= createBackend("),
                 "one construction point: a second one would be a second door into native memory");
@@ -120,7 +120,9 @@ class TtsModelLoadPathBoundaryTest {
     void theRunningBackendIsClosedOnlyAfterTheReplacementIsUp() throws Exception {
         String provider = read(PROVIDER);
 
-        int load = provider.indexOf(".initialize(model)");
+        // The candidate's initializer now carries the model, so the textual anchor is the invocation inside
+        // acquire rather than the cast expression in the candidate() factory.
+        int load = provider.indexOf("candidate.initialize()");
         int closePrevious = provider.indexOf("previous.shutdown()");
         assertTrue(load >= 0, "the provider has to initialize the candidate");
         assertTrue(closePrevious > load,
@@ -134,8 +136,11 @@ class TtsModelLoadPathBoundaryTest {
 
         assertEquals(1, occurrences(engine, "engineProvider.acquire("),
                 "initialize / reload / useModel must share the one transactional load");
-        assertEquals(4, occurrences(engine, "applyModel("),
-                "one definition plus the three entry points that adopt a model");
+        assertEquals(3, occurrences(engine, "applySelection("),
+                "the selection is adopted in exactly one place: useSelection and applyCurrentSelection"
+                        + " both funnel into it");
+        assertEquals(3, occurrences(engine, "applyCurrentSelection("),
+                "one definition plus initialize and reload, which resolve the configured selection through it");
     }
 
     private static String read(Path path) throws Exception {

@@ -1,6 +1,10 @@
 package com.rheinmetal.tianshu.function.echo.runtime;
 
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsAudioSink;
+import com.rheinmetal.tianshu.function.echo.synthesis.LocalTtsBackendSelection;
+import com.rheinmetal.tianshu.function.echo.synthesis.TtsBackendSelection;
+import com.rheinmetal.tianshu.function.echo.synthesis.TtsBackendType;
+import com.rheinmetal.tianshu.function.echo.synthesis.TtsResolvedModel;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
@@ -189,8 +193,8 @@ class TtsModelLifecycleCoordinatorTest {
 
         assertTrue(coordinator.beginExclusivePreview(
                 "request-1",
-                "preview-model",
-                "restore-model",
+                previewOf("preview-model"),
+                previewOf("restore-model"),
                 null,
                 null,
                 failure -> {
@@ -221,8 +225,8 @@ class TtsModelLifecycleCoordinatorTest {
 
         assertTrue(coordinator.beginExclusivePreview(
                 "request-1",
-                "preview-model",
-                "restore-model",
+                previewOf("preview-model"),
+                previewOf("restore-model"),
                 null,
                 () -> TtsOperationResult.accepted("request-1"),
                 ignored -> { }
@@ -235,7 +239,7 @@ class TtsModelLifecycleCoordinatorTest {
 
         assertEquals(1L, restored.getCount(), "a preview torn down mid-restore did not end normally");
         assertFalse(coordinator.beginExclusivePreview(
-                        "request-2", "preview-model", "restore-model", null, null, ignored -> { }).accepted(),
+                        "request-2", previewOf("preview-model"), previewOf("restore-model"), null, null, ignored -> { }).accepted(),
                 "shutdown is terminal, so the coordinator must not accept a new preview afterwards");
     }
 
@@ -257,8 +261,8 @@ class TtsModelLifecycleCoordinatorTest {
 
         assertTrue(coordinator.beginExclusivePreview(
                 "request-1",
-                "preview-model",
-                "restore-model",
+                previewOf("preview-model"),
+                previewOf("restore-model"),
                 null,
                 () -> TtsOperationResult.accepted("request-1"),
                 ignored -> { }
@@ -286,7 +290,12 @@ class TtsModelLifecycleCoordinatorTest {
     }
 
     private static final class BlockingRestoreEngine implements TtsSynthesisEngine {
-        private final CountDownLatch restoreStarted = new CountDownLatch(1);
+    @Override
+        public java.util.Optional<TtsBackendSelection> selectionFor(String modelName) {
+            return java.util.Optional.of(previewOf(modelName == null ? "" : modelName));
+        }
+
+                private final CountDownLatch restoreStarted = new CountDownLatch(1);
         private final CountDownLatch releaseRestore = new CountDownLatch(1);
 
         @Override public boolean initialize() { return true; }
@@ -322,7 +331,12 @@ class TtsModelLifecycleCoordinatorTest {
     }
 
     private static final class BlockingSwitchEngine implements TtsSynthesisEngine {
-        private final CountDownLatch firstSwitchStarted = new CountDownLatch(1);
+    @Override
+        public java.util.Optional<TtsBackendSelection> selectionFor(String modelName) {
+            return java.util.Optional.of(previewOf(modelName == null ? "" : modelName));
+        }
+
+                private final CountDownLatch firstSwitchStarted = new CountDownLatch(1);
         private final CountDownLatch releaseFirstSwitch = new CountDownLatch(1);
         private final List<String> requested = java.util.Collections.synchronizedList(new ArrayList<>());
 
@@ -352,7 +366,12 @@ class TtsModelLifecycleCoordinatorTest {
     }
 
     private static final class ThreadRecordingEngine implements TtsSynthesisEngine {
-        private final AtomicReference<String> initializeThread = new AtomicReference<>();
+    @Override
+        public java.util.Optional<TtsBackendSelection> selectionFor(String modelName) {
+            return java.util.Optional.of(previewOf(modelName == null ? "" : modelName));
+        }
+
+                private final AtomicReference<String> initializeThread = new AtomicReference<>();
         private final AtomicReference<String> useModelThread = new AtomicReference<>();
 
         @Override public boolean initialize() { initializeThread.set(Thread.currentThread().getName()); return true; }
@@ -367,7 +386,12 @@ class TtsModelLifecycleCoordinatorTest {
     }
 
     private static final class BlockingEngine implements TtsSynthesisEngine {
-        private final CountDownLatch started = new CountDownLatch(1);
+    @Override
+        public java.util.Optional<TtsBackendSelection> selectionFor(String modelName) {
+            return java.util.Optional.of(previewOf(modelName == null ? "" : modelName));
+        }
+
+                private final CountDownLatch started = new CountDownLatch(1);
         private final CountDownLatch release = new CountDownLatch(1);
         private final CountDownLatch shutdownFinished = new CountDownLatch(1);
         private final AtomicBoolean shutdownCalled = new AtomicBoolean();
@@ -390,7 +414,12 @@ class TtsModelLifecycleCoordinatorTest {
     }
 
     private static final class BlockingPrepareEngine implements TtsSynthesisEngine {
-        private final CountDownLatch initializeStarted = new CountDownLatch(1);
+    @Override
+        public java.util.Optional<TtsBackendSelection> selectionFor(String modelName) {
+            return java.util.Optional.of(previewOf(modelName == null ? "" : modelName));
+        }
+
+                private final CountDownLatch initializeStarted = new CountDownLatch(1);
         private final CountDownLatch releaseInitialize = new CountDownLatch(1);
         private final AtomicInteger initializeCalls = new AtomicInteger();
 
@@ -417,4 +446,11 @@ class TtsModelLifecycleCoordinatorTest {
         @Override public void interrupt() { }
         @Override public void shutdown() { }
     }
+
+    /** A selection for a synthetic model directory; the coordinator tests only care that one is carried. */
+    private static TtsBackendSelection previewOf(String modelName) {
+        return new LocalTtsBackendSelection(
+                new TtsResolvedModel(java.nio.file.Path.of(modelName), null, TtsBackendType.SHERPA));
+    }
+
 }

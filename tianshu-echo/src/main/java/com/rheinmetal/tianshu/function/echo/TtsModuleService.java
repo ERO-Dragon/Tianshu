@@ -7,6 +7,8 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsOperationResult;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsPlaybackPolicy;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
+import com.rheinmetal.tianshu.function.echo.synthesis.CloudTtsBackendSelection;
+import com.rheinmetal.tianshu.function.echo.synthesis.cloud.TtsCloudProfile;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRequestSource;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntime;
 import com.rheinmetal.tianshu.function.echo.runtime.TtsRuntimeSnapshot;
@@ -99,6 +101,52 @@ public final class TtsModuleService {
                 onFailure
         );
         return result;
+    }
+
+    /**
+     * Speaks {@code text} through a cloud provider without touching the configured local model.
+     *
+     * <p>It is the same exclusive-preview path as a local preview, only the selection is the cloud one; the
+     * restore name is the configured local model so leaving the panel puts the player back where they were.</p>
+     */
+    public TtsOperationResult previewCloud(
+            TtsCloudProfile profile,
+            String text,
+            TtsVoiceProfile voiceProfile,
+            Runnable onComplete,
+            Consumer<TtsFailure> onFailure
+    ) {
+        TtsRuntime current = runtime.get();
+        if (current == null) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS runtime is not available");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        if (profile == null || profile.providerId().isEmpty()) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS cloud preview has no provider");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        if (text == null || text.isBlank()) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.EMPTY_TEXT, "TTS preview text is empty");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        String requestId = "tts-preview:" + UUID.randomUUID();
+        TtsRequest request = new TtsRequest(
+                requestId,
+                requestId,
+                requestId,
+                requestId,
+                text,
+                TtsRequestSource.PREVIEW,
+                TtsPlaybackPolicy.REPLACE_CURRENT,
+                Priority.NORMAL,
+                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
+        );
+        // The cloud selection is what the lane should return to: in cloud mode there is no local model to restore.
+        return current.previewWithSelection(new CloudTtsBackendSelection(profile),
+                new CloudTtsBackendSelection(profile), request, onComplete, onFailure);
     }
 
     public TtsControlResult stopPreview(String reason) {

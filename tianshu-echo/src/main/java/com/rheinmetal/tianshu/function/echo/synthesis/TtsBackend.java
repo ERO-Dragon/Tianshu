@@ -4,9 +4,14 @@ import com.rheinmetal.tianshu.function.echo.runtime.TtsRequest;
 
 import java.util.List;
 
+/**
+ * The synthesis port the lane talks to.
+ *
+ * <p>Loading a local model is not part of it: that belongs to {@link LocalTtsBackend}, so a backend without
+ * model files (a cloud provider) is not asked to implement a signature it cannot honour. Everything here is
+ * about speaking and being stopped.</p>
+ */
 public interface TtsBackend {
-    boolean initialize(TtsResolvedModel model);
-
     default boolean preloadVoice(com.rheinmetal.tianshu.function.echo.runtime.TtsVoiceProfile voiceProfile) {
         return true;
     }

@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.echo.playback.TtsPlaybackController;
 import com.rheinmetal.tianshu.function.echo.playback.TtsPlaybackListener;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsAudioSink;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsPlaybackBufferEstimate;
+import com.rheinmetal.tianshu.function.echo.synthesis.TtsBackendSelection;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMode;
@@ -660,6 +661,32 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Runnable onComplete,
             Consumer<TtsFailure> onFailure
     ) {
+        Optional<TtsBackendSelection> preview = synthesisEngine.selectionFor(previewModel);
+        if (preview.isEmpty()) {
+            // A name that resolves to nothing fails here, the same way the switch it used to go through did,
+            // instead of quietly previewing whatever happens to be loaded.
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
+                    "TTS preview model is not installed");
+            fail(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        TtsBackendSelection restoreSelection = synthesisEngine.selectionFor(restoreModel).orElse(null);
+        return previewWithSelection(preview.get(), restoreSelection, request, onComplete, onFailure);
+    }
+
+    /**
+     * Speaks {@code request} with an explicit selection and returns to {@code restoreModel} afterwards.
+     *
+     * <p>The restore stays a model name on purpose: it is the configured value to go back to, and a
+     * selection that did not resolve would be indistinguishable from "nothing to restore".</p>
+     */
+    public TtsOperationResult previewWithSelection(
+            TtsBackendSelection previewSelection,
+            TtsBackendSelection restoreSelection,
+            TtsRequest request,
+            Runnable onComplete,
+            Consumer<TtsFailure> onFailure
+    ) {
         if (request == null) {
             TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS preview request is invalid");
             fail(onFailure, failure);
@@ -678,8 +705,8 @@ public final class TtsRuntime implements TtsPlaybackListener {
         };
         return modelLifecycleCoordinator.beginExclusivePreview(
                 request.requestId(),
-                previewModel,
-                restoreModel,
+                previewSelection,
+                restoreSelection,
                 () -> stopAll("model preview"),
                 () -> submit(
                         request,

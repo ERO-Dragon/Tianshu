@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.function.echo.runtime;
 
 import com.rheinmetal.tianshu.function.echo.TtsModuleId;
 
+import com.rheinmetal.tianshu.function.echo.synthesis.TtsBackendSelection;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisEngine;
 import com.rheinmetal.tianshu.model.NativeModelLoadQueue;
 import com.rheinmetal.tianshu.protocol.Priority;
@@ -33,7 +34,7 @@ final class TtsModelLifecycleCoordinator {
     private final NativeModelLoadQueue loadQueue;
     private LifecycleState state = LifecycleState.IDLE;
     private String previewRequestId = "";
-    private String previewRestoreModel = "";
+    private TtsBackendSelection previewRestoreSelection;
     private boolean previewRestoreScheduled;
     /** Terminal failure callback of the preview in flight; no-op when there is no preview. */
     private Consumer<TtsFailure> pendingPreviewFailure = ignored -> { };
@@ -44,7 +45,7 @@ final class TtsModelLifecycleCoordinator {
     private String operationKind = "";
     private final List<Consumer<TtsControlResult>> switchCompletions = new ArrayList<>();
     /** Newest requested model of an in-flight switch; empty means "whatever the configuration selects". */
-    private String requestedModelName = "";
+    private TtsBackendSelection requestedSelection;
     private boolean reloadRequested;
     private long switchRevision;
     /**
@@ -137,17 +138,22 @@ final class TtsModelLifecycleCoordinator {
     }
 
     TtsOperationResult reload(Consumer<TtsControlResult> completion) {
-        return requestModelSwitch(RELOAD_MODEL, "", true, completion);
+        return requestModelSwitch(RELOAD_MODEL, null, true, completion);
     }
 
     TtsOperationResult useModel(String modelName, Consumer<TtsControlResult> completion) {
-        return requestModelSwitch(SWITCH_MODEL, modelName == null ? "" : modelName.trim(), false, completion);
+        return useSelection(synthesisEngine.selectionFor(modelName).orElse(null), completion);
+    }
+
+    /** Switches to a selection the caller already resolved; a null selection means "clear by name". */
+    TtsOperationResult useSelection(TtsBackendSelection selection, Consumer<TtsControlResult> completion) {
+        return requestModelSwitch(SWITCH_MODEL, selection, false, completion);
     }
 
     synchronized TtsOperationResult beginExclusivePreview(
             String requestId,
-            String previewModel,
-            String restoreModel,
+            TtsBackendSelection previewSelection,
+            TtsBackendSelection restoreSelection,
             Runnable beforeSwitch,
             Supplier<TtsOperationResult> submitPreview,
             Consumer<TtsFailure> failure
@@ -157,14 +163,14 @@ final class TtsModelLifecycleCoordinator {
         }
         setStateLocked(LifecycleState.PREVIEW);
         previewRequestId = requestId == null ? "" : requestId;
-        previewRestoreModel = restoreModel == null ? "" : restoreModel;
+        previewRestoreSelection = restoreSelection;
         previewRestoreScheduled = false;
         // Held for the whole preview, because the switch may still be parked in the gate when the module
         // shuts down; shutdown answers this consumer instead of dropping it.
         pendingPreviewFailure = failure == null ? ignored -> { } : failure;
         boolean submitted = requestManagedLoad(
                 "preview-begin",
-                () -> runPreviewSwitch(beforeSwitch, previewModel, submitPreview, failure),
+                () -> runPreviewSwitch(beforeSwitch, previewSelection, submitPreview, failure),
                 () -> failPreviewQueueFull(failure),
                 false
         );
@@ -179,7 +185,7 @@ final class TtsModelLifecycleCoordinator {
             return;
         }
         previewRestoreScheduled = true;
-        String restoreModel = previewRestoreModel;
+        TtsBackendSelection restoreSelection = previewRestoreSelection;
         if (failure != null) {
             // The restore is the last stage of the same preview, so a shutdown that lands while it is parked
             // has to answer this consumer too.
@@ -190,7 +196,7 @@ final class TtsModelLifecycleCoordinator {
         // answered by failPreviewQueueFull, so nothing else has to be done here.
         requestManagedLoad(
                 "preview-restore",
-                () -> runPreviewRestore(restoreModel, onRestored, failure),
+                () -> runPreviewRestore(restoreSelection, onRestored, failure),
                 () -> failPreviewQueueFull(failure),
                 false
         );
@@ -225,7 +231,7 @@ final class TtsModelLifecycleCoordinator {
             cancelledPreview = previewPending ? pendingPreviewFailure : null;
             pendingPreviewFailure = ignored -> { };
             previewRequestId = "";
-            previewRestoreModel = "";
+            previewRestoreSelection = null;
             previewRestoreScheduled = false;
             // A prepare or a switch still parked in the native-load gate never reaches its own release, so the
             // "loading" signal has to be dropped here or the HUD would wait for a load that will not happen.
@@ -471,12 +477,12 @@ final class TtsModelLifecycleCoordinator {
      */
     private synchronized TtsOperationResult requestModelSwitch(
             String action,
-            String modelName,
+            TtsBackendSelection selection,
             boolean forceReload,
             Consumer<TtsControlResult> completion
     ) {
         if (state == LifecycleState.OPERATION && !operationKind.isEmpty()) {
-            requestedModelName = modelName;
+            requestedSelection = selection;
             reloadRequested = reloadRequested || forceReload;
             switchRevision++;
             addSwitchCompletion(completion);
@@ -494,7 +500,7 @@ final class TtsModelLifecycleCoordinator {
             return TtsOperationResult.rejected(rejected.failure());
         }
         setStateLocked(LifecycleState.OPERATION);
-        operationKind = action;        requestedModelName = modelName;
+        operationKind = action;        requestedSelection = selection;
         reloadRequested = forceReload;
         switchRevision++;
         addSwitchCompletion(completion);
@@ -526,11 +532,11 @@ final class TtsModelLifecycleCoordinator {
             action = operationKind;
         }
         while (true) {
-            String target;
+            TtsBackendSelection target;
             boolean forceReload;
             long revision;
             synchronized (this) {
-                target = requestedModelName;
+                target = requestedSelection;
                 forceReload = reloadRequested;
                 revision = switchRevision;
             }
@@ -566,15 +572,15 @@ final class TtsModelLifecycleCoordinator {
         }
     }
 
-    private boolean switchTarget(String modelName, boolean forceReload) {
+    private boolean switchTarget(TtsBackendSelection selection, boolean forceReload) {
         if (forceReload) {
             return synthesisEngine.reload();
         }
-        if (modelName == null || modelName.isBlank()) {
+        if (selection == null) {
             synthesisEngine.clearModel();
             return true;
         }
-        return synthesisEngine.useModel(modelName);
+        return synthesisEngine.useSelection(selection);
     }
 
     private void failModelSwitch(String action) {
@@ -625,7 +631,7 @@ final class TtsModelLifecycleCoordinator {
 
     private void runPreviewSwitch(
             Runnable beforeSwitch,
-            String previewModel,
+            TtsBackendSelection previewSelection,
             Supplier<TtsOperationResult> submitPreview,
             Consumer<TtsFailure> failure
     ) {
@@ -639,7 +645,7 @@ final class TtsModelLifecycleCoordinator {
             if (beforeSwitch != null) {
                 beforeSwitch.run();
             }
-            if (!synthesisEngine.useModel(previewModel)) {
+            if (!synthesisEngine.useSelection(previewSelection)) {
                 restorePreviewSafely();
                 failPreview(TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS preview model reload failed"), failure);
                 return;
@@ -659,7 +665,7 @@ final class TtsModelLifecycleCoordinator {
         }
     }
 
-    private void runPreviewRestore(String restoreModel, Runnable onRestored, Consumer<TtsFailure> failure) {
+    private void runPreviewRestore(TtsBackendSelection restoreSelection, Runnable onRestored, Consumer<TtsFailure> failure) {
         synchronized (this) {
             if (state != LifecycleState.PREVIEW) {
                 // Stopped while the restore was parked: shutdown already answered this preview, so loading
@@ -669,9 +675,9 @@ final class TtsModelLifecycleCoordinator {
         }
         TtsFailure restoreFailure = null;
         try {
-            if (restoreModel.isBlank()) {
+            if (restoreSelection == null) {
                 synthesisEngine.clearModel();
-            } else if (!synthesisEngine.useModel(restoreModel)) {
+            } else if (!synthesisEngine.useSelection(restoreSelection)) {
                 restoreFailure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS preview model restore failed");
             }
         } catch (Throwable throwable) {
@@ -727,9 +733,9 @@ final class TtsModelLifecycleCoordinator {
 
     private void restorePreviewSafely() {
         try {
-            if (previewRestoreModel.isBlank()) {
+            if (previewRestoreSelection == null) {
                 synthesisEngine.clearModel();
-            } else if (!synthesisEngine.useModel(previewRestoreModel)) {
+            } else if (!synthesisEngine.useSelection(previewRestoreSelection)) {
                 failureObserver.accept(TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE,
                         "TTS preview model restore failed"));
             }
@@ -754,7 +760,7 @@ final class TtsModelLifecycleCoordinator {
         // module went away cannot make the next caller believe the engine can still be used.
         setStateLocked(LifecycleState.IDLE);
         previewRequestId = "";
-        previewRestoreModel = "";
+        previewRestoreSelection = null;
         previewRestoreScheduled = false;
         // The preview is over: a later shutdown must not answer a consumer that was already answered.
         pendingPreviewFailure = ignored -> { };
