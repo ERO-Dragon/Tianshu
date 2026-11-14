@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class TianshuSettingsScreenBoundaryTest {
     @Test
     void everyScreenOwnsFreshSettingsSessions() throws Exception {
-        String module = read("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsModule.java");
+        String module = read("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsModule.java");
         String createScreen = methodBody(module, "public Screen createScreen(Screen returnScreen)");
 
         assertTrue(createScreen.contains("new SettingsSessionRegistry(logs)"));
@@ -24,7 +24,7 @@ final class TianshuSettingsScreenBoundaryTest {
 
     @Test
     void globalDebugToggleLivesInTheFixedBottomActionArea() throws Exception {
-        String screen = read("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
+        String screen = read("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
         String actions = methodBody(screen, "private void addBottomActions");
 
         assertTrue(actions.contains("debugSession.toggle()"));
@@ -35,7 +35,7 @@ final class TianshuSettingsScreenBoundaryTest {
 
     @Test
     void asynchronousRefreshReturnsThroughMinecraftSchedulerAndCoalesces() throws Exception {
-        String screen = read("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
+        String screen = read("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
         String refresh = methodBody(screen, "public void requestRebuildCurrentPage()");
 
         assertTrue(refresh.contains("if (rebuildQueued)"));
@@ -47,7 +47,7 @@ final class TianshuSettingsScreenBoundaryTest {
 
     @Test
     void selectionPanelConsumesBackgroundKeyboardInput() throws Exception {
-        String screen = read("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
+        String screen = read("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
         String keyPressed = methodBody(screen, "public boolean keyPressed");
         String charTyped = methodBody(screen, "public boolean charTyped");
 
@@ -59,7 +59,7 @@ final class TianshuSettingsScreenBoundaryTest {
 
     @Test
     void selectionPanelAndNestedScrollRegionsOwnPointerInput() throws Exception {
-        String screen = read("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
+        String screen = read("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
         String mouseClicked = methodBody(screen, "public boolean mouseClicked");
         String mouseScrolled = methodBody(screen, "public boolean mouseScrolled");
 
@@ -75,8 +75,8 @@ final class TianshuSettingsScreenBoundaryTest {
 
     @Test
     void screenAndRendererDoNotPerformBlockingOrFileWork() throws Exception {
-        String screen = read("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
-        String renderer = read("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/VanillaModuleSettingsRenderer.java");
+        String screen = read("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/TianshuSettingsScreen.java");
+        String renderer = read("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/VanillaModuleSettingsRenderer.java");
 
         for (String source : java.util.List.of(screen, renderer)) {
             assertFalse(source.contains("Files."));

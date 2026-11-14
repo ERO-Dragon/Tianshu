@@ -20,7 +20,7 @@ final class GameEnvironmentBoundaryTest {
     @Test
     void theBoundLogSinkIsReachableThroughTheEnvironmentAccessor() throws Exception {
         String environment = Files.readString(
-                Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
+                Path.of("../1.21.11-common/src/main/java/com/rheinmetal/tianshu/mc/host/GameEnvironment.java"),
                 StandardCharsets.UTF_8);
 
         assertTrue(environment.contains("public void bindLogs(LogSink logSink)"));
