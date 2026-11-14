@@ -79,7 +79,7 @@ public final class CraftSource implements CraftPort {
         if (produced.isEmpty()) {
             return failure("the recipe produces nothing");
         }
-        List<ItemStack> needed = ingredients(display, context);
+        List<List<ItemStack>> needed = ingredients(display, context);
         Inventory inventory = player.getInventory();
         int[] assignment = assignIngredients(inventory, needed);
         if (assignment == null) {
@@ -107,7 +107,7 @@ public final class CraftSource implements CraftPort {
         return null;
     }
 
-    private static List<ItemStack> ingredients(RecipeDisplay display, ContextMap context) {
+    private static List<List<ItemStack>> ingredients(RecipeDisplay display, ContextMap context) {
         List<SlotDisplay> slots;
         if (display instanceof ShapedCraftingRecipeDisplay shaped) {
             slots = shaped.ingredients();
@@ -116,30 +116,39 @@ public final class CraftSource implements CraftPort {
         } else {
             return List.of();
         }
-        List<ItemStack> needed = new ArrayList<>();
+        List<List<ItemStack>> needed = new ArrayList<>();
         for (SlotDisplay slot : slots) {
-            ItemStack stack = slot.resolveForFirstStack(context);
-            if (!stack.isEmpty()) {
-                needed.add(stack.copyWithCount(1));
+            List<ItemStack> options = new ArrayList<>();
+            for (ItemStack stack : slot.resolveForStacks(context)) {
+                if (!stack.isEmpty()) {
+                    options.add(stack.copyWithCount(1));
+                }
+            }
+            if (!options.isEmpty()) {
+                needed.add(List.copyOf(options));
             }
         }
         return List.copyOf(needed);
     }
 
-    private static int[] assignIngredients(Inventory inventory, List<ItemStack> ingredients) {
+    private static int[] assignIngredients(Inventory inventory, List<List<ItemStack>> ingredients) {
         int[] assignment = new int[ingredients.size()];
         boolean[] used = new boolean[MAIN_INVENTORY_SIZE];
         for (int index = 0; index < ingredients.size(); index++) {
-            ItemStack ingredient = ingredients.get(index);
             int slot = -1;
-            for (int candidate = 0; candidate < MAIN_INVENTORY_SIZE; candidate++) {
+            for (int candidate = 0; candidate < MAIN_INVENTORY_SIZE && slot < 0; candidate++) {
                 if (used[candidate]) {
                     continue;
                 }
                 ItemStack stack = inventory.getItem(candidate);
-                if (!stack.isEmpty() && ItemStack.isSameItemSameComponents(stack, ingredient)) {
-                    slot = candidate;
-                    break;
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                for (ItemStack option : ingredients.get(index)) {
+                    if (ItemStack.isSameItemSameComponents(stack, option)) {
+                        slot = candidate;
+                        break;
+                    }
                 }
             }
             if (slot < 0) {
