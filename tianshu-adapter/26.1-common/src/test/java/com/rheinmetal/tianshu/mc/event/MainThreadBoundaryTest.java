@@ -110,9 +110,9 @@ final class MainThreadBoundaryTest {
         );
 
         assertFalse(methodBody(events, "public void onClientTick").contains("hudHost.render"));
-        assertTrue(methodBody(events, "public void onRenderGui").contains("hudHost.render(graphics)"));
+        assertTrue(methodBody(events, "public void onRenderGui").contains("hudHost.extractRenderState(graphics)"));
         assertTrue(host.contains("System.nanoTime()"), "the platform samples the render clock");
-        assertTrue(methodBody(host, "public void render").contains("layer.render(frame, surface)"));
+        assertTrue(methodBody(host, "public void extractRenderState").contains("layer.render(frame, surface)"));
         assertTrue(methodBody(layer, "public void render").contains("statusTextController.update("));
         assertTrue(methodBody(layer, "public void render").contains("iconController.update("));
         assertFalse(layer.contains("System.nanoTime()"), "the feature reads the frame clock, never the system one");
