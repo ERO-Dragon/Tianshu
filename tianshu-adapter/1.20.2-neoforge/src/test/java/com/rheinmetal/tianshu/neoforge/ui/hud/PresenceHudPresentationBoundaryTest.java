@@ -33,7 +33,7 @@ final class PresenceHudPresentationBoundaryTest {
     void anchorEditorUsesATransparentCanvasWithoutVanillaBlur() throws Exception {
         String source = read(ANCHOR_SCREEN);
 
-        assertTrue(source.contains("renderTransparentBackground(graphics)"));
+        assertTrue(source.contains("graphics.fill(0, 0, width, height, CANVAS_COLOR)"));
         assertFalse(source.contains("renderBackground(graphics"));
     }
 
