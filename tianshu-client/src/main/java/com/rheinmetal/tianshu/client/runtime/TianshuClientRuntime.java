@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.client.runtime;
 import com.rheinmetal.tianshu.client.tool.ClientTools;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
+import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import java.nio.file.Path;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 
@@ -29,6 +31,8 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final AtomicLong generation = new AtomicLong();
     private volatile SkillFileProvider skills;
     private volatile SkillFileProvider builtInSkills;
+    private volatile TextCapabilityProvider resources;
+    private volatile TextCapabilityProvider prompts;
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
     private boolean worldSessionRequested;
@@ -83,6 +87,10 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         ClientTools.register();
         builtInSkills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
         skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills"));
+        resources = TextCapabilityProvider.install(CapabilityKind.RESOURCE, "user",
+                Path.of("config", "Tianshu", "resources"));
+        prompts = TextCapabilityProvider.install(CapabilityKind.PROMPT, "user",
+                Path.of("config", "Tianshu", "prompts"));
         ConnectionToolChannel.install();
         startClientResources.run();
     }
@@ -138,6 +146,16 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         if (builtIn != null) {
             builtIn.unload();
             builtInSkills = null;
+        }
+        TextCapabilityProvider resourceProvider = resources;
+        if (resourceProvider != null) {
+            resourceProvider.unload();
+            resources = null;
+        }
+        TextCapabilityProvider promptProvider = prompts;
+        if (promptProvider != null) {
+            promptProvider.unload();
+            prompts = null;
         }
         synchronized (lifecycleMonitor) {
             if (state == ClientSessionState.SHUTDOWN) {

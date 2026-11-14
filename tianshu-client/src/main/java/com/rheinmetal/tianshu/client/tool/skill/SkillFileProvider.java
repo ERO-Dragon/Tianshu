@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.client.tool.skill;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.client.capability.FrontMatter;
+import com.rheinmetal.tianshu.client.capability.TextPages;
 import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
@@ -44,7 +46,6 @@ public final class SkillFileProvider {
     private static final int MAX_NAME = 64;
     private static final int MAX_DESCRIPTION = 1024;
     private static final int MAX_TEXT_BYTES = 512 * 1024;
-    private static final int PAGE_CHARS = 6_000;
 
     private final String namespace;
     private final Origin origin;
@@ -173,9 +174,10 @@ public final class SkillFileProvider {
                 text = text.substring(0, MAX_TEXT_BYTES);
             }
             if ("SKILL.md".equals(relative)) {
-                text = bodyOnly(text);
+                text = FrontMatter.body(text);
             }
-            return CompletableFuture.completedFuture(envelope(page(text, optionalPage(args))));
+            return CompletableFuture.completedFuture(envelope(TextPages.page(text, optionalPage(args),
+                    TextPages.DEFAULT_PAGE_CHARS)));
         } catch (IOException | IllegalArgumentException failure) {
             JsonObject error = new JsonObject();
             error.addProperty("ok", false);
@@ -183,20 +185,6 @@ public final class SkillFileProvider {
             error.addProperty("message", failure.getMessage());
             return CompletableFuture.completedFuture(error);
         }
-    }
-
-    private static String bodyOnly(String text) {
-        int start = text.indexOf("---");
-        if (start < 0) {
-            return text;
-        }
-        int lineEnd = text.indexOf('\n', start);
-        int close = text.indexOf("\n---", lineEnd < 0 ? start : lineEnd);
-        if (close < 0) {
-            return text;
-        }
-        int bodyStart = text.indexOf('\n', close + 1);
-        return bodyStart < 0 ? "" : text.substring(bodyStart + 1);
     }
 
     private static String optionalString(JsonObject args, String key) {
@@ -213,21 +201,6 @@ public final class SkillFileProvider {
             throw new IllegalArgumentException("page starts at 1");
         }
         return page;
-    }
-
-    private static String page(String text, int page) {
-        int pages = Math.max(1, (text.length() + PAGE_CHARS - 1) / PAGE_CHARS);
-        if (page > pages) {
-            throw new IllegalArgumentException("page " + page + " does not exist; the text has " + pages);
-        }
-        int start = (page - 1) * PAGE_CHARS;
-        int end = Math.min(text.length(), start + PAGE_CHARS);
-        String slice = text.substring(start, end);
-        if (pages == 1) {
-            return slice;
-        }
-        return slice + "\n\n[page " + page + "/" + pages
-                + (page < pages ? " — next: page=" + (page + 1) : " — end") + "]";
     }
 
     private static JsonObject envelope(String text) {
@@ -346,36 +319,4 @@ public final class SkillFileProvider {
         }
     }
 
-    /** The two standard keys plus unknown keys preserved; no YAML dependency is pulled into the mod. */
-    private record FrontMatter(Map<String, String> values) {
-
-        String get(String key) {
-            return values.get(key);
-        }
-
-        static FrontMatter parse(String text) {
-            Map<String, String> values = new java.util.LinkedHashMap<>();
-            String[] lines = text.split("\n", -1);
-            if (lines.length == 0 || !"---".equals(lines[0].strip())) {
-                throw new IllegalArgumentException("SKILL.md must start with a --- front matter block");
-            }
-            for (int index = 1; index < lines.length; index++) {
-                String line = lines[index];
-                if ("---".equals(line.strip())) {
-                    return new FrontMatter(values);
-                }
-                int colon = line.indexOf(':');
-                if (colon <= 0) {
-                    continue;
-                }
-                String key = line.substring(0, colon).strip();
-                String value = line.substring(colon + 1).strip();
-                if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-                    value = value.substring(1, value.length() - 1);
-                }
-                values.put(key, value);
-            }
-            throw new IllegalArgumentException("SKILL.md front matter is not closed with ---");
-        }
-    }
 }
