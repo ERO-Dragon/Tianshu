@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
+import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -11,12 +12,14 @@ import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
 import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
+import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
 import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
+import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -48,6 +51,10 @@ public final class FabricServerToolHandler {
 
     private static void onServerStarting0(MinecraftServer server) {
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
+    TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(server));
+    if (TianshuTools.find(RecipeQueryTool.ID) == null) {
+        TianshuTools.register(new RecipeQueryTool());
+    }
         TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractSource(server));
         TianshuRuntimePorts.register(ContainerTransferPort.class, new ContainerTransferSource(server));
         register(new LootQueryTool());

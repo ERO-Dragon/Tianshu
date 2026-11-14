@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
+import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
@@ -12,12 +13,14 @@ import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
 import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
+import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
 import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
+import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
 import net.minecraft.server.MinecraftServer;
@@ -42,6 +45,10 @@ public final class ServerToolHandler {
 
     private static void onServerStarting(ServerStartingEvent event) {
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
+        TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
+        if (TianshuTools.find(RecipeQueryTool.ID) == null) {
+            TianshuTools.register(new RecipeQueryTool());
+        }
         TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractSource(event.getServer()));
         TianshuRuntimePorts.register(ContainerTransferPort.class, new ContainerTransferSource(event.getServer()));
         register(new LootQueryTool());

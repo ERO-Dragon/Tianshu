@@ -23,11 +23,11 @@ public final class ClientTools {
         if (!REGISTERED.compareAndSet(false, true)) {
             return;
         }
-        TianshuTools.register(new RecipeQueryTool());
         TianshuTools.register(new TagQueryTool());
         TianshuTools.register(new InventoryInspectTool());
         TianshuTools.register(new CapabilityReadTool());
         // Server-side tools are declared here but appear only after the server's catalog names them.
+        ServerToolDeclarations.declare(new RecipeQueryTool());
         ServerToolDeclarations.declare(new LootQueryTool());
         ServerToolDeclarations.declare(new BlockInteractTool());
         ServerToolDeclarations.declare(new CraftRecipeTool());
@@ -37,7 +37,6 @@ public final class ClientTools {
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */
     public static void unregisterForTests() {
-        TianshuTools.unregister(RecipeQueryTool.ID);
         TianshuTools.unregister(TagQueryTool.ID);
         TianshuTools.unregister(InventoryInspectTool.ID);
         TianshuTools.unregister(CapabilityReadTool.ID);

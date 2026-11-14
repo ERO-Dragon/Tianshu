@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.api.tool.ToolPolicy;
 
 import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
@@ -35,7 +36,13 @@ public final class RecipeQueryTool implements TianshuTool<RecipeQuery, RecipeQue
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.LOCAL;
+        return ToolCategory.SERVER_READ;
+    }
+
+    @Override
+    public ToolPolicy policy() {
+        // The server scans its recipe manager; large packs need more than the default two seconds.
+        return ToolPolicy.forCategory(category()).withTimeout(5_000L);
     }
 
     @Override

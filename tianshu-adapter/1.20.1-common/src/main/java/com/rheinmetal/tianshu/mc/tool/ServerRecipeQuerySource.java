@@ -3,34 +3,32 @@ package com.rheinmetal.tianshu.mc.tool;
 import com.rheinmetal.tianshu.api.game.RecipeInfo;
 import com.rheinmetal.tianshu.api.game.RecipeQuery;
 import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * The 1.20.x recipe source behind {@code tianshu:recipe.query}: the client already receives every recipe, so the
- * lookup is local and needs no server component.
- *
- * <p>This generation has no {@code RecipeHolder}; the recipe carries its own id. The port hands the work to the
- * client thread because the recipe manager belongs to the level, and never blocks the caller.</p>
- */
-public final class RecipeQuerySource implements RecipeQueryPort {
+/** Server-side recipe lookup for the legacy recipe manager (1.20.1–1.20.4). */
+public final class ServerRecipeQuerySource implements RecipeQueryPort {
+
+    private final MinecraftServer server;
+
+    public ServerRecipeQuerySource(MinecraftServer server) {
+        this.server = server;
+    }
 
     @Override
     public CompletableFuture<List<RecipeInfo>> query(RecipeQuery query) {
         CompletableFuture<List<RecipeInfo>> result = new CompletableFuture<>();
-        Minecraft minecraft = Minecraft.getInstance();
-        minecraft.execute(() -> {
+        server.execute(() -> {
             try {
-                result.complete(lookup(minecraft, query));
+                result.complete(lookup(query));
             } catch (RuntimeException failure) {
                 result.completeExceptionally(failure);
             }
@@ -38,17 +36,14 @@ public final class RecipeQuerySource implements RecipeQueryPort {
         return result;
     }
 
-    private static List<RecipeInfo> lookup(Minecraft minecraft, RecipeQuery query) {
-        Level level = minecraft.level;
-        if (level == null) {
-            return List.of();
-        }
+    private List<RecipeInfo> lookup(RecipeQuery query) {
         ResourceLocation output = ResourceLocation.tryParse(query.outputItemId());
         if (output == null) {
             return List.of();
         }
+        var level = server.overworld();
         List<RecipeInfo> found = new ArrayList<>();
-        for (Recipe<?> recipe : level.getRecipeManager().getRecipes()) {
+        for (Recipe<?> recipe : server.getRecipeManager().getRecipes()) {
             ItemStack result = recipe.getResultItem(level.registryAccess());
             if (result.isEmpty()) {
                 continue;

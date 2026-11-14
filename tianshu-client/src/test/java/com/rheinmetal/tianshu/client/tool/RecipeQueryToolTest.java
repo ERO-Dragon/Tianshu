@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.api.game.RecipeQueryResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolHandle;
+import com.rheinmetal.tianshu.api.tool.ToolSide;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,12 +34,12 @@ class RecipeQueryToolTest {
 
     @BeforeEach
     void registerTools() {
-        ClientTools.register();
+        TianshuTools.register(new RecipeQueryTool());
     }
 
     @AfterEach
     void clean() {
-        ClientTools.unregisterForTests();
+        TianshuTools.unregister(RecipeQueryTool.ID);
         TianshuRuntimePorts.clear();
     }
 
@@ -53,7 +54,7 @@ class RecipeQueryToolTest {
 
         JsonObject envelope = TianshuTools.callJson(RecipeQueryTool.ID,
                         JsonParser.parseString("{\"outputItemId\":\"minecraft:iron_pickaxe\",\"limit\":3}"),
-                        ToolCaller.agent(false))
+                        ToolCaller.agent(false), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
 
         assertTrue(envelope.get("ok").getAsBoolean());
@@ -71,13 +72,13 @@ class RecipeQueryToolTest {
 
         TianshuTools.callJson(RecipeQueryTool.ID,
                         JsonParser.parseString("{\"outputItemId\":\"minecraft:stick\",\"limit\":10000}"),
-                        ToolCaller.agent(false))
+                        ToolCaller.agent(false), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
         assertEquals(RecipeQueryTool.MAX_LIMIT, lastQuery.get().limit());
 
         TianshuTools.callJson(RecipeQueryTool.ID,
                         JsonParser.parseString("{\"outputItemId\":\"minecraft:stick\",\"limit\":0}"),
-                        ToolCaller.agent(false))
+                        ToolCaller.agent(false), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
         assertEquals(1, lastQuery.get().limit());
     }
@@ -89,7 +90,7 @@ class RecipeQueryToolTest {
 
         ToolHandle<RecipeQuery, RecipeQueryResult> handle =
                 TianshuTools.handle(RecipeQueryTool.ID, RecipeQuery.class, RecipeQueryResult.class);
-        RecipeQueryResult result = handle.call(new RecipeQuery("minecraft:stick", 5), ToolCaller.mod("m"))
+        RecipeQueryResult result = handle.call(new RecipeQuery("minecraft:stick", 5), ToolCaller.mod("m"), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
         assertEquals(1, result.recipes().size());
     }
@@ -98,7 +99,7 @@ class RecipeQueryToolTest {
     void withoutAPortTheToolReportsUnavailable() throws Exception {
         JsonObject envelope = TianshuTools.callJson(RecipeQueryTool.ID,
                         JsonParser.parseString("{\"outputItemId\":\"minecraft:stick\",\"limit\":1}"),
-                        ToolCaller.agent(false))
+                        ToolCaller.agent(false), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
         assertFalse(envelope.get("ok").getAsBoolean());
         assertEquals("UNAVAILABLE", envelope.get("code").getAsString());
@@ -108,7 +109,7 @@ class RecipeQueryToolTest {
     void ablankItemIdIsInvalidArguments() throws Exception {
         JsonObject envelope = TianshuTools.callJson(RecipeQueryTool.ID,
                         JsonParser.parseString("{\"outputItemId\":\"   \",\"limit\":1}"),
-                        ToolCaller.agent(false))
+                        ToolCaller.agent(false), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
         assertFalse(envelope.get("ok").getAsBoolean());
         assertEquals("INVALID_ARGS", envelope.get("code").getAsString());
@@ -116,7 +117,7 @@ class RecipeQueryToolTest {
 
     @Test
     void theToolIsAdvertisedAsALocalQueryWithASchema() {
-        assertTrue(TianshuTools.catalog(ToolCaller.agent(false)).stream()
+        assertTrue(TianshuTools.catalog(ToolCaller.agent(false), ToolSide.SERVER).stream()
                 .anyMatch(spec -> spec.id().equals(RecipeQueryTool.ID)
                         && spec.enabled()
                         && spec.argsSchema() != null));
