@@ -29,19 +29,19 @@ final class SettingsLayerBoundaryTest {
     void layerDrawsThePageBelowOnlyWhenThereIsNoLayerStack() throws Exception {
         String host = read(HOST);
         assertTrue(host.contains("if (drawParent)"), "the decision is a flag, not two render paths");
-        assertTrue(methodBody(host, "public void render(GuiGraphics").contains("parent.render("),
+        assertTrue(methodBody(host, "public void extractRenderState(GuiGraphicsExtractor").contains("parent.extractRenderState("),
                 "the flag's branch is what draws the page");
 
         for (String path : List.of(RENDERER)) {
             String source = read(path);
-            assertFalse(source.contains("parent.render("), () -> "page redrawn by " + path);
+            assertFalse(source.contains("parent.extractRenderState("), () -> "page redrawn by " + path);
             assertFalse(source.contains(".renderWithTooltip("), () -> "page redrawn by " + path);
             assertFalse(source.contains("renderBackground("), () -> "page background redrawn by " + path);
         }
     }
     @Test
     void layerDrawsDimThenContentThenControls() throws Exception {
-        String render = methodBody(read(HOST), "public void render(GuiGraphics");
+        String render = methodBody(read(HOST), "public void extractRenderState(GuiGraphicsExtractor");
 
         int refresh = render.indexOf("renderer.refresh(");
         int dim = render.indexOf("graphics.fill(");

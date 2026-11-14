@@ -68,7 +68,7 @@ final class KeyCategoryBoundaryTest {
     @Test
     void theDerivedLabelExistsInBothLanguages() throws Exception {
         for (String language : new String[]{"en_us", "zh_cn"}) {
-            String shard = read("../../lang/" + language + ".json");
+            String shard = read("../../../Tianshu-ferry/lang/" + language + ".json");
             assertTrue(shard.contains("\"" + DERIVED_LABEL + "\""),
                     () -> "the controls screen would show the raw key in " + language);
         }
