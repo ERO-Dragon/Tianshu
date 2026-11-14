@@ -13,17 +13,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Read-only hides writes; confirm asks exactly once; full runs without a prompt; server dispatch never asks. */
+/** Risk tiers: read-only hides writes, conservative allows survival writes, full adds the privileged end. */
 class ToolAutonomyTest {
 
     private static final ToolId WRITE = ToolId.of("test", "autonomy.write");
+    private static final ToolId FULL_ONLY = ToolId.of("test", "autonomy.full");
 
     @BeforeEach
     void setUp() {
         ToolAutonomyGate.reset();
         TianshuTools.clearRateLimits();
         TianshuTools.register(new WriteTool());
+        TianshuTools.register(new FullOnlyTool());
         TianshuTools.setEnabled(WRITE, true);
+        TianshuTools.setEnabled(FULL_ONLY, true);
         TianshuTools.installServerChannel(new ServerToolChannel() {
             @Override
             public CompletableFuture<com.google.gson.JsonElement> call(ToolId id, com.google.gson.JsonElement args,
@@ -36,44 +39,44 @@ class ToolAutonomyTest {
     @AfterEach
     void clean() {
         TianshuTools.unregister(WRITE);
+        TianshuTools.unregister(FULL_ONLY);
         TianshuTools.uninstallServerChannel();
         ToolAutonomyGate.reset();
     }
 
     @Test
-    void readOnlyHidesAndRefusesWriteTools() throws Exception {
+    void readOnlyHidesAndRefusesEveryWrite() throws Exception {
         ToolAutonomyGate.setMode(ToolAutonomy.READ_ONLY);
 
-        assertFalse(TianshuTools.catalog(ToolCaller.agent(true), ToolSide.CLIENT).stream()
-                .anyMatch(spec -> spec.id().equals(WRITE)));
-        JsonObject denied = callClient();
-        assertEquals("NO_PERMISSION", denied.get("code").getAsString());
+        assertFalse(visible(WRITE));
+        assertFalse(visible(FULL_ONLY));
+        assertEquals("NO_PERMISSION", callClient(WRITE).get("code").getAsString());
+        assertEquals("NO_PERMISSION", callClient(FULL_ONLY).get("code").getAsString());
     }
 
     @Test
-    void confirmWithoutAConfirmerIsDenied() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.CONFIRM);
+    void conservativeAllowsSurvivalWritesButNotThePrivilegedEnd() throws Exception {
+        ToolAutonomyGate.setMode(ToolAutonomy.CONSERVATIVE);
 
-        JsonObject denied = callClient();
-        assertFalse(denied.get("ok").getAsBoolean());
-        assertEquals("NO_PERMISSION", denied.get("code").getAsString());
+        assertTrue(visible(WRITE));
+        assertFalse(visible(FULL_ONLY));
+        assertTrue(callClient(WRITE).get("ok").getAsBoolean());
+        assertEquals("NO_PERMISSION", callClient(FULL_ONLY).get("code").getAsString());
     }
 
     @Test
-    void confirmAsksThePlayerAndObeysTheAnswer() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.CONFIRM);
-        ToolAutonomyGate.installConfirmation(attempt -> CompletableFuture.completedFuture(true));
-        assertTrue(callClient().get("ok").getAsBoolean());
-
-        ToolAutonomyGate.installConfirmation(attempt -> CompletableFuture.completedFuture(false));
-        assertEquals("NO_PERMISSION", callClient().get("code").getAsString());
-    }
-
-    @Test
-    void fullRunsWithoutAPromptButStillNeedsAnOperator() throws Exception {
+    void fullAllowsEveryTier() throws Exception {
         ToolAutonomyGate.setMode(ToolAutonomy.FULL);
 
-        assertTrue(callClient().get("ok").getAsBoolean());
+        assertTrue(visible(WRITE));
+        assertTrue(visible(FULL_ONLY));
+        assertTrue(callClient(WRITE).get("ok").getAsBoolean());
+        assertTrue(callClient(FULL_ONLY).get("ok").getAsBoolean());
+    }
+
+    @Test
+    void theGateStillNeedsAnOperator() throws Exception {
+        ToolAutonomyGate.setMode(ToolAutonomy.FULL);
 
         JsonObject denied = TianshuTools.callJson(WRITE, new JsonObject(), ToolCaller.agent(false), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
@@ -81,17 +84,23 @@ class ToolAutonomyTest {
     }
 
     @Test
-    void serverDispatchIsNotGatedAgain() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.CONFIRM);
+    void serverDispatchAppliesTheSameTier() throws Exception {
+        ToolAutonomyGate.setMode(ToolAutonomy.CONSERVATIVE);
 
-        JsonObject result = TianshuTools.callJson(WRITE, new JsonObject(), ToolCaller.player("p", true),
-                        ToolSide.SERVER)
-                .get(2, TimeUnit.SECONDS);
-        assertTrue(result.get("ok").getAsBoolean(), "the client already approved; the server trusts operator+switch");
+        assertTrue(TianshuTools.callJson(WRITE, new JsonObject(), ToolCaller.player("p", true), ToolSide.SERVER)
+                .get(2, TimeUnit.SECONDS).get("ok").getAsBoolean());
+        assertEquals("NO_PERMISSION",
+                TianshuTools.callJson(FULL_ONLY, new JsonObject(), ToolCaller.player("p", true), ToolSide.SERVER)
+                        .get(2, TimeUnit.SECONDS).get("code").getAsString());
     }
 
-    private static JsonObject callClient() throws Exception {
-        return TianshuTools.callJson(WRITE, new JsonObject(), ToolCaller.agent(true), ToolSide.CLIENT)
+    private static boolean visible(ToolId id) {
+        return TianshuTools.catalog(ToolCaller.agent(true), ToolSide.CLIENT).stream()
+                .anyMatch(spec -> spec.id().equals(id));
+    }
+
+    private static JsonObject callClient(ToolId id) throws Exception {
+        return TianshuTools.callJson(id, new JsonObject(), ToolCaller.agent(true), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
     }
 
@@ -101,10 +110,22 @@ class ToolAutonomyTest {
     public static final class Reply {
     }
 
-    private static final class WriteTool implements TianshuTool<Args, Reply> {
+    private static class WriteTool implements TianshuTool<Args, Reply> {
+        private final ToolId id;
+        private final ToolAutonomy autonomy;
+
+        WriteTool() {
+            this(WRITE, ToolAutonomy.CONSERVATIVE);
+        }
+
+        WriteTool(ToolId id, ToolAutonomy autonomy) {
+            this.id = id;
+            this.autonomy = autonomy;
+        }
+
         @Override
         public ToolId id() {
-            return WRITE;
+            return id;
         }
 
         @Override
@@ -115,6 +136,11 @@ class ToolAutonomyTest {
         @Override
         public String description() {
             return "Write; an autonomy test double.";
+        }
+
+        @Override
+        public ToolAutonomy requiredAutonomy() {
+            return autonomy;
         }
 
         @Override
@@ -130,6 +156,12 @@ class ToolAutonomyTest {
         @Override
         public CompletableFuture<Reply> invoke(ToolContext context, Args args) {
             return CompletableFuture.completedFuture(new Reply());
+        }
+    }
+
+    private static final class FullOnlyTool extends WriteTool {
+        FullOnlyTool() {
+            super(FULL_ONLY, ToolAutonomy.FULL);
         }
     }
 }

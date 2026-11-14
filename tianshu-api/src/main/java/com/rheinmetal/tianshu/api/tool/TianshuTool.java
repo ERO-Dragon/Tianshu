@@ -35,6 +35,14 @@ public interface TianshuTool<A, R> {
         return null;
     }
 
+    /**
+     * The risk tier this tool needs. Writes are survival-tier unless a tool says otherwise; a tool that can give
+     * items, run commands or teleport should override this with {@link ToolAutonomy#FULL}.
+     */
+    default ToolAutonomy requiredAutonomy() {
+        return category() == ToolCategory.SERVER_WRITE ? ToolAutonomy.CONSERVATIVE : ToolAutonomy.READ_ONLY;
+    }
+
     /** The policy this tool runs under; by default it follows the category. */
     default ToolPolicy policy() {
         return ToolPolicy.forCategory(category());

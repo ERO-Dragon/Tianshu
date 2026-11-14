@@ -124,6 +124,7 @@ public final class CapabilityCatalog {
         }
         attributes.addProperty("category", tool.category().name().toLowerCase(java.util.Locale.ROOT));
         attributes.addProperty("enabled", tool.policy().enabledByDefault());
+        attributes.addProperty("autonomy", tool.requiredAutonomy().name());
         CapabilityDescriptor descriptor = new CapabilityDescriptor(
                 CapabilityId.parse(tool.id().toString()),
                 CapabilityKind.TOOL,
