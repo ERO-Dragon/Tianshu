@@ -63,7 +63,9 @@ public final class ToolCatalogPushRegistry {
         List<String> ids = new ArrayList<>();
         for (ToolSpec spec : TianshuTools.catalog(ToolCaller.player(playerId, subscriber.operator()),
                 ToolSide.SERVER)) {
-            ids.add(spec.id().toString());
+            if (spec.category().isServerSide()) {
+                ids.add(spec.id().toString());
+            }
         }
         try {
             subscriber.push().push(playerId, List.copyOf(ids));
