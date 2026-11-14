@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsPanel;
 import com.rheinmetal.tianshu.client.api.settings.SettingsButtonStyle;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.settings.model.ModuleSettingsCategory;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistry;
 import com.rheinmetal.tianshu.client.settings.registry.TianshuSettingsRegistrySource;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSaveResult;
@@ -25,10 +26,11 @@ import java.util.Locale;
 public final class LabSettingsSource implements TianshuSettingsRegistrySource {
     private final LabModuleControl module;
     private final LabToolConsole tools = new LabToolConsole();
-    private final LabCapabilityCheck capabilities = new LabCapabilityCheck();
+    private final LabCapabilityCheck capabilities;
 
-    public LabSettingsSource(LabModuleControl module) {
+    public LabSettingsSource(LabModuleControl module, DiagnosticSink diagnostics) {
         this.module = module;
+        this.capabilities = new LabCapabilityCheck(diagnostics);
     }
 
     @Override

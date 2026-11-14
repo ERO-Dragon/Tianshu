@@ -37,6 +37,18 @@ class ToolCallProtocolTest {
     }
 
     @Test
+    void aMalformedCallKeepsTheReasonForRepair() {
+        ToolCallParser.ParseResult badArgs = ToolCallParser.parseDetailed(
+                "{\"tool\":\"test:echo\",\"args\":[]}");
+        assertTrue(badArgs.call().isEmpty());
+        assertTrue(badArgs.error().contains("args"));
+
+        ToolCallParser.ParseResult badJson = ToolCallParser.parseDetailed("{\"tool\":");
+        assertTrue(badJson.call().isEmpty());
+        assertFalse(badJson.error().isBlank());
+    }
+
+    @Test
     void theCatalogueListsOnlyEnabledTools() {
         ToolSpec enabled = new ToolSpec(ToolId.of("test", "one"), ToolCategory.LOCAL, "does one", new JsonObject(), true);
         ToolSpec disabled = new ToolSpec(ToolId.of("test", "two"), ToolCategory.LOCAL, "does two", null, false);

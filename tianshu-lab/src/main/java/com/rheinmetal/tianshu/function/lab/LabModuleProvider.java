@@ -28,7 +28,9 @@ public final class LabModuleProvider implements TianshuModuleProvider {
         LabModule module = new LabModule(context.moduleRuntime(), ports);
         registrar.addModule((host, services) -> host.registerOptionalModule(module));
         if (ports != null) {
-            registrar.addSettings(new LabSettingsSource(module));
+            registrar.addSettings(new LabSettingsSource(module,
+                    context.env() == null ? com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP
+                            : context.env().diagnostics()));
         }
     }
 }

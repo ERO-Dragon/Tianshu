@@ -19,7 +19,7 @@ From the repository root:
 That launches the adapter with every dev module (Intake, Echo, Weaving, Auxilium, Presence, Lab). Options:
 
 - `-Padapter=1.20.5-neoforge` — another adapter;
-- `-Pmods=intake,lab` — a smaller set (always keep `lab`, and `intake` because Lab depends on it);
+- `-Pmods=intake,presence,lab` — a smaller set (Lab needs `intake`, and `intake` requires `presence`);
 - `-Poffline=true` — use the local Gradle cache.
 
 The default is `1.21.1-neoforge` with all modules. Open Settings → Arbitration Lab → **Capability self-check**
