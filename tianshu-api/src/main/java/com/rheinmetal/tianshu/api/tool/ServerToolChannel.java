@@ -31,4 +31,15 @@ public interface ServerToolChannel {
      * @return the JSON result, or a future failed with a {@link ToolException}
      */
     CompletableFuture<JsonElement> call(ToolId id, JsonElement args, ToolCaller caller, long timeoutMillis);
+
+    /** Same call with a caller-chosen id, so it can be cancelled later. */
+    default CompletableFuture<JsonElement> call(String requestId, ToolId id, JsonElement args, ToolCaller caller,
+                                                long timeoutMillis) {
+        return call(id, args, caller, timeoutMillis);
+    }
+
+    /** Best effort; true when a pending call was found and failed with {@link ToolError#CANCELLED}. */
+    default boolean cancel(String requestId) {
+        return false;
+    }
 }

@@ -22,6 +22,8 @@ public final class ServerToolDispatch {
 
     private static final long REPLAY_WINDOW_NANOS = 120_000_000_000L;
     private static final int MAX_CACHED_REPLIES = 512;
+    /** Reserved id understood by the dispatcher itself; it is not a registered tool. */
+    public static final String CANCEL_TOOL_ID = "tianshu:tool.cancel";
 
     /** What the adapter puts on the wire; already fitted to {@link ToolWireLimits}. */
     public record Reply(String requestId, boolean ok, String valueJson, String errorCode, String message) {
@@ -48,6 +50,9 @@ public final class ServerToolDispatch {
 
     public static CompletableFuture<Reply> respond(ToolCaller caller, String requestId, String toolId,
                                                    String argsJson) {
+        if (CANCEL_TOOL_ID.equals(toolId)) {
+            return CompletableFuture.completedFuture(cancelReply(caller, requestId, argsJson));
+        }
         String key = caller.id() + "|" + (requestId == null ? "" : requestId);
         Reply replay = completed(key);
         if (replay != null) {
@@ -69,6 +74,36 @@ public final class ServerToolDispatch {
             }
         });
         return future;
+    }
+
+    /**
+     * Best effort: removes the in-flight future and cancels it. A tool already executing on the server thread will
+     * finish before it can observe the cancellation; the client still gets {@link ToolError#CANCELLED} for its wait.
+     */
+    public static boolean cancel(String playerId, String requestId) {
+        String key = playerId + "|" + (requestId == null ? "" : requestId);
+        CompletableFuture<Reply> running = IN_FLIGHT.remove(key);
+        if (running == null) {
+            return false;
+        }
+        running.cancel(true);
+        return true;
+    }
+
+    private static Reply cancelReply(ToolCaller caller, String requestId, String argsJson) {
+        JsonElement args;
+        try {
+            args = JsonParser.parseString(argsJson == null ? "{}" : argsJson);
+        } catch (RuntimeException malformed) {
+            return Reply.failure(requestId, ToolError.INVALID_ARGS, "malformed cancel arguments");
+        }
+        if (!args.isJsonObject() || !args.getAsJsonObject().has("requestId")) {
+            return Reply.failure(requestId, ToolError.INVALID_ARGS, "cancel needs a requestId");
+        }
+        boolean cancelled = cancel(caller.id(), args.getAsJsonObject().get("requestId").getAsString());
+        JsonObject result = new JsonObject();
+        result.addProperty("cancelled", cancelled);
+        return Reply.of(requestId, true, result.toString(), "", "");
     }
 
     /** Tests and a server restart use this; the replay window is not meant to outlive the session. */

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.ServerToolChannel;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -65,6 +66,12 @@ public final class ConnectionToolChannel implements ServerToolChannel {
 
     @Override
     public CompletableFuture<JsonElement> call(ToolId id, JsonElement args, ToolCaller caller, long timeoutMillis) {
+        return call("tool-" + UUID.randomUUID(), id, args, caller, timeoutMillis);
+    }
+
+    @Override
+    public CompletableFuture<JsonElement> call(String requestId, ToolId id, JsonElement args, ToolCaller caller,
+                                               long timeoutMillis) {
         Optional<ToolTransport> transport = TianshuRuntimePorts.find(ToolTransport.class);
         if (transport.isEmpty()) {
             return CompletableFuture.failedFuture(
@@ -74,7 +81,6 @@ public final class ConnectionToolChannel implements ServerToolChannel {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.FAILED, "too many tool calls are waiting for the server"));
         }
-        String requestId = "tool-" + UUID.randomUUID();
         CompletableFuture<JsonElement> future = new CompletableFuture<>();
         pending.put(requestId, future);
         future.orTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
@@ -87,6 +93,28 @@ public final class ConnectionToolChannel implements ServerToolChannel {
                     new ToolException(ToolError.FAILED, "could not send the tool request", failure));
         }
         return future;
+    }
+
+    @Override
+    public boolean cancel(String requestId) {
+        CompletableFuture<JsonElement> future = requestId == null ? null : pending.remove(requestId);
+        if (future == null) {
+            return false;
+        }
+        future.completeExceptionally(new ToolException(ToolError.CANCELLED, "the call was cancelled"));
+        Optional<ToolTransport> transport = TianshuRuntimePorts.find(ToolTransport.class);
+        if (transport.isEmpty()) {
+            return true;
+        }
+        JsonObject args = new JsonObject();
+        args.addProperty("requestId", requestId);
+        try {
+            transport.get().send("cancel-" + UUID.randomUUID(), ToolId.of("tianshu", "tool.cancel"), args,
+                    ToolCaller.mod("tianshu"), 2_000L);
+        } catch (RuntimeException ignored) {
+            // The local future is already cancelled; the server simply keeps doing its best-effort work.
+        }
+        return true;
     }
 
     private void completePending(String requestId, JsonElement result) {

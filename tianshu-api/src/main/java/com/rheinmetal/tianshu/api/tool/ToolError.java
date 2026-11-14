@@ -24,6 +24,7 @@ public enum ToolError {
     /** The tool did not finish inside its timeout. */
     TIMEOUT,
     RATE_LIMITED,
+    CANCELLED,
 
     /** The tool itself failed. */
     FAILED

@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.ServerToolChannel;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolCallHandle;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -35,6 +36,7 @@ class ConnectionToolChannelTest {
 
     private final AtomicReference<String> lastRequestId = new AtomicReference<>();
     private final AtomicReference<JsonElement> lastArgs = new AtomicReference<>();
+    private final AtomicReference<ToolId> lastToolId = new AtomicReference<>();
 
     @BeforeEach
     void setUp() {
@@ -44,6 +46,7 @@ class ConnectionToolChannelTest {
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ)));
         TianshuRuntimePorts.register(ToolTransport.class, (requestId, id, args, caller, timeoutMillis) -> {
             lastRequestId.set(requestId);
+            lastToolId.set(id);
             lastArgs.set(args);
         });
         ConnectionToolChannel.install();
@@ -70,6 +73,20 @@ class ConnectionToolChannelTest {
         assertTrue(result.get("ok").getAsBoolean());
         assertEquals("world", result.getAsJsonObject("result").get("reply").getAsString());
         assertEquals("hello", lastArgs.get().getAsJsonObject().get("text").getAsString());
+    }
+
+    @Test
+    void aHandledCallCanBeCancelledAndTheServerIsNotified() throws Exception {
+        ToolCallHandle handle = TianshuTools.callHandled(REMOTE, JsonParser.parseString("{}"),
+                ToolCaller.agent(false), ToolSide.CLIENT);
+        assertFalse(handle.result().isDone());
+        assertTrue(handle.cancel());
+
+        JsonObject envelope = handle.result().get(2, TimeUnit.SECONDS);
+        assertFalse(envelope.get("ok").getAsBoolean());
+        assertEquals("CANCELLED", envelope.get("code").getAsString());
+        assertEquals(ToolId.of("tianshu", "tool.cancel"), lastToolId.get(),
+                "the server must be told about the cancel");
     }
 
     @Test

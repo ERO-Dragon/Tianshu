@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -207,6 +208,49 @@ public final class TianshuTools {
                     && envelope.get("ok").getAsBoolean();
             ToolAudits.write(caller, tool, args, ok);
         });
+    }
+
+    /** A JSON call with a handle, so the caller can cancel an in-flight server call. */
+    public static ToolCallHandle callHandled(ToolId id, JsonElement args, ToolCaller caller, ToolSide side) {
+        try {
+            TianshuTool<?, ?> tool = requireUsable(id, caller, side);
+            JsonElement safeArgs = args == null ? new JsonObject() : args;
+            List<String> schemaErrors = ToolArgumentValidator.validate(tool.argsSchema(), safeArgs);
+            if (!schemaErrors.isEmpty()) {
+                return new CallResult("", CompletableFuture.completedFuture(errorEnvelope(ToolError.INVALID_ARGS,
+                        "invalid arguments for " + id + ": " + String.join("; ", schemaErrors))));
+            }
+            if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
+                ServerToolChannel channel = serverChannel;
+                if (channel == null) {
+                    return new CallResult("", CompletableFuture.completedFuture(errorEnvelope(
+                            ToolError.UNSUPPORTED_SIDE, "tool " + id + " needs the server component")));
+                }
+                String requestId = "tool-" + UUID.randomUUID();
+                CompletableFuture<JsonObject> result = channel.call(requestId, id, safeArgs, caller,
+                                tool.policy().timeoutMillis())
+                        .handle((value, failure) -> failure == null
+                                ? successEnvelope(value)
+                                : failureEnvelope(translate(failure, id)));
+                return new CallResult(requestId, result);
+            }
+            return new CallResult("", executeJson(tool, safeArgs, caller, side));
+        } catch (ToolException failure) {
+            return new CallResult("", CompletableFuture.completedFuture(failureEnvelope(failure)));
+        }
+    }
+
+    /** Cancels an in-flight server call by its id. Best effort, as documented on {@link ToolCallHandle#cancel}. */
+    public static boolean cancel(String requestId) {
+        ServerToolChannel channel = serverChannel;
+        return requestId != null && channel != null && channel.cancel(requestId);
+    }
+
+    private record CallResult(String requestId, CompletableFuture<JsonObject> result) implements ToolCallHandle {
+        @Override
+        public boolean cancel() {
+            return TianshuTools.cancel(requestId);
+        }
     }
 
     /** The registered tool, or {@code null}. Read-only view for diagnostics. */

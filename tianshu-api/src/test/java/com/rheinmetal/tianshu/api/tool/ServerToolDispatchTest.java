@@ -20,6 +20,7 @@ class ServerToolDispatchTest {
 
     private static final ToolId ECHO = ToolId.of("test", "dispatch.echo");
     private static final ToolId WRITE = ToolId.of("test", "dispatch.write");
+    private static final ToolId BLOCKING = ToolId.of("test", "dispatch.blocking");
 
     @BeforeEach
     void setUp() {
@@ -28,6 +29,7 @@ class ServerToolDispatchTest {
         EchoTool.CALLS.set(0);
         TianshuTools.register(new EchoTool());
         TianshuTools.register(new WriteTool());
+        TianshuTools.register(new BlockingTool());
         TianshuTools.setEnabled(WRITE, true);
     }
 
@@ -35,6 +37,7 @@ class ServerToolDispatchTest {
     void clean() {
         TianshuTools.unregister(ECHO);
         TianshuTools.unregister(WRITE);
+        TianshuTools.unregister(BLOCKING);
         ServerToolDispatch.clear();
     }
 
@@ -84,6 +87,22 @@ class ServerToolDispatchTest {
         assertEquals("FAILED", reply.errorCode());
         assertFalse(reply.message().contains("\n"), "no stack or multi-line leakage");
         assertTrue(reply.message().contains("boom"));
+    }
+
+    @Test
+    void aCancelRequestCancelsTheInFlightCall() throws Exception {
+        ToolCaller player = ToolCaller.player("p1", false);
+        ServerToolDispatch.respond(player, "target", BLOCKING.toString(), "{}");
+
+        JsonObject args = new JsonObject();
+        args.addProperty("requestId", "target");
+        ServerToolDispatch.Reply reply = ServerToolDispatch.respond(player, "cancel", ServerToolDispatch.CANCEL_TOOL_ID,
+                        args.toString())
+                .get(2, TimeUnit.SECONDS);
+
+        assertTrue(reply.ok());
+        assertTrue(com.google.gson.JsonParser.parseString(reply.valueJson()).getAsJsonObject()
+                .get("cancelled").getAsBoolean());
     }
 
     @Test
@@ -146,6 +165,38 @@ class ServerToolDispatchTest {
             Reply reply = new Reply();
             reply.text = args == null ? "" : args.text;
             return CompletableFuture.completedFuture(reply);
+        }
+    }
+
+    private static final class BlockingTool implements TianshuTool<Args, Reply> {
+        @Override
+        public ToolId id() {
+            return BLOCKING;
+        }
+
+        @Override
+        public ToolCategory category() {
+            return ToolCategory.LOCAL;
+        }
+
+        @Override
+        public String description() {
+            return "Blocking; a cancellation test double.";
+        }
+
+        @Override
+        public Type argsType() {
+            return Args.class;
+        }
+
+        @Override
+        public Type resultType() {
+            return Reply.class;
+        }
+
+        @Override
+        public CompletableFuture<Reply> invoke(ToolContext context, Args args) {
+            return new CompletableFuture<>();
         }
     }
 
