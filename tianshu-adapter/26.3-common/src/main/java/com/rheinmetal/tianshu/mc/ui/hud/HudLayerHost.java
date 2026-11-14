@@ -35,6 +35,7 @@ public final class HudLayerHost implements HudHost {
     private final Map<String, Integer> consecutiveFailures = new ConcurrentHashMap<>();
     private final long renderClockOriginNanos = System.nanoTime();
     private volatile List<HudLayer> orderedLayers = List.of();
+    private volatile boolean loggedFirstFrame;
 
     public HudLayerHost(LogSink logSink, HudAnchorEditor anchorEditor) {
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
