@@ -6,7 +6,7 @@ license="LGPL-3.0"
 modId="tianshu"
 version="${mod_version}"
 displayName="${mod_name}"
-logoFile="icon.png"
+iconFile="icon.png"
 description='''
 Dialogue brain for Tianshu: turn orchestration, memory, and game-event context.
 '''

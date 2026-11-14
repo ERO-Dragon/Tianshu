@@ -6,7 +6,7 @@ license="LGPL-3.0"
 modId="tianshu_presence"
 version="${mod_version}"
 displayName="${mod_name} - Presence"
-logoFile="icon.png"
+iconFile="icon.png"
 description='''
 In-game HUD and world-state context on the Ferry base: product activities, the status line and the dialogue partner marker.
 '''
