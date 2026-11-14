@@ -1,0 +1,11 @@
+[
+  {
+    "name": "bge-m3",
+    "displayName": "BGE M3",
+    "repoId": "gpustack/bge-m3-GGUF",
+    "hfFilePath": "bge-m3-Q8_0.gguf",
+    "modelFile": "bge-m3-Q8_0.gguf",
+    "contextSize": 8192,
+    "lang": ["zh", "en"]
+  }
+]

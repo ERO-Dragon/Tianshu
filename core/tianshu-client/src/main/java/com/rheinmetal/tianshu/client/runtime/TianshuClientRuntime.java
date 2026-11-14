@@ -1,0 +1,331 @@
+package com.rheinmetal.tianshu.client.runtime;
+
+import com.rheinmetal.tianshu.client.tool.ClientTools;
+import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
+import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
+import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
+import com.rheinmetal.tianshu.client.capability.mcp.McpBridge;
+import com.rheinmetal.tianshu.client.capability.mcp.McpStatus;
+import com.rheinmetal.tianshu.client.capability.mcp.McpConfig;
+import com.rheinmetal.tianshu.client.capability.mcp.server.McpServer;
+import com.rheinmetal.tianshu.client.capability.mcp.server.McpServerSettings;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import java.nio.file.Path;
+import com.rheinmetal.tianshu.core.TianshuCoreManager;
+
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
+
+public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
+    /** How long shutdown waits for the kernel to tear its modules down before releasing client resources anyway. */
+    private static final long DESTROY_TIMEOUT_MILLIS = 5_000L;
+    /** Server tools may change after login; polling the reserved catalogue call keeps declarations current. */
+    private static final long CATALOG_REFRESH_SECONDS = 60L;
+
+    private final CoreLifecycle core;
+    private final Runnable startClientResources;
+    private final Runnable releaseCaptureHardware;
+    private final Runnable shutdownAudio;
+    private final Runnable closeDiagnostics;
+    private final Runnable closeIndex;
+    private final Runnable onWorldReady;
+    private final Consumer<Throwable> onWorldFailure;
+    private final AtomicLong generation = new AtomicLong();
+    private volatile SkillFileProvider skills;
+    private volatile SkillFileProvider builtInSkills;
+    private volatile TextCapabilityProvider resources;
+    private volatile TextCapabilityProvider prompts;
+    private volatile TextCapabilityProvider builtInResources;
+    private volatile TextCapabilityProvider builtInPrompts;
+    private volatile McpBridge mcp;
+    private volatile McpServer mcpServer;
+    private volatile ScheduledExecutorService catalogRefresher;
+    private final Object lifecycleMonitor = new Object();
+    private volatile ClientSessionState state = ClientSessionState.NEW;
+    private boolean worldSessionRequested;
+
+    public TianshuClientRuntime(
+            ClientRuntimeServices services,
+            Runnable onWorldReady,
+            Consumer<Throwable> onWorldFailure
+    ) {
+        this(
+                new CoreManagerLifecycle(services.coreManager()),
+                // The kernel owns no client resource of its own any more: module resources (the named-object
+                // index among them) are built and released by the module that owns them.
+                () -> { },
+                services.audioManager()::releaseCaptureHardware,
+                services.audioManager()::shutdown,
+                services.diagnosticRouter()::close,
+                () -> { },
+                onWorldReady,
+                onWorldFailure
+        );
+    }
+
+    TianshuClientRuntime(
+            CoreLifecycle core,
+            Runnable startClientResources,
+            Runnable releaseCaptureHardware,
+            Runnable shutdownAudio,
+            Runnable closeDiagnostics,
+            Runnable closeIndex,
+            Runnable onWorldReady,
+            Consumer<Throwable> onWorldFailure
+    ) {
+        this.core = Objects.requireNonNull(core, "core");
+        this.startClientResources = Objects.requireNonNull(startClientResources, "startClientResources");
+        this.releaseCaptureHardware = Objects.requireNonNull(releaseCaptureHardware, "releaseCaptureHardware");
+        this.shutdownAudio = Objects.requireNonNull(shutdownAudio, "shutdownAudio");
+        this.closeDiagnostics = Objects.requireNonNull(closeDiagnostics, "closeDiagnostics");
+        this.closeIndex = Objects.requireNonNull(closeIndex, "closeIndex");
+        this.onWorldReady = onWorldReady == null ? () -> { } : onWorldReady;
+        this.onWorldFailure = onWorldFailure == null ? ignored -> { } : onWorldFailure;
+    }
+
+    @Override
+    public void startClient() {
+        synchronized (lifecycleMonitor) {
+            if (state != ClientSessionState.NEW) {
+                return;
+            }
+            state = ClientSessionState.CLIENT_READY;
+        }
+        ClientTools.register();
+        builtInSkills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
+        skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills"));
+        builtInResources = TextCapabilityProvider.installClasspath(CapabilityKind.RESOURCE, "tianshu",
+                "tianshu/resources");
+        builtInPrompts = TextCapabilityProvider.installClasspath(CapabilityKind.PROMPT, "tianshu",
+                "tianshu/prompts");
+        resources = TextCapabilityProvider.install(CapabilityKind.RESOURCE, "user",
+                Path.of("config", "Tianshu", "resources"));
+        prompts = TextCapabilityProvider.install(CapabilityKind.PROMPT, "user",
+                Path.of("config", "Tianshu", "prompts"));
+        Path mcpConfig = Path.of("config", "Tianshu", "mcp.json");
+        mcp = McpBridge.start(mcpConfig);
+        if (mcp != null) {
+            TianshuRuntimePorts.register(McpStatus.class, mcp);
+        }
+        McpServerSettings serverSettings = McpConfig.server(mcpConfig);
+        if (serverSettings.enabled()) {
+            try {
+                mcpServer = McpServer.start(serverSettings.port());
+            } catch (java.io.IOException bindFailure) {
+                System.getLogger("tianshu.mcp").log(System.Logger.Level.WARNING,
+                        "MCP server did not start: {0}", bindFailure.getMessage());
+            }
+        }
+        ConnectionToolChannel.install();
+        catalogRefresher = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "tianshu-catalog");
+            thread.setDaemon(true);
+            return thread;
+        });
+        catalogRefresher.scheduleWithFixedDelay(TianshuClientRuntime::refreshCatalogQuietly,
+                CATALOG_REFRESH_SECONDS, CATALOG_REFRESH_SECONDS, TimeUnit.SECONDS);
+        startClientResources.run();
+    }
+
+    @Override
+    public void startWorldSession() {
+        synchronized (lifecycleMonitor) {
+            if (state == ClientSessionState.SHUTDOWN) {
+                return;
+            }
+            worldSessionRequested = true;
+        }
+        startRequestedWorldSession();
+    }
+
+    private void startRequestedWorldSession() {
+        long requestGeneration;
+        synchronized (lifecycleMonitor) {
+            if (state == ClientSessionState.NEW) {
+                startClient();
+            }
+            if (!worldSessionRequested || state != ClientSessionState.CLIENT_READY) {
+                return;
+            }
+            state = ClientSessionState.WORLD_STARTING;
+            requestGeneration = generation.incrementAndGet();
+        }
+        core.start().whenComplete((running, failure) -> completeWorldStart(requestGeneration, running, failure));
+    }
+
+    @Override
+    public void stopWorldSession() {
+        long requestGeneration;
+        synchronized (lifecycleMonitor) {
+            worldSessionRequested = false;
+            if (state != ClientSessionState.WORLD_STARTING && state != ClientSessionState.WORLD_RUNNING) {
+                return;
+            }
+            state = ClientSessionState.WORLD_STOPPING;
+            requestGeneration = generation.incrementAndGet();
+        }
+        core.stop().whenComplete((ignored, failure) -> completeWorldStop(requestGeneration, failure));
+    }
+
+    @Override
+    public void shutdown() {
+        ScheduledExecutorService refresher = catalogRefresher;
+        if (refresher != null) {
+            refresher.shutdownNow();
+            catalogRefresher = null;
+        }
+        SkillFileProvider provider = skills;
+        if (provider != null) {
+            provider.unload();
+            skills = null;
+        }
+        SkillFileProvider builtIn = builtInSkills;
+        if (builtIn != null) {
+            builtIn.unload();
+            builtInSkills = null;
+        }
+        TextCapabilityProvider resourceProvider = resources;
+        if (resourceProvider != null) {
+            resourceProvider.unload();
+            resources = null;
+        }
+        TextCapabilityProvider promptProvider = prompts;
+        if (promptProvider != null) {
+            promptProvider.unload();
+            prompts = null;
+        }
+        TextCapabilityProvider builtInResourceProvider = builtInResources;
+        if (builtInResourceProvider != null) {
+            builtInResourceProvider.unload();
+            builtInResources = null;
+        }
+        TextCapabilityProvider builtInPromptProvider = builtInPrompts;
+        if (builtInPromptProvider != null) {
+            builtInPromptProvider.unload();
+            builtInPrompts = null;
+        }
+        McpServer server = mcpServer;
+        if (server != null) {
+            server.close();
+            mcpServer = null;
+        }
+        McpBridge bridge = mcp;
+        if (bridge != null) {
+            bridge.close();
+            mcp = null;
+        }
+        synchronized (lifecycleMonitor) {
+            if (state == ClientSessionState.SHUTDOWN) {
+                return;
+            }
+            state = ClientSessionState.SHUTDOWN;
+            worldSessionRequested = false;
+            generation.incrementAndGet();
+        }
+        try {
+            // Bounded on purpose: this runs on the client thread during shutdown, and an unbounded join on a
+            // module teardown that never returns would hang the process with no way out but killing it.
+            core.destroy().get(DESTROY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeout) {
+            onWorldFailure.accept(timeout);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            onWorldFailure.accept(interrupted);
+        } catch (ExecutionException failure) {
+            onWorldFailure.accept(failure.getCause() == null ? failure : failure.getCause());
+        } finally {
+            shutdownAudio.run();
+            closeDiagnostics.run();
+            closeIndex.run();
+        }
+    }
+
+    private static void refreshCatalogQuietly() {
+        if (!ConnectionToolChannel.isAvailable()) {
+            return;
+        }
+        try {
+            ConnectionToolChannel.refreshCatalog().exceptionally(failure -> null);
+        } catch (RuntimeException ignored) {
+            // A failed refresh leaves the previous declarations in place; the next tick tries again.
+        }
+    }
+
+    public ClientSessionState state() {
+        return state;
+    }
+
+    public long generation() {
+        return generation.get();
+    }
+
+    private void completeWorldStart(long requestGeneration, Boolean running, Throwable failure) {
+        synchronized (lifecycleMonitor) {
+            if (requestGeneration != generation.get() || state != ClientSessionState.WORLD_STARTING) {
+                return;
+            }
+            if (failure != null || !Boolean.TRUE.equals(running)) {
+                state = ClientSessionState.CLIENT_READY;
+            } else {
+                state = ClientSessionState.WORLD_RUNNING;
+            }
+        }
+        if (failure != null || !Boolean.TRUE.equals(running)) {
+            onWorldFailure.accept(failure == null ? new IllegalStateException("CORE_SESSION_NOT_RUNNING") : failure);
+            return;
+        }
+        onWorldReady.run();
+    }
+
+    private void completeWorldStop(long requestGeneration, Throwable failure) {
+        releaseCaptureHardware.run();
+        boolean restartRequested = false;
+        synchronized (lifecycleMonitor) {
+            if (requestGeneration == generation.get() && state == ClientSessionState.WORLD_STOPPING) {
+                state = ClientSessionState.CLIENT_READY;
+                restartRequested = worldSessionRequested;
+            }
+        }
+        if (failure != null) {
+            onWorldFailure.accept(failure);
+        }
+        if (restartRequested) {
+            startRequestedWorldSession();
+        }
+    }
+
+    interface CoreLifecycle {
+        CompletableFuture<Boolean> start();
+        CompletableFuture<Void> stop();
+        CompletableFuture<Void> destroy();
+    }
+
+    private record CoreManagerLifecycle(TianshuCoreManager coreManager) implements CoreLifecycle {
+        private CoreManagerLifecycle {
+            Objects.requireNonNull(coreManager, "coreManager");
+        }
+
+        @Override
+        public CompletableFuture<Boolean> start() {
+            return coreManager.startRuntimeSession().thenApply(status -> status != null && status.coreRunning());
+        }
+
+        @Override
+        public CompletableFuture<Void> stop() {
+            return coreManager.stopRuntimeSession().thenApply(ignored -> null);
+        }
+
+        @Override
+        public CompletableFuture<Void> destroy() {
+            return coreManager.destroy().thenApply(ignored -> null);
+        }
+    }
+}
