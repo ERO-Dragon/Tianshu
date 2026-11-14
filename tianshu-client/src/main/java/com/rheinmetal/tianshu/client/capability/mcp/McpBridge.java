@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class McpBridge implements AutoCloseable {
 
-    private final List<McpClient> clients = new ArrayList<>();
+    private final List<McpConnection> clients = new ArrayList<>();
     private final List<ToolId> tools = new ArrayList<>();
     private final List<CapabilityId> capabilities = new ArrayList<>();
     private final List<String> problems = new ArrayList<>();
@@ -75,7 +75,7 @@ public final class McpBridge implements AutoCloseable {
                 CapabilityCatalog.unregister(id);
             }
             capabilities.clear();
-            for (McpClient client : clients) {
+            for (McpConnection client : clients) {
                 client.close();
             }
             clients.clear();
@@ -87,8 +87,11 @@ public final class McpBridge implements AutoCloseable {
             if (closed.get()) {
                 return;
             }
-            McpClient client = new McpClient(spec.url());
+            McpConnection client = null;
             try {
+                client = spec.type() == McpServerSpec.Type.STDIO
+                        ? new McpStdioClient(spec.command())
+                        : new McpHttpClient(spec.url());
                 client.initialize();
                 List<JsonObject> remoteTools = client.listTools();
                 for (JsonObject remote : remoteTools) {
@@ -102,13 +105,15 @@ public final class McpBridge implements AutoCloseable {
                 registerPrompts(spec, client);
                 clients.add(client);
             } catch (Exception failure) {
-                client.close();
+                if (client != null) {
+                    client.close();
+                }
                 problems.add(spec.name() + ": " + failure.getMessage());
             }
         }
     }
 
-    private void register(McpServerSpec spec, McpClient client, JsonObject remote) {
+    private void register(McpServerSpec spec, McpConnection client, JsonObject remote) {
         String remoteName = remote.has("name") ? remote.get("name").getAsString() : "";
         if (remoteName.isBlank()) {
             return;
@@ -126,7 +131,7 @@ public final class McpBridge implements AutoCloseable {
         }
     }
 
-    private void registerResources(McpServerSpec spec, McpClient client) {
+    private void registerResources(McpServerSpec spec, McpConnection client) {
         try {
             for (JsonObject remote : client.listResources()) {
                 String uri = remote.has("uri") ? remote.get("uri").getAsString() : "";
@@ -157,7 +162,7 @@ public final class McpBridge implements AutoCloseable {
         }
     }
 
-    private void registerPrompts(McpServerSpec spec, McpClient client) {
+    private void registerPrompts(McpServerSpec spec, McpConnection client) {
         try {
             for (JsonObject remote : client.listPrompts()) {
                 String name = remote.has("name") ? remote.get("name").getAsString() : "";

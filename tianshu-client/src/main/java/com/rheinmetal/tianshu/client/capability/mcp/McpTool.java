@@ -14,14 +14,14 @@ import java.util.concurrent.CompletableFuture;
 final class McpTool implements TianshuTool<JsonObject, JsonObject> {
 
     private final ToolId id;
-    private final McpClient client;
+    private final McpConnection client;
     private final String remoteName;
     private final String description;
     private final JsonObject schema;
     private final ToolAutonomy autonomy;
     private final String serverName;
 
-    McpTool(String serverName, ToolId id, McpClient client, String remoteName, String description,
+    McpTool(String serverName, ToolId id, McpConnection client, String remoteName, String description,
             JsonObject schema, ToolAutonomy autonomy) {
         this.serverName = serverName;
         this.id = id;

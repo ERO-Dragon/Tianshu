@@ -34,7 +34,7 @@ public final class McpConfig {
                     continue;
                 }
                 McpServerSpec spec = McpServerSpec.fromJson(element.getAsJsonObject());
-                if (!spec.name().isBlank() && !spec.url().isBlank()) {
+                if (!spec.name().isBlank() && (!spec.url().isBlank() || !spec.command().isEmpty())) {
                     specs.add(spec);
                 }
             }

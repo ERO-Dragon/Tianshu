@@ -52,7 +52,7 @@ class McpClientTest {
 
     @Test
     void handshakeListAndCallOverHttp() throws Exception {
-        McpClient client = new McpClient(url);
+        McpHttpClient client = new McpHttpClient(url);
         client.initialize();
         List<JsonObject> tools = client.listTools();
         assertEquals(1, tools.size());
@@ -69,7 +69,7 @@ class McpClientTest {
     @Test
     void bridgePublishesRemoteToolsAndRemovesThemOnClose() throws Exception {
         ToolAutonomyGate.setMode(ToolAutonomy.FULL);
-        McpBridge bridge = McpBridge.install(List.of(new McpServerSpec("srv", url, ToolAutonomy.FULL)));
+        McpBridge bridge = McpBridge.install(List.of(McpServerSpec.http("srv", url, ToolAutonomy.FULL)));
         try {
             assertEquals(1, bridge.toolCount(), bridge.problems().toString());
             ToolId id = McpBridge.toolId("srv", "echo");
