@@ -23,7 +23,7 @@ final class PresenceHudPresentationBoundaryTest {
     private static final Path SURFACE =
             Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudSurfaceRenderer.java");
     private static final Path PRESENCE_ICON =
-            Path.of("../../tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/hud/PresenceIconElementRenderer.java");
+            Path.of("../../../Tianshu-features/tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/hud/PresenceIconElementRenderer.java");
 
     private static String read(Path path) throws Exception {
         return Files.readString(path, StandardCharsets.UTF_8);
@@ -49,7 +49,7 @@ final class PresenceHudPresentationBoundaryTest {
     @Test
     void presenceSettingsExposePositionOnlyThroughTheEditor() throws Exception {
         String source = read(
-                Path.of("../../tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/settings/PresenceSettingsRegistrySource.java")
+                Path.of("../../../Tianshu-features/tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/settings/PresenceSettingsRegistrySource.java")
         );
 
         assertTrue(source.contains("presence.hud.edit_position"));
