@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.client.capability.mcp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomyGate;
@@ -76,10 +78,20 @@ class McpClientTest {
             assertTrue(result.get("ok").getAsBoolean(), result.toString());
             assertEquals("hello", result.getAsJsonObject("result").getAsJsonArray("content")
                     .get(0).getAsJsonObject().get("text").getAsString());
+
+            CapabilityId resource = McpBridge.capabilityId("srv", "res", "memo");
+            assertEquals("resource body", CapabilityCatalog.invoke(resource, new JsonObject(),
+                    ToolCaller.agent(false), ToolSide.CLIENT).get(5, TimeUnit.SECONDS)
+                    .get("text").getAsString());
+            CapabilityId prompt = McpBridge.capabilityId("srv", "prompt", "greet");
+            assertEquals("Hello from MCP", CapabilityCatalog.invoke(prompt, new JsonObject(),
+                    ToolCaller.agent(false), ToolSide.CLIENT).get(5, TimeUnit.SECONDS)
+                    .get("text").getAsString());
         } finally {
             bridge.close();
         }
         assertTrue(TianshuTools.find(McpBridge.toolId("srv", "echo")) == null);
+        assertTrue(CapabilityCatalog.find(McpBridge.capabilityId("srv", "res", "memo")).isEmpty());
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -110,6 +122,54 @@ class McpClientTest {
             tool.add("inputSchema", schema);
             tools.add(tool);
             result.add("tools", tools);
+            respond(exchange, request, result);
+            return;
+        }
+        if ("resources/list".equals(method)) {
+            JsonObject result = new JsonObject();
+            JsonArray resources = new JsonArray();
+            JsonObject resource = new JsonObject();
+            resource.addProperty("uri", "memo://one");
+            resource.addProperty("name", "memo");
+            resource.addProperty("description", "A note");
+            resource.addProperty("mimeType", "text/plain");
+            resources.add(resource);
+            result.add("resources", resources);
+            respond(exchange, request, result);
+            return;
+        }
+        if ("resources/read".equals(method)) {
+            JsonObject result = new JsonObject();
+            JsonArray contents = new JsonArray();
+            JsonObject content = new JsonObject();
+            content.addProperty("uri", "memo://one");
+            content.addProperty("text", "resource body");
+            contents.add(content);
+            result.add("contents", contents);
+            respond(exchange, request, result);
+            return;
+        }
+        if ("prompts/list".equals(method)) {
+            JsonObject result = new JsonObject();
+            JsonArray prompts = new JsonArray();
+            JsonObject prompt = new JsonObject();
+            prompt.addProperty("name", "greet");
+            prompt.addProperty("description", "Greets");
+            prompts.add(prompt);
+            result.add("prompts", prompts);
+            respond(exchange, request, result);
+            return;
+        }
+        if ("prompts/get".equals(method)) {
+            JsonObject result = new JsonObject();
+            JsonArray messages = new JsonArray();
+            JsonObject message = new JsonObject();
+            JsonObject content = new JsonObject();
+            content.addProperty("type", "text");
+            content.addProperty("text", "Hello from MCP");
+            message.add("content", content);
+            messages.add(message);
+            result.add("messages", messages);
             respond(exchange, request, result);
             return;
         }

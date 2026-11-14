@@ -56,6 +56,22 @@ class AXToolTurnTest {
     }
 
     @Test
+    void aHugeToolResultIsTruncatedBeforeItEntersTheConversation() {
+        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> {
+            JsonObject result = new JsonObject();
+            result.addProperty("body", "x".repeat(20_000));
+            return result;
+        });
+
+        AXToolTurn.Decision decision = turn.onReply(
+                "{\"tool\":\"test:echo\",\"args\":{}}", "req", false, 0, null, SAMPLING);
+        AXToolTurn.Decision.Continue continuation = assertInstanceOf(AXToolTurn.Decision.Continue.class, decision);
+        String resultMessage = continuation.next().messages().get(continuation.next().messages().size() - 1).content();
+        assertTrue(resultMessage.length() < 9_000);
+        assertTrue(resultMessage.contains("[truncated]"));
+    }
+
+    @Test
     void readableSkillsAreInjectedIntoTheSystemMessage() {
         CapabilityId id = CapabilityId.of("test", "skill");
         CapabilityCatalog.register(new CapabilityDescriptor(id, CapabilityKind.SKILL, CapabilityBinding.LOCAL,

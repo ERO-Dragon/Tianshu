@@ -173,17 +173,34 @@ public final class TianshuTools {
     private static CompletableFuture<JsonObject> executeJson(TianshuTool<?, ?> tool, JsonElement args,
                                                              ToolCaller caller, ToolSide side) {
         ToolContext context = new ToolContext(caller, side);
+        CompletableFuture<JsonObject> result;
         if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
-            return callOverChannel(tool.id(), args, caller, tool.policy().timeoutMillis())
-                    .handle((result, failure) -> failure == null
-                            ? successEnvelope(result)
+            result = callOverChannel(tool.id(), args, caller, tool.policy().timeoutMillis())
+                    .handle((value, failure) -> failure == null
+                            ? successEnvelope(value)
+                            : failureEnvelope(failure));
+        } else {
+            Object typedArgs = GSON.fromJson(args, tool.argsType());
+            result = invokeRaw(tool, context, typedArgs)
+                    .handle((value, failure) -> failure == null
+                            ? successEnvelope(GSON.toJsonTree(value))
                             : failureEnvelope(failure));
         }
-        Object typedArgs = GSON.fromJson(args, tool.argsType());
-        return invokeRaw(tool, context, typedArgs)
-                .handle((result, failure) -> failure == null
-                        ? successEnvelope(GSON.toJsonTree(result))
-                        : failureEnvelope(failure));
+        return auditIfWrite(tool, args == null ? "{}" : args.toString(), caller, side, result);
+    }
+
+    /** Writes are audited after they ran; a call refused earlier never reaches this point. */
+    private static CompletableFuture<JsonObject> auditIfWrite(TianshuTool<?, ?> tool, String args,
+                                                              ToolCaller caller, ToolSide side,
+                                                              CompletableFuture<JsonObject> result) {
+        if (tool.category() != ToolCategory.SERVER_WRITE || side != ToolSide.SERVER) {
+            return result;
+        }
+        return result.whenComplete((envelope, failure) -> {
+            boolean ok = failure == null && envelope != null && envelope.has("ok")
+                    && envelope.get("ok").getAsBoolean();
+            ToolAudits.write(caller, tool, args, ok);
+        });
     }
 
     /** The registered tool, or {@code null}. Read-only view for diagnostics. */
@@ -248,11 +265,19 @@ public final class TianshuTools {
     private static <A, R> CompletableFuture<R> executeTyped(TianshuTool<?, ?> tool, A args, ToolCaller caller,
                                                             ToolSide side) {
         ToolContext context = new ToolContext(caller, side);
+        CompletableFuture<R> result;
         if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
-            return callOverChannel(tool.id(), toJson(args), caller, tool.policy().timeoutMillis())
-                    .thenApply(result -> GSON.fromJson(result, tool.resultType()));
+            result = callOverChannel(tool.id(), toJson(args), caller, tool.policy().timeoutMillis())
+                    .thenApply(value -> GSON.fromJson(value, tool.resultType()));
+        } else {
+            result = invokeRaw(tool, context, args);
         }
-        return invokeRaw(tool, context, args);
+        if (tool.category() != ToolCategory.SERVER_WRITE || side != ToolSide.SERVER) {
+            return result;
+        }
+        String shown = args == null ? "{}" : GSON.toJson(args);
+        return result.whenComplete((value, failure) ->
+                ToolAudits.write(caller, tool, shown, failure == null));
     }
 
     private static TianshuTool<?, ?> requireUsable(ToolId id, ToolCaller caller, ToolSide side) {

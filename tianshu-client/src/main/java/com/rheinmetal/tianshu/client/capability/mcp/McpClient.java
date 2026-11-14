@@ -63,11 +63,46 @@ public final class McpClient implements AutoCloseable {
         return tools;
     }
 
+    public List<JsonObject> listResources() throws IOException, InterruptedException {
+        JsonObject result = post("resources/list", new JsonObject(), true);
+        return objects(result, "resources");
+    }
+
+    public JsonObject readResource(String uri) throws IOException, InterruptedException {
+        JsonObject params = new JsonObject();
+        params.addProperty("uri", uri);
+        return post("resources/read", params, true);
+    }
+
+    public List<JsonObject> listPrompts() throws IOException, InterruptedException {
+        JsonObject result = post("prompts/list", new JsonObject(), true);
+        return objects(result, "prompts");
+    }
+
+    public JsonObject getPrompt(String name, JsonObject arguments) throws IOException, InterruptedException {
+        JsonObject params = new JsonObject();
+        params.addProperty("name", name);
+        params.add("arguments", arguments == null ? new JsonObject() : arguments);
+        return post("prompts/get", params, true);
+    }
+
     public JsonObject callTool(String name, JsonObject arguments) throws IOException, InterruptedException {
         JsonObject params = new JsonObject();
         params.addProperty("name", name);
         params.add("arguments", arguments == null ? new JsonObject() : arguments);
         return post("tools/call", params, true);
+    }
+
+    private static List<JsonObject> objects(JsonObject result, String key) {
+        List<JsonObject> values = new ArrayList<>();
+        if (result != null && result.has(key) && result.get(key).isJsonArray()) {
+            for (JsonElement element : result.getAsJsonArray(key)) {
+                if (element.isJsonObject()) {
+                    values.add(element.getAsJsonObject());
+                }
+            }
+        }
+        return values;
     }
 
     @Override

@@ -31,6 +31,8 @@ import java.util.Optional;
 public final class AXToolTurn {
 
     public static final int DEFAULT_MAX_TOOL_ROUNDS = 3;
+    /** A tool result larger than this is truncated before it becomes conversation text. */
+    private static final int MAX_RESULT_CHARS = 8_000;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private final ToolCaller caller;
@@ -115,8 +117,12 @@ public final class AXToolTurn {
         toolRounds++;
         JsonObject result = executor.execute(call.get());
         conversation.add(new MessageItemPayload("assistant", assistantText));
+        String serialized = GSON.toJson(result);
+        if (serialized.length() > MAX_RESULT_CHARS) {
+            serialized = serialized.substring(0, MAX_RESULT_CHARS) + "…[truncated]";
+        }
         conversation.add(new MessageItemPayload("user",
-                "tool result for " + call.get().toolId() + ": " + GSON.toJson(result)));
+                "tool result for " + call.get().toolId() + ": " + serialized));
         return new Decision.Continue(call.get(), result,
                 payload(requestId, stream, maxTokens, reasoningTier, sampling));
     }

@@ -1,6 +1,15 @@
 package com.rheinmetal.tianshu.client.capability.mcp;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.tool.ToolPermission;
+import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolId;
@@ -9,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -22,6 +32,7 @@ public final class McpBridge implements AutoCloseable {
 
     private final List<McpClient> clients = new ArrayList<>();
     private final List<ToolId> tools = new ArrayList<>();
+    private final List<CapabilityId> capabilities = new ArrayList<>();
     private final List<String> problems = new ArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -60,6 +71,10 @@ public final class McpBridge implements AutoCloseable {
                 TianshuTools.unregister(id);
             }
             tools.clear();
+            for (CapabilityId id : capabilities) {
+                CapabilityCatalog.unregister(id);
+            }
+            capabilities.clear();
             for (McpClient client : clients) {
                 client.close();
             }
@@ -83,6 +98,8 @@ public final class McpBridge implements AutoCloseable {
                     }
                     register(spec, client, remote);
                 }
+                registerResources(spec, client);
+                registerPrompts(spec, client);
                 clients.add(client);
             } catch (Exception failure) {
                 client.close();
@@ -107,6 +124,131 @@ public final class McpBridge implements AutoCloseable {
         } catch (RuntimeException conflict) {
             problems.add(spec.name() + "/" + remoteName + ": " + conflict.getMessage());
         }
+    }
+
+    private void registerResources(McpServerSpec spec, McpClient client) {
+        try {
+            for (JsonObject remote : client.listResources()) {
+                String uri = remote.has("uri") ? remote.get("uri").getAsString() : "";
+                String name = remote.has("name") ? remote.get("name").getAsString() : uri;
+                if (uri.isBlank() || name.isBlank()) {
+                    continue;
+                }
+                CapabilityId id = capabilityId(spec.name(), "res", name);
+                JsonObject attributes = new JsonObject();
+                attributes.addProperty("name", name);
+                attributes.addProperty("source", "mcp");
+                attributes.addProperty("mediaType", remote.has("mimeType")
+                        ? remote.get("mimeType").getAsString() : "text/plain");
+                CapabilityDescriptor descriptor = new CapabilityDescriptor(id, CapabilityKind.RESOURCE,
+                        CapabilityBinding.MCP, description(remote, name), ToolSide.CLIENT,
+                        ToolPermission.EVERYONE, "tianshu-mcp", attributes);
+                CapabilityCatalog.register(descriptor, (context, args) -> {
+                    try {
+                        return CompletableFuture.completedFuture(textEnvelope(readContents(client.readResource(uri))));
+                    } catch (Exception failure) {
+                        return CompletableFuture.completedFuture(errorEnvelope(failure));
+                    }
+                });
+                capabilities.add(id);
+            }
+        } catch (Exception unsupported) {
+            // A server may not implement resources; that is not a reason to lose its tools.
+        }
+    }
+
+    private void registerPrompts(McpServerSpec spec, McpClient client) {
+        try {
+            for (JsonObject remote : client.listPrompts()) {
+                String name = remote.has("name") ? remote.get("name").getAsString() : "";
+                if (name.isBlank()) {
+                    continue;
+                }
+                CapabilityId id = capabilityId(spec.name(), "prompt", name);
+                JsonObject attributes = new JsonObject();
+                attributes.addProperty("name", name);
+                attributes.addProperty("source", "mcp");
+                CapabilityDescriptor descriptor = new CapabilityDescriptor(id, CapabilityKind.PROMPT,
+                        CapabilityBinding.MCP, description(remote, name), ToolSide.CLIENT,
+                        ToolPermission.EVERYONE, "tianshu-mcp", attributes);
+                CapabilityCatalog.register(descriptor, (context, args) -> {
+                    try {
+                        JsonObject result = client.getPrompt(name, args == null ? new JsonObject() : args);
+                        return CompletableFuture.completedFuture(textEnvelope(readMessages(result)));
+                    } catch (Exception failure) {
+                        return CompletableFuture.completedFuture(errorEnvelope(failure));
+                    }
+                });
+                capabilities.add(id);
+            }
+        } catch (Exception unsupported) {
+            // Same as resources: prompts are optional.
+        }
+    }
+
+    private static String description(JsonObject remote, String fallback) {
+        return remote.has("description") ? remote.get("description").getAsString() : fallback;
+    }
+
+    private static String readContents(JsonObject result) {
+        if (result != null && result.has("contents") && result.get("contents").isJsonArray()) {
+            StringBuilder text = new StringBuilder();
+            for (JsonElement element : result.getAsJsonArray("contents")) {
+                if (element.isJsonObject() && element.getAsJsonObject().has("text")) {
+                    text.append(element.getAsJsonObject().get("text").getAsString());
+                }
+            }
+            return text.toString();
+        }
+        return "";
+    }
+
+    private static String readMessages(JsonObject result) {
+        if (result != null && result.has("messages") && result.get("messages").isJsonArray()) {
+            StringBuilder text = new StringBuilder();
+            for (JsonElement element : result.getAsJsonArray("messages")) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                JsonObject message = element.getAsJsonObject();
+                if (message.has("content") && message.get("content").isJsonObject()) {
+                    JsonObject content = message.getAsJsonObject("content");
+                    if (content.has("text")) {
+                        text.append(content.get("text").getAsString()).append('\n');
+                    }
+                }
+            }
+            return text.toString().strip();
+        }
+        return "";
+    }
+
+    private static JsonObject textEnvelope(String text) {
+        JsonObject envelope = new JsonObject();
+        envelope.addProperty("ok", true);
+        envelope.addProperty("text", text);
+        return envelope;
+    }
+
+    private static JsonObject errorEnvelope(Exception failure) {
+        JsonObject envelope = new JsonObject();
+        envelope.addProperty("ok", false);
+        envelope.addProperty("code", "FAILED");
+        envelope.addProperty("message", String.valueOf(failure.getMessage()));
+        return envelope;
+    }
+
+    static CapabilityId capabilityId(String server, String kind, String name) {
+        String raw = (server + "." + kind + "." + name).toLowerCase(Locale.ROOT);
+        StringBuilder safe = new StringBuilder(raw.length());
+        for (int index = 0; index < raw.length(); index++) {
+            char character = raw.charAt(index);
+            boolean allowed = (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')
+                    || character == '_' || character == '.' || character == '-';
+            safe.append(allowed ? character : '_');
+        }
+        String id = safe.length() > 64 ? safe.substring(0, 64) : safe.toString();
+        return CapabilityId.of("mcp", id);
     }
 
     static ToolId toolId(String server, String remote) {
