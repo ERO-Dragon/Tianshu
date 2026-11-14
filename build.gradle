@@ -302,6 +302,44 @@ gradle.projectsEvaluated {
     }
 }
 
+tasks.register('verifyServerToolRegistration') {
+    group = 'verification'
+    description = 'Every adapter registers the shared server tools and their version-specific sources.'
+    def adapterDirs = file('tianshu-adapter').listFiles()?.findAll {
+        it.isDirectory() && (it.name.endsWith('-neoforge') || it.name.endsWith('-fabric'))
+    } ?: []
+    inputs.files(adapterDirs.collectMany { dir ->
+        def base = dir.name.endsWith('-neoforge')
+                ? new File(dir, 'src/main/java/com/rheinmetal/tianshu/neoforge/server/ServerToolHandler.java')
+                : new File(dir, 'src/main/java/com/rheinmetal/tianshu/fabric/FabricServerToolHandler.java')
+        [base]
+    }.findAll { it.exists() })
+    doLast {
+        def required = ['RecipeQueryTool', 'CraftRecipeTool', 'BlockMachineTool',
+                        'ServerRecipeQuerySource', 'CraftSource', 'BlockMachineSource']
+        def missing = []
+        adapterDirs.each { dir ->
+            def base = dir.name.endsWith('-neoforge')
+                    ? new File(dir, 'src/main/java/com/rheinmetal/tianshu/neoforge/server/ServerToolHandler.java')
+                    : new File(dir, 'src/main/java/com/rheinmetal/tianshu/fabric/FabricServerToolHandler.java')
+            if (!base.exists()) {
+                missing << "${dir.name}: no server tool handler"
+                return
+            }
+            def text = base.getText('UTF-8')
+            required.each { symbol ->
+                if (!text.contains(symbol)) {
+                    missing << "${dir.name}: missing ${symbol}"
+                }
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new GradleException("server tool registration is incomplete:" + System.lineSeparator()
+                    + missing.join(System.lineSeparator()))
+        }
+    }
+}
+
 tasks.register('verifyHostHasNoFeatureDependency') {
     group = 'verification'
     description = 'The kernel modules must never reference or depend on a feature module.'
