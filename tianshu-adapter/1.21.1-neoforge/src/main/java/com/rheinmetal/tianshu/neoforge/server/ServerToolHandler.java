@@ -102,7 +102,7 @@ public final class ServerToolHandler {
     }
 
     private static void sendCatalog(ServerPlayer player, List<String> ids) {
-        MinecraftServer server = player.getServer();
+        MinecraftServer server = player.level().getServer();
         if (server == null) {
             return;
         }
@@ -130,7 +130,7 @@ public final class ServerToolHandler {
                         reply.valueJson(), reply.errorCode(), reply.message())));
     }
     private static void send(ServerPlayer player, ToolCallResultPacket result) {
-        MinecraftServer server = player.getServer();
+        MinecraftServer server = player.level().getServer();
         if (server == null) {
             return;
         }

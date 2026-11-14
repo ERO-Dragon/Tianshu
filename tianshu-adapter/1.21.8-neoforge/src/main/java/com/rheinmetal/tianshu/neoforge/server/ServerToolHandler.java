@@ -7,9 +7,7 @@ import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
-import com.rheinmetal.tianshu.api.tool.ToolId;
-import com.rheinmetal.tianshu.api.tool.ToolSide;
-import com.rheinmetal.tianshu.api.tool.ToolSpec;
+import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
 import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
@@ -45,6 +43,7 @@ public final class ServerToolHandler {
 
     public static void register(IEventBus gameBus) {
         gameBus.addListener(ServerToolHandler::onPlayerLogin);
+        gameBus.addListener(ServerToolHandler::onPlayerLogout);
         gameBus.addListener(ServerToolHandler::onServerStarting);
     }
 
@@ -70,17 +69,27 @@ public final class ServerToolHandler {
         if (!(event.getEntity() instanceof ServerPlayer player) || player.connection == null) {
             return;
         }
-        PacketDistributor.sendToPlayer(player, new ToolCatalogPacket(serverToolIds(player)));
+        String playerId = player.getUUID().toString();
+        boolean operator = player.hasPermissions(OPERATOR_PERMISSION_LEVEL);
+        ToolCatalogPushRegistry.register(playerId, operator, (ignored, ids) -> sendCatalog(player, ids));
     }
 
-    private static List<String> serverToolIds(ServerPlayer player) {
-        ToolCaller caller = ToolCaller.player(player.getUUID().toString(),
-                player.hasPermissions(OPERATOR_PERMISSION_LEVEL));
-        return TianshuTools.catalog(caller, ToolSide.SERVER).stream()
-                .filter(spec -> spec.category().isServerSide())
-                .map(ToolSpec::id)
-                .map(ToolId::toString)
-                .toList();
+    private static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            ToolCatalogPushRegistry.unregister(player.getUUID().toString());
+        }
+    }
+
+    private static void sendCatalog(ServerPlayer player, List<String> ids) {
+        MinecraftServer server = player.level().getServer();
+        if (server == null) {
+            return;
+        }
+        server.execute(() -> {
+            if (player.connection != null) {
+                PacketDistributor.sendToPlayer(player, new ToolCatalogPacket(ids));
+            }
+        });
     }
 
     public static void handle(ToolCallRequestPacket packet, IPayloadContext context) {
@@ -99,7 +108,7 @@ public final class ServerToolHandler {
                         reply.valueJson(), reply.errorCode(), reply.message())));
     }
     private static void send(ServerPlayer player, ToolCallResultPacket result) {
-        MinecraftServer server = player.getServer();
+        MinecraftServer server = player.level().getServer();
         if (server == null) {
             return;
         }

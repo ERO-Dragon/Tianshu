@@ -9,9 +9,7 @@ import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
-import com.rheinmetal.tianshu.api.tool.ToolId;
-import com.rheinmetal.tianshu.api.tool.ToolSide;
-import com.rheinmetal.tianshu.api.tool.ToolSpec;
+import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
 import com.rheinmetal.tianshu.client.tool.BlockMachineTool;
 import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
@@ -76,22 +74,35 @@ public final class FabricServerToolHandler {
         });
         ServerPlayNetworking.registerGlobalReceiver(ToolCallRequestPacket.TYPE, (packet, context) ->
                 context.server().execute(() -> respond(context.player(), packet)));
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            ServerPlayer player = handler.getPlayer();
-            if (player != null) {
-                ServerPlayNetworking.send(player, new ToolCatalogPacket(serverToolIds(player)));
-            }
-        });
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerLogin(handler.getPlayer()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> onPlayerLogout(handler.getPlayer()));
     }
 
-    private static List<String> serverToolIds(ServerPlayer player) {
-        ToolCaller caller = ToolCaller.player(player.getUUID().toString(),
-                player.hasPermissions(OPERATOR_PERMISSION_LEVEL));
-        return TianshuTools.catalog(caller, ToolSide.SERVER).stream()
-                .filter(spec -> spec.category().isServerSide())
-                .map(ToolSpec::id)
-                .map(ToolId::toString)
-                .toList();
+    private static void onPlayerLogin(ServerPlayer player) {
+        if (player == null || player.connection == null) {
+            return;
+        }
+        String playerId = player.getUUID().toString();
+        boolean operator = player.hasPermissions(OPERATOR_PERMISSION_LEVEL);
+        ToolCatalogPushRegistry.register(playerId, operator, (ignored, ids) -> sendCatalog(player, ids));
+    }
+
+    private static void onPlayerLogout(ServerPlayer player) {
+        if (player != null) {
+            ToolCatalogPushRegistry.unregister(player.getUUID().toString());
+        }
+    }
+
+    private static void sendCatalog(ServerPlayer player, List<String> ids) {
+        var server = player.level().getServer();
+        if (server == null) {
+            return;
+        }
+        server.execute(() -> {
+            if (player.connection != null) {
+                ServerPlayNetworking.send(player, new ToolCatalogPacket(ids));
+            }
+        });
     }
     private static void respond(ServerPlayer player, ToolCallRequestPacket packet) {
         if (player == null) {
