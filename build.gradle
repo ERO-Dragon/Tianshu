@@ -98,7 +98,7 @@ def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-ada
 tasks.register('verifyFeatureIsolation') {
     group = 'verification'
     description = 'Feature modules may only reference each other along the declared optional edges.'
-    inputs.files(files(featureModules.collect { "${it}/src/main/java" }))
+    inputs.files(files(featureModules.collect { "core/${it}/src/main/java" }))
     doLast { task ->
         def names = featureModules.collect { it - 'tianshu-' } as Set
         def violations = []
@@ -127,24 +127,24 @@ tasks.register('verifyFeatureOptionalDependencies') {
     group = 'verification'
     description = 'The matrix is the whole truth: every listed edge is declared in Gradle and both manifests, every edge is used, and nothing undeclared exists.'
     def buildFiles = featureModules.collectEntries { module ->
-        [(module): file("${module}/build.gradle")]
+        [(module): file("core/${module}/build.gradle")]
     }
     def sourcesByModule = featureModules.collectEntries { module ->
-        [(module): fileTree("${module}/src/main/java") { include '**/*.java' }.files]
+        [(module): fileTree("core/${module}/src/main/java") { include '**/*.java' }.files]
     }
     def modsTomlByModule = featureModules.collectEntries { module ->
         // Both NeoForge manifests: the modern one (FML 10+) and the legacy one (1.20.1-1.20.3) ship in the same jar,
         // so an edge that is declared in only one of them is missing on half the supported line.
-        [(module): fileTree("${module}/src") { include '**/neoforge.mods.toml', '**/mods.toml' }.files]
+        [(module): fileTree("core/${module}/src") { include '**/neoforge.mods.toml', '**/mods.toml' }.files]
     }
     def fabricManifestByModule = featureModules.collectEntries { module ->
-        [(module): file("${module}/src/main/resources/fabric.mod.json")]
+        [(module): file("core/${module}/src/main/resources/fabric.mod.json")]
     }
     // The package roots each module owns, read from where its sources live. Package name and module name do
     // not always match: the arbitration module ships inside intake as `function.ia`, so usage has to be
     // detected against what the target module actually owns.
     def packagesByModule = featureModules.collectEntries { module ->
-        def root = file("${module}/src/main/java/com/rheinmetal/tianshu/function")
+        def root = file("core/${module}/src/main/java/com/rheinmetal/tianshu/function")
         [(module): root.isDirectory() ? root.listFiles().findAll { it.isDirectory() }*.name : []]
     }
     inputs.files(buildFiles.values())
@@ -384,9 +384,9 @@ tasks.register('verifyHostHasNoFeatureDependency') {
     description = 'The kernel modules must never reference or depend on a feature module.'
     def plainHostModules = hostModules.findAll { it != 'tianshu-adapter' }
     def adapterProjectDirs = adapterProjects.collect { it.projectDir }
-    def hostBuildFiles = plainHostModules.collect { file("${it}/build.gradle") } +
+    def hostBuildFiles = plainHostModules.collect { file("core/${it}/build.gradle") } +
             adapterProjectDirs.collect { new File(it, 'build.gradle') }
-    inputs.files(files(plainHostModules.collect { "${it}/src/main/java" }))
+    inputs.files(files(plainHostModules.collect { "core/${it}/src/main/java" }))
     inputs.files(commonAdapterSources)
     adapterProjectDirs.each { dir -> inputs.dir(new File(dir, 'src/main/java')) }
     inputs.files(hostBuildFiles)
@@ -760,7 +760,7 @@ tasks.register('verifyProtocolVersionSingleSource') {
 tasks.register('verifySettingsRenderersCoverOptionEntries') {
     group = 'verification'
     description = 'Every shared settings renderer must draw every option-entry variant the kernel model declares.'
-    def modelFile = file('tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
+    def modelFile = file('core/tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
     def commonTrees = (file('tianshu-adapter').listFiles() ?: [] as File[])
             .findAll { it.isDirectory() && it.name.endsWith('-common') }
             .sort { it.name }
