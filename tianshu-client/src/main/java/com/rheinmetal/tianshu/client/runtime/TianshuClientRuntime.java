@@ -5,10 +5,12 @@ import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
 import com.rheinmetal.tianshu.client.capability.mcp.McpBridge;
+import com.rheinmetal.tianshu.client.capability.mcp.McpStatus;
 import com.rheinmetal.tianshu.client.capability.mcp.McpConfig;
 import com.rheinmetal.tianshu.client.capability.mcp.server.McpServer;
 import com.rheinmetal.tianshu.client.capability.mcp.server.McpServerSettings;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import java.nio.file.Path;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
 
@@ -105,6 +107,9 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 Path.of("config", "Tianshu", "prompts"));
         Path mcpConfig = Path.of("config", "Tianshu", "mcp.json");
         mcp = McpBridge.start(mcpConfig);
+        if (mcp != null) {
+            TianshuRuntimePorts.register(McpStatus.class, mcp);
+        }
         McpServerSettings serverSettings = McpConfig.server(mcpConfig);
         if (serverSettings.enabled()) {
             try {

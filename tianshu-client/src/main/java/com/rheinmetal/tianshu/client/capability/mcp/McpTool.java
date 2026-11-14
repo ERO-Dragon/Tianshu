@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /** One remote MCP tool, presented to the agent as a normal local tool. */
 final class McpTool implements TianshuTool<JsonObject, JsonObject> {
@@ -20,9 +21,10 @@ final class McpTool implements TianshuTool<JsonObject, JsonObject> {
     private final JsonObject schema;
     private final ToolAutonomy autonomy;
     private final String serverName;
+    private final Consumer<String> transportFailure;
 
     McpTool(String serverName, ToolId id, McpConnection client, String remoteName, String description,
-            JsonObject schema, ToolAutonomy autonomy) {
+            JsonObject schema, ToolAutonomy autonomy, Consumer<String> transportFailure) {
         this.serverName = serverName;
         this.id = id;
         this.client = client;
@@ -30,6 +32,7 @@ final class McpTool implements TianshuTool<JsonObject, JsonObject> {
         this.description = description;
         this.schema = schema;
         this.autonomy = autonomy;
+        this.transportFailure = transportFailure;
     }
 
     @Override
@@ -72,10 +75,18 @@ final class McpTool implements TianshuTool<JsonObject, JsonObject> {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 return client.callTool(remoteName, args == null ? new JsonObject() : args);
-            } catch (Exception failure) {
+            } catch (McpRemoteException rejected) {
+                // The server is fine; this one call was rejected.
                 JsonObject error = new JsonObject();
                 error.addProperty("ok", false);
                 error.addProperty("code", "FAILED");
+                error.addProperty("message", String.valueOf(rejected.getMessage()));
+                return error;
+            } catch (Exception failure) {
+                transportFailure.accept(serverName);
+                JsonObject error = new JsonObject();
+                error.addProperty("ok", false);
+                error.addProperty("code", "UNAVAILABLE");
                 error.addProperty("message", String.valueOf(failure.getMessage()));
                 return error;
             }

@@ -88,7 +88,7 @@ abstract class AbstractMcpClient implements McpConnection {
         }
         if (response.has("error")) {
             JsonObject error = response.getAsJsonObject("error");
-            throw new IOException("MCP " + method + " failed: "
+            throw new McpRemoteException("MCP " + method + " failed: "
                     + (error.has("message") ? error.get("message").getAsString() : error.toString()));
         }
         return response.has("result") && response.get("result").isJsonObject()

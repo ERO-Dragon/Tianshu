@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** A real HTTP round-trip against a local fake MCP server, plus the tool bridge. */
@@ -67,11 +68,28 @@ class McpClientTest {
     }
 
     @Test
+    void anUnreachableServerIsReportedInsteadOfThrowing() {
+        McpBridge bridge = McpBridge.install(List.of(
+                McpServerSpec.http("down", "http://127.0.0.1:1/mcp", ToolAutonomy.FULL)));
+        try {
+            assertEquals(1, bridge.status().size());
+            assertFalse(bridge.status().get(0).connected());
+            assertTrue(!bridge.status().get(0).lastError().isBlank());
+            assertEquals(0, bridge.toolCount());
+        } finally {
+            bridge.close();
+        }
+    }
+
+    @Test
     void bridgePublishesRemoteToolsAndRemovesThemOnClose() throws Exception {
         ToolAutonomyGate.setMode(ToolAutonomy.FULL);
         McpBridge bridge = McpBridge.install(List.of(McpServerSpec.http("srv", url, ToolAutonomy.FULL)));
         try {
             assertEquals(1, bridge.toolCount(), bridge.problems().toString());
+            assertEquals(1, bridge.status().size());
+            assertTrue(bridge.status().get(0).connected());
+            assertEquals(1, bridge.status().get(0).toolCount());
             ToolId id = McpBridge.toolId("srv", "echo");
             JsonObject result = TianshuTools.callJson(id, new JsonObject(), ToolCaller.agent(false), ToolSide.CLIENT)
                     .get(5, TimeUnit.SECONDS);
@@ -92,6 +110,7 @@ class McpClientTest {
         }
         assertTrue(TianshuTools.find(McpBridge.toolId("srv", "echo")) == null);
         assertTrue(CapabilityCatalog.find(McpBridge.capabilityId("srv", "res", "memo")).isEmpty());
+        assertFalse(bridge.status().get(0).connected());
     }
 
     private void handle(HttpExchange exchange) throws IOException {
