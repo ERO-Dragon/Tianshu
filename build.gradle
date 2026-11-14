@@ -302,6 +302,43 @@ gradle.projectsEvaluated {
     }
 }
 
+tasks.register('verifyClientMediaWiring') {
+    group = 'verification'
+    description = 'Every adapter wires the shared audio manager and HUD host.'
+    def adapterDirs = file('tianshu-adapter').listFiles()?.findAll {
+        it.isDirectory() && (it.name.endsWith('-neoforge') || it.name.endsWith('-fabric'))
+    } ?: []
+    inputs.files(adapterDirs.collectMany { dir ->
+        def base = dir.name.endsWith('-neoforge')
+                ? new File(dir, 'src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java')
+                : new File(dir, 'src/main/java/com/rheinmetal/tianshu/fabric/FabricClientBootstrap.java')
+        [base]
+    }.findAll { it.exists() })
+    doLast {
+        def required = ['new AudioManager(', 'new HudLayerHost(']
+        def missing = []
+        adapterDirs.each { dir ->
+            def base = dir.name.endsWith('-neoforge')
+                    ? new File(dir, 'src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java')
+                    : new File(dir, 'src/main/java/com/rheinmetal/tianshu/fabric/FabricClientBootstrap.java')
+            if (!base.exists()) {
+                missing << "${dir.name}: no client bootstrap"
+                return
+            }
+            def text = base.getText('UTF-8')
+            required.each { symbol ->
+                if (!text.contains(symbol)) {
+                    missing << "${dir.name}: missing ${symbol}"
+                }
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new GradleException("client media wiring is incomplete:" + System.lineSeparator()
+                    + missing.join(System.lineSeparator()))
+        }
+    }
+}
+
 tasks.register('verifyServerToolRegistration') {
     group = 'verification'
     description = 'Every adapter registers the shared server tools and their version-specific sources.'
