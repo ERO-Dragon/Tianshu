@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
  */
 public final class LabCapabilityCheck {
 
+    private static final System.Logger LOGGER = System.getLogger("tianshu.lab");
     private static final ToolId INVENTORY = ToolId.of("tianshu", "inventory.inspect");
 
     private volatile String report = "";
@@ -49,6 +50,7 @@ public final class LabCapabilityCheck {
         out.append(read("prompt", CapabilityId.of("tianshu", "concise"), promptArgs, 120));
         out.append(tool());
         report = out.toString();
+        LOGGER.log(System.Logger.Level.INFO, "capability self-check:\n{0}", report);
     }
 
     private static String read(String label, CapabilityId id, JsonObject args, int limit) {
