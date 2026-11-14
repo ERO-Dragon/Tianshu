@@ -115,12 +115,26 @@ public final class AXToolTurn {
         if (!toolsAvailable() || toolRounds >= maxToolRounds) {
             return CompletableFuture.completedFuture(new Decision.Finish(assistantText));
         }
-        Optional<ToolCall> parsed = ToolCallParser.parse(assistantText);
-        if (parsed.isEmpty()) {
+        ToolCallParser.ParseResult parsed = ToolCallParser.parseDetailed(assistantText);
+        if (parsed.call().isEmpty()) {
+            if (!parsed.error().isBlank() && looksLikeToolCall(assistantText)) {
+                // The reply tried to call a tool but was malformed. Treat it as a failed round and tell the model
+                // how to repair it; never speak the broken JSON as the final answer.
+                toolRounds++;
+                synchronized (this) {
+                    conversation.add(new MessageItemPayload("assistant", assistantText));
+                    conversation.add(new MessageItemPayload("user",
+                            "tool call rejected: " + parsed.error()
+                                    + "\nReply with one JSON object {\"tool\":\"namespace:name\",\"args\":{...}}"
+                                    + " or a normal answer."));
+                    return CompletableFuture.completedFuture(new Decision.Retry(
+                            payload(requestId, stream, maxTokens, reasoningTier, sampling)));
+                }
+            }
             return CompletableFuture.completedFuture(new Decision.Finish(assistantText));
         }
         toolRounds++;
-        ToolCall call = parsed.get();
+        ToolCall call = parsed.call().get();
         CompletableFuture<JsonObject> execution;
         try {
             execution = executor.execute(call);
@@ -145,6 +159,15 @@ public final class AXToolTurn {
         });
     }
 
+    /** A heuristic, used only to decide whether a broken reply deserves one repair round. */
+    private static boolean looksLikeToolCall(String text) {
+        if (text == null) {
+            return false;
+        }
+        String trimmed = text.strip();
+        return (trimmed.startsWith("{") || trimmed.startsWith("```")) && trimmed.contains("\"tool\"");
+    }
+
     private static JsonObject errorEnvelope(Throwable failure) {
         JsonObject error = new JsonObject();
         error.addProperty("ok", false);
@@ -167,5 +190,8 @@ public final class AXToolTurn {
         record Continue(ToolCall call, JsonObject result, LLMPromptRequestPayload next) implements Decision {
         }
 
+        /** A malformed call: the next payload already contains the rejection and how to repair it. */
+        record Retry(LLMPromptRequestPayload next) implements Decision {
+        }
     }
 }
