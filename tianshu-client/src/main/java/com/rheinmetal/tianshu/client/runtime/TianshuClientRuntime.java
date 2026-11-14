@@ -5,6 +5,9 @@ import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
 import com.rheinmetal.tianshu.client.capability.mcp.McpBridge;
+import com.rheinmetal.tianshu.client.capability.mcp.McpConfig;
+import com.rheinmetal.tianshu.client.capability.mcp.server.McpServer;
+import com.rheinmetal.tianshu.client.capability.mcp.server.McpServerSettings;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import java.nio.file.Path;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
@@ -37,6 +40,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private volatile TextCapabilityProvider builtInResources;
     private volatile TextCapabilityProvider builtInPrompts;
     private volatile McpBridge mcp;
+    private volatile McpServer mcpServer;
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
     private boolean worldSessionRequested;
@@ -99,7 +103,17 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 Path.of("config", "Tianshu", "resources"));
         prompts = TextCapabilityProvider.install(CapabilityKind.PROMPT, "user",
                 Path.of("config", "Tianshu", "prompts"));
-        mcp = McpBridge.start(Path.of("config", "Tianshu", "mcp.json"));
+        Path mcpConfig = Path.of("config", "Tianshu", "mcp.json");
+        mcp = McpBridge.start(mcpConfig);
+        McpServerSettings serverSettings = McpConfig.server(mcpConfig);
+        if (serverSettings.enabled()) {
+            try {
+                mcpServer = McpServer.start(serverSettings.port());
+            } catch (java.io.IOException bindFailure) {
+                System.getLogger("tianshu.mcp").log(System.Logger.Level.WARNING,
+                        "MCP server did not start: {0}", bindFailure.getMessage());
+            }
+        }
         ConnectionToolChannel.install();
         startClientResources.run();
     }
@@ -175,6 +189,11 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         if (builtInPromptProvider != null) {
             builtInPromptProvider.unload();
             builtInPrompts = null;
+        }
+        McpServer server = mcpServer;
+        if (server != null) {
+            server.close();
+            mcpServer = null;
         }
         McpBridge bridge = mcp;
         if (bridge != null) {

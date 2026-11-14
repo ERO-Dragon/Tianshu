@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.client.capability.mcp.server.McpServerSettings;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,25 @@ import java.util.List;
 public final class McpConfig {
 
     private McpConfig() {
+    }
+
+    /** The optional local server section; disabled unless the file says otherwise. */
+    public static McpServerSettings server(Path file) {
+        if (file == null || !Files.isRegularFile(file)) {
+            return McpServerSettings.disabled();
+        }
+        try {
+            JsonElement root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8));
+            if (!root.isJsonObject() || !root.getAsJsonObject().has("server")) {
+                return McpServerSettings.disabled();
+            }
+            JsonObject server = root.getAsJsonObject().getAsJsonObject("server");
+            boolean enabled = server.has("enabled") && server.get("enabled").getAsBoolean();
+            int port = server.has("port") ? server.get("port").getAsInt() : 8765;
+            return new McpServerSettings(enabled, port);
+        } catch (IOException | RuntimeException malformed) {
+            return McpServerSettings.disabled();
+        }
     }
 
     public static List<McpServerSpec> load(Path file) {
