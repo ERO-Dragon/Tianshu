@@ -88,19 +88,6 @@ class AXToolTurnTest {
     }
 
     @Test
-    void aMalformedCallGetsOneRepairRound() throws Exception {
-        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(),
-                call -> CompletableFuture.completedFuture(new JsonObject()));
-
-        AXToolTurn.Decision decision = turn.onReply("{\"tool\":\"test:echo\",\"args\":[]}",
-                "req", false, 0, null, SAMPLING).get(2, java.util.concurrent.TimeUnit.SECONDS);
-        AXToolTurn.Decision.Retry retry = assertInstanceOf(AXToolTurn.Decision.Retry.class, decision);
-        assertEquals(1, turn.toolRounds());
-        String correction = retry.next().messages().get(retry.next().messages().size() - 1).content();
-        assertTrue(correction.startsWith("tool call rejected:"));
-    }
-
-    @Test
     void aPlainAnswerFinishes() {
         AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
         AXToolTurn.Decision decision = reply(turn, "You have three sticks.");

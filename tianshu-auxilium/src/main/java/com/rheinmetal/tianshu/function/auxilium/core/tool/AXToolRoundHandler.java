@@ -95,12 +95,6 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
                             submit.submit(continuation.next(), this);
                             return;
                         }
-                        if (decision instanceof AXToolTurn.Decision.Retry retry) {
-                            // A malformed call is not the final answer; one more model round may repair it.
-                            discardHeld.run();
-                            submit.submit(retry.next(), this);
-                            return;
-                        }
                         delivery.onResult(payload);
                     });
             return;
