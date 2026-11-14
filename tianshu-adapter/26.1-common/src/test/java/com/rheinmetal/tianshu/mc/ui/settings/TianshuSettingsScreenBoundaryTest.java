@@ -40,7 +40,7 @@ final class TianshuSettingsScreenBoundaryTest {
 
         assertTrue(refresh.contains("if (rebuildQueued)"));
         assertTrue(refresh.contains("Minecraft.getInstance().execute("));
-        assertTrue(refresh.contains("Minecraft.getInstance().gui.screen() == this"));
+        assertTrue(refresh.contains("Minecraft.getInstance().screen == this"));
         assertFalse(refresh.contains(".join()"));
         assertFalse(refresh.contains("Thread.sleep"));
     }
