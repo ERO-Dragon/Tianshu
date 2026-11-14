@@ -1,0 +1,1058 @@
+package com.rheinmetal.tianshu.function.echo;
+
+import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
+import com.rheinmetal.tianshu.function.echo.download.TtsModelDownloadCoordinator;
+import com.rheinmetal.tianshu.function.echo.runtime.TtsModelSnapshot;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelLayout;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelSettings;
+import com.rheinmetal.tianshu.model.ModelAvailabilitySnapshot;
+import com.rheinmetal.tianshu.model.lifecycle.ModelAvailabilityRefresher;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDeleteCallback;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDeletionRunner;
+import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
+import com.rheinmetal.tianshu.model.ModelDownloadProgress;
+import com.rheinmetal.tianshu.model.ModelDownloadStage;
+import com.rheinmetal.tianshu.function.echo.model.TtsModelInfo;
+import com.rheinmetal.tianshu.protocol.runtime.ExecutionLane;
+import com.rheinmetal.tianshu.protocol.runtime.ModuleExecutionAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskState;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
+import com.rheinmetal.tianshu.protocol.status.ModuleStatus;
+
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+public class TtsModelService {
+
+    /** Sibling directories of a model directory; both are staging artefacts, never a selectable model. */
+    private static final String STAGING_SUFFIX = "-staging";
+    private static final String EXTRACT_SUFFIX = "-extract";
+    private static final String TEMP_FILE_SUFFIX = ".tmp";
+
+    /**
+     * The two transfer failures the player can act on, so they get their own text: free space, or retry.
+     * Everything else is reported as the generic download failure.
+     */
+    private static final String INSUFFICIENT_SPACE = "tianshu.gui.tts.status.download_no_space";
+    private static final String INCOMPLETE_TRANSFER = "tianshu.gui.tts.status.download_incomplete";
+
+    public record DownloadStatus(boolean downloading, boolean paused, boolean cancelling, String activeModelName, ModelDownloadProgress progress) {
+        public static DownloadStatus idle() {
+            return new DownloadStatus(false, false, false, "", ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, ""));
+        }
+    }
+
+    private final IGameEnvironment env;
+    private final EchoConfiguration config;
+    private final ModuleExecutionAccess executorManager;
+    private final TtsModelDownloadCoordinator downloadCoordinator;
+    private final Consumer<ModuleStatus> moduleStatusSink;
+    private final AtomicReference<DownloadTask> activeDownload = new AtomicReference<>();
+    private final AtomicReference<ProtocolTaskHandle> activeDownloadHandle = new AtomicReference<>();
+    private final AtomicReference<DownloadStatus> downloadStatus = new AtomicReference<>(DownloadStatus.idle());
+    private final ModelAvailabilityRefresher availabilityRefresher;
+    private final ModelDeletionRunner deletionRunner;
+
+    public TtsModelService(IGameEnvironment env, EchoConfiguration config, ModuleExecutionAccess executorManager) {
+        this(env, config, executorManager, null);
+    }
+
+    public TtsModelService(IGameEnvironment env, EchoConfiguration config, ModuleExecutionAccess executorManager, Consumer<ModuleStatus> moduleStatusSink) {
+        this(env, config, executorManager, moduleStatusSink, new TtsModelDownloadCoordinator(env));
+    }
+
+    // test seam: lets a test replace the download transport without changing the production constructors.
+    TtsModelService(
+            IGameEnvironment env,
+            EchoConfiguration config,
+            ModuleExecutionAccess executorManager,
+            Consumer<ModuleStatus> moduleStatusSink,
+            TtsModelDownloadCoordinator downloadCoordinator
+    ) {
+        this.env = env;
+        this.config = config;
+        this.executorManager = executorManager;
+        this.moduleStatusSink = moduleStatusSink == null ? ignored -> {} : moduleStatusSink;
+        this.downloadCoordinator = downloadCoordinator;
+        this.availabilityRefresher = new ModelAvailabilityRefresher(
+                TtsModuleId.VALUE, executorManager, env, this::buildAvailabilitySnapshot);
+        this.deletionRunner = new ModelDeletionRunner(TtsModuleId.VALUE, executorManager, availabilityRefresher);
+        scheduleStartupCleanup();
+    }
+
+    public List<TtsModelInfo> catalog() {
+        List<TtsModelInfo> catalog = TtsModelInfo.loadCatalog();
+        return catalog == null ? Collections.emptyList() : catalog;
+    }
+
+    public TtsModelInfo findModelByName(String name) {
+        return TtsModelInfo.findByName(name);
+    }
+
+    public String currentConfiguredModelName() {
+        String configured = config.getCustomTtsName();
+        return configured == null ? "" : configured.trim();
+    }
+
+    public TtsModelSettings loadSettings(TtsModelInfo info) {
+        Path modelDir = info == null ? resolveCurrentModelDir() : resolveModelDir(info);
+        return modelDir == null ? new TtsModelSettings() : TtsModelSettings.load(modelDir, info);
+    }
+
+    public Path resolveVoiceSamplePath(TtsModelInfo info, String sampleNameOrPath) {
+        if (info == null) {
+            return null;
+        }
+        String normalized = sampleNameOrPath == null ? "" : sampleNameOrPath.trim();
+        if (normalized.isBlank()) {
+            normalized = info.defaultVoiceSample == null ? "" : info.defaultVoiceSample.trim();
+        }
+        if (normalized.isBlank()) {
+            return null;
+        }
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null) {
+            return null;
+        }
+        Path fileName = Path.of(normalized).getFileName();
+        if (fileName == null) {
+            return null;
+        }
+        Path resolved = modelDir.resolve(fileName.toString()).normalize();
+        Path root = modelDir.normalize();
+        if (resolved.startsWith(root) && Files.isRegularFile(resolved)) {
+            return resolved;
+        }
+        return null;
+    }
+
+    public void saveSettings(TtsModelInfo info, TtsModelSettings settings) {
+        Path modelDir = info == null ? resolveCurrentModelDir() : resolveModelDir(info);
+        if (modelDir == null || settings == null) {
+            throw new IllegalArgumentException("TTS_MODEL_SETTINGS_TARGET_UNAVAILABLE");
+        }
+        try {
+            TtsModelSettings.save(modelDir, settings);
+        } catch (RuntimeException e) {
+            env.error("tts.model.settings.save_failed", e);
+            throw e;
+        }
+    }
+
+    public TtsModelInfo resolveCurrentModelInfo() {
+        return resolveModelInfo(currentConfiguredModelName());
+    }
+
+    public TtsModelInfo resolveModelInfo(String modelName) {
+        String configured = modelName == null ? "" : modelName.trim();
+        if (configured.isBlank()) {
+            return null;
+        }
+        Path modelPath = resolveSelectedModelPath(configured);
+        String dirName = modelPath.getFileName().toString();
+        for (TtsModelInfo info : catalog()) {
+            if (info == null || info.name == null) {
+                continue;
+            }
+            if (info.name.equalsIgnoreCase(dirName) || modelPath.endsWith(info.name)) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    public Path resolveCurrentModelDir() {
+        return resolveModelDir(currentConfiguredModelName());
+    }
+
+    public Path resolveModelDir(String modelName) {
+        String configured = modelName == null ? "" : modelName.trim();
+        if (configured.isBlank()) {
+            return null;
+        }
+        TtsModelInfo info = resolveModelInfo(configured);
+        if (info != null) {
+            return resolveModelDir(info);
+        }
+        return resolveSelectedModelPath(configured);
+    }
+
+    public Path resolveModelDir(TtsModelInfo info) {
+        if (info == null || info.name == null) {
+            return null;
+        }
+        return TtsModelLayout.modelDirectory(config.getTtsBasePath(), info);
+    }
+
+    private Path modelBasePath() {
+        return TtsModelLayout.modelRoot(config.getTtsBasePath());
+    }
+
+    private Path resolveSelectedModelPath(String modelName) {
+        return TtsModelLayout.modelDirectory(config.getTtsBasePath(), modelName);
+    }
+
+    private void scheduleStartupCleanup() {
+        executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId(TtsModuleId.VALUE)
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.tts:model.cleanup")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                () -> {
+                    cleanupStaleDownloadArtifacts();
+                    availabilityRefresher.refreshNow();
+                }
+        );
+    }
+
+    private void cleanupStaleDownloadArtifacts() {
+        Path base = modelBasePath();
+        if (!Files.isDirectory(base)) {
+            return;
+        }
+        try (var walk = Files.walk(base)) {
+            List<Path> paths = walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList();
+            for (Path path : paths) {
+                String name = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
+                if (Files.isRegularFile(path) && name.endsWith(TEMP_FILE_SUFFIX)) {
+                    Files.deleteIfExists(path);
+                } else if (Files.isDirectory(path) && name.endsWith(EXTRACT_SUFFIX)) {
+                    // Extraction is a one-shot step; its directory is garbage.
+                    deleteRecursively(path);
+                } else if (Files.isDirectory(path) && name.endsWith(STAGING_SUFFIX)) {
+                    reclaimStaging(path);
+                }
+            }
+        } catch (IOException e) {
+            env.warn("tts.download.cleanup_failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Decides whether a staging directory is worth keeping.
+     *
+     * <p>A staging directory exists for exactly one reason: resuming an interrupted transfer, file by file —
+     * a retry reuses whatever already landed there. So the two cases worth deleting are the ones that can
+     * never be resumed: the model it belongs to is already installed (the commit happened, the directory is a
+     * leftover — for MOSS most of a gigabyte), and a directory with no files in it at all.</p>
+     */
+    private void reclaimStaging(Path stagingDir) {
+        Path modelDir = siblingModelDirectory(stagingDir);
+        TtsModelInfo owner = modelDir == null ? null : catalogEntryFor(modelDir);
+        if (owner != null && TtsModelInfo.isModelDirectoryComplete(owner, modelDir)) {
+            deleteRecursivelyQuietly(stagingDir, "installed");
+            return;
+        }
+        if (!holdsAnyFile(stagingDir)) {
+            deleteRecursivelyQuietly(stagingDir, "empty");
+        }
+    }
+
+    private static boolean holdsAnyFile(Path stagingDir) {
+        try (var walk = Files.walk(stagingDir)) {
+            return walk.anyMatch(Files::isRegularFile);
+        } catch (IOException unreadable) {
+            // An unreadable staging directory cannot be examined; deleting what cannot be listed is not this
+            // method's call, so it is left for the next run.
+            return true;
+        }
+    }
+
+    private Path siblingModelDirectory(Path stagingDir) {
+        String name = stagingDir.getFileName() == null ? "" : stagingDir.getFileName().toString();
+        if (name.length() <= STAGING_SUFFIX.length()) {
+            return null;
+        }
+        String modelName = name.substring(0, name.length() - STAGING_SUFFIX.length());
+        return stagingDir.resolveSibling(modelName);
+    }
+
+    private TtsModelInfo catalogEntryFor(Path modelDir) {
+        for (TtsModelInfo info : catalog()) {
+            if (info == null || info.name == null || info.name.isBlank()) {
+                continue;
+            }
+            Path candidate = resolveModelDir(info);
+            if (candidate != null && candidate.toAbsolutePath().normalize().equals(modelDir.toAbsolutePath().normalize())) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    private void deleteRecursivelyQuietly(Path path, String why) {
+        try {
+            deleteRecursively(path);
+            env.info("tts.download.staging_reclaimed: " + path.getFileName() + " (" + why + ")");
+        } catch (IOException failure) {
+            env.warn("tts.download.staging_reclaim_failed: " + path.getFileName() + " — " + failure.getMessage());
+        }
+    }
+
+    public TtsModelSnapshot snapshot() {
+        Path modelDir = resolveCurrentModelDir();
+        if (modelDir == null) {
+            return TtsModelSnapshot.unconfigured();
+        }
+        TtsModelInfo info = resolveCurrentModelInfo();
+        boolean directoryExists = Files.isDirectory(modelDir);
+        boolean hasContent = info == null ? hasModelContent(modelDir) : hasModelContent(info);
+        return new TtsModelSnapshot(
+                true,
+                info != null,
+                directoryExists,
+                hasContent,
+                info == null ? "" : info.name,
+                info == null ? modelDir.getFileName().toString() : info.getDisplayName(),
+                info == null ? "" : info.id,
+                info == null ? "legacy" : info.getEngineType(),
+                info == null ? "" : scoreTier(info.getRecommendationScore()),
+                info == null ? "" : scoreTier(info.getPerformanceScore()),
+                info != null && info.supportsVoiceClone(),
+                info != null && info.supportsSpeakerSelection(),
+                isDownloadPaused(),
+                modelDir.toString(),
+                System.currentTimeMillis()
+        );
+    }
+
+    private String scoreTier(int score) {
+        if (score >= 8) {
+            return "HIGH";
+        }
+        if (score <= 4) {
+            return "LOW";
+        }
+        return "MID";
+    }
+
+    public boolean hasModelContent(TtsModelInfo info) {
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null || !Files.isDirectory(modelDir)) {
+            return false;
+        }
+        return TtsModelInfo.isModelDirectoryComplete(info, modelDir);
+    }
+
+    public ModelAvailabilitySnapshot modelAvailability() {
+        return availabilityRefresher.snapshot();
+    }
+
+    public void refreshModelAvailabilityAsync(Runnable completion) {
+        availabilityRefresher.refreshAsync(completion);
+    }
+
+    private ModelAvailabilitySnapshot buildAvailabilitySnapshot() {
+        Map<String, ModelAvailabilitySnapshot.Entry> entries = new LinkedHashMap<>();
+        for (TtsModelInfo info : catalog()) {
+            if (info == null || info.name == null || info.name.isBlank()) {
+                continue;
+            }
+            boolean installed = hasModelContent(info);
+            entries.put(info.name, new ModelAvailabilitySnapshot.Entry(installed, 0L));
+        }
+        return new ModelAvailabilitySnapshot(entries, true, System.currentTimeMillis());
+    }
+
+    private boolean hasModelContent(Path modelDir) {
+        if (modelDir == null || !Files.isDirectory(modelDir)) {
+            return false;
+        }
+        try (var stream = Files.walk(modelDir)) {
+            return stream.anyMatch(path -> {
+                if (!Files.isRegularFile(path)) {
+                    return false;
+                }
+                String name = path.getFileName().toString().toLowerCase();
+                return name.endsWith(".onnx") || name.endsWith(".bin") || name.endsWith(".gguf") || name.endsWith(".fst");
+            });
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Whether a model directory exists at all, complete or half-deleted; such a directory stays deletable. */
+    public boolean hasModelDirectory(TtsModelInfo info) {
+        Path modelDir = resolveModelDir(info);
+        return modelDir != null && Files.isDirectory(modelDir);
+    }
+
+    public boolean deleteModel(TtsModelInfo info) {
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null || !Files.isDirectory(modelDir)) {
+            return false;
+        }
+        List<Path> entries;
+        try (var walk = Files.walk(modelDir)) {
+            entries = walk.filter(path -> !path.equals(modelDir))
+                    .sorted((left, right) -> right.getNameCount() - left.getNameCount())
+                    .toList();
+        } catch (IOException failure) {
+            env.error("tts.model.delete_failed", failure);
+            return false;
+        }
+        // A single locked file used to abandon the rest of the tree; the leftovers made the directory
+        // undeletable for good. Every entry is attempted, and the remaining ones alone decide the result.
+        int failures = 0;
+        for (Path entry : entries) {
+            try {
+                Files.deleteIfExists(entry);
+            } catch (IOException failure) {
+                failures++;
+            }
+        }
+        if (failures > 0) {
+            env.warn("tts.model.delete_incomplete: " + failures + " of " + entries.size()
+                    + " entries remain in " + modelDir);
+            return false;
+        }
+        try {
+            Files.deleteIfExists(modelDir);
+            return true;
+        } catch (IOException failure) {
+            env.error("tts.model.delete_failed", failure);
+            return false;
+        }
+    }
+
+    public void deleteModelAsync(TtsModelInfo info, ModelDeleteCallback callback) {
+        if (info == null) {
+            if (callback != null) {
+                callback.onComplete(false);
+            }
+            return;
+        }
+        if (activeDownload.get() != null) {
+            publishFailed("tianshu.runtime.module.tts.download_busy");
+            if (callback != null) {
+                callback.onComplete(false);
+            }
+            return;
+        }
+        deletionRunner.deleteAsync(() -> deleteModel(info), callback);
+    }
+
+    public boolean isDeleting() {
+        return deletionRunner.isDeleting();
+    }
+
+    public void downloadModel(TtsModelInfo info, String proxyUrl, ModelDownloadCallback callback) {
+        if (info == null) {
+            if (callback != null) {
+                callback.onError("tianshu.gui.tts.failure.invalid_request");
+            }
+            return;
+        }
+        if (deletionRunner.isDeleting()) {
+            if (callback != null) {
+                callback.onError("tianshu.gui.tts.failure.download_deleting");
+            }
+            return;
+        }
+        Path modelDir = resolveModelDir(info);
+        if (modelDir == null) {
+            if (callback != null) {
+                callback.onError("tianshu.gui.tts.failure.invalid_request");
+            }
+            return;
+        }
+        if (!hasEnoughDiskSpace(info, modelDir)) {
+            if (callback != null) {
+                callback.onError(INSUFFICIENT_SPACE);
+            }
+            return;
+        }
+        DownloadTask task = new DownloadTask(safeModelName(info), modelDir, hasModelContent(info), downloadCoordinator.newSession());
+        if (!activeDownload.compareAndSet(null, task)) {
+            publishFailed("tianshu.runtime.module.tts.download_busy");
+            if (callback != null) {
+                callback.onError("tianshu.gui.tts.failure.download_busy");
+            }
+            return;
+        }
+        updateDownload(true, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "download.prepare"));
+        publishWaiting("tianshu.runtime.module.tts.download_started");
+        ProtocolTaskHandle handle = executorManager.submit(
+                ProtocolTaskSpec.builder()
+                        .moduleId(TtsModuleId.VALUE)
+                        .lane(ExecutionLane.IO)
+                        .concurrencyKey("module.tts:model.download")
+                        .maxConcurrency(1)
+                        .queueCapacity(1)
+                        .build(),
+                () -> runDownloadModel(task, info, proxyUrl, callback)
+        );
+        if (activeDownload.get() == task) {
+            activeDownloadHandle.set(handle);
+            if (task.session().isCancelled()) {
+                handle.cancel("model_download_cancelled");
+            }
+        } else {
+            handle.cancel("model_download_already_finished");
+        }
+        if (handle.state() == ProtocolTaskState.REJECTED) {
+            activeDownload.compareAndSet(task, null);
+            updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, 0, "download.queue_full"));
+            publishFailed("tianshu.runtime.module.tts.download_queue_full");
+            if (callback != null) {
+                callback.onError("tianshu.gui.tts.failure.download_queue_full");
+            }
+        }
+    }
+
+    public DownloadStatus downloadStatus() {
+        return downloadStatus.get();
+    }
+
+    public boolean isDownloadPaused() {
+        DownloadTask task = activeDownload.get();
+        return task != null && task.session().isPaused();
+    }
+
+    public void pauseDownload() {
+        DownloadTask task = activeDownload.get();
+        DownloadStatus current = downloadStatus.get();
+        if (task == null || current.cancelling()) {
+            return;
+        }
+        task.session().pause();
+        updateDownload(true, true, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.PAUSED));
+        publishWaiting("tianshu.runtime.module.tts.download_paused");
+    }
+
+    public void resumeDownload() {
+        DownloadTask task = activeDownload.get();
+        DownloadStatus current = downloadStatus.get();
+        if (task == null || current.cancelling()) {
+            return;
+        }
+        task.session().resume();
+        updateDownload(true, false, false, task.modelName(), withStage(current.progress(), ModelDownloadStage.DOWNLOADING));
+        publishWaiting("tianshu.runtime.module.tts.download_resumed");
+    }
+
+    public void cancelDownload() {
+        DownloadTask task = activeDownload.get();
+        DownloadStatus current = downloadStatus.get();
+        if (task == null) {
+            return;
+        }
+        task.session().cancel();
+        ProtocolTaskHandle handle = activeDownloadHandle.get();
+        if (handle != null) {
+            handle.cancel("model_download_cancelled");
+        }
+        updateDownload(true, false, true, task.modelName(), withStage(current.progress(), ModelDownloadStage.CANCELLING));
+        publishWaiting("tianshu.runtime.module.tts.download_cancelling");
+    }
+
+    /** Cancels an in-flight model transfer when the owning module stops. */
+    public void stop() {
+        DownloadTask task = activeDownload.get();
+        if (task != null) {
+            task.session().cancelKeepingPartial();
+        }
+    }
+
+    private void runDownloadModel(DownloadTask task, TtsModelInfo info, String proxyUrl, ModelDownloadCallback callback) {
+        try {
+            if (task.hadModelContent()) {
+                finishDownloadComplete(task, callback);
+                return;
+            }
+            Path stagingDir = stagingDir(task.modelDir());
+            Files.createDirectories(stagingDir);
+
+            if (info.downloadUri != null && !info.downloadUri.isBlank()) {
+                downloadArchiveModel(task, info, stagingDir, proxyUrl, callback);
+            } else if (TtsModelInfo.ENGINE_MOSS.equals(info.getEngineType())) {
+                downloadMossModel(task, info, stagingDir, callback);
+            } else {
+                downloadSherpaModel(task, info, stagingDir, callback);
+            }
+            task.session().awaitReady();
+            if (!TtsModelInfo.isModelDirectoryComplete(info, stagingDir)) {
+                // The declared files did not all arrive. That is a retry, not a mystery: say so.
+                throw new DownloadFailure(INCOMPLETE_TRANSFER, "tts.download.model_incomplete: " + info.getDisplayName());
+            }
+            // Deliberately no settings file here: an absent file means "use the catalog default", while a
+            // file written without the catalog entry would persist speakerId 0 and override the model's own
+            // default voice for good.
+            commitStagingDownload(stagingDir, task.modelDir());
+            finishDownloadComplete(task, callback);
+        } catch (Exception e) {
+            if (task.session().isCancelled() || isDownloadCancelled(e)) {
+                finishDownloadCancelled(task, callback);
+            } else {
+                env.error("tts.download.failed", e);
+                finishDownloadError(task, callback, downloadFailureMessage(e, task.modelDir(), info));
+            }
+        }
+    }
+
+    private void downloadSherpaModel(DownloadTask task, TtsModelInfo info, Path modelDir, ModelDownloadCallback callback) throws Exception {
+        task.session().awaitReady();
+        emitProgress(task, callback, ModelDownloadStage.RESOLVING_FILES, 0, "files.resolve");
+        ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
+        task.session().downloadModelFiles(info.id, modelDir, "main", true, 3,
+                new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
+                    @Override
+                    public void onOverallProgress(long downloadedBytes, long totalBytes) {
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 0, 100, "model.files.download");
+                    }
+                });
+        task.session().awaitReady();
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
+    }
+
+    private void downloadMossModel(DownloadTask task, TtsModelInfo info, Path modelDir, ModelDownloadCallback callback) throws Exception {
+        String codecRepoId = info.codecRepoId == null ? "" : info.codecRepoId.trim();
+        if (info.id == null || info.id.isBlank() || codecRepoId.isEmpty()) {
+            throw new IOException("tts.download.moss_repository_missing: " + info.name);
+        }
+        task.session().awaitReady();
+        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 0, "model.files.download");
+        ByteProgressAccumulator aggregate = new ByteProgressAccumulator(info.size);
+        task.session().downloadModelFiles(info.id, modelDir, "main", true, 3,
+                new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
+                    @Override
+                    public void onOverallProgress(long downloadedBytes, long totalBytes) {
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 0, 100, "model.files.download");
+                    }
+                });
+        task.session().awaitReady();
+        aggregate.completeCurrentFileSet();
+        task.session().downloadModelFiles(codecRepoId, modelDir, "main", true, 3,
+                new com.rheinmetal.tianshu.model.HuggingFaceDownloader.DownloadProgressListener() {
+                    @Override
+                    public void onOverallProgress(long downloadedBytes, long totalBytes) {
+                        emitByteProgress(task, callback, aggregate.update(downloadedBytes, totalBytes), aggregate.totalBytes(), 0, 100, "model.files.download");
+                    }
+                });
+        task.session().awaitReady();
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
+    }
+
+    private void downloadArchiveModel(DownloadTask task, TtsModelInfo info, Path modelDir, String proxyUrl, ModelDownloadCallback callback) throws Exception {
+        Files.createDirectories(modelDir);
+        URI archiveUri = requireHttpUri(info.downloadUri, "tts.download.invalid_archive_uri");
+        URI proxyBaseUri = optionalHttpUri(proxyUrl, "tts.download.invalid_proxy_uri");
+        String archiveName = archiveName(archiveUri);
+        Path archivePath = modelDir.resolve(archiveName);
+
+        emitProgress(task, callback, ModelDownloadStage.DOWNLOADING, 0, "archive.download");
+        task.session().downloadArchive(archiveUri, proxyBaseUri, proxyBaseUri != null, archivePath, 5, 60_000, (downloaded, total) -> {
+            long effectiveTotal = total > 0L ? total : Math.max(0L, info.size);
+            int percent = effectiveTotal > 0L
+                    ? (int) Math.min(100L, downloaded * 100L / effectiveTotal)
+                    : 0;
+            emitProgressBytes(task, callback, ModelDownloadStage.DOWNLOADING, percent, downloaded, effectiveTotal, "archive.download");
+        });
+
+        task.session().awaitReady();
+        emitProgress(task, callback, ModelDownloadStage.EXTRACTING, 0, "archive.extract");
+        Path tempDir = modelDir.resolveSibling(modelDir.getFileName().toString() + EXTRACT_SUFFIX);
+        deleteRecursivelyIfExists(tempDir);
+        Files.createDirectories(tempDir);
+        extractTarBz2(archivePath, tempDir);
+
+        Path extractedModelDir = resolveExtractedModelDir(tempDir, info);
+        deleteRecursivelyIfExists(modelDir);
+        Files.move(extractedModelDir, modelDir, StandardCopyOption.REPLACE_EXISTING);
+        deleteRecursivelyIfExists(tempDir);
+        Files.deleteIfExists(archivePath);
+        task.session().awaitReady();
+        emitProgress(task, callback, ModelDownloadStage.MATERIALIZING, 0, "model.materialize");
+    }
+
+    private Path resolveExtractedModelDir(Path extractedRoot, TtsModelInfo info) throws IOException {
+        if (info != null && info.archiveSubDir != null && !info.archiveSubDir.isBlank()) {
+            Path archived = extractedRoot.resolve(info.archiveSubDir).normalize();
+            if (!archived.startsWith(extractedRoot.normalize())) {
+                throw new IOException("tts.download.invalid_archive_subdirectory: " + info.archiveSubDir);
+            }
+            if (Files.isDirectory(archived)) {
+                return archived;
+            }
+        }
+        try (var stream = Files.list(extractedRoot)) {
+            List<Path> entries = stream.toList();
+            if (entries.size() == 1 && Files.isDirectory(entries.get(0))) {
+                return entries.get(0);
+            }
+        }
+        return extractedRoot;
+    }
+
+    private void emitProgress(DownloadTask task, ModelDownloadCallback callback, ModelDownloadStage stage, int percent, String detailCode) {
+        if (!isCurrentTask(task) || task.session().isCancelled()) {
+            return;
+        }
+        ModelDownloadProgress progress = ModelDownloadProgress.stage(stage, percent, detailCode);
+        updateDownload(true, task.session().isPaused(), false, task.modelName(), progress);
+        if (callback != null) {
+            callback.onProgress(progress);
+        }
+    }
+
+    private void emitByteProgress(
+            DownloadTask task,
+            ModelDownloadCallback callback,
+            long downloadedBytes,
+            long totalBytes,
+            int startPercent,
+            int endPercent,
+            String detailCode
+    ) {
+        long effectiveTotal = Math.max(0L, totalBytes);
+        int percent = effectiveTotal > 0L
+                ? startPercent + (int) Math.min(endPercent - startPercent, downloadedBytes * (long) (endPercent - startPercent) / effectiveTotal)
+                : startPercent;
+        emitProgressBytes(task, callback, ModelDownloadStage.DOWNLOADING, percent, downloadedBytes, effectiveTotal, detailCode);
+    }
+
+    private void emitProgressBytes(
+            DownloadTask task,
+            ModelDownloadCallback callback,
+            ModelDownloadStage stage,
+            int percent,
+            long downloadedBytes,
+            long totalBytes,
+            String detailCode
+    ) {
+        if (!isCurrentTask(task) || task.session().isCancelled()) {
+            return;
+        }
+        ModelDownloadProgress progress = ModelDownloadProgress.bytes(
+                stage, percent, downloadedBytes, totalBytes, detailCode
+        );
+        updateDownload(true, task.session().isPaused(), false, task.modelName(), progress);
+        if (callback != null) {
+            callback.onProgress(progress);
+        }
+    }
+
+    private void updateDownload(boolean downloading, boolean paused, boolean cancelling, String modelName, ModelDownloadProgress progress) {
+        downloadStatus.set(new DownloadStatus(downloading, paused, cancelling, modelName, progress));
+    }
+
+    private static ModelDownloadProgress withStage(ModelDownloadProgress progress, ModelDownloadStage stage) {
+        ModelDownloadProgress current = progress == null
+                ? ModelDownloadProgress.stage(stage, 0, "")
+                : progress;
+        return new ModelDownloadProgress(stage, current.percent(), current.downloadedBytes(), current.totalBytes(), current.detailCode());
+    }
+
+    private String safeModelName(TtsModelInfo info) {
+        return info == null || info.name == null ? "" : info.name;
+    }
+
+    private URI requireHttpUri(String value, String errorCode) throws IOException {
+        if (value == null || value.isBlank()) {
+            throw new IOException(errorCode);
+        }
+        try {
+            URI uri = URI.create(value.trim());
+            if (!uri.isAbsolute() || uri.getHost() == null
+                    || (!("http".equalsIgnoreCase(uri.getScheme())) && !("https".equalsIgnoreCase(uri.getScheme())))) {
+                throw new IllegalArgumentException("URI must use HTTP(S)");
+            }
+            return uri;
+        } catch (IllegalArgumentException failure) {
+            throw new IOException(errorCode, failure);
+        }
+    }
+
+    private URI optionalHttpUri(String value, String errorCode) throws IOException {
+        return value == null || value.isBlank() ? null : requireHttpUri(value, errorCode);
+    }
+
+    private String archiveName(URI archiveUri) {
+        String path = archiveUri == null ? "" : archiveUri.getPath();
+        if (path == null || path.isBlank() || path.endsWith("/")) {
+            return "model.tar.bz2";
+        }
+        int index = path.lastIndexOf('/');
+        String name = index >= 0 ? path.substring(index + 1) : path;
+        return name.isBlank() ? "model.tar.bz2" : name;
+    }
+
+    private void extractTarBz2(Path archive, Path targetDir) throws IOException {
+        try (InputStream fis = Files.newInputStream(archive);
+             InputStream bis = new java.io.BufferedInputStream(fis);
+             BZip2CompressorInputStream bzIn = new BZip2CompressorInputStream(bis);
+             TarArchiveInputStream tarIn = new TarArchiveInputStream(bzIn)) {
+            TarArchiveEntry entry;
+            while ((entry = tarIn.getNextEntry()) != null) {
+                Path outputPath = targetDir.resolve(entry.getName()).normalize();
+                if (!outputPath.startsWith(targetDir.normalize())) {
+                    throw new IOException("tts.download.invalid_archive_path: " + entry.getName());
+                }
+                if (entry.isDirectory()) {
+                    Files.createDirectories(outputPath);
+                    continue;
+                }
+                Files.createDirectories(outputPath.getParent());
+                try (OutputStream out = Files.newOutputStream(outputPath)) {
+                    tarIn.transferTo(out);
+                }
+            }
+        }
+    }
+
+    private void deleteRecursivelyIfExists(Path path) throws IOException {
+        if (Files.exists(path)) {
+            deleteRecursively(path);
+        }
+    }
+
+    private void deleteRecursively(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return;
+        }
+        try (var walk = Files.walk(path)) {
+            walk.sorted((a, b) -> b.getNameCount() - a.getNameCount())
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw e;
+        }
+    }
+
+    private Path stagingDir(Path modelDir) {
+        return modelDir.resolveSibling(modelDir.getFileName().toString() + STAGING_SUFFIX);
+    }
+
+    private void commitStagingDownload(Path stagingDir, Path modelDir) throws IOException {
+        deleteRecursivelyIfExists(modelDir);
+        Files.move(stagingDir, modelDir, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private boolean isCurrentTask(DownloadTask task) {
+        return task != null && activeDownload.get() == task;
+    }
+
+    private boolean finishTask(DownloadTask task) {
+        boolean finished = task != null && activeDownload.compareAndSet(task, null);
+        if (finished) {
+            activeDownloadHandle.set(null);
+        }
+        return finished;
+    }
+
+    private void finishDownloadComplete(DownloadTask task, ModelDownloadCallback callback) {
+        if (!finishTask(task)) {
+            return;
+        }
+        availabilityRefresher.refreshNow();
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.COMPLETED, 100, "download.completed"));
+        publishWaiting("tianshu.runtime.module.tts.download_complete");
+        if (callback != null) {
+            callback.onComplete();
+        }
+    }
+
+    private void finishDownloadCancelled(DownloadTask task, ModelDownloadCallback callback) {
+        if (!finishTask(task)) {
+            return;
+        }
+        if (!task.session().shouldKeepPartialDownload()) {
+            cleanupIncompleteDownload(task);
+        }
+        availabilityRefresher.refreshNow();
+        int progress = downloadStatus.get().progress().percent();
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.cancelled"));
+        publishWaiting("tianshu.runtime.module.tts.download_cancelled");
+        if (callback != null) {
+            callback.onCancelled();
+        }
+    }
+
+    private void finishDownloadError(DownloadTask task, ModelDownloadCallback callback, String message) {
+        if (!finishTask(task)) {
+            return;
+        }
+        availabilityRefresher.refreshNow();
+        int progress = downloadStatus.get().progress().percent();
+        updateDownload(false, false, false, task.modelName(), ModelDownloadProgress.stage(ModelDownloadStage.CANCELLING, progress, "download.failed"));
+        publishFailed("tianshu.runtime.module.tts.download_failed");
+        if (callback != null) {
+            callback.onError(message);
+        }
+    }
+
+    private void publishWaiting(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.waitingKeyed(TtsModuleId.VALUE, messageKey));
+    }
+
+    private void publishFailed(String messageKey) {
+        moduleStatusSink.accept(ModuleStatuses.failedKeyed(TtsModuleId.VALUE, messageKey));
+    }
+
+    private void cleanupIncompleteDownload(DownloadTask task) {
+        if (task == null || task.hadModelContent()) {
+            return;
+        }
+        Path stagingDir = stagingDir(task.modelDir());
+        try {
+            deleteRecursivelyIfExists(stagingDir);
+            // The extract directory is a sibling of the model, not of the staging directory.
+            deleteRecursivelyIfExists(
+                    task.modelDir().resolveSibling(task.modelDir().getFileName().toString() + EXTRACT_SUFFIX));
+        } catch (IOException e) {
+            env.warn("tts.download.cleanup_failed: " + e.getMessage());
+        }
+    }
+
+    private boolean isDownloadCancelled(Exception exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof TtsModelDownloadCoordinator.DownloadCancelledException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    /**
+     * Refuses a transfer the disk cannot hold before a staging directory is even created. A model whose
+     * catalog size is unknown skips the check, and so does an unreadable file store: the platform may
+     * still be able to complete the transfer, and a wrong refusal would be worse than a late failure.
+     */
+    private static boolean hasEnoughDiskSpace(TtsModelInfo info, Path modelDir) {
+        if (info == null || modelDir == null || info.size <= 0L) {
+            return true;
+        }
+        long requiredBytes = (long) Math.ceil(info.size * 1.2D);
+        Path probe = existingAncestor(modelDir.getParent());
+        if (probe == null) {
+            return true;
+        }
+        try {
+            return Files.getFileStore(probe).getUsableSpace() >= requiredBytes;
+        } catch (IOException | RuntimeException unavailable) {
+            return true;
+        }
+    }
+
+    /** The nearest directory that exists: the model root itself does not exist before the first download. */
+    private static Path existingAncestor(Path path) {
+        Path current = path == null ? null : path.toAbsolutePath().normalize();
+        while (current != null && !Files.exists(current)) {
+            current = current.getParent();
+        }
+        return current;
+    }
+
+    /**
+     * The message the player sees for a failed transfer. Only causes they can act on get their own text:
+     * a transfer that ran out of room, and a model that arrived incomplete (retry fixes it). Everything
+     * else stays the generic failure, because naming a cause the module cannot prove would be a guess.
+     *
+     * @param modelDir where the transfer was writing; the free-space probe runs against it
+     */
+    private static String downloadFailureMessage(Exception failure, Path modelDir, TtsModelInfo info) {
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current instanceof DownloadFailure typed) {
+                return typed.messageKey;
+            }
+        }
+        // Disk exhaustion reaches us as a plain IOException from the transport, and its text is produced by
+        // the platform (localized on Windows), so it cannot be classified by reading it. Asking the
+        // filesystem afterwards is locale independent: if what is left cannot hold another attempt, the
+        // transfer ran out of room.
+        if (!hasEnoughDiskSpace(info, modelDir)) {
+            return INSUFFICIENT_SPACE;
+        }
+        return "tianshu.gui.tts.status.download_failed";
+    }
+
+    /**
+     * A transfer failure whose message the player should see verbatim. The transport has no typed signal for
+     * the checks this module performs itself, so the reason travels with the exception instead of being
+     * recovered later by matching strings.
+     */
+    private static final class DownloadFailure extends IOException {
+        private final String messageKey;
+
+        private DownloadFailure(String messageKey, String detail) {
+            super(detail);
+            this.messageKey = messageKey;
+        }
+    }
+
+    private record DownloadTask(
+            String modelName,
+            Path modelDir,
+            boolean hadModelContent,
+            TtsModelDownloadCoordinator.DownloadSession session
+    ) {
+        private DownloadTask {
+            modelName = modelName == null ? "" : modelName.trim();
+        }
+    }
+
+    private static final class ByteProgressAccumulator {
+        private final long fallbackTotalBytes;
+        private long completedBytes;
+        private long currentDownloadedBytes;
+        private long currentTotalBytes;
+
+        private ByteProgressAccumulator(long fallbackTotalBytes) {
+            this.fallbackTotalBytes = Math.max(0L, fallbackTotalBytes);
+        }
+
+        private long update(long downloadedBytes, long totalBytes) {
+            currentDownloadedBytes = Math.max(currentDownloadedBytes, Math.max(0L, downloadedBytes));
+            if (totalBytes > 0L) {
+                currentTotalBytes = totalBytes;
+            }
+            return completedBytes + currentDownloadedBytes;
+        }
+
+        private long totalBytes() {
+            long observedTotal = completedBytes + currentTotalBytes;
+            long currentBytes = completedBytes + currentDownloadedBytes;
+            return Math.max(fallbackTotalBytes, Math.max(observedTotal, currentBytes));
+        }
+
+        private void completeCurrentFileSet() {
+            completedBytes += currentDownloadedBytes;
+            currentDownloadedBytes = 0L;
+            currentTotalBytes = 0L;
+        }
+    }
+}
+
+
