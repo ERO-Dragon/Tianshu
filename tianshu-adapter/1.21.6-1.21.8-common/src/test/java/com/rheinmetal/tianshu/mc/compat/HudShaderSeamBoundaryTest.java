@@ -41,7 +41,7 @@ final class HudShaderSeamBoundaryTest {
     private static final String SHADER = COMMON + "/compat/RenderPipelineHudShader.java";
     private static final String SINK = COMMON + "/compat/ShaderUniformSink.java";
     private static final String DESCRIPTOR = COMMON + "/compat/HudProgramDescriptor.java";
-    private static final String PRESENCE = "../../tianshu-presence/src/main/resources/assets/tianshu_presence";
+    private static final String PRESENCE = "../../../Tianshu-features/tianshu-presence/src/main/resources/assets/tianshu_presence";
 
     @Test
     void rendererOpensBindsAndSubmitsTheQuad() throws Exception {
