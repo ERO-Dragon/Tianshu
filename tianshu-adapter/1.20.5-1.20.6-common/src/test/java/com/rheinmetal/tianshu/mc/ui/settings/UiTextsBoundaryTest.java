@@ -12,7 +12,7 @@ class UiTextsBoundaryTest {
     @Test
     void adapterPreservesCompositeOrderAndNestedTranslationArguments() throws Exception {
         String source = Files.readString(
-                Path.of("../1.21-1.21.1-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/UiTexts.java"),
+                Path.of("../1.20.5-1.20.6-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/UiTexts.java"),
                 StandardCharsets.UTF_8
         );
 
