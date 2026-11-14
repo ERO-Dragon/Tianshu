@@ -1,0 +1,156 @@
+plugins {
+    id 'java-library'
+}
+
+version = mod_version
+group = mod_group_id
+
+java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api project(':tianshu-core')
+    compileOnly project(':tianshu-presence')
+    compileOnly fileTree('../libs') { include 'tianshu_foundry-*.jar' }
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    // LGPL-2.1: the cloud backend decodes the provider's MP3 into the PCM16 the playback bridge wants.
+    compileOnly 'javazoom:jlayer:1.0.1'
+    compileOnly 'org.apache.commons:commons-compress:1.26.0'
+    testImplementation project(':tianshu-testkit')
+    testImplementation project(':tianshu-presence')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation 'javazoom:jlayer:1.0.1'
+    testImplementation 'org.apache.commons:commons-compress:1.26.0'
+    testImplementation fileTree('../libs') { include 'tianshu_foundry-*.jar' }
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// ---------------------------------------------------------------- mod packaging
+// This module ships as its own mod jar. It keeps no platform code: the manifest below is the only
+// thing that makes it a mod, and the core declares it as a dependency from there.
+// Values are resolved here, at configuration time, so the closure never touches the project object.
+def tianshuModVersion = providers.gradleProperty('mod_version').get()
+def tianshuMcRange = providers.gradleProperty('minecraft_version_range').get()
+def tianshuLibsRange = providers.gradleProperty('tianshu_foundry_version_range').get()
+def tianshuModName = providers.gradleProperty('mod_name').get()
+def tianshuMcRangeFabric = providers.gradleProperty('minecraft_version_range_fabric').get()
+def tianshuMcRangeLegacy = providers.gradleProperty('minecraft_version_range_legacy').get()
+
+processResources {
+    // The manifest is generated from gradle.properties; without these the task stays up to date and the old
+    // range keeps shipping after the property changes.
+    inputs.property('tianshuModVersion', tianshuModVersion)
+    inputs.property('tianshuMcRange', tianshuMcRange)
+    inputs.property('tianshuLibsRange', tianshuLibsRange)
+    inputs.property('tianshuModName', tianshuModName)
+    inputs.property('tianshuMcRangeFabric', tianshuMcRangeFabric)
+    inputs.property('tianshuMcRangeLegacy', tianshuMcRangeLegacy)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(
+                mod_version               : tianshuModVersion,
+                minecraft_version_range   : tianshuMcRange,
+                tianshu_foundry_version_range: tianshuLibsRange,
+                mod_name                  : tianshuModName
+        )
+    }
+    filesMatching('fabric.mod.json') {
+        expand(
+                mod_version                  : tianshuModVersion,
+                mod_name                     : tianshuModName,
+                minecraft_version_range_fabric: tianshuMcRangeFabric
+        )
+    }
+    filesMatching('META-INF/mods.toml') {
+        expand(
+                mod_version                   : tianshuModVersion,
+                minecraft_version_range_legacy: tianshuMcRangeLegacy,
+                tianshu_foundry_version_range    : tianshuLibsRange,
+                mod_name                      : tianshuModName
+        )
+    }
+}
+
+jar {
+    archiveBaseName = 'tianshu_echo'
+}
+
+// ---------------------------------------------------------------- loader entrypoints
+// Two empty classes, one per loader, outside src/main so the platform-free gate still covers only
+// business code. The jar carries both manifests, which is what makes it universal.
+// fabricmc has to come first: the neoforged mirror resets connections here and Gradle stops at the
+// first repository that throws instead of trying the next one.
+repositories {
+    maven { url = 'https://maven.fabricmc.net/' }
+    maven { url = 'https://maven.neoforged.net/releases' }
+}
+
+sourceSets {
+    neoforgeStubs {
+        java.srcDir 'src/neoforgeStubs'
+    }
+    neoforgeEntry {
+        java.srcDir 'src/neoforgeEntry/java'
+        compileClasspath += sourceSets.main.output + sourceSets.neoforgeStubs.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
+    }
+    legacyStubs {
+        java.srcDir 'src/legacyStubs'
+    }
+    legacyEntry {
+        java.srcDir 'src/legacyEntry/java'
+        compileClasspath += sourceSets.main.output + sourceSets.legacyStubs.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
+    }
+    fabricEntry {
+        java.srcDir 'src/fabricEntry/java'
+        compileClasspath += sourceSets.main.output
+        compileClasspath += project(":tianshu-api").sourceSets.main.output
+    }
+}
+
+// Resolved here, at configuration time: the jar closure must not touch the project object.
+def neoforgeEntryOutput = sourceSets.neoforgeEntry.output
+def fabricEntryOutput = sourceSets.fabricEntry.output
+def legacyEntryOutput = sourceSets.legacyEntry.output
+
+dependencies {
+    fabricEntryCompileOnly "net.fabricmc:fabric-loader:${fabric_loader_version}"
+}
+
+jar {
+    from neoforgeEntryOutput
+    from fabricEntryOutput
+    from legacyEntryOutput
+}
+// ---------------------------------------------------------------- nested dependency
+// JLayer is nested rather than shaded: NeoForge reads META-INF/jarjar/metadata.json and Fabric reads the
+// "jars" entry in fabric.mod.json, and both point at the same file — which is what keeps one jar universal
+// across loaders. Nesting also keeps the library separately replaceable, which LGPL-2.1 expects.
+configurations {
+    jarJarPayload {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
+dependencies {
+    jarJarPayload 'javazoom:jlayer:1.0.1'
+}
+
+jar {
+    from(configurations.jarJarPayload) {
+        into 'META-INF/jarjar'
+    }
+}

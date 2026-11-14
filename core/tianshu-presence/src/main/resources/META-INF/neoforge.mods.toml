@@ -1,0 +1,41 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="LGPL-3.0"
+
+[[mods]]
+modId="tianshu_presence"
+version="${mod_version}"
+displayName="${mod_name} - Presence"
+iconFile="icon.png"
+description='''
+In-game HUD and world-state context on the Ferry base: product activities, the status line and the dialogue partner marker.
+'''
+displayTest="IGNORE_SERVER_VERSION"
+
+[[dependencies.tianshu_presence]]
+    modId="neoforge"
+    type="required"
+    versionRange="[1,)"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.tianshu_presence]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="CLIENT"
+
+[[dependencies.tianshu_presence]]
+    modId="tianshu_ferry"
+    type="required"
+    versionRange="[1.0.0,2.0.0)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.tianshu_presence]]
+    modId="tianshu_foundry"
+    type="required"
+    versionRange="${tianshu_foundry_version_range}"
+    ordering="AFTER"
+    side="CLIENT"
