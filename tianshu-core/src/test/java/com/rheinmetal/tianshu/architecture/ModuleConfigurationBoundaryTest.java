@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.architecture;
 
+import com.rheinmetal.tianshu.testkit.AdapterSources;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -18,8 +19,7 @@ class ModuleConfigurationBoundaryTest {
      */
     private static final Path REPO_ROOT = Path.of("../..");
     private static final Map<String, Path> FUNCTION_SOURCES = functionSources();
-    private static final Path NEOFORGE_SOURCES = REPO_ROOT.resolve(
-            "tianshu-adapter/1.21.1-neoforge/src/main/java");
+    private static final Path NEOFORGE_SOURCES = AdapterSources.adapter("-neoforge", "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java").resolve("src/main/java");
 
     @Test
     void functionModulesMustNotDependOnAggregateHostConfiguration() throws Exception {

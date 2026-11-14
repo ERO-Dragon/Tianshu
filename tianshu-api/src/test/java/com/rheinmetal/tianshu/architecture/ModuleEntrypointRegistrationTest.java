@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.architecture;
 
+import com.rheinmetal.tianshu.testkit.AdapterSources;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -183,7 +184,7 @@ class ModuleEntrypointRegistrationTest {
      */
     @Test
     void theDevelopmentRunDeclaresEveryEntrySourceSet() throws Exception {
-        String adapterBuild = read(REPOSITORY_ROOT.resolve("tianshu-adapter/1.21.1-neoforge/build.gradle"));
+        String adapterBuild = read(AdapterSources.adapter("-neoforge", "build.gradle").resolve("build.gradle"));
 
         List<String> offenders = new ArrayList<>();
         for (Path module : featureModules()) {

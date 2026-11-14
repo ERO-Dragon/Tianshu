@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.architecture;
 
+import com.rheinmetal.tianshu.testkit.AdapterSources;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -13,9 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CoreLifecycleHostBoundaryTest {
     /** The 1.21.1 pair is the reference adapter; the other versions mirror its structure. */
     private static final Path NEOFORGE_ROOT =
-            Path.of("../../tianshu-adapter/1.21.1-neoforge/src/main/java");
+            AdapterSources.adapter("-neoforge", "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java").resolve("src/main/java");
     private static final Path COMMON_ROOT =
-            Path.of("../../tianshu-adapter/1.21-1.21.1-common/src/main/java");
+            AdapterSources.common("src/main/java/com/rheinmetal/tianshu/mc/event/ClientEvents.java").resolve("src/main/java");
 
     @Test
     void coreLifecycleQueueDoesNotBecomeASecondProtocolTaskScheduler() throws Exception {

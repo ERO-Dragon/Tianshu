@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.architecture;
 
+import com.rheinmetal.tianshu.testkit.AdapterSources;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -14,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModuleAssemblyRuntimeBoundaryTest {
     private static final Path COMMON_SOURCES = Path.of("src/main/java");
     private static final Path FUNCTION_SOURCES = COMMON_SOURCES.resolve("com/rheinmetal/tianshu/function");
-    private static final Path NEOFORGE_SOURCES = Path.of("../../tianshu-adapter/1.21.1-neoforge/src/main/java");
+    private static final Path NEOFORGE_SOURCES = AdapterSources.adapter("-neoforge", "src/main/java/com/rheinmetal/tianshu/neoforge/bootstrap/NeoForgeClientBootstrap.java").resolve("src/main/java");
 
     @Test
     void assemblyContextExposesBoundedModuleRuntimeInsteadOfProtocolRuntime() throws Exception {
