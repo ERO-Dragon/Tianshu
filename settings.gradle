@@ -19,26 +19,26 @@ plugins {
 rootProject.name = 'Tianshu'
 
 include 'tianshu-api'
-project(':tianshu-api').projectDir = file('core/tianshu-api')
+project(':tianshu-api').projectDir = file('../Tianshu-ferry/tianshu-api')
 include 'tianshu-core'
-project(':tianshu-core').projectDir = file('core/tianshu-core')
+project(':tianshu-core').projectDir = file('../Tianshu-ferry/tianshu-core')
 include 'tianshu-testkit'
-project(':tianshu-testkit').projectDir = file('core/tianshu-testkit')
+project(':tianshu-testkit').projectDir = file('../Tianshu-ferry/tianshu-testkit')
 include 'tianshu-intake'
-project(':tianshu-intake').projectDir = file('core/tianshu-intake')
+project(':tianshu-intake').projectDir = file('../Tianshu-features/tianshu-intake')
 include 'tianshu-echo'
-project(':tianshu-echo').projectDir = file('core/tianshu-echo')
+project(':tianshu-echo').projectDir = file('../Tianshu-features/tianshu-echo')
 include 'tianshu-weaving'
-project(':tianshu-weaving').projectDir = file('core/tianshu-weaving')
+project(':tianshu-weaving').projectDir = file('../Tianshu-features/tianshu-weaving')
 include 'tianshu-auxilium'
-project(':tianshu-auxilium').projectDir = file('core/tianshu-auxilium')
+project(':tianshu-auxilium').projectDir = file('../Tianshu-features/tianshu-auxilium')
 include 'tianshu-presence'
-project(':tianshu-presence').projectDir = file('core/tianshu-presence')
+project(':tianshu-presence').projectDir = file('../Tianshu-features/tianshu-presence')
 include 'tianshu-client'
-project(':tianshu-client').projectDir = file('core/tianshu-client')
+project(':tianshu-client').projectDir = file('../Tianshu-ferry/tianshu-client')
 // Dev-only arbitration bench; never packaged by an adapter and not part of `featureModules`.
 include 'tianshu-lab'
-project(':tianshu-lab').projectDir = file('core/tianshu-lab')
+project(':tianshu-lab').projectDir = file('../Tianshu-features/tianshu-lab')
 
 // One project per shipped Minecraft version. The shared `*-common` trees are not projects: each adapter compiles
 // the tree its `shared_layer` property names, so this list is the build surface and `verifyAdapterMatrixCoverage`
