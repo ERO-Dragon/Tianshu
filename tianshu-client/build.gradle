@@ -54,9 +54,9 @@ tasks.named('check') {
 // owns (the keybind names) live in the repository-level `lang/`. This task is the only place they meet.
 //
 // The merge fails on a duplicate key. That is the point of the split: before it, a repeated key was silently
-// overwritten by whichever copy the JSON parser saw last, and nothing — not the build, not a test — noticed.
+// overwritten by whichever copy the JSON parser saw last, and nothing 鈥?not the build, not a test 鈥?noticed.
 
-def languageShardDirs = [rootProject.file('core/lang')] + rootProject.subprojects.collect { it.file('src/main/lang') }
+def languageShardDirs = [new File(project(':tianshu-api').projectDir.parentFile, 'lang')] + rootProject.subprojects.collect { it.file('src/main/lang') }
 // File trees instead of a resolved file list: a shard added to an existing directory must be picked up by the
 // next build, and a list captured at configuration time would silently keep merging the old set.
 def languageShardTrees = languageShardDirs.collect { dir -> rootProject.fileTree(dir) { include '*.json' } }
@@ -148,3 +148,4 @@ tasks.named('processResources') {
 test {
     useJUnitPlatform()
 }
+

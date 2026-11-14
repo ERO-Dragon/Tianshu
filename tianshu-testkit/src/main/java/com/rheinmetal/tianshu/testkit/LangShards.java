@@ -36,16 +36,17 @@ public final class LangShards {
 
     /** Every shard file that contributes {@code language}, in a deterministic order. */
     public static List<Path> files(String language) {
-        Path root = repositoryRoot();
         String shardName = language + ".json";
         List<Path> found = new ArrayList<>();
-        for (Path path : RepositoryFiles.regularFiles(root)) {
-            if (path.getFileName().toString().equals(shardName) && isShard(root, path)) {
-                found.add(path);
+        for (Path root : WorkspacePaths.roots()) {
+            for (Path path : RepositoryFiles.regularFiles(root)) {
+                if (path.getFileName().toString().equals(shardName) && isShard(root, path)) {
+                    found.add(path);
+                }
             }
         }
         if (found.isEmpty()) {
-            throw new IllegalStateException("no language shard found for " + language + " under " + root);
+            throw new IllegalStateException("no language shard found for " + language + " under " + WorkspacePaths.roots());
         }
         return found;
     }
@@ -82,14 +83,15 @@ public final class LangShards {
      * that ships no text owns no keys.</p>
      */
     public static Set<String> keysIn(String moduleDirectory, String language) {
-        Path root = repositoryRoot();
-        Path module = root.resolve(moduleDirectory);
-        Path file = module.resolve("src/main/lang").resolve(language + ".json");
-        if (!Files.isRegularFile(file)) {
-            module = root.resolve("core").resolve(moduleDirectory);
-            file = module.resolve("src/main/lang").resolve(language + ".json");
+        Path file = null;
+        for (Path root : WorkspacePaths.roots()) {
+            Path candidate = root.resolve(moduleDirectory).resolve("src/main/lang").resolve(language + ".json");
+            if (Files.isRegularFile(candidate)) {
+                file = candidate;
+                break;
+            }
         }
-        if (!Files.isRegularFile(file)) {
+        if (file == null) {
             return Set.of();
         }
         return Set.copyOf(keysOf(file));
@@ -97,6 +99,10 @@ public final class LangShards {
 
     /** The repository root, found by walking up from the working directory to {@code settings.gradle}. */
     public static Path repositoryRoot() {
+        String configured = System.getProperty("tianshu.workspaceRoot");
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured);
+        }
         Path candidate = Path.of("").toAbsolutePath();
         for (int depth = 0; depth < 8 && candidate != null; depth++) {
             if (Files.isRegularFile(candidate.resolve("settings.gradle"))) {

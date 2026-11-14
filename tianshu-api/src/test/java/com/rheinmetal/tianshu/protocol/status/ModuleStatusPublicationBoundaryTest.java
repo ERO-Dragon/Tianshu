@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.protocol.status;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -18,10 +19,7 @@ class ModuleStatusPublicationBoundaryTest {
     }
 
     private static void assertDownloadCompletionUsesWaiting(String relativePath, String moduleId) throws Exception {
-        Path path = Path.of(relativePath);
-        if (!Files.exists(path)) {
-            path = Path.of("..", relativePath);
-        }
+        Path path = WorkspacePaths.require(relativePath);
         String source = Files.readString(path, StandardCharsets.UTF_8);
         String messagePrefix = "tianshu.runtime." + moduleId + ".download_complete";
         assertTrue(source.contains("publishWaiting(\"" + messagePrefix), relativePath);

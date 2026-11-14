@@ -17,9 +17,13 @@ public final class AdapterSources {
     }
 
     public static Path adapter(String suffix, String relativeFile) {
-        return find(adaptersRoot(), suffix, relativeFile)
+        return findAdapter(suffix, relativeFile)
                 .orElseThrow(() -> new IllegalStateException(
                         "no *" + suffix + " adapter with " + relativeFile + " under " + adaptersRoot()));
+    }
+
+    public static Optional<Path> findAdapter(String suffix, String relativeFile) {
+        return find(adaptersRoot(), suffix, relativeFile);
     }
 
     public static Path common(String relativeFile) {
@@ -35,6 +39,7 @@ public final class AdapterSources {
         try (Stream<Path> entries = Files.list(root)) {
             return entries
                     .filter(Files::isDirectory)
+                    .filter(path -> Files.isRegularFile(path.resolve("adapter.properties")))
                     .filter(path -> path.getFileName().toString().endsWith(suffix))
                     .filter(path -> !relativeFile.isBlank() && Files.isRegularFile(path.resolve(relativeFile)))
                     .findFirst();

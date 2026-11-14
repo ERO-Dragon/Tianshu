@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.client.settings;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
+
 import java.nio.file.Path;
 
 /**
@@ -38,7 +40,6 @@ final class SettingsSourcePaths {
     }
 
     private static Path moduleSource(String gradleModule, String packagePath) {
-        return Path.of("..", gradleModule, "src", "main", "java", "com", "rheinmetal", "tianshu")
-                .resolve(packagePath);
+        return WorkspacePaths.require(gradleModule + "/src/main/java/com/rheinmetal/tianshu/" + packagePath);
     }
 }

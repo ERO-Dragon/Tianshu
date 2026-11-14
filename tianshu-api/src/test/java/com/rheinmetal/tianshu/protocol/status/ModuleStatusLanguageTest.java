@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.protocol.status;
 
 import com.rheinmetal.tianshu.testkit.LangShards;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import com.rheinmetal.tianshu.testkit.RepositoryFiles;
 import org.junit.jupiter.api.Test;
 
@@ -138,11 +139,13 @@ class ModuleStatusLanguageTest {
     /** Every complete {@code "tianshu.presence…"/"tianshu.gui…"} literal with the file that holds it. */
     private static Map<String, String> keyLiteralsInSources() throws Exception {
         Map<String, String> found = new TreeMap<>();
-        for (Path path : RepositoryFiles.regularFiles(REPO)) {
+        for (Path root : WorkspacePaths.roots()) {
+            for (Path path : RepositoryFiles.regularFiles(root)) {
             if (!path.toString().endsWith(".java") || !normalized(path).contains("/src/main/java/")) {
                 continue;
             }
             collectLiterals(path, found);
+        }
         }
         return found;
     }

@@ -35,8 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ModuleEntrypointRegistrationTest {
 
-    private static final Path REPOSITORY_ROOT = Path.of("../..");
-    private static final Path CORE_ROOT = REPOSITORY_ROOT.resolve("core");
+    private static final Path REPOSITORY_ROOT = Path.of(System.getProperty("tianshu.workspaceRoot", "../.."));
+    private static final Path CORE_ROOT = Path.of(System.getProperty("tianshu.featuresRoot", REPOSITORY_ROOT.resolve("core").toString()));
     private static final String FUNCTION_PACKAGE = "com/rheinmetal/tianshu/function";
     /**
      * Directories under the repository root that look like modules but are not shipped features.

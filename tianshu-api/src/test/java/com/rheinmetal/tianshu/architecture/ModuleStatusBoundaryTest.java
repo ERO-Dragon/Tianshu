@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.architecture;
 
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -35,14 +36,6 @@ class ModuleStatusBoundaryTest {
     }
 
     private static Path resolveFromWorkspace(Path relativePath) {
-        Path current = Path.of("").toAbsolutePath().normalize();
-        for (int depth = 0; depth < 5 && current != null; depth++) {
-            Path candidate = current.resolve(relativePath).normalize();
-            if (Files.exists(candidate)) {
-                return candidate;
-            }
-            current = current.getParent();
-        }
-        return relativePath;
+        return WorkspacePaths.require(relativePath.toString());
     }
 }
