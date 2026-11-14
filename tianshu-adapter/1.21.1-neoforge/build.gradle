@@ -126,9 +126,9 @@ neoForge {
         }
     }
 
-    // Which mods a development run installs is decided by where the run is started from:
+    // Which mods a development run installs:
     //   repository root  -> every feature (the full assembly)
-    //   this adapter     -> the kernel alone, which is what a third-party integration sees
+    //   this adapter     -> every feature plus the development bench (the full assembly, from the adapter)
     //   a feature module -> that feature plus the modules it requires, never its optional partners
     // so launching `runClient` from echo installs kernel+echo, and launching it from auxilium installs
     // kernel+auxilium+intake+weaving (its hard dependencies) but not echo (an optional integration).
@@ -163,7 +163,7 @@ neoForge {
             return explicit.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
         }
         if (startedFrom == 'adapter') {
-            return []
+            return (runFeatureNames + (rootProject.devRunFeatureEdges['root'] ?: [])).unique()
         }
         def base
         if (startedFrom == 'root') {

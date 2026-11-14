@@ -148,3 +148,14 @@ loom {
         }
     }
 }
+
+// Development runs from the adapter load every universal feature jar, not just the kernel.
+// Lab is NeoForge-only, so it is intentionally absent here.
+def devFeatureJars = [':tianshu-intake', ':tianshu-echo', ':tianshu-weaving', ':tianshu-auxilium', ':tianshu-presence'].collect { path ->
+    project(path).tasks.named('jar').flatMap { it.archiveFile }
+}
+tasks.register('prepareDevMods', Copy) {
+    from(devFeatureJars)
+    into layout.projectDirectory.dir('run/mods')
+}
+tasks.named('runClient') { dependsOn tasks.named('prepareDevMods') }
