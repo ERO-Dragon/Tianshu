@@ -34,6 +34,14 @@ def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-c
 // set, and a shell left at the build JVM's level cannot be instantiated by a Java 17 game (the adapter then reports
 // "Failed to load class <Entry>" with UnsupportedClassVersionError). Test sources keep the build JVM's level by
 // source-set name, since they never leave the build.
+allprojects {
+    tasks.withType(Test).configureEach {
+        systemProperty 'tianshu.workspaceRoot', rootProject.projectDir.absolutePath
+        systemProperty 'tianshu.ferryRoot', new File(rootProject.projectDir.parentFile, 'Tianshu-ferry').absolutePath
+        systemProperty 'tianshu.featuresRoot', new File(rootProject.projectDir.parentFile, 'Tianshu-features').absolutePath
+    }
+}
+
 subprojects {
     if (name in neutralModules) {
         plugins.withId('java') {
@@ -760,7 +768,7 @@ tasks.register('verifyProtocolVersionSingleSource') {
 tasks.register('verifySettingsRenderersCoverOptionEntries') {
     group = 'verification'
     description = 'Every shared settings renderer must draw every option-entry variant the kernel model declares.'
-    def modelFile = file('core/tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
+    def modelFile = file('../Tianshu-ferry/tianshu-api/src/main/java/com/rheinmetal/tianshu/client/settings/model/SettingsTemplateModel.java')
     def commonTrees = (file('tianshu-adapter').listFiles() ?: [] as File[])
             .findAll { it.isDirectory() && it.name.endsWith('-common') }
             .sort { it.name }
