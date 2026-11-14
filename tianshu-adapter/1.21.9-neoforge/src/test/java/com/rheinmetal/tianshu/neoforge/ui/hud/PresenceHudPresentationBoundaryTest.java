@@ -19,9 +19,9 @@ import com.rheinmetal.tianshu.mc.ui.hud.HudSurfaceRenderer;
  */
 final class PresenceHudPresentationBoundaryTest {
     private static final Path ANCHOR_SCREEN =
-            Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudAnchorEditorScreen.java");
+            Path.of("../1.21.9-1.21.10-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudAnchorEditorScreen.java");
     private static final Path SURFACE =
-            Path.of("../1.21.2-1.21.4-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudSurfaceRenderer.java");
+            Path.of("../1.21.9-1.21.10-common/src/main/java/com/rheinmetal/tianshu/mc/ui/hud/HudSurfaceRenderer.java");
     private static final Path PRESENCE_ICON =
             Path.of("../../tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/hud/PresenceIconElementRenderer.java");
 
