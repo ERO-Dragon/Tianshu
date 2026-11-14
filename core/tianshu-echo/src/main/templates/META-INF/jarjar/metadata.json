@@ -1,0 +1,16 @@
+{
+  "jars": [
+    {
+      "identifier": {
+        "group": "javazoom",
+        "artifact": "jlayer"
+      },
+      "version": {
+        "range": "[1.0.1,2.0.0)",
+        "artifactVersion": "1.0.1"
+      },
+      "path": "META-INF/jarjar/jlayer-1.0.1.jar",
+      "isObfuscated": false
+    }
+  ]
+}
