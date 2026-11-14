@@ -587,7 +587,7 @@ public final class TianshuSettingsScreen extends Screen {
         Component title = Component.translatable("tianshu.gui.settings.empty.title");
         int centreX = (layout.leftX() + layout.rightX() + layout.rightWidth()) / 2;
         int centreY = (layout.contentTop() + layout.actionsY()) / 2;
-        guiGraphics.centeredText(font, title, centreX, centreY - 4, 0xFFFFFF);
+        guiGraphics.centeredText(font, title, centreX, centreY - 4, 0xFFFFFFFF);
     }
 
     private Component statusMessage() {
@@ -673,8 +673,8 @@ public final class TianshuSettingsScreen extends Screen {
         private static final int BACKGROUND = 0xF0101010;
         private static final int BORDER = 0xFF808080;
         private static final int HOVER_BG = 0x40FFFFFF;
-        private static final int SELECTED_COLOR = 0xFFFFA0;
-        private static final int NORMAL_COLOR = 0xE0E0E0;
+        private static final int SELECTED_COLOR = 0xFFFFFFA0;
+        private static final int NORMAL_COLOR = 0xFFE0E0E0;
 
         private final UiText title;
         private final List<T> values;
@@ -703,7 +703,7 @@ public final class TianshuSettingsScreen extends Screen {
             guiGraphics.fill(x, y, x + WIDTH, y + height, BACKGROUND);
             // 26.1 names the outline draw outline(); 1.21.11 called it renderOutline.
             guiGraphics.outline(x, y, WIDTH, height, BORDER);
-            guiGraphics.centeredText(font, UiTexts.toComponent(title), screenWidth / 2, y + PADDING, 0xFFFFFF);
+            guiGraphics.centeredText(font, UiTexts.toComponent(title), screenWidth / 2, y + PADDING, 0xFFFFFFFF);
             int entryY = y + titleHeight;
             clampScroll();
             guiGraphics.enableScissor(x + 1, entryY, x + WIDTH - 1, y + height - 1);

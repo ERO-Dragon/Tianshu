@@ -56,7 +56,7 @@ final class SettingsNavigationWidget extends AbstractWidget {
                 guiGraphics.fill(getX() + 4, itemY + 10, getX() + 7, itemY + 13, 0xFFFFCC33);
                 textX += 6;
             }
-            guiGraphics.text(Minecraft.getInstance().font, titles.get(start + i), textX, itemY + 8, selected ? 0xFFFFFF : 0xE0E0E0, false);
+            guiGraphics.text(Minecraft.getInstance().font, titles.get(start + i), textX, itemY + 8, selected ? 0xFFFFFFFF : 0xFFE0E0E0, false);
         }
         drawScrollbar(guiGraphics, visible, start);
     }

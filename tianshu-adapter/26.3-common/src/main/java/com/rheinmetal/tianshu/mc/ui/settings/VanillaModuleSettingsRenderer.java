@@ -197,7 +197,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         List<T> values = safeList(select.values());
         if (values.isEmpty()) {
             SettingsLayoutItem item = nextGridItem();
-            addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.option.no_available", safeComponent(select.label(), Component.empty())), active ? 0xA0A0A0 : 0x606060), item, false);
+            addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.option.no_available", safeComponent(select.label(), Component.empty())), active ? 0xFFA0A0A0 : 0xFF606060), item, false);
             return;
         }
         T selected = safeGet(select.getter(), values.get(0));
@@ -229,7 +229,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private <T> void renderCompactSelect(SettingsTemplateModel.SelectEntry<T> select, boolean active, SettingsLayoutItem item, int buttonX, int buttonWidth) {
         List<T> values = safeList(select.values());
         if (values.isEmpty()) {
-            addIfVisible(new SettingsTextWidget(buttonX, item.screenY(), buttonWidth, SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.option.no_available", safeComponent(select.label(), Component.empty())), active ? 0xA0A0A0 : 0x606060), item, false);
+            addIfVisible(new SettingsTextWidget(buttonX, item.screenY(), buttonWidth, SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.option.no_available", safeComponent(select.label(), Component.empty())), active ? 0xFFA0A0A0 : 0xFF606060), item, false);
             return;
         }
         T selected = safeGet(select.getter(), values.get(0));
@@ -265,7 +265,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         finishGridRow();
         SettingsLayoutItem label = layout.next(12);
         Component labelComponent = safeComponent(text.label(), Component.empty());
-        addIfVisible(new SettingsTextWidget(contentX(), label.screenY(), contentWidth(), SettingsLayoutMetrics.LABEL_HEIGHT, labelComponent, active ? 0xA0A0A0 : 0x606060), label, active);
+        addIfVisible(new SettingsTextWidget(contentX(), label.screenY(), contentWidth(), SettingsLayoutMetrics.LABEL_HEIGHT, labelComponent, active ? 0xFFA0A0A0 : 0xFF606060), label, active);
         SettingsLayoutItem item = layout.row();
         EditBox box = new EditBox(font, contentX(), item.screenY(), Math.min(360, contentWidth()), SettingsLayoutMetrics.CONTROL_HEIGHT, labelComponent);
         box.setMaxLength(TEXT_ENTRY_MAX_LENGTH);
@@ -303,7 +303,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                         SettingsLayoutMetrics.ROW_HEIGHT,
                         Component.translatable("tianshu.gui.settings.option.no_available",
                                 safeComponent(binding.label(), Component.empty())),
-                        active ? 0xA0A0A0 : 0x606060), item.row(), false);
+                        active ? 0xFFA0A0A0 : 0xFF606060), item.row(), false);
                 return;
             }
             addIfVisible(new SettingsKeyBindingButton(item.controlX(), item.screenY(), item.controlWidth(),
@@ -319,7 +319,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                     SettingsLayoutMetrics.ROW_HEIGHT,
                     Component.translatable("tianshu.gui.settings.option.no_available",
                             safeComponent(binding.label(), Component.empty())),
-                    active ? 0xA0A0A0 : 0x606060), item, false);
+                    active ? 0xFFA0A0A0 : 0xFF606060), item, false);
             return;
         }
         addIfVisible(new SettingsKeyBindingButton(buttonX, item.screenY(), buttonWidth,
@@ -402,7 +402,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             }
             boolean active = groupActive && safeBoolean(entry.enabled(), true);
             SettingsLayoutItem item = nextGridItem();
-            addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.status.row", safeComponent(entry.label(), Component.empty()), safeComponent(safeGet(entry.value(), UiText.literal("")), Component.empty())), active ? 0xD0D0D0 : 0x606060), item, active);
+            addIfVisible(new SettingsTextWidget(itemX(item), item.screenY(), itemWidth(item), SettingsLayoutMetrics.ROW_HEIGHT, Component.translatable("tianshu.gui.settings.status.row", safeComponent(entry.label(), Component.empty()), safeComponent(safeGet(entry.value(), UiText.literal("")), Component.empty())), active ? 0xFFD0D0D0 : 0xFF606060), item, active);
         }
     }
 
@@ -476,7 +476,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
         List<T> items = safeList(safeGet(group.items(), List.of()));
         if (items.isEmpty()) {
             SettingsLayoutItem item = layout.row();
-            addIfVisible(new SettingsTextWidget(contentX(), item.screenY(), contentWidth(), SettingsLayoutMetrics.ROW_HEIGHT, safeComponent(group.emptyText(), Component.translatable("tianshu.gui.common.no_available_items")), groupActive ? 0xA0A0A0 : 0x606060), item, groupActive);
+            addIfVisible(new SettingsTextWidget(contentX(), item.screenY(), contentWidth(), SettingsLayoutMetrics.ROW_HEIGHT, safeComponent(group.emptyText(), Component.translatable("tianshu.gui.common.no_available_items")), groupActive ? 0xFFA0A0A0 : 0xFF606060), item, groupActive);
             return;
         }
         T selected = safeGet(group.selected(), null);
@@ -503,7 +503,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
                 int itemHeight = Math.max(SettingsLayoutMetrics.CONTROL_HEIGHT, SettingsListItemWidget.heightFor(font, label, bodyWidth));
                 item = allowPartialVisibility ? layout.nextIntersecting(itemHeight) : layout.next(itemHeight);
                 if (item.visible()) {
-                    addIfVisible(new SettingsListItemWidget(rowX, item.screenY(), bodyWidth, itemHeight, label, groupActive ? 0xD0D0D0 : 0x606060, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value))), item, groupActive);
+                    addIfVisible(new SettingsListItemWidget(rowX, item.screenY(), bodyWidth, itemHeight, label, groupActive ? 0xFFD0D0D0 : 0xFF606060, () -> runActionAndRefresh(() -> safeAccept(group.onSelect(), value))), item, groupActive);
                 }
             }
             if (item.visible()) {
@@ -525,9 +525,9 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private void renderTextBlock(SettingsTemplateModel.TextBlock text) {
         boolean active = safeBoolean(text.enabled(), true);
         int color = switch (text.level()) {
-            case INFO -> active ? 0xD0D0D0 : 0x606060;
-            case WARNING -> active ? 0xFFFF66 : 0x606060;
-            case ERROR -> active ? 0xFF6666 : 0x606060;
+            case INFO -> active ? 0xFFD0D0D0 : 0xFF606060;
+            case WARNING -> active ? 0xFFFFFF66 : 0xFF606060;
+            case ERROR -> active ? 0xFFFF6666 : 0xFF606060;
         };
         renderSection(active, () -> {
             finishGridRow();
@@ -593,7 +593,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
             rowHeight = Math.max(rowHeight, SettingsLayoutMetrics.ROW_HEIGHT);
         }
         SettingsLayoutItem row = layout.next(rowHeight);
-        addIfVisible(new SettingsTextWidget(contentX(), row.screenY() + Math.max(0, (row.height() - SettingsLayoutMetrics.LABEL_HEIGHT) / 2), rowLabelWidth, SettingsLayoutMetrics.LABEL_HEIGHT, label, active ? 0xA0A0A0 : 0x606060), row, active);
+        addIfVisible(new SettingsTextWidget(contentX(), row.screenY() + Math.max(0, (row.height() - SettingsLayoutMetrics.LABEL_HEIGHT) / 2), rowLabelWidth, SettingsLayoutMetrics.LABEL_HEIGHT, label, active ? 0xFFA0A0A0 : 0xFF606060), row, active);
         controlRenderer.accept(new ControlRowItem(row, row.screenY(), controlX, controlWidth));
         layout.gap();
     }
@@ -601,7 +601,7 @@ final class VanillaModuleSettingsRenderer implements ModuleSettingsRenderer {
     private void renderGroupTitle(UiText title, boolean active) {
         finishGridRow();
         SettingsLayoutItem item = layout.row();
-        addIfVisible(new SettingsTextWidget(contentX(), item.screenY(), contentWidth(), SettingsLayoutMetrics.ROW_HEIGHT, safeComponent(title, Component.empty()), active ? 0xFFFFFF : 0x707070), item, active);
+        addIfVisible(new SettingsTextWidget(contentX(), item.screenY(), contentWidth(), SettingsLayoutMetrics.ROW_HEIGHT, safeComponent(title, Component.empty()), active ? 0xFFFFFFFF : 0xFF707070), item, active);
     }
 
     private void renderSection(boolean active, Runnable content) {

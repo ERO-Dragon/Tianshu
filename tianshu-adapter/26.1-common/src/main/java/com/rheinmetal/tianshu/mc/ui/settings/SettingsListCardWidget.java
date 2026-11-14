@@ -19,10 +19,10 @@ final class SettingsListCardWidget extends AbstractWidget {
     private static final int PADDING_X = 7;
     private static final int PADDING_Y = 7;
     private static final int LINE_HEIGHT = 9;
-    private static final int TITLE_COLOR = 0xFFFFFF;
-    private static final int STATUS_COLOR = 0xFFE0A8;
-    private static final int DETAIL_COLOR = 0xC8C8C8;
-    private static final int BADGE_COLOR = 0xB8D7FF;
+    private static final int TITLE_COLOR = 0xFFFFFFFF;
+    private static final int STATUS_COLOR = 0xFFFFE0A8;
+    private static final int DETAIL_COLOR = 0xFFC8C8C8;
+    private static final int BADGE_COLOR = 0xFFB8D7FF;
     private static final int BACKGROUND = 0x18000000;
     private static final int HOVER_BACKGROUND = 0x26000000;
     private static final int BORDER_LIGHT = 0x33FFFFFF;

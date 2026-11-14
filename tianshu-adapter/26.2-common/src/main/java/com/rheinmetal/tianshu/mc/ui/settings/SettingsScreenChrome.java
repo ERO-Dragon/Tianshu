@@ -43,15 +43,15 @@ public final class SettingsScreenChrome {
     }
 
     public void drawForeground(GuiGraphicsExtractor guiGraphics, Font font, int screenWidth, int screenHeight, Component title, Component leftTitle, ModuleSettingsCategory selected, Component status) {
-        guiGraphics.centeredText(font, title, screenWidth / 2, 12, 0xFFFFFF);
+        guiGraphics.centeredText(font, title, screenWidth / 2, 12, 0xFFFFFFFF);
         if (selected != null) {
             SettingsScreenLayout layout = layout(screenWidth, screenHeight);
-            guiGraphics.text(font, leftTitle, layout.leftX() + 6, layout.contentTop() + 9, 0xFFFFFF, false);
-            guiGraphics.text(font, UiTexts.toComponent(selected.title()), layout.rightX() + 8, layout.contentTop() + 10, 0xFFFFFF, false);
+            guiGraphics.text(font, leftTitle, layout.leftX() + 6, layout.contentTop() + 9, 0xFFFFFFFF, false);
+            guiGraphics.text(font, UiTexts.toComponent(selected.title()), layout.rightX() + 8, layout.contentTop() + 10, 0xFFFFFFFF, false);
         }
         if (!status.getString().isBlank()) {
             SettingsScreenLayout layout = layout(screenWidth, screenHeight);
-            guiGraphics.text(font, status, layout.leftX(), layout.actionsY() + 6, 0xFFFF66, false);
+            guiGraphics.text(font, status, layout.leftX(), layout.actionsY() + 6, 0xFFFFFF66, false);
         }
     }
 
