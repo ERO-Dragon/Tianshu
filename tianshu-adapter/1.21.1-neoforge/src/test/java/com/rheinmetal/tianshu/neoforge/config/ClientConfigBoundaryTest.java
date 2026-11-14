@@ -18,13 +18,13 @@ final class ClientConfigBoundaryTest {
     private static final Path CONFIG_HOST =
             Path.of("src/main/java/com/rheinmetal/tianshu/neoforge/config/ClientConfig.java");
     private static final Path PRESENCE_CONFIG =
-            Path.of("../../core/tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/PresenceModuleConfig.java");
+            Path.of("../../../Tianshu-features/tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/PresenceModuleConfig.java");
     private static final Path INTAKE_CONFIG =
-            Path.of("../../core/tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/settings/IntakeConfig.java");
+            Path.of("../../../Tianshu-features/tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/settings/IntakeConfig.java");
     private static final Path WEAVING_CONFIG =
-            Path.of("../../core/tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/settings/WeavingConfig.java");
+            Path.of("../../../Tianshu-features/tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/settings/WeavingConfig.java");
     private static final Path WEAVING_MODEL_SETTINGS =
-            Path.of("../../core/tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/settings/LlmModelSettings.java");
+            Path.of("../../../Tianshu-features/tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/settings/LlmModelSettings.java");
 
     private static String read(Path path) throws Exception {
         return Files.readString(path, StandardCharsets.UTF_8);
