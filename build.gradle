@@ -307,6 +307,7 @@ tasks.register('verifyClientMediaWiring') {
     description = 'Every adapter wires the shared audio manager and HUD host.'
     def adapterDirs = file('tianshu-adapter').listFiles()?.findAll {
         it.isDirectory() && (it.name.endsWith('-neoforge') || it.name.endsWith('-fabric'))
+                && new File(it, 'adapter.properties').isFile()
     } ?: []
     inputs.files(adapterDirs.collectMany { dir ->
         def base = dir.name.endsWith('-neoforge')
@@ -344,6 +345,7 @@ tasks.register('verifyServerToolRegistration') {
     description = 'Every adapter registers the shared server tools and their version-specific sources.'
     def adapterDirs = file('tianshu-adapter').listFiles()?.findAll {
         it.isDirectory() && (it.name.endsWith('-neoforge') || it.name.endsWith('-fabric'))
+                && new File(it, 'adapter.properties').isFile()
     } ?: []
     inputs.files(adapterDirs.collectMany { dir ->
         def base = dir.name.endsWith('-neoforge')
