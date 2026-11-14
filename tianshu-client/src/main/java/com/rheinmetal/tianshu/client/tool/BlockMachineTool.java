@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
@@ -90,7 +91,7 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
     @Override
     public CompletableFuture<MachineOpResult> invoke(ToolContext context, MachineOpRequest args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER) {
+        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
                     "block.machine runs as a player"));
         }
@@ -107,7 +108,7 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
         MachineOpRequest normalised = new MachineOpRequest(args.x(), args.y(), args.z(), operation,
                 operation.equals("take_output") ? -1 : args.playerSlot());
         return TianshuRuntimePorts.find(BlockMachinePort.class)
-                .map(port -> port.operate(caller.id(), normalised)
+                .map(port -> port.operate(ActorRef.of(caller), normalised)
                         .thenCompose(result -> result.moved() > 0
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

@@ -18,7 +18,7 @@ final class ToolRateLimiter {
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
 
     boolean allow(ToolId id, ToolCategory category, ToolCaller caller) {
-        if (caller.kind() != ToolCaller.Kind.PLAYER) {
+        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return true;
         }
         double rate = category == ToolCategory.SERVER_WRITE ? WRITE_CALLS_PER_SECOND : READ_CALLS_PER_SECOND;

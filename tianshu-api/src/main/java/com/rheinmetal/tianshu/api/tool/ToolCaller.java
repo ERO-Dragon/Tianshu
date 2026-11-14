@@ -15,7 +15,9 @@ public record ToolCaller(Kind kind, String id, boolean operator) {
         /** Another mod calling through the public API. */
         MOD,
         /** A player-driven call from the client. */
-        PLAYER
+        PLAYER,
+        /** A server-side agent body acting in the world. */
+        BODY
     }
 
     public static ToolCaller agent(boolean operator) {
@@ -28,5 +30,9 @@ public record ToolCaller(Kind kind, String id, boolean operator) {
 
     public static ToolCaller player(String playerId, boolean operator) {
         return new ToolCaller(Kind.PLAYER, playerId, operator);
+    }
+
+    public static ToolCaller body(String bodyId, boolean operator) {
+        return new ToolCaller(Kind.BODY, bodyId, operator);
     }
 }

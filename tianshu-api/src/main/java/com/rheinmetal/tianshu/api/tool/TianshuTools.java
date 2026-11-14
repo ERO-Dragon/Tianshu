@@ -382,7 +382,7 @@ public final class TianshuTools {
 
     /** Only player-driven calls are throttled: the agent and other mods are trusted peers, not a network surface. */
     private static void requireWithinRateLimit(TianshuTool<?, ?> tool, ToolCaller caller) {
-        if (caller.kind() != ToolCaller.Kind.PLAYER) {
+        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return;
         }
         if (!RATE_LIMITER.allow(tool.id(), tool.category(), caller)) {

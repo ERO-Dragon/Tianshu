@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
@@ -74,7 +75,7 @@ public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftRes
     @Override
     public CompletableFuture<CraftResult> invoke(ToolContext context, CraftRequest args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER) {
+        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
                     "craft.recipe runs as a player"));
         }
@@ -83,7 +84,7 @@ public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftRes
                     new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
         }
         return TianshuRuntimePorts.find(CraftPort.class)
-                .map(port -> port.craft(caller.id(), new CraftRequest(args.recipeId().trim()))
+                .map(port -> port.craft(ActorRef.of(caller), new CraftRequest(args.recipeId().trim()))
                         .thenCompose(result -> result.crafted()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

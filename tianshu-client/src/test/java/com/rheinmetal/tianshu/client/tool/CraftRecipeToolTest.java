@@ -4,6 +4,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.CraftPort;
+import com.rheinmetal.tianshu.api.game.CraftRequest;
+import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.game.CraftResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -58,6 +60,30 @@ class CraftRecipeToolTest {
         assertTrue(crafted.get("ok").getAsBoolean());
         assertEquals("minecraft:iron_pickaxe",
                 crafted.getAsJsonObject("result").get("itemId").getAsString());
+    }
+
+    @Test
+    void aBodyCallerReachesTheActorAwarePort() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<ActorRef> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        TianshuRuntimePorts.register(CraftPort.class, new CraftPort() {
+            @Override
+            public CompletableFuture<CraftResult> craft(String playerId, CraftRequest request) {
+                throw new AssertionError("body call must not fall back to the player path");
+            }
+
+            @Override
+            public CompletableFuture<CraftResult> craft(ActorRef actor, CraftRequest request) {
+                seen.set(actor);
+                return CompletableFuture.completedFuture(new CraftResult("minecraft:stick", 4, true, "crafted"));
+            }
+        });
+        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.setEnabled(CraftRecipeTool.ID, true);
+
+        JsonObject envelope = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.body("body-1", true));
+        assertTrue(envelope.get("ok").getAsBoolean());
+        assertEquals(ActorRef.Kind.BODY, seen.get().kind());
+        assertEquals("body-1", seen.get().id());
     }
 
     @Test
