@@ -85,6 +85,21 @@ class TextCapabilityProviderTest {
         assertTrue(CapabilityCatalog.find(CapabilityId.of("user", "other")).isEmpty());
     }
 
+    @Test
+    void builtInResourcesAndPromptsComeFromTheClasspath() throws Exception {
+        provider = TextCapabilityProvider.installClasspath(CapabilityKind.RESOURCE, "tianshu", "tianshu/resources");
+        CapabilityId resource = CapabilityId.of("tianshu", "game-basics");
+        assertTrue(text(CapabilityCatalog.invoke(resource, new JsonObject(), ToolCaller.agent(true),
+                ToolSide.CLIENT).get(2, TimeUnit.SECONDS)).contains("熔炉"));
+
+        provider.unload();
+        provider = TextCapabilityProvider.installClasspath(CapabilityKind.PROMPT, "tianshu", "tianshu/prompts");
+        JsonObject args = new JsonObject();
+        args.addProperty("lines", "3");
+        assertTrue(text(CapabilityCatalog.invoke(CapabilityId.of("tianshu", "concise"), args,
+                ToolCaller.agent(true), ToolSide.CLIENT).get(2, TimeUnit.SECONDS)).contains("3 行"));
+    }
+
     private static String text(JsonObject envelope) {
         assertTrue(envelope.get("ok").getAsBoolean(), envelope.toString());
         return envelope.get("text").getAsString();

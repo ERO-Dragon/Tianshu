@@ -34,6 +34,8 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private volatile SkillFileProvider builtInSkills;
     private volatile TextCapabilityProvider resources;
     private volatile TextCapabilityProvider prompts;
+    private volatile TextCapabilityProvider builtInResources;
+    private volatile TextCapabilityProvider builtInPrompts;
     private volatile McpBridge mcp;
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
@@ -89,6 +91,10 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         ClientTools.register();
         builtInSkills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
         skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills"));
+        builtInResources = TextCapabilityProvider.installClasspath(CapabilityKind.RESOURCE, "tianshu",
+                "tianshu/resources");
+        builtInPrompts = TextCapabilityProvider.installClasspath(CapabilityKind.PROMPT, "tianshu",
+                "tianshu/prompts");
         resources = TextCapabilityProvider.install(CapabilityKind.RESOURCE, "user",
                 Path.of("config", "Tianshu", "resources"));
         prompts = TextCapabilityProvider.install(CapabilityKind.PROMPT, "user",
@@ -159,6 +165,16 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         if (promptProvider != null) {
             promptProvider.unload();
             prompts = null;
+        }
+        TextCapabilityProvider builtInResourceProvider = builtInResources;
+        if (builtInResourceProvider != null) {
+            builtInResourceProvider.unload();
+            builtInResources = null;
+        }
+        TextCapabilityProvider builtInPromptProvider = builtInPrompts;
+        if (builtInPromptProvider != null) {
+            builtInPromptProvider.unload();
+            builtInPrompts = null;
         }
         McpBridge bridge = mcp;
         if (bridge != null) {
