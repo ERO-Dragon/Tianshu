@@ -78,6 +78,18 @@ class ConnectionToolChannelTest {
     }
 
     @Test
+    void oneCallerCannotFillTheWholePendingWindow() throws Exception {
+        for (int index = 0; index < 8; index++) {
+            TianshuTools.callJson(REMOTE, JsonParser.parseString("{}"), ToolCaller.agent(false));
+        }
+        JsonObject ninth = TianshuTools.callJson(REMOTE, JsonParser.parseString("{}"),
+                ToolCaller.agent(false)).get(2, TimeUnit.SECONDS);
+
+        assertFalse(ninth.get("ok").getAsBoolean());
+        assertEquals("BUSY", ninth.get("code").getAsString());
+    }
+
+    @Test
     void aCatalogRefreshActivatesTheDeclarationsTheServerNames() throws Exception {
         ServerToolDeclarations.declare(new RemoteTool(DECLARED, ToolCategory.SERVER_READ,
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ)));

@@ -90,6 +90,19 @@ class ServerToolDispatchTest {
     }
 
     @Test
+    void onePlayerCannotFillTheWholeInFlightWindow() throws Exception {
+        ToolCaller player = ToolCaller.player("p2", false);
+        for (int index = 0; index < 8; index++) {
+            ServerToolDispatch.respond(player, "block-" + index, BLOCKING.toString(), "{}");
+        }
+        ServerToolDispatch.Reply ninth = ServerToolDispatch.respond(player, "block-9", BLOCKING.toString(), "{}")
+                .get(2, TimeUnit.SECONDS);
+
+        assertTrue(!ninth.ok());
+        assertEquals("BUSY", ninth.errorCode());
+    }
+
+    @Test
     void theReservedCatalogRequestReturnsTheServerTools() throws Exception {
         ServerToolDispatch.Reply reply = ServerToolDispatch.respond(ToolCaller.player("p1", true), "catalog",
                         ServerToolDispatch.CATALOG_TOOL_ID, "{}")

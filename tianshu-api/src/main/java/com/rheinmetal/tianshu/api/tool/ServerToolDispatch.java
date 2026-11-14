@@ -23,6 +23,8 @@ public final class ServerToolDispatch {
 
     private static final long REPLAY_WINDOW_NANOS = 120_000_000_000L;
     private static final int MAX_CACHED_REPLIES = 512;
+    /** Mirrors the client quota; a hand-written client cannot bypass the per-player bound. */
+    private static final int MAX_IN_FLIGHT_PER_CALLER = 8;
     /** Reserved id understood by the dispatcher itself; it is not a registered tool. */
     public static final String CANCEL_TOOL_ID = "tianshu:tool.cancel";
     /** Reserved id understood by the dispatcher itself: returns the server catalogue for the calling player. */
@@ -67,6 +69,11 @@ public final class ServerToolDispatch {
         CompletableFuture<Reply> running = IN_FLIGHT.get(key);
         if (running != null) {
             return running;
+        }
+        if (IN_FLIGHT.keySet().stream().filter(existing -> existing.startsWith(caller.id() + "|")).count()
+                >= MAX_IN_FLIGHT_PER_CALLER) {
+            return CompletableFuture.completedFuture(
+                    Reply.failure(requestId, ToolError.BUSY, "too many calls in flight"));
         }
         CompletableFuture<Reply> future = execute(caller, requestId, toolId, argsJson);
         CompletableFuture<Reply> previous = IN_FLIGHT.putIfAbsent(key, future);

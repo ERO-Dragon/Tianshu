@@ -35,8 +35,11 @@ public final class ConnectionToolChannel implements ServerToolChannel {
 
     private static final ConnectionToolChannel INSTANCE = new ConnectionToolChannel();
     private static final int MAX_PENDING = 64;
+    /** One caller cannot occupy the whole pending window; this keeps an agent from starving other callers. */
+    private static final int MAX_IN_FLIGHT_PER_CALLER = 8;
 
     private final Map<String, CompletableFuture<JsonElement>> pending = new ConcurrentHashMap<>();
+    private final Map<String, java.util.concurrent.atomic.AtomicInteger> inFlight = new ConcurrentHashMap<>();
 
     private ConnectionToolChannel() {
     }
@@ -115,10 +118,23 @@ public final class ConnectionToolChannel implements ServerToolChannel {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.FAILED, "too many tool calls are waiting for the server"));
         }
+        String callerKey = caller.kind() + "|" + caller.id();
+        java.util.concurrent.atomic.AtomicInteger slots =
+                inFlight.computeIfAbsent(callerKey, ignored -> new java.util.concurrent.atomic.AtomicInteger());
+        if (slots.incrementAndGet() > MAX_IN_FLIGHT_PER_CALLER) {
+            slots.decrementAndGet();
+            return CompletableFuture.failedFuture(
+                    new ToolException(ToolError.BUSY, "too many calls in flight for " + caller.id()));
+        }
         CompletableFuture<JsonElement> future = new CompletableFuture<>();
         pending.put(requestId, future);
         future.orTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
-                .whenComplete((result, failure) -> pending.remove(requestId));
+                .whenComplete((result, failure) -> {
+                    pending.remove(requestId);
+                    if (slots.decrementAndGet() == 0) {
+                        inFlight.remove(callerKey, slots);
+                    }
+                });
         try {
             transport.get().send(requestId, id, args, caller, timeoutMillis);
         } catch (RuntimeException failure) {

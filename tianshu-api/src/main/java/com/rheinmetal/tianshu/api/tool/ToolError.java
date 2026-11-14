@@ -26,6 +26,9 @@ public enum ToolError {
     RATE_LIMITED,
     CANCELLED,
 
+    /** The caller already has too many calls in flight; the request was not started. */
+    BUSY,
+
     /** The tool itself failed. */
     FAILED
 }
