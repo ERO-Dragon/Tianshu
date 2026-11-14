@@ -12,6 +12,8 @@ import com.rheinmetal.tianshu.api.tool.ToolSide;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -44,6 +46,7 @@ public final class CapabilityCatalog {
     private static final Map<CapabilityId, Entry> ENTRIES = new ConcurrentHashMap<>();
     private static final java.util.concurrent.atomic.AtomicLong REVISION =
             new java.util.concurrent.atomic.AtomicLong();
+    private static final List<CapabilityChange.Listener> LISTENERS = new CopyOnWriteArrayList<>();
 
     private CapabilityCatalog() {
     }
@@ -60,13 +63,26 @@ public final class CapabilityCatalog {
             throw new IllegalArgumentException("capability " + descriptor.id() + " is already registered");
         }
         REVISION.incrementAndGet();
+        notifyListeners(CapabilityChange.Action.ADDED, descriptor);
     }
 
     /** Removes a capability; the entry disappears from every consumer's view immediately. */
     public static void unregister(CapabilityId id) {
-        if (ENTRIES.remove(id) != null) {
+        Entry removed = ENTRIES.remove(id);
+        if (removed != null) {
             REVISION.incrementAndGet();
+            notifyListeners(CapabilityChange.Action.REMOVED, removed.descriptor());
         }
+    }
+
+    /**
+     * Subscribes to in-process changes and returns the unsubscriber. A listener must not throw across the registry;
+     * a throwing listener is isolated so one consumer cannot break registration for everyone else.
+     */
+    public static Runnable subscribe(CapabilityChange.Listener listener) {
+        Objects.requireNonNull(listener, "listener");
+        LISTENERS.add(listener);
+        return () -> LISTENERS.remove(listener);
     }
 
     /** Monotonic change counter: consumers can poll it and refresh their view when it moves. */
@@ -150,8 +166,11 @@ public final class CapabilityCatalog {
             throw new IllegalArgumentException(
                     "capability id " + descriptor.id() + " is already used by a non-tool capability");
         }
+        CapabilityChange.Action action = existing == null
+                ? CapabilityChange.Action.ADDED : CapabilityChange.Action.UPDATED;
         ENTRIES.put(descriptor.id(), new Entry(descriptor, null));
         REVISION.incrementAndGet();
+        notifyListeners(action, descriptor);
     }
 
     /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */
@@ -167,19 +186,36 @@ public final class CapabilityCatalog {
                 entry.descriptor().binding(), entry.descriptor().description(), entry.descriptor().side(),
                 entry.descriptor().permission(), entry.descriptor().provider(), attributes);
         ENTRIES.put(capabilityId, new Entry(updated, null));
+        REVISION.incrementAndGet();
+        notifyListeners(CapabilityChange.Action.UPDATED, updated);
     }
 
     /** Kernel use: drops a mirrored tool entry. Not part of the consumer contract. */
     public static void removeTool(CapabilityId id) {
-        if (ENTRIES.remove(id) != null) {
+        Entry removed = ENTRIES.remove(id);
+        if (removed != null) {
             REVISION.incrementAndGet();
+            notifyListeners(CapabilityChange.Action.REMOVED, removed.descriptor());
         }
     }
 
     /** Tests only. */
     public static void clear() {
+        for (Entry entry : ENTRIES.values()) {
+            notifyListeners(CapabilityChange.Action.REMOVED, entry.descriptor());
+        }
         ENTRIES.clear();
         REVISION.incrementAndGet();
+    }
+
+    private static void notifyListeners(CapabilityChange.Action action, CapabilityDescriptor descriptor) {
+        for (CapabilityChange.Listener listener : LISTENERS) {
+            try {
+                listener.onChange(new CapabilityChange(action, descriptor));
+            } catch (RuntimeException ignored) {
+                // A consumer's bug must not break registration for everyone else.
+            }
+        }
     }
 
     private static long timeoutOf(CapabilityDescriptor descriptor) {

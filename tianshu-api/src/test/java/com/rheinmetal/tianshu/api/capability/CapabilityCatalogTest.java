@@ -72,6 +72,37 @@ class CapabilityCatalogTest {
     }
 
     @Test
+    void listenersSeeAddedUpdatedAndRemoved() {
+        java.util.List<CapabilityChange> changes = new java.util.ArrayList<>();
+        Runnable unsubscribe = CapabilityCatalog.subscribe(changes::add);
+        try {
+            TianshuTools.register(new EchoTool());
+            TianshuTools.setEnabled(ECHO, false);
+            TianshuTools.unregister(ECHO);
+
+            assertEquals(java.util.List.of(CapabilityChange.Action.ADDED, CapabilityChange.Action.UPDATED,
+                    CapabilityChange.Action.REMOVED), changes.stream().map(CapabilityChange::action).toList());
+            assertEquals(CapabilityId.of("test", "echo"), changes.get(0).descriptor().id());
+        } finally {
+            unsubscribe.run();
+        }
+    }
+
+    @Test
+    void aThrowingListenerCannotBreakRegistration() {
+        Runnable unsubscribe = CapabilityCatalog.subscribe(change -> {
+            throw new IllegalStateException("consumer bug");
+        });
+        try {
+            TianshuTools.register(new EchoTool());
+            assertTrue(CapabilityCatalog.find(CapabilityId.of("test", "echo")).isPresent());
+        } finally {
+            unsubscribe.run();
+            TianshuTools.unregister(ECHO);
+        }
+    }
+
+    @Test
     void theRevisionMovesWhenTheTableChanges() {
         long start = CapabilityCatalog.revision();
         CapabilityId id = CapabilityId.of("test", "revision");
