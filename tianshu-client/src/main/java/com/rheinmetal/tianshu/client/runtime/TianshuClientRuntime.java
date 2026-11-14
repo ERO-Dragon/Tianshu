@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.client.tool.ClientTools;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
+import com.rheinmetal.tianshu.client.capability.mcp.McpBridge;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import java.nio.file.Path;
 import com.rheinmetal.tianshu.core.TianshuCoreManager;
@@ -33,6 +34,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private volatile SkillFileProvider builtInSkills;
     private volatile TextCapabilityProvider resources;
     private volatile TextCapabilityProvider prompts;
+    private volatile McpBridge mcp;
     private final Object lifecycleMonitor = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
     private boolean worldSessionRequested;
@@ -91,6 +93,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 Path.of("config", "Tianshu", "resources"));
         prompts = TextCapabilityProvider.install(CapabilityKind.PROMPT, "user",
                 Path.of("config", "Tianshu", "prompts"));
+        mcp = McpBridge.start(Path.of("config", "Tianshu", "mcp.json"));
         ConnectionToolChannel.install();
         startClientResources.run();
     }
@@ -156,6 +159,11 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         if (promptProvider != null) {
             promptProvider.unload();
             prompts = null;
+        }
+        McpBridge bridge = mcp;
+        if (bridge != null) {
+            bridge.close();
+            mcp = null;
         }
         synchronized (lifecycleMonitor) {
             if (state == ClientSessionState.SHUTDOWN) {
