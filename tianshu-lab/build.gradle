@@ -70,3 +70,25 @@ sourceSets {
 jar {
     from sourceSets.neoforgeEntry.output
 }
+
+// ---------------------------------------------------------------- launch from the lab itself
+// Running the bench should not require remembering the adapter task and the feature list. This task delegates to
+// the adapter's runClient with every dev module (lab included). Pick another line with -Padapter=..., trim the
+// modules with -Pmods=..., or force the local cache with -Poffline=true.
+tasks.register('runClient', Exec) {
+    group = 'run'
+    description = 'Launch the dev client with every module (Intake, Echo, Weaving, Auxilium, Presence, Lab).'
+    def adapterName = providers.gradleProperty('adapter').orElse('1.21.1-neoforge').get()
+    def featureList = providers.gradleProperty('mods')
+            .orElse('intake,echo,weaving,auxilium,presence,lab').get()
+    def gradleArgs = [":tianshu-adapter:${adapterName}:runClient", "-PfeatureMods=${featureList}", '--console=plain']
+    if (providers.gradleProperty('offline').orElse('false').get().toBoolean()) {
+        gradleArgs += '--offline'
+    }
+    workingDir rootProject.projectDir
+    if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+        commandLine(['cmd', '/c', rootProject.file('gradlew.bat').absolutePath] + gradleArgs)
+    } else {
+        commandLine([rootProject.file('gradlew').absolutePath] + gradleArgs)
+    }
+}

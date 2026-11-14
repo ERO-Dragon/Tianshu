@@ -8,6 +8,23 @@ Lab is a small bench for developers, not a mod for players. It places three stan
 
 ---
 
+## Running
+
+From the repository root:
+
+```bash
+./gradlew :tianshu-lab:runClient
+```
+
+That launches the adapter with every dev module (Intake, Echo, Weaving, Auxilium, Presence, Lab). Options:
+
+- `-Padapter=1.20.5-neoforge` — another adapter;
+- `-Pmods=intake,lab` — a smaller set (always keep `lab`, and `intake` because Lab depends on it);
+- `-Poffline=true` — use the local Gradle cache.
+
+The default is `1.21.1-neoforge` with all modules. Open Settings → Arbitration Lab → **Capability self-check**
+(or the tool console) to verify the capability layer without the agent.
+
 ## What it gives you
 
 - **Three ways to ask for a turn, side by side** — one claims by crosshair, one by held item, one by wake word, each with its own priority so the winner is obvious.
