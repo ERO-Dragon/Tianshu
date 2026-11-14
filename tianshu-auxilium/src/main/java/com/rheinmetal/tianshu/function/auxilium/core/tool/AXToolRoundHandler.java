@@ -64,17 +64,15 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
         Objects.requireNonNull(submit, "submit");
         Objects.requireNonNull(discardHeld, "discardHeld");
         List<ToolSpec> catalogue = TianshuTools.catalog(ToolCaller.agent(false), ToolSide.CLIENT);
-        AXToolTurn turn = AXToolTurn.start(catalogue, base, call -> {
-            try {
-                return TianshuTools.callJson(call.toolId(), call.args(), ToolCaller.agent(false)).join();
-            } catch (RuntimeException failure) {
-                com.google.gson.JsonObject error = new com.google.gson.JsonObject();
-                error.addProperty("ok", false);
-                error.addProperty("code", "FAILED");
-                error.addProperty("message", String.valueOf(failure));
-                return error;
-            }
-        });
+        AXToolTurn turn = AXToolTurn.start(catalogue, base, call ->
+                TianshuTools.callJson(call.toolId(), call.args(), ToolCaller.agent(false))
+                        .exceptionally(failure -> {
+                            com.google.gson.JsonObject error = new com.google.gson.JsonObject();
+                            error.addProperty("ok", false);
+                            error.addProperty("code", "FAILED");
+                            error.addProperty("message", String.valueOf(failure));
+                            return error;
+                        }));
         if (!turn.toolsAvailable()) {
             return null;
         }
@@ -89,14 +87,17 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
     @Override
     public void onResult(LLMPromptResultPayload payload) {
         if (payload != null && payload.isCompleted() && turn.toolsAvailable()) {
-            AXToolTurn.Decision decision = turn.onReply(payload.text(), payload.requestId(), stream, maxTokens,
-                    reasoningTier, sampling);
-            if (decision instanceof AXToolTurn.Decision.Continue continuation) {
-                // The muted stream held this reply back; the call itself must not be spoken either.
-                discardHeld.run();
-                submit.submit(continuation.next(), this);
-                return;
-            }
+            turn.onReply(payload.text(), payload.requestId(), stream, maxTokens, reasoningTier, sampling)
+                    .thenAccept(decision -> {
+                        if (decision instanceof AXToolTurn.Decision.Continue continuation) {
+                            // The muted stream held this reply back; the call itself must not be spoken either.
+                            discardHeld.run();
+                            submit.submit(continuation.next(), this);
+                            return;
+                        }
+                        delivery.onResult(payload);
+                    });
+            return;
         }
         delivery.onResult(payload);
     }

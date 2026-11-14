@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload.MessageItemPayload;
 
 import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -104,33 +105,58 @@ public final class AXToolTurn {
      *
      * <p>{@link Decision.Finish} carries the reply verbatim: the caller decides what the player hears.
      * {@link Decision.Continue} carries the next payload, already containing the call and its result.</p>
+     *
+     * <p>The returned future completes when the tool has answered. The calling thread is never blocked: the LLM
+     * callback thread may return immediately and the continuation is submitted from the tool's completion.</p>
      */
-    public Decision onReply(String assistantText, String requestId, boolean stream, Integer maxTokens,
-                            Integer reasoningTier, LLMPromptRequestPayload.SamplingPayload sampling) {
+    public CompletableFuture<Decision> onReply(String assistantText, String requestId, boolean stream,
+                                               Integer maxTokens, Integer reasoningTier,
+                                               LLMPromptRequestPayload.SamplingPayload sampling) {
         if (!toolsAvailable() || toolRounds >= maxToolRounds) {
-            return new Decision.Finish(assistantText);
+            return CompletableFuture.completedFuture(new Decision.Finish(assistantText));
         }
-        Optional<ToolCall> call = ToolCallParser.parse(assistantText);
-        if (call.isEmpty()) {
-            return new Decision.Finish(assistantText);
+        Optional<ToolCall> parsed = ToolCallParser.parse(assistantText);
+        if (parsed.isEmpty()) {
+            return CompletableFuture.completedFuture(new Decision.Finish(assistantText));
         }
         toolRounds++;
-        JsonObject result = executor.execute(call.get());
-        conversation.add(new MessageItemPayload("assistant", assistantText));
-        String serialized = GSON.toJson(result);
-        if (serialized.length() > MAX_RESULT_CHARS) {
-            serialized = serialized.substring(0, MAX_RESULT_CHARS) + "…[truncated]";
+        ToolCall call = parsed.get();
+        CompletableFuture<JsonObject> execution;
+        try {
+            execution = executor.execute(call);
+        } catch (RuntimeException failure) {
+            execution = CompletableFuture.failedFuture(failure);
         }
-        conversation.add(new MessageItemPayload("user",
-                "tool result for " + call.get().toolId() + ": " + serialized));
-        return new Decision.Continue(call.get(), result,
-                payload(requestId, stream, maxTokens, reasoningTier, sampling));
+        if (execution == null) {
+            execution = CompletableFuture.failedFuture(new IllegalStateException("no tool execution"));
+        }
+        return execution.exceptionally(AXToolTurn::errorEnvelope).thenApply(result -> {
+            synchronized (this) {
+                conversation.add(new MessageItemPayload("assistant", assistantText));
+                String serialized = GSON.toJson(result);
+                if (serialized.length() > MAX_RESULT_CHARS) {
+                    serialized = serialized.substring(0, MAX_RESULT_CHARS) + "…[truncated]";
+                }
+                conversation.add(new MessageItemPayload("user",
+                        "tool result for " + call.toolId() + ": " + serialized));
+                return new Decision.Continue(call, result,
+                        payload(requestId, stream, maxTokens, reasoningTier, sampling));
+            }
+        });
+    }
+
+    private static JsonObject errorEnvelope(Throwable failure) {
+        JsonObject error = new JsonObject();
+        error.addProperty("ok", false);
+        error.addProperty("code", "FAILED");
+        error.addProperty("message", String.valueOf(failure == null ? "tool failed" : failure.getMessage()));
+        return error;
     }
 
     /** Runs one parsed call; production is {@link AXToolExecutor}. */
     @FunctionalInterface
     public interface ToolExecutor {
-        JsonObject execute(ToolCall call);
+        CompletableFuture<JsonObject> execute(ToolCall call);
     }
 
     /** What the orchestrator should do with one assistant reply. */

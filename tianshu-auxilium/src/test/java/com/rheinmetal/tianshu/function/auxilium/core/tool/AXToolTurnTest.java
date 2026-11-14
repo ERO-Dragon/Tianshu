@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.function.weaving.contract.LLMPromptRequestPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -44,13 +45,13 @@ class AXToolTurnTest {
 
     @Test
     void theCatalogueBecomesASystemMessageOnceAndOnlyWhenToolsExist() {
-        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> new JsonObject());
+        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
         LLMPromptRequestPayload payload = turn.payload("req", false, 0, null, SAMPLING);
         assertEquals("system", payload.messages().get(0).role());
         assertTrue(payload.messages().get(0).content().contains("test:echo"));
         assertEquals(2, payload.messages().size());
 
-        AXToolTurn withoutTools = AXToolTurn.start(List.of(), base(), call -> new JsonObject());
+        AXToolTurn withoutTools = AXToolTurn.start(List.of(), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
         assertFalse(withoutTools.toolsAvailable());
         assertEquals(1, withoutTools.payload("req", false, 0, null, SAMPLING).messages().size());
     }
@@ -60,11 +61,10 @@ class AXToolTurnTest {
         AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> {
             JsonObject result = new JsonObject();
             result.addProperty("body", "x".repeat(20_000));
-            return result;
+            return CompletableFuture.completedFuture(result);
         });
 
-        AXToolTurn.Decision decision = turn.onReply(
-                "{\"tool\":\"test:echo\",\"args\":{}}", "req", false, 0, null, SAMPLING);
+        AXToolTurn.Decision decision = reply(turn, "{\"tool\":\"test:echo\",\"args\":{}}");
         AXToolTurn.Decision.Continue continuation = assertInstanceOf(AXToolTurn.Decision.Continue.class, decision);
         String resultMessage = continuation.next().messages().get(continuation.next().messages().size() - 1).content();
         assertTrue(resultMessage.length() < 9_000);
@@ -78,7 +78,7 @@ class AXToolTurnTest {
                         "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", new JsonObject()),
                 (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
         try {
-            AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> new JsonObject());
+            AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
             String system = turn.payload("req", false, 0, null, SAMPLING).messages().get(0).content();
             assertTrue(system.contains("test:skill"));
             assertTrue(system.contains("tianshu:capability.read"));
@@ -89,8 +89,8 @@ class AXToolTurnTest {
 
     @Test
     void aPlainAnswerFinishes() {
-        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> new JsonObject());
-        AXToolTurn.Decision decision = turn.onReply("You have three sticks.", "req", false, 0, null, SAMPLING);
+        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
+        AXToolTurn.Decision decision = reply(turn, "You have three sticks.");
         assertEquals("You have three sticks.", assertInstanceOf(AXToolTurn.Decision.Finish.class, decision).text());
     }
 
@@ -101,11 +101,10 @@ class AXToolTurnTest {
             seen.set(call);
             JsonObject result = new JsonObject();
             result.addProperty("reply", "three");
-            return result;
+            return CompletableFuture.completedFuture(result);
         });
 
-        AXToolTurn.Decision decision = turn.onReply(
-                "{\"tool\":\"test:echo\",\"args\":{\"text\":\"sticks\"}}", "req", false, 0, null, SAMPLING);
+        AXToolTurn.Decision decision = reply(turn, "{\"tool\":\"test:echo\",\"args\":{\"text\":\"sticks\"}}");
         AXToolTurn.Decision.Continue continuation =
                 assertInstanceOf(AXToolTurn.Decision.Continue.class, decision);
         assertEquals(ECHO, seen.get().toolId());
@@ -122,20 +121,27 @@ class AXToolTurnTest {
 
     @Test
     void theToolRoundBudgetEndsTheTurn() {
-        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> new JsonObject());
+        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
         String call = "{\"tool\":\"test:echo\",\"args\":{}}";
         for (int round = 0; round < AXToolTurn.DEFAULT_MAX_TOOL_ROUNDS; round++) {
             assertInstanceOf(AXToolTurn.Decision.Continue.class,
-                    turn.onReply(call, "req", false, 0, null, SAMPLING));
+                    reply(turn, call));
         }
         assertInstanceOf(AXToolTurn.Decision.Finish.class,
-                turn.onReply(call, "req", false, 0, null, SAMPLING));
+                reply(turn, call));
     }
 
     @Test
     void aMalformedCallIsJustAnAnswer() {
-        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> new JsonObject());
+        AXToolTurn turn = AXToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
         assertInstanceOf(AXToolTurn.Decision.Finish.class,
-                turn.onReply("so anyway, about the sticks...", "req", false, 0, null, SAMPLING));
+                reply(turn, "so anyway, about the sticks..."));
+    }
+    private static AXToolTurn.Decision reply(AXToolTurn turn, String text) {
+        try {
+            return turn.onReply(text, "req", false, 0, null, SAMPLING).get(2, TimeUnit.SECONDS);
+        } catch (Exception failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 }
