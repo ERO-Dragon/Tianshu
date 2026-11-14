@@ -18,9 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * test locks down. The page's dimming and the panel are drawn here; the page itself is not.
  */
 final class SettingsLayerBoundaryTest {
-    private static final String HOST = "../1.21-1.21.1-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/SettingsLayerScreen.java";
+    private static final String HOST = "../1.20.2-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/SettingsLayerScreen.java";
     private static final String RENDERER =
-            "../1.21-1.21.1-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/VanillaSettingsLayerRenderer.java";
+            "../1.20.2-common/src/main/java/com/rheinmetal/tianshu/mc/ui/settings/VanillaSettingsLayerRenderer.java";
 
     /**
      * The page below is drawn here only when the loader has no layer stack to draw it.
