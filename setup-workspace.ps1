@@ -1,13 +1,13 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # Creates the shared ferry/features worktrees and the adapter worktree once per clone.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $workspace = Split-Path -Parent $root
 
-function Ensure-Worktree([string]$Path, [string]$Branch) {
+function Ensure-Worktree([string]$Path, [string]$Branch, [switch]$AnyBranch) {
     if (Test-Path (Join-Path $Path '.git')) {
         $current = (git -C $Path branch --show-current).Trim()
-        if ($current -ne $Branch) {
+        if (-not $AnyBranch -and $current -ne $Branch) {
             throw "worktree $Path is on '$current', expected '$Branch'"
         }
         Write-Host "reuse $Path ($Branch)"
@@ -30,7 +30,7 @@ function Ensure-Worktree([string]$Path, [string]$Branch) {
 
 Ensure-Worktree (Join-Path $workspace 'Tianshu-ferry') 'ferry'
 Ensure-Worktree (Join-Path $workspace 'Tianshu-features') 'features'
-Ensure-Worktree (Join-Path $workspace 'Tianshu-adapter') '1.21.1'
+Ensure-Worktree (Join-Path $workspace 'Tianshu-adapter') '1.21.1' -AnyBranch
 
 $adapter = Join-Path $workspace 'Tianshu-adapter'
 $libs = Join-Path $root 'libs'
