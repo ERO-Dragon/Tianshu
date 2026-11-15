@@ -2,8 +2,10 @@ package com.rheinmetal.tianshu.mc.body;
 
 import com.rheinmetal.tianshu.api.agent.ActorPosition;
 import com.rheinmetal.tianshu.api.agent.AgentBody;
+import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
 import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -35,6 +37,12 @@ public final class BodyRegistry implements AgentBodyProvider {
 
     private final Map<UUID, BodyState> bodies = new LinkedHashMap<>();
     private final Map<UUID, Integer> activeSlots = new LinkedHashMap<>();
+    private final MinecraftServer server;
+    private AgentBodyActions actions;
+
+    public BodyRegistry(MinecraftServer server) {
+        this.server = server;
+    }
 
     /** The body's active main slot, or -1 when nothing is equipped. */
     public int activeSlot(String bodyId) {
@@ -114,6 +122,17 @@ public final class BodyRegistry implements AgentBodyProvider {
     @Override
     public Optional<AgentBody> resolve(String bodyId) {
         return state(bodyId).map(BodyRegistry::view);
+    }
+
+    @Override
+    public Optional<AgentBodyActions> actions(String bodyId) {
+        if (state(bodyId).isEmpty()) {
+            return Optional.empty();
+        }
+        if (actions == null) {
+            actions = new CarrierActions(server, this);
+        }
+        return Optional.of(actions);
     }
 
     /** The carrier behind a body id, for the ports that need its level, position or inventory. */

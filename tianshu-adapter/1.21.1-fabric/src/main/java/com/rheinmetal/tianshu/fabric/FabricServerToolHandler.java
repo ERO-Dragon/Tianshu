@@ -39,7 +39,7 @@ import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import com.rheinmetal.tianshu.mc.body.AgentActionSource;
-import com.rheinmetal.tianshu.mc.body.AgentMotionSource;
+import com.rheinmetal.tianshu.mc.body.MotionRouter;
 import com.rheinmetal.tianshu.mc.body.BodyCommands;
 import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
@@ -68,7 +68,7 @@ public final class FabricServerToolHandler {
 
     public static void register() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            BodyRegistry bodies = BodyRuntime.start();
+        BodyRegistry bodies = BodyRuntime.start(server);
             TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
@@ -84,7 +84,7 @@ public final class FabricServerToolHandler {
             TianshuRuntimePorts.register(CraftPort.class, new CraftSource(server));
             TianshuRuntimePorts.register(ContainerTransferPort.class, new ContainerTransferSource(server));
             TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(server));
-            TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionSource(server, bodies));
+            TianshuRuntimePorts.register(AgentMotionPort.class, new MotionRouter());
             TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(server, bodies));
             TianshuRuntimePorts.register(AgentWorldQueryPort.class, new BodyQuerySource(server));
             TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(server, bodies));

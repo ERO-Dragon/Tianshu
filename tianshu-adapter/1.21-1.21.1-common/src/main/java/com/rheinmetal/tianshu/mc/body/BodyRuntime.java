@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.mc.body;
 
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
+import net.minecraft.server.MinecraftServer;
 
 import java.util.Optional;
 
@@ -18,9 +19,9 @@ public final class BodyRuntime {
     private BodyRuntime() {
     }
 
-    public static synchronized BodyRegistry start() {
+    public static synchronized BodyRegistry start(MinecraftServer server) {
         stop();
-        registry = new BodyRegistry();
+        registry = new BodyRegistry(server);
         unregister = AgentBodies.register(registry);
         return registry;
     }

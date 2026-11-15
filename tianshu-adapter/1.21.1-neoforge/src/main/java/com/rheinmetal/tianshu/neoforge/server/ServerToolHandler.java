@@ -48,7 +48,7 @@ import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import com.rheinmetal.tianshu.mc.body.AgentActionSource;
-import com.rheinmetal.tianshu.mc.body.AgentMotionSource;
+import com.rheinmetal.tianshu.mc.body.MotionRouter;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -84,7 +84,7 @@ public final class ServerToolHandler {
 
     /** Installs the server-side tool sources and registers the tools they back. */
     private static void onServerStarting(ServerStartingEvent event) {
-        BodyRegistry bodies = BodyRuntime.start();
+        BodyRegistry bodies = BodyRuntime.start(event.getServer());
         TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
         ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
@@ -100,7 +100,7 @@ public final class ServerToolHandler {
         TianshuRuntimePorts.register(ContainerTransferPort.class,
                 new ContainerTransferSource(event.getServer()));
         TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(event.getServer()));
-        TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionSource(event.getServer(), bodies));
+        TianshuRuntimePorts.register(AgentMotionPort.class, new MotionRouter());
         TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(event.getServer(), bodies));
         TianshuRuntimePorts.register(AgentWorldQueryPort.class, new BodyQuerySource(event.getServer()));
         TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(event.getServer(), bodies));
