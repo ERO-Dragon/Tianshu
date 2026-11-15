@@ -162,7 +162,7 @@ public final class FabricClientBootstrap {
             session.own(clientFilePicker::close);
             UiHost clientUiHost = new UiHost(() -> settingsModule);
             NativeModelLoadQueue loadQueue = new NativeModelLoadQueue();
-            moduleSettingsSources = new ModuleSettingsSourceRegistry();
+            moduleSettingsSources = new ModuleSettingsSourceRegistry(diagnosticRouter);
             // The action channel belongs to the entry point (the network registration needs it before any world
             // connects); the port only exposes it to modules.
             com.rheinmetal.tianshu.mc.host.ServerActionClient actions = TianshuFabric.actionClient();
@@ -362,7 +362,10 @@ public final class FabricClientBootstrap {
     private TianshuSettingsRegistrySource createSettingsRegistrySource(ClientPorts ports) {
         TianshuSettingsRegistrySource moduleSource = new ModuleSettingsRegistrySource(coreManager::managedModules);
         TianshuSettingsRegistrySource externalSource = new ExternalSettingsRegistrySource(externalSettingsContributors);
-        return CompositeSettingsRegistrySource.of(moduleSource, externalSource, moduleSettingsSources);
+        return new CompositeSettingsRegistrySource(
+                List.of(moduleSource, externalSource, moduleSettingsSources),
+                diagnosticRouter
+        );
     }
 
     private synchronized RegistryDictionaryProvider createNamedObjectDictionary() {

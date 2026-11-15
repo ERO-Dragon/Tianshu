@@ -207,7 +207,7 @@ public final class NeoForgeClientBootstrap {
             // One gate for every native model load in the process: retrieval claims it as the primary
             // lane and the speech modules queue behind it, so their native peaks never add up.
             NativeModelLoadQueue loadQueue = new NativeModelLoadQueue();
-            moduleSettingsSources = new ModuleSettingsSourceRegistry();
+            moduleSettingsSources = new ModuleSettingsSourceRegistry(diagnosticRouter);
             ClientPorts clientPorts = new ClientPorts(
                     clientScheduler,
                     clientUiHost,
@@ -480,10 +480,9 @@ public final class NeoForgeClientBootstrap {
         TianshuSettingsRegistrySource externalSource = new ExternalSettingsRegistrySource(externalSettingsContributors);
         // Feature pages arrive through `moduleSettingsSources`: every feature contributes its own page when it is
         // assembled, so the platform holds no list of them.
-        return CompositeSettingsRegistrySource.of(
-                moduleSource,
-                externalSource,
-                moduleSettingsSources
+        return new CompositeSettingsRegistrySource(
+                List.of(moduleSource, externalSource, moduleSettingsSources),
+                diagnosticRouter
         );
     }
 

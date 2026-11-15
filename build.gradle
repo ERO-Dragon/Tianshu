@@ -22,8 +22,37 @@ tasks.withType(JavaCompile).configureEach {
 //   4. the kernel (core/client/adapter) referencing a payload at all is the only reason it belongs in api —
 //      never move a feature payload into api just to avoid writing a guard.
 
+// A gate that discovers its own inputs can discover none of them — a moved directory, a renamed suffix — and then pass
+// by inspecting nothing. Three gates in this file did exactly that for a while (see the note on verifyFeatureIsolation),
+// so every gate that iterates a discovered set asserts the set is not empty before it starts.
+def requireNonEmpty = { list, what ->
+    if (list == null || list.isEmpty()) {
+        throw new GradleException("no ${what} matched; this gate would pass vacuously")
+    }
+}
+
 def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium', 'tianshu-presence']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
+
+// Where a module's directory is.
+//
+// The modules live in their own worktrees (`../Tianshu-features`, `../Tianshu-ferry`); an older layout kept them under
+// `core/`. The gates below were written against `core/<module>/...`, which no longer exists here, so their inputs came
+// back empty and they passed by inspecting nothing — three architecture invariants reported green while unchecked.
+// Resolve through the included project, with `core/` kept as the fallback for the old layout.
+def moduleDir = { String module ->
+    def legacy = file("core/${module}")
+    if (legacy.isDirectory()) {
+        return legacy
+    }
+    def included = rootProject.findProject(":${module}")
+    return included != null ? included.projectDir : legacy
+}
+// The package roots a feature module owns, taken from where its sources actually are.
+def featurePackages = { String module ->
+    def root = new File(moduleDir(module), 'src/main/java/com/rheinmetal/tianshu/function')
+    return root.isDirectory() ? root.listFiles().findAll { it.isDirectory() }*.name : []
+}
 
 // A feature module owns no loader; its development run delegates to the current adapter branch. The adapter
 // decides the loader, and the existing -PfeatureMods task-path detection then installs only that feature and
@@ -113,30 +142,49 @@ ext.devRunFeatureEdges = devRunFeatureEdges
 // a mod jar, so it is allowed to speak the feature modules' vocabulary on purpose.
 def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-adapter']
 
+// Every Java file of every feature module, as a flat list.
+//
+// A flat list on purpose: the gate iterates this, and `inputs.files(...)` over a *directory* only reports the directory
+// itself, so the loop that used it saw no `.java` file at all and reported green by inspecting nothing.
+def featureSourceFiles = featureModules.collectMany {
+    fileTree(new File(moduleDir(it), 'src/main/java')) { include '**/*.java' }.files
+}
+
 tasks.register('verifyFeatureIsolation') {
     group = 'verification'
     description = 'Feature modules may only reference each other along the declared optional edges.'
-    inputs.files(files(featureModules.collect { "core/${it}/src/main/java" }))
+    inputs.files(featureSourceFiles)
     doLast { task ->
         def names = featureModules.collect { it - 'tianshu-' } as Set
         def violations = []
-        task.inputs.files.files.each { source ->
-            if (!source.path.endsWith('.java')) return
+        featureSourceFiles.each { source ->
             def path = source.path.replace('\\', '/')
             def ownerMatch = path =~ /tianshu-([a-z]+)\/src\/main\/java/
             if (!ownerMatch.find()) return
             def owner = ownerMatch.group(1)
             if (!(owner in names)) return
             def allowed = allowedFeatureEdges[owner] ?: []
-            source.eachLine('UTF-8') { line ->
-                def m = line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./
-                if (m.find() && m.group(1) != owner && !(m.group(1) in allowed)) {
-                    violations << "${source.name}: ${owner} -> ${m.group(1)} is not an allowed edge: ${line.trim()}"
+            // The package prefix anywhere in the file, not just at the start of an import line. Matching
+            // `^import ...` let a fully-qualified inline reference and an `import static` through untouched, so the
+            // "no relations" invariant could be turned into a real dependency without any gate noticing. Javadoc
+            // {@link} references are caught too, which is intended: they need the class on the classpath.
+            def offenders = new TreeSet<String>()
+            def referenced = source.getText('UTF-8') =~
+                    /com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./
+            referenced.each { match ->
+                // Groovy hands this closure the match, and `match[1]` reads group 1 on both a Matcher and the list
+                // form it produces; `match.group(1)` only exists on the former.
+                def target = match[1]
+                if (target != owner && !(target in allowed)) {
+                    offenders << target
                 }
+            }
+            offenders.each { target ->
+                violations << "${source.name}: ${owner} -> ${target} is not an allowed edge"
             }
         }
         if (!violations.isEmpty()) {
-            throw new GradleException("Illegal cross-feature imports:\n" + violations.join('\n'))
+            throw new GradleException("Illegal cross-feature references:\n" + violations.join('\n'))
         }
     }
 }
@@ -145,24 +193,24 @@ tasks.register('verifyFeatureOptionalDependencies') {
     group = 'verification'
     description = 'The matrix is the whole truth: every listed edge is declared in Gradle and both manifests, every edge is used, and nothing undeclared exists.'
     def buildFiles = featureModules.collectEntries { module ->
-        [(module): file("core/${module}/build.gradle")]
+        [(module): new File(moduleDir(module), 'build.gradle')]
     }
     def sourcesByModule = featureModules.collectEntries { module ->
-        [(module): fileTree("core/${module}/src/main/java") { include '**/*.java' }.files]
+        [(module): fileTree(new File(moduleDir(module), 'src/main/java')) { include '**/*.java' }.files]
     }
     def modsTomlByModule = featureModules.collectEntries { module ->
         // Both NeoForge manifests: the modern one (FML 10+) and the legacy one (1.20.1-1.20.3) ship in the same jar,
         // so an edge that is declared in only one of them is missing on half the supported line.
-        [(module): fileTree("core/${module}/src") { include '**/neoforge.mods.toml', '**/mods.toml' }.files]
+        [(module): fileTree(new File(moduleDir(module), 'src')) { include '**/neoforge.mods.toml', '**/mods.toml' }.files]
     }
     def fabricManifestByModule = featureModules.collectEntries { module ->
-        [(module): file("core/${module}/src/main/resources/fabric.mod.json")]
+        [(module): new File(moduleDir(module), 'src/main/resources/fabric.mod.json')]
     }
     // The package roots each module owns, read from where its sources live. Package name and module name do
     // not always match: the arbitration module ships inside intake as `function.ia`, so usage has to be
     // detected against what the target module actually owns.
     def packagesByModule = featureModules.collectEntries { module ->
-        def root = file("core/${module}/src/main/java/com/rheinmetal/tianshu/function")
+        def root = new File(moduleDir(module), 'src/main/java/com/rheinmetal/tianshu/function')
         [(module): root.isDirectory() ? root.listFiles().findAll { it.isDirectory() }*.name : []]
     }
     inputs.files(buildFiles.values())
@@ -194,8 +242,11 @@ tasks.register('verifyFeatureOptionalDependencies') {
                 // The key is coerced to String because an interpolated Groovy string is a GString, whose
                 // hashCode differs from String's and therefore never matches a map key.
                 def used = packagesByModule[("tianshu-" + target)].any { pkg ->
-                    def importPrefix = "import com.rheinmetal.tianshu.function.${pkg}."
-                    sources.any { candidate -> candidate.text.contains(importPrefix) }
+                    // The package root anywhere in the file, not only inside an import statement: a fully-qualified
+                    // inline reference is a real dependency, and missing it made this gate complain that a declared
+                    // edge was unused.
+                    def packageRoot = "com.rheinmetal.tianshu.function.${pkg}."
+                    sources.any { candidate -> candidate.getText('UTF-8').contains(packageRoot) }
                 }
                 // An edge nobody uses is a promise the code does not keep. The matrix has to describe
                 // relations that exist, not relations that were once planned.
@@ -334,6 +385,7 @@ tasks.register('verifyClientMediaWiring') {
         [base]
     }.findAll { it.exists() })
     doLast {
+        requireNonEmpty(adapterDirs, 'adapter directories under tianshu-adapter/*-{neoforge,fabric}')
         def required = ['new AudioManager(', 'new HudLayerHost(']
         def missing = []
         adapterDirs.each { dir ->
@@ -372,6 +424,7 @@ tasks.register('verifyServerToolRegistration') {
         [base]
     }.findAll { it.exists() })
     doLast {
+        requireNonEmpty(adapterDirs, 'adapter directories under tianshu-adapter/*-{neoforge,fabric}')
         def required = ['RecipeQueryTool', 'CraftRecipeTool', 'BlockMachineTool',
                         'ServerRecipeQuerySource', 'CraftSource', 'BlockMachineSource']
         def missing = []
@@ -402,11 +455,18 @@ tasks.register('verifyHostHasNoFeatureDependency') {
     description = 'The kernel modules must never reference or depend on a feature module.'
     def plainHostModules = hostModules.findAll { it != 'tianshu-adapter' }
     def adapterProjectDirs = adapterProjects.collect { it.projectDir }
-    def hostBuildFiles = plainHostModules.collect { file("core/${it}/build.gradle") } +
+    def hostBuildFiles = plainHostModules.collect { new File(moduleDir(it), 'build.gradle') } +
             adapterProjectDirs.collect { new File(it, 'build.gradle') }
-    inputs.files(files(plainHostModules.collect { "core/${it}/src/main/java" }))
+    // Flat file lists: `inputs.dir(...)` reports the directory to the loop, so a scan over it sees no file at all.
+    def hostSourceFiles = plainHostModules.collectMany {
+        fileTree(new File(moduleDir(it), 'src/main/java')) { include '**/*.java' }.files
+    }
+    def adapterSourceFiles = adapterProjectDirs.collectMany {
+        fileTree(new File(it, 'src/main/java')) { include '**/*.java' }.files
+    }
+    inputs.files(hostSourceFiles)
     inputs.files(commonAdapterSources)
-    adapterProjectDirs.each { dir -> inputs.dir(new File(dir, 'src/main/java')) }
+    inputs.files(adapterSourceFiles)
     inputs.files(hostBuildFiles)
     doLast { task ->
         // A source-free build dependency is the same coupling in a different place: it is what makes the
@@ -418,12 +478,13 @@ tasks.register('verifyHostHasNoFeatureDependency') {
             }
         }
         def violations = new ArrayList<String>(hostProjectDependencyViolations)
-        task.inputs.files.files.each { source ->
-            if (!source.path.endsWith('.java')) return
-            source.eachLine('UTF-8') { line ->
-                if (line.trim() =~ /^import com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./) {
-                    violations << "${source.name}: ${line.trim()}"
-                }
+        (hostSourceFiles + adapterSourceFiles).each { source ->
+            // The package root anywhere in the file, not only at the start of an import line: an inline
+            // fully-qualified reference and an `import static` were both invisible to the line-anchored pattern.
+            def referenced = source.getText('UTF-8') =~
+                    /com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./
+            if (referenced.find()) {
+                violations << "${source.name}: references a feature module (${referenced.group(1)})"
             }
         }
         if (!violations.isEmpty()) {
@@ -474,16 +535,22 @@ tasks.register('verifyNoPlatformImport') {
     doLast { task ->
         def forbidden = ['net/minecraft/', 'net/neoforged/', 'org/lwjgl/', 'com/mojang/blaze3d/']
         def violations = []
+        def classFiles = []
         task.inputs.files.files.each { root ->
             if (root.isDirectory()) {
                 root.eachFileRecurse(groovy.io.FileType.FILES) { entry ->
-                    if (!entry.name.endsWith('.class')) return
-                    def constantPool = new String(entry.bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
-                    forbidden.each { prefix ->
-                        if (constantPool.contains(prefix)) {
-                            violations << "${entry}: references a forbidden platform package: ${prefix}"
-                        }
-                    }
+                    if (entry.name.endsWith('.class')) classFiles << entry
+                }
+            }
+        }
+        if (classFiles.isEmpty()) {
+            throw new GradleException("No compiled classes matched the neutral modules' output; this gate would pass vacuously")
+        }
+        classFiles.each { entry ->
+            def constantPool = new String(entry.bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+            forbidden.each { prefix ->
+                if (constantPool.contains(prefix)) {
+                    violations << "${entry}: references a forbidden platform package: ${prefix}"
                 }
             }
         }
@@ -507,6 +574,7 @@ tasks.register('verifyUniversalModuleJars') {
     inputs.files(jarsByModule.values())
 
     doLast {
+        requireNonEmpty(featureModules, 'feature modules for the jar check')
         def violations = []
         jarsByModule.each { module, archive ->
             def jarFile = archive.get().asFile
@@ -749,12 +817,15 @@ tasks.register('verifyAdapterMatrixCoverage') {
 tasks.register('verifyProtocolVersionSingleSource') {
     group = 'verification'
     description = 'Adapters must reference ProtocolWireVersion.VERSION instead of writing the wire version themselves.'
-    inputs.files(commonAdapterSources)
-    adapterProjects.each { adapterProject -> inputs.dir(new File(adapterProject.projectDir, 'src/main/java')) }
-    doLast { task ->
+    // A flat file list: `inputs.dir(...)` reports the directory itself to the loop below, so the `.java` filter skipped
+    // every adapter source — which are exactly the files this gate exists to check.
+    def versionSourceFiles = commonAdapterSources + adapterProjects.collectMany { adapterProject ->
+        fileTree(new File(adapterProject.projectDir, 'src/main/java')) { include '**/*.java' }.files
+    }
+    inputs.files(versionSourceFiles)
+    doLast {
         def violations = []
-        task.inputs.files.files.each { source ->
-            if (!source.path.endsWith('.java')) return
+        versionSourceFiles.each { source ->
             source.eachLine('UTF-8') { line ->
                 if (line =~ /PROTOCOL_VERSION\s*=\s*"/) {
                     violations << "${source.name}: ${line.trim()}".toString()
@@ -793,6 +864,7 @@ tasks.register('verifySettingsRenderersCoverOptionEntries') {
             throw new GradleException("Cannot read the option-entry set from ${modelFile.name}; the permits clause changed shape")
         }
         def variants = permits.group(1).split(',').collect { it.trim().replaceAll('<.*>', '') }.findAll { !it.isEmpty() }
+        requireNonEmpty(commonTrees, 'shared settings renderer trees under tianshu-adapter/*-common')
         def violations = []
         commonTrees.each { tree ->
             def renderer = rendererOf(tree)
