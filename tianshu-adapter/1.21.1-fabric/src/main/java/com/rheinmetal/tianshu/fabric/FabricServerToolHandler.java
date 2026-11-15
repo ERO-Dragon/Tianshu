@@ -83,7 +83,7 @@ public final class FabricServerToolHandler {
             TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionSource(server, bodies));
             TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(server, bodies));
             TianshuRuntimePorts.register(AgentWorldQueryPort.class, new BodyQuerySource(server));
-            TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(server));
+            TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(server, bodies));
             if (TianshuTools.find(LootQueryTool.ID) == null) {
                 TianshuTools.register(new LootQueryTool());
             }

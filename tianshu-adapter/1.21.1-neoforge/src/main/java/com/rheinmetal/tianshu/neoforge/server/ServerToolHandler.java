@@ -98,7 +98,7 @@ public final class ServerToolHandler {
         TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionSource(event.getServer(), bodies));
         TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(event.getServer(), bodies));
         TianshuRuntimePorts.register(AgentWorldQueryPort.class, new BodyQuerySource(event.getServer()));
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(event.getServer()));
+        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(event.getServer(), bodies));
         if (TianshuTools.find(LootQueryTool.ID) == null) {
             TianshuTools.register(new LootQueryTool());
         }

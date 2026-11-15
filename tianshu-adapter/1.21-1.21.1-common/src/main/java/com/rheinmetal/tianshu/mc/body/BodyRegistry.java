@@ -34,6 +34,30 @@ public final class BodyRegistry implements AgentBodyProvider {
     private static final int INVENTORY_SIZE = 36;
 
     private final Map<UUID, BodyState> bodies = new LinkedHashMap<>();
+    private final Map<UUID, Integer> activeSlots = new LinkedHashMap<>();
+
+    /** The body's active main slot, or -1 when nothing is equipped. */
+    public int activeSlot(String bodyId) {
+        UUID id = parse(bodyId);
+        if (id == null) {
+            return -1;
+        }
+        return activeSlots.getOrDefault(id, -1);
+    }
+
+    /** Sets the active main slot; {@code slot=-1} clears it. Returns false when the body is not live. */
+    public boolean setActiveSlot(String bodyId, int slot) {
+        UUID id = parse(bodyId);
+        if (id == null || !bodies.containsKey(id) || slot < -1 || slot >= INVENTORY_SIZE) {
+            return false;
+        }
+        if (slot < 0) {
+            activeSlots.remove(id);
+        } else {
+            activeSlots.put(id, slot);
+        }
+        return true;
+    }
 
     /** Spawns a carrier for {@code owner} at the owner's position and returns the new body. */
     public AgentBody spawn(ServerPlayer owner, BodyKind kind) {
@@ -65,6 +89,7 @@ public final class BodyRegistry implements AgentBodyProvider {
         }
         state.entity().discard();
         bodies.remove(state.id());
+        activeSlots.remove(state.id());
         return true;
     }
 

@@ -2,10 +2,12 @@ package com.rheinmetal.tianshu.mc.tool;
 
 import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
+import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.PickedItem;
 import com.rheinmetal.tianshu.api.agent.PickupResult;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
+import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -32,9 +34,51 @@ public final class AgentItemSource implements AgentItemPort {
     private static final int MAIN_SLOTS = 36;
 
     private final MinecraftServer server;
+    private final BodyRegistry bodies;
 
-    public AgentItemSource(MinecraftServer server) {
+    public AgentItemSource(MinecraftServer server, BodyRegistry bodies) {
         this.server = server;
+        this.bodies = bodies;
+    }
+
+    @Override
+    public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+        CompletableFuture<EquipResult> result = new CompletableFuture<>();
+        server.execute(() -> {
+            try {
+                result.complete(equipNow(actor, slot));
+            } catch (ToolException failure) {
+                result.completeExceptionally(failure);
+            }
+        });
+        return result;
+    }
+
+    private EquipResult equipNow(ActorRef actor, int slot) {
+        if (actor.kind() != ActorRef.Kind.BODY) {
+            throw new ToolException(ToolError.INVALID_ARGS, "equipping is a body concept");
+        }
+        BodyRegistry.BodyState state = bodies.state(actor.id()).orElseThrow(() -> new ToolException(
+                ToolError.UNAVAILABLE, "the agent body is not present"));
+        Container inventory = state.inventory();
+        if (inventory == null) {
+            throw new ToolException(ToolError.UNAVAILABLE, "that agent body has no inventory");
+        }
+        if (slot < -1 || slot >= MAIN_SLOTS) {
+            throw new ToolException(ToolError.INVALID_ARGS, "slot must be -1 or 0..35");
+        }
+        if (!bodies.setActiveSlot(actor.id(), slot)) {
+            throw new ToolException(ToolError.UNAVAILABLE, "the agent body is not present");
+        }
+        if (slot < 0) {
+            return new EquipResult(-1, "", 0);
+        }
+        ItemStack stack = inventory.getItem(slot);
+        if (stack.isEmpty()) {
+            return new EquipResult(slot, "", 0);
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return new EquipResult(slot, id == null ? "" : id.toString(), stack.getCount());
     }
 
     @Override

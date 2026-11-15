@@ -12,7 +12,10 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -24,6 +27,10 @@ import java.util.concurrent.CompletableFuture;
  *
  * <p>Both go through the carrier entity, so vanilla handles drops, protection hooks and events exactly as it would
  * for any other entity. Nothing here reaches for a player when the actor is a body.</p>
+ *
+ * <p>An equipped item (see {@link BodyRegistry#setActiveSlot}) adds its main-hand attack damage and wears one point
+ * per successful strike or break. Breaking stays instantaneous: the carrier does not simulate swing time, so a tool
+ * does not change how fast a block breaks — a deliberate cut, recorded in the body design doc.</p>
  */
 public final class AgentActionSource implements AgentActionPort {
 
@@ -75,6 +82,9 @@ public final class AgentActionSource implements AgentActionPort {
         ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
         String blockId = id == null ? "" : id.toString();
         boolean broken = body.level().destroyBlock(pos, true, body.entity());
+        if (broken) {
+            wearActive(body);
+        }
         return broken
                 ? ActionResult.done("broke " + blockId + " at " + dimension + " " + pos.getX() + " "
                         + pos.getY() + " " + pos.getZ())
@@ -103,10 +113,47 @@ public final class AgentActionSource implements AgentActionPort {
         if (distanceSquared(body.position(), victim.position()) > REACH_SQUARED) {
             return ActionResult.rejected("the target is out of reach");
         }
-        boolean struck = victim.hurt(victim.level().damageSources().mobAttack(attacker), BASE_ATTACK_DAMAGE);
+        boolean struck = victim.hurt(victim.level().damageSources().mobAttack(attacker), attackDamageOf(activeItem(body)));
+        if (struck) {
+            wearActive(body);
+        }
         return struck
                 ? ActionResult.done("struck " + id)
                 : new ActionResult(ActionOutcome.NO_EFFECT, "the target was not affected");
+    }
+
+    /** The item in the body's active slot, or empty when nothing is equipped. */
+    private ItemStack activeItem(BodyRegistry.BodyState body) {
+        int slot = bodies.activeSlot(body.id().toString());
+        if (slot < 0 || body.inventory() == null) {
+            return ItemStack.EMPTY;
+        }
+        return body.inventory().getItem(slot);
+    }
+
+    /** Base fist damage plus the main-hand attack modifiers of the equipped item. */
+    private static float attackDamageOf(ItemStack weapon) {
+        if (weapon.isEmpty()) {
+            return BASE_ATTACK_DAMAGE;
+        }
+        float[] bonus = {0.0F};
+        weapon.forEachModifier(EquipmentSlot.MAINHAND, (attribute, modifier) -> {
+            if (attribute.value() == Attributes.ATTACK_DAMAGE.value()) {
+                bonus[0] += (float) modifier.amount();
+            }
+        });
+        return BASE_ATTACK_DAMAGE + bonus[0];
+    }
+
+    /** Wears the equipped item by one point; a carrier without a living body simply has nothing to wear. */
+    private void wearActive(BodyRegistry.BodyState body) {
+        if (!(body.entity() instanceof LivingEntity living)) {
+            return;
+        }
+        ItemStack weapon = activeItem(body);
+        if (!weapon.isEmpty()) {
+            weapon.hurtAndBreak(1, living, EquipmentSlot.MAINHAND);
+        }
     }
 
     private Entity find(UUID id) {
