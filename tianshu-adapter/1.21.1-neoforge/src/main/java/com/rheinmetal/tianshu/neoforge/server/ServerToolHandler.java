@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.neoforge.server;
 
+import com.rheinmetal.tianshu.api.agent.AgentActionPort;
+import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
@@ -32,7 +34,10 @@ import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import com.rheinmetal.tianshu.mc.body.BodyCommands;
+import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
+import com.rheinmetal.tianshu.mc.body.AgentActionSource;
+import com.rheinmetal.tianshu.mc.body.AgentMotionSource;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -66,7 +71,7 @@ public final class ServerToolHandler {
 
     /** Installs the server-side tool sources and registers the tools they back. */
     private static void onServerStarting(ServerStartingEvent event) {
-        BodyRuntime.start();
+        BodyRegistry bodies = BodyRuntime.start();
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
         if (TianshuTools.find(RecipeQueryTool.ID) == null) {
@@ -77,6 +82,8 @@ public final class ServerToolHandler {
         TianshuRuntimePorts.register(ContainerTransferPort.class,
                 new ContainerTransferSource(event.getServer()));
         TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(event.getServer()));
+        TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionSource(event.getServer(), bodies));
+        TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(event.getServer(), bodies));
         if (TianshuTools.find(LootQueryTool.ID) == null) {
             TianshuTools.register(new LootQueryTool());
         }

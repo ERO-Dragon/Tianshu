@@ -11,16 +11,18 @@ import java.util.Set;
  * world, the other is a floating stand that can hold items.
  *
  * <p>Capabilities describe what the carrier is, not which tools exist yet. {@code MOVE} and {@code LOOK} are true of
- * both carriers even before the motion ports land; {@code USE}, {@code MINE} and {@code ATTACK} are deliberately
- * absent until this adapter has a non-player way to perform them.</p>
+ * both carriers; {@code MINE}, {@code ATTACK} and {@code INVENTORY} belong to the stand alone, because breaking and
+ * striking go through a living carrier. {@code USE} is absent from both: vanilla block interaction needs a player
+ * parameter and this adapter has no non-player path for it yet.</p>
  */
 public enum BodyKind {
 
     /** A vanilla marker: invisible, no health, no collision, no inventory and no hands. */
     MARKER(Set.of(BodyCapability.MOVE, BodyCapability.LOOK)),
 
-    /** A gravity-free armour stand: it carries a 36-slot inventory, so crafting and transfers work through it. */
-    STAND(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.INVENTORY));
+    /** A gravity-free armour stand: it carries a 36-slot inventory and can strike and break. */
+    STAND(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.MINE, BodyCapability.ATTACK,
+            BodyCapability.INVENTORY));
 
     private final Set<BodyCapability> capabilities;
 

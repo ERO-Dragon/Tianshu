@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.fabric;
 
+import com.rheinmetal.tianshu.api.agent.AgentActionPort;
+import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
@@ -27,7 +29,10 @@ import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
 import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
+import com.rheinmetal.tianshu.mc.body.AgentActionSource;
+import com.rheinmetal.tianshu.mc.body.AgentMotionSource;
 import com.rheinmetal.tianshu.mc.body.BodyCommands;
+import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -52,7 +57,7 @@ public final class FabricServerToolHandler {
 
     public static void register() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            BodyRuntime.start();
+            BodyRegistry bodies = BodyRuntime.start();
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
             TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(server));
@@ -63,6 +68,8 @@ public final class FabricServerToolHandler {
             TianshuRuntimePorts.register(CraftPort.class, new CraftSource(server));
             TianshuRuntimePorts.register(ContainerTransferPort.class, new ContainerTransferSource(server));
             TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(server));
+            TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionSource(server, bodies));
+            TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(server, bodies));
             if (TianshuTools.find(LootQueryTool.ID) == null) {
                 TianshuTools.register(new LootQueryTool());
             }
