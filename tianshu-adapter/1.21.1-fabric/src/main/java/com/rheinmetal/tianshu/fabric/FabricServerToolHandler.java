@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
+import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
@@ -29,6 +30,7 @@ import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 
 import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.host.ServerTicks;
+import com.rheinmetal.tianshu.mc.host.ServerPlayerAuthority;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
 import com.rheinmetal.tianshu.mc.tool.BlockPlaceSource;
 import com.rheinmetal.tianshu.mc.tool.BodyQuerySource;
@@ -79,6 +81,7 @@ public final class FabricServerToolHandler {
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             BodyRegistry bodies = BodyRuntime.start(server, actionPlayers);
             TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
+            TianshuRuntimePorts.register(PlayerAuthority.class, new ServerPlayerAuthority(server));
             ServerTicks.INSTANCE.onNextTick(() -> BodyPersistence.load(server, bodies));
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
