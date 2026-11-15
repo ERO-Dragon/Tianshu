@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.function.intake;
 import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
 
 import com.rheinmetal.tianshu.protocol.payload.ModuleStatusPayload;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import com.rheinmetal.tianshu.protocol.payload.RuntimeInterruptPayload;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +15,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsrProtocolDocumentationBoundaryTest {
-    private static final Path PROTOCOL_GUIDE = Path.of("../doc/function/intake/ASR_协议中心使用文档.md");
+    private static final Path PROTOCOL_GUIDE = WorkspacePaths.doc("function/intake/ASR_协议中心使用文档.md");
 
     @Test
     void protocolGuideCoversEveryStableAsrProtocolSymbol() throws Exception {

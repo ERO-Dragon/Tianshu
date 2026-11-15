@@ -55,7 +55,7 @@
 - `TTS_CONTROL` — 停止、重载模型、音色管理。
 - `TTS.PLAYBACK` / `TTS_REQUEST_STATUS` — 播放状态与单请求状态。
 
-音色归调用方自己管理，模型选择是宿主级设置；完整契约见 [TTS 协议中心使用文档](../doc/function/echo/TTS_协议中心使用文档.md)。
+音色归调用方自己管理，模型选择是宿主级设置；完整契约见 [TTS 协议中心使用文档](../../Tianshu/doc/function/echo/TTS_协议中心使用文档.md)。
 
 ## 许可与致谢
 

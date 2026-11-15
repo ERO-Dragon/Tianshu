@@ -34,7 +34,7 @@
 
 ## 第三方参与方
 
-其他模组可以注册 `DialogueParticipant`，声明唤醒词、准星目标、手持物品、装备或交互状态等 claim；听澜负责收集 claim、选出中标者、建立会话并把这一轮定向投递给胜出者。详细契约见[外部接入指南](../EXTERNAL_INTEGRATION_GUIDE.md)与 [IA 外部模组仲裁接入说明](../doc/function/intake/ia/IA_外部模组仲裁接入说明.md)。
+其他模组可以注册 `DialogueParticipant`，声明唤醒词、准星目标、手持物品、装备或交互状态等 claim；听澜负责收集 claim、选出中标者、建立会话并把这一轮定向投递给胜出者。详细契约见[外部接入指南](../EXTERNAL_INTEGRATION_GUIDE.md)与 [IA 外部模组仲裁接入说明](../../Tianshu/doc/function/intake/ia/IA_外部模组仲裁接入说明.md)。
 
 ## 许可与致谢
 
@@ -51,4 +51,4 @@
 
 模型按需下载，首次使用时从模型目录获取。
 
-更多文档：[ASR 模块架构](../doc/function/intake/ASR_模块架构说明.md) · [IR 模块架构](../doc/function/intake/repair/IR_模块架构说明.md) · [IA 模块开发技术说明](../doc/function/intake/ia/IA_模块开发技术说明.md) · [听澜游戏内测试说明](../doc/function/intake/听澜游戏内测试说明.md)
+更多文档：[ASR 模块架构](../../Tianshu/doc/function/intake/ASR_模块架构说明.md) · [IR 模块架构](../../Tianshu/doc/function/intake/repair/IR_模块架构说明.md) · [IA 模块开发技术说明](../../Tianshu/doc/function/intake/ia/IA_模块开发技术说明.md) · [听澜游戏内测试说明](../../Tianshu/doc/function/intake/听澜游戏内测试说明.md)

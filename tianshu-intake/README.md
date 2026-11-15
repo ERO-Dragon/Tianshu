@@ -34,7 +34,7 @@ Models download on demand and then run offline; they can be switched in the sett
 
 ## Third-party participants
 
-Other mods can register a `DialogueParticipant` and declare claims such as wake words, crosshair targets, held items, equipment or interaction state. Intake collects the claims, picks the owner, creates the turn session and delivers it only to the winner. See the [external integration guide](../EXTERNAL_INTEGRATION_GUIDE.md) and the [IA participant guide](../doc/function/intake/ia/IA_外部模组仲裁接入说明.md).
+Other mods can register a `DialogueParticipant` and declare claims such as wake words, crosshair targets, held items, equipment or interaction state. Intake collects the claims, picks the owner, creates the turn session and delivers it only to the winner. See the [external integration guide](../EXTERNAL_INTEGRATION_GUIDE.md) and the [IA participant guide](../../Tianshu/doc/function/intake/ia/IA_外部模组仲裁接入说明.md).
 
 ## License and credits
 
@@ -51,4 +51,4 @@ The speech runtime and models come from public projects and remain the property 
 
 Models download on demand from the model catalogue on first use.
 
-More: [ASR architecture](../doc/function/intake/ASR_模块架构说明.md) · [IR architecture](../doc/function/intake/repair/IR_模块架构说明.md) · [IA technical guide](../doc/function/intake/ia/IA_模块开发技术说明.md) · [In-game test guide](../doc/function/intake/听澜游戏内测试说明.md)
+More: [ASR architecture](../../Tianshu/doc/function/intake/ASR_模块架构说明.md) · [IR architecture](../../Tianshu/doc/function/intake/repair/IR_模块架构说明.md) · [IA technical guide](../../Tianshu/doc/function/intake/ia/IA_模块开发技术说明.md) · [In-game test guide](../../Tianshu/doc/function/intake/听澜游戏内测试说明.md)

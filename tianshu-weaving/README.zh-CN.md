@@ -37,4 +37,4 @@
 - BGE-M3 — BAAI，MIT
 - llama.cpp — MIT
 
-更多：[LLM 协议接口设计](../doc/function/weaving/LLM接口设计.md) · [黑盒测试记录](../doc/function/weaving/黑盒测试.md)
+更多：[LLM 协议接口设计](../../Tianshu/doc/function/weaving/LLM接口设计.md) · [黑盒测试记录](../../Tianshu/doc/function/weaving/黑盒测试.md)

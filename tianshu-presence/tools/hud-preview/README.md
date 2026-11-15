@@ -1,6 +1,6 @@
 # 映迹 HUD 预览（浏览器版）
 
-模块文档入口见 [Presence 文档索引](../../../doc/function/presence/Presence_文档索引.md)。
+模块文档入口见 [Presence 文档索引](../../../../Tianshu/doc/function/presence/Presence_文档索引.md)。
 
 不用启动游戏，直接在网页里切换映迹的主状态、预设、图标尺寸与伙伴标记，观察图标、状态文字和整个 HUD 的变化。
 

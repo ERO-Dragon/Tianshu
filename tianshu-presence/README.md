@@ -6,7 +6,7 @@ Presence is the HUD and context capability on the Ferry base: it turns the world
 **Loaders**: NeoForge / Fabric
 **Runs with**: the Ferry base, on the client; servers do not need it.
 **Dependencies**: Ferry and Foundry, both required; drawing, GUI gating and the position editor come from Ferry.
-**Third-party integration**: other mods can publish their state to the HUD, or query the world state Presence maintains; see the [product activity protocol](../doc/function/presence/Presence_产品活动协议使用文档.md).
+**Third-party integration**: other mods can publish their state to the HUD, or query the world state Presence maintains; see the [product activity protocol](../../Tianshu/doc/function/presence/Presence_产品活动协议使用文档.md).
 
 ---
 
@@ -51,4 +51,4 @@ The settings page lives under *Tianshu console · Presence* and persists to `con
 
 This mod is open source under the GNU Lesser General Public License v3.0 (© 2026 Ero-Dragon). It bundles no third-party runtime or models.
 
-More: [Presence docs index](../doc/function/presence/Presence_文档索引.md) · [Module design](../doc/function/presence/Presence_游戏内反馈与交互上下文模块设计.md) · [Product activity protocol](../doc/function/presence/Presence_产品活动协议使用文档.md) · [HUD browser preview](tools/hud-preview/README.md) · [Module architecture](../doc/architecture/模块架构.md)
+More: [Presence docs index](../../Tianshu/doc/function/presence/Presence_文档索引.md) · [Module design](../../Tianshu/doc/function/presence/Presence_游戏内反馈与交互上下文模块设计.md) · [Product activity protocol](../../Tianshu/doc/function/presence/Presence_产品活动协议使用文档.md) · [HUD browser preview](tools/hud-preview/README.md) · [Module architecture](../../Tianshu/doc/architecture/模块架构.md)

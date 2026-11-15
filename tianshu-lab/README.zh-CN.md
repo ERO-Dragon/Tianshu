@@ -19,4 +19,4 @@
 
 本模组以 GNU 宽通用公共许可证第 3 版（LGPL-3.0）开源（© 2026 Ero-Dragon）。
 
-仲裁本身见[听澜](../tianshu-intake/README.zh-CN.md)，自己写参与者的方法见 [IA 外部模组仲裁接入说明](../doc/function/intake/ia/IA_外部模组仲裁接入说明.md)。
+仲裁本身见[听澜](../tianshu-intake/README.zh-CN.md)，自己写参与者的方法见 [IA 外部模组仲裁接入说明](../../Tianshu/doc/function/intake/ia/IA_外部模组仲裁接入说明.md)。

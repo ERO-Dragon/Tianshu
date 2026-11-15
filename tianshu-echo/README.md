@@ -54,7 +54,7 @@ Models are downloaded from the settings page, with pause, resume, cancel and del
 - `TTS_CONTROL` — stop, reload the model, manage voices.
 - `TTS.PLAYBACK` / `TTS_REQUEST_STATUS` — playback state and per-request state.
 
-Voices belong to the caller; model choice is a host-level setting. See the [TTS protocol guide](../doc/function/echo/TTS_协议中心使用文档.md) for the full contract.
+Voices belong to the caller; model choice is a host-level setting. See the [TTS protocol guide](../../Tianshu/doc/function/echo/TTS_协议中心使用文档.md) for the full contract.
 
 ## License and credits
 

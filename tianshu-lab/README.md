@@ -36,4 +36,4 @@ The default is `1.21.1-neoforge` with all modules. Open Settings → Arbitration
 
 This mod is open source under the GNU Lesser General Public License v3.0 (© 2026 Ero-Dragon).
 
-See [Intake](../tianshu-intake/README.md) for the arbitration itself, and the [IA participant guide](../doc/function/intake/ia/IA_外部模组仲裁接入说明.md) for writing a participant of your own.
+See [Intake](../tianshu-intake/README.md) for the arbitration itself, and the [IA participant guide](../../Tianshu/doc/function/intake/ia/IA_外部模组仲裁接入说明.md) for writing a participant of your own.

@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.function.auxilium.protocol.AxCapabilities;
 import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
 
 import com.rheinmetal.tianshu.function.presence.payload.PresenceWorldEventPayload;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -15,7 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AXProtocolDocumentationBoundaryTest {
-    private static final Path PROTOCOL_GUIDE = Path.of("../doc/function/auxilium/AX_协议中心使用文档.md");
+    private static final Path PROTOCOL_GUIDE = WorkspacePaths.doc("function/auxilium/AX_协议中心使用文档.md");
 
     @Test
     void protocolGuideCoversEveryStableAxProtocolSymbol() throws Exception {

@@ -6,7 +6,7 @@
 **加载器**：NeoForge / Fabric
 **运行环境**：舟楫（Ferry）基座上的客户端模组，服务端不需要安装。
 **依赖**：舟楫（Ferry）与百工（Foundry）——均为必需；HUD 的落笔、GUI 门控与位置编辑器由舟楫提供。
-**第三方接入**：其他模组可以把自己的状态发布到 HUD，也可以查询映迹整理的世界状态；见[产品活动协议使用文档](../doc/function/presence/Presence_产品活动协议使用文档.md)。
+**第三方接入**：其他模组可以把自己的状态发布到 HUD，也可以查询映迹整理的世界状态；见[产品活动协议使用文档](../../Tianshu/doc/function/presence/Presence_产品活动协议使用文档.md)。
 
 ---
 
@@ -51,4 +51,4 @@
 
 本模组以 GNU 宽通用公共许可证第 3 版（LGPL-3.0）开源（© 2026 Ero-Dragon）。本模组不内置第三方运行时或模型。
 
-更多文档：[映迹文档索引](../doc/function/presence/Presence_文档索引.md) · [模块设计](../doc/function/presence/Presence_游戏内反馈与交互上下文模块设计.md) · [产品活动协议](../doc/function/presence/Presence_产品活动协议使用文档.md) · [HUD 浏览器预览](tools/hud-preview/README.md) · [模块架构](../doc/architecture/模块架构.md)
+更多文档：[映迹文档索引](../../Tianshu/doc/function/presence/Presence_文档索引.md) · [模块设计](../../Tianshu/doc/function/presence/Presence_游戏内反馈与交互上下文模块设计.md) · [产品活动协议](../../Tianshu/doc/function/presence/Presence_产品活动协议使用文档.md) · [HUD 浏览器预览](tools/hud-preview/README.md) · [模块架构](../../Tianshu/doc/architecture/模块架构.md)

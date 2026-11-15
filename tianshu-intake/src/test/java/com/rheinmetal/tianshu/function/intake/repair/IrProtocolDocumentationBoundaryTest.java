@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.function.presence.protocol.PresenceCapabilities;
 import com.rheinmetal.tianshu.function.ia.contract.IrModuleMatch;
 import com.rheinmetal.tianshu.function.ia.contract.IrObjectMatch;
 import com.rheinmetal.tianshu.function.presence.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -19,7 +20,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IrProtocolDocumentationBoundaryTest {
-    private static final Path PROTOCOL_GUIDE = Path.of("../doc/function/intake/repair/IR_协议中心使用文档.md");
+    private static final Path PROTOCOL_GUIDE = WorkspacePaths.doc("function/intake/repair/IR_协议中心使用文档.md");
 
     @Test
     void protocolGuideCoversEveryStableIrProtocolSymbol() throws Exception {

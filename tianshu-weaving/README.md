@@ -37,4 +37,4 @@ This mod is open source under the GNU Lesser General Public License v3.0 (© 202
 - BGE-M3 — BAAI, MIT
 - llama.cpp — MIT
 
-More: [LLM protocol design](../doc/function/weaving/LLM接口设计.md) · [black-box test record](../doc/function/weaving/黑盒测试.md)
+More: [LLM protocol design](../../Tianshu/doc/function/weaving/LLM接口设计.md) · [black-box test record](../../Tianshu/doc/function/weaving/黑盒测试.md)
