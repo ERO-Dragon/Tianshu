@@ -68,7 +68,8 @@ public final class BodyRegistry implements AgentBodyProvider {
         return true;
     }
 
-    public List<AgentBody> list() {
+    @Override
+    public List<AgentBody> all() {
         List<AgentBody> views = new ArrayList<>();
         for (BodyState state : bodies.values()) {
             if (!state.entity().isRemoved()) {

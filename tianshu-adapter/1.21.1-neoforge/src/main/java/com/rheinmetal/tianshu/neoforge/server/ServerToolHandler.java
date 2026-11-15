@@ -15,6 +15,11 @@ import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
 import com.rheinmetal.tianshu.client.tool.BlockMachineTool;
+import com.rheinmetal.tianshu.client.tool.BodyAttackTool;
+import com.rheinmetal.tianshu.client.tool.BodyListTool;
+import com.rheinmetal.tianshu.client.tool.BodyLookTool;
+import com.rheinmetal.tianshu.client.tool.BodyMineTool;
+import com.rheinmetal.tianshu.client.tool.BodyMoveTool;
 import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
 import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
@@ -103,10 +108,34 @@ public final class ServerToolHandler {
         }
         TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
         TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
+        registerBodyTools(ServerActionConfig.BODY_ACTIONS.get());
     }
 
     private static void onServerStopping(ServerStoppingEvent event) {
         BodyRuntime.stop();
+    }
+
+    /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */
+    private static void registerBodyTools(boolean enabled) {
+        if (TianshuTools.find(BodyListTool.ID) == null) {
+            TianshuTools.register(new BodyListTool());
+        }
+        if (TianshuTools.find(BodyMoveTool.ID) == null) {
+            TianshuTools.register(new BodyMoveTool());
+        }
+        if (TianshuTools.find(BodyLookTool.ID) == null) {
+            TianshuTools.register(new BodyLookTool());
+        }
+        if (TianshuTools.find(BodyMineTool.ID) == null) {
+            TianshuTools.register(new BodyMineTool());
+        }
+        if (TianshuTools.find(BodyAttackTool.ID) == null) {
+            TianshuTools.register(new BodyAttackTool());
+        }
+        TianshuTools.setEnabled(BodyMoveTool.ID, enabled);
+        TianshuTools.setEnabled(BodyLookTool.ID, enabled);
+        TianshuTools.setEnabled(BodyMineTool.ID, enabled);
+        TianshuTools.setEnabled(BodyAttackTool.ID, enabled);
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {

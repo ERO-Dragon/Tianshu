@@ -78,7 +78,7 @@ public final class BodyCommands {
 
     private static int list(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
-        List<AgentBody> bodies = BodyRuntime.require().list();
+        List<AgentBody> bodies = BodyRuntime.require().all();
         if (bodies.isEmpty()) {
             source.sendSuccess(() -> Component.literal("no agent bodies"), false);
             return 0;
