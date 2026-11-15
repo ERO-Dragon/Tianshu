@@ -25,9 +25,16 @@
 .\run.cmd -Version 1.21.1
 .\run.cmd -Version 26.3 -Loader neoforge
 
+# 纯舟楫：不安装功能模组
+.\run.cmd -Version 1.21.1 -Ferry
+
 # 从功能模组目录启动：自身 + 硬依赖
 cd ..\Tianshu-features\tianshu-echo
 ..\run-feature.cmd
+
+# 从 ferry 目录启动：纯舟楫
+cd ..\Tianshu-ferry
+.\run-ferry.cmd
 ```
 
 - `run.ps1` 会先初始化工作区，再切 `Tianshu-adapter` 到指定版本；
