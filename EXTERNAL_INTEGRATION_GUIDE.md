@@ -217,7 +217,7 @@ ExternalSettingsContributors.register(contributor);
 new DialogueParticipantRegisterPayload(descriptor, System.currentTimeMillis());
 ```
 
-`DialogueParticipantDescriptor` 要求提供 `icon`（伙伴标记贴图）与 `holdTier`（中标后的租期档位：20s / 10s / 5s / 0s）。完整字段与仲裁规则见 `doc/function/ia/IA_外部模组仲裁接入说明.md`。
+`DialogueParticipantDescriptor` 要求提供 `icon`（伙伴标记贴图）与 `holdTier`（中标后的租期档位：20s / 10s / 5s / 0s）。完整字段与仲裁规则见入口仓 `Tianshu` 的 `doc/function/ia/IA_外部模组仲裁接入说明.md`。
 
 Dialogue 接入是可选能力，不接入也应能独立运行。
 
