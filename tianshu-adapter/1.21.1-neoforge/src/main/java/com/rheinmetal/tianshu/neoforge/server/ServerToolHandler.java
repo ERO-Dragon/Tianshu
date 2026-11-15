@@ -48,6 +48,10 @@ import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import com.rheinmetal.tianshu.mc.body.ActionRouter;
+import com.rheinmetal.tianshu.mc.body.CraftRouter;
+import com.rheinmetal.tianshu.mc.body.InteractRouter;
+import com.rheinmetal.tianshu.mc.body.MachineRouter;
+import com.rheinmetal.tianshu.mc.body.TransferRouter;
 import com.rheinmetal.tianshu.mc.body.ItemRouter;
 import com.rheinmetal.tianshu.mc.body.PlaceRouter;
 import com.rheinmetal.tianshu.mc.body.QueryRouter;
@@ -96,13 +100,13 @@ public final class ServerToolHandler {
             TianshuTools.register(new RecipeQueryTool());
         }
         TianshuRuntimePorts.register(BlockInteractPort.class,
-                new BlockInteractSource(event.getServer(), bodies, actionPlayers));
+                new InteractRouter(new BlockInteractSource(event.getServer(), bodies, actionPlayers)));
         TianshuRuntimePorts.register(BlockPlacePort.class,
                 new PlaceRouter(new BlockPlaceSource(event.getServer(), bodies, actionPlayers)));
-        TianshuRuntimePorts.register(CraftPort.class, new CraftSource(event.getServer()));
+        TianshuRuntimePorts.register(CraftPort.class, new CraftRouter(new CraftSource(event.getServer())));
         TianshuRuntimePorts.register(ContainerTransferPort.class,
-                new ContainerTransferSource(event.getServer()));
-        TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(event.getServer()));
+                new TransferRouter(new ContainerTransferSource(event.getServer())));
+        TianshuRuntimePorts.register(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(event.getServer())));
         TianshuRuntimePorts.register(AgentMotionPort.class, new MotionRouter());
         TianshuRuntimePorts.register(AgentActionPort.class, new ActionRouter());
         TianshuRuntimePorts.register(AgentWorldQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));

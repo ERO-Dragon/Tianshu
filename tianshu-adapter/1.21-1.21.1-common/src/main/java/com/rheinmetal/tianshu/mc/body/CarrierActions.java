@@ -5,10 +5,18 @@ import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
+import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
+import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
+import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.mc.tool.AgentItemSource;
+import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
+import com.rheinmetal.tianshu.mc.tool.BlockMachineSource;
 import com.rheinmetal.tianshu.mc.tool.BlockPlaceSource;
 import com.rheinmetal.tianshu.mc.tool.BodyQuerySource;
+import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
+import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.Optional;
@@ -18,7 +26,7 @@ import java.util.Optional;
  * keeps the built-in carriers from getting a private path through the platform.
  *
  * <p>Each handler is created once per server registry and reused; handlers themselves are stateless beyond the
- * registry they read.</p>
+ * registry they read. A third-party carrier may return only the handlers it can perform.</p>
  */
 public final class CarrierActions implements AgentBodyActions {
 
@@ -27,6 +35,10 @@ public final class CarrierActions implements AgentBodyActions {
     private final AgentItemPort items;
     private final AgentWorldQueryPort query;
     private final BlockPlacePort placement;
+    private final BlockInteractPort interaction;
+    private final CraftPort craft;
+    private final ContainerTransferPort transfer;
+    private final BlockMachinePort machine;
 
     public CarrierActions(MinecraftServer server, BodyRegistry bodies, ActionPlayerFactory actionPlayers) {
         this.motion = new AgentMotionSource(server, bodies);
@@ -34,6 +46,10 @@ public final class CarrierActions implements AgentBodyActions {
         this.items = new AgentItemSource(server, bodies);
         this.query = new BodyQuerySource(server);
         this.placement = new BlockPlaceSource(server, bodies, actionPlayers);
+        this.interaction = new BlockInteractSource(server, bodies, actionPlayers);
+        this.craft = new CraftSource(server);
+        this.transfer = new ContainerTransferSource(server);
+        this.machine = new BlockMachineSource(server);
     }
 
     @Override
@@ -59,5 +75,25 @@ public final class CarrierActions implements AgentBodyActions {
     @Override
     public Optional<BlockPlacePort> placement() {
         return Optional.of(placement);
+    }
+
+    @Override
+    public Optional<BlockInteractPort> interaction() {
+        return Optional.of(interaction);
+    }
+
+    @Override
+    public Optional<CraftPort> craft() {
+        return Optional.of(craft);
+    }
+
+    @Override
+    public Optional<ContainerTransferPort> transfer() {
+        return Optional.of(transfer);
+    }
+
+    @Override
+    public Optional<BlockMachinePort> machine() {
+        return Optional.of(machine);
     }
 }

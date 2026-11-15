@@ -39,6 +39,10 @@ import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import com.rheinmetal.tianshu.mc.body.ActionRouter;
+import com.rheinmetal.tianshu.mc.body.CraftRouter;
+import com.rheinmetal.tianshu.mc.body.InteractRouter;
+import com.rheinmetal.tianshu.mc.body.MachineRouter;
+import com.rheinmetal.tianshu.mc.body.TransferRouter;
 import com.rheinmetal.tianshu.mc.body.ItemRouter;
 import com.rheinmetal.tianshu.mc.body.PlaceRouter;
 import com.rheinmetal.tianshu.mc.body.QueryRouter;
@@ -81,12 +85,12 @@ public final class FabricServerToolHandler {
                 TianshuTools.register(new RecipeQueryTool());
             }
             TianshuRuntimePorts.register(BlockInteractPort.class,
-                    new BlockInteractSource(server, bodies, actionPlayers));
+                    new InteractRouter(new BlockInteractSource(server, bodies, actionPlayers)));
             TianshuRuntimePorts.register(BlockPlacePort.class,
                     new PlaceRouter(new BlockPlaceSource(server, bodies, actionPlayers)));
-            TianshuRuntimePorts.register(CraftPort.class, new CraftSource(server));
-            TianshuRuntimePorts.register(ContainerTransferPort.class, new ContainerTransferSource(server));
-            TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(server));
+            TianshuRuntimePorts.register(CraftPort.class, new CraftRouter(new CraftSource(server)));
+            TianshuRuntimePorts.register(ContainerTransferPort.class, new TransferRouter(new ContainerTransferSource(server)));
+            TianshuRuntimePorts.register(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(server)));
             TianshuRuntimePorts.register(AgentMotionPort.class, new MotionRouter());
             TianshuRuntimePorts.register(AgentActionPort.class, new ActionRouter());
             TianshuRuntimePorts.register(AgentWorldQueryPort.class, new QueryRouter(new BodyQuerySource(server)));
