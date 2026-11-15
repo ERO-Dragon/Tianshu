@@ -31,7 +31,11 @@ import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import com.rheinmetal.tianshu.mc.body.BodyCommands;
+import com.rheinmetal.tianshu.mc.body.BodyRuntime;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -56,10 +60,13 @@ public final class ServerToolHandler {
         gameBus.addListener(ServerToolHandler::onPlayerLogin);
         gameBus.addListener(ServerToolHandler::onPlayerLogout);
         gameBus.addListener(ServerToolHandler::onServerStarting);
+        gameBus.addListener(ServerToolHandler::onServerStopping);
+        gameBus.addListener(ServerToolHandler::onRegisterCommands);
     }
 
     /** Installs the server-side tool sources and registers the tools they back. */
     private static void onServerStarting(ServerStartingEvent event) {
+        BodyRuntime.start();
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
         if (TianshuTools.find(RecipeQueryTool.ID) == null) {
@@ -89,6 +96,14 @@ public final class ServerToolHandler {
         }
         TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
         TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
+    }
+
+    private static void onServerStopping(ServerStoppingEvent event) {
+        BodyRuntime.stop();
+    }
+
+    private static void onRegisterCommands(RegisterCommandsEvent event) {
+        BodyCommands.register(event.getDispatcher());
     }
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {

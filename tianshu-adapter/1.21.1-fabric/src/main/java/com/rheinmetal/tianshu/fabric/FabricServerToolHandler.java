@@ -27,6 +27,9 @@ import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
 import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
+import com.rheinmetal.tianshu.mc.body.BodyCommands;
+import com.rheinmetal.tianshu.mc.body.BodyRuntime;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -49,6 +52,7 @@ public final class FabricServerToolHandler {
 
     public static void register() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            BodyRuntime.start();
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
             TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(server));
@@ -83,6 +87,9 @@ public final class FabricServerToolHandler {
                 context.server().execute(() -> respond(context.player(), packet)));
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerLogin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> onPlayerLogout(handler.getPlayer()));
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> BodyRuntime.stop());
+        CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) ->
+                BodyCommands.register(dispatcher));
     }
 
     private static void onPlayerLogin(ServerPlayer player) {
