@@ -19,7 +19,7 @@ class ModuleConfigurationBoundaryTest {
     private static final Path REPO_ROOT = Path.of("..");
     private static final Map<String, Path> FUNCTION_SOURCES = functionSources();
     private static final Path NEOFORGE_SOURCES = REPO_ROOT.resolve(
-            "tianshu-adapter/1.21.4-neoforge/src/main/java");
+            "tianshu-adapter/1.21.1-neoforge/src/main/java");
 
     @Test
     void functionModulesMustNotDependOnAggregateHostConfiguration() throws Exception {
