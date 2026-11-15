@@ -14,7 +14,7 @@ tasks.withType(JavaCompile).configureEach {
 // ---------------------------------------------------------------- boundary gates
 // These rules span modules, so they live at the root instead of inside one of them.
 //
-// Payload/dependency rule (full text: doc/architecture/模块架构.md §5):
+// Payload/dependency rule (full text: entry repo doc/architecture/模块架构.md §5):
 //   1. a payload class belongs to the module that produces it (protocol base payloads: tianshu-api);
 //   2. a REQUIRED partner -> hard dependency, plain import, no guard;
 //   3. an OPTIONAL partner -> compileOnly, and the partner's classes may only be touched from a `bridge`
@@ -616,7 +616,7 @@ tasks.register('verifyAdapterProperties') {
             // The shipped manifest must say exactly what the jar serves — never a broader line by accident. A jar
             // covers a range only when the adapter declares one: Fabric's `~<version>` looks like "approximately this
             // version" but means ">=version, next minor", so a 1.20.1 jar would load on 1.20.6; the 1.21.1/1.21.3
-            // experiment recorded in doc/architecture/多加载器与多版本.md §5.0.1 is why that is fatal. The 26.1 line
+            // experiment recorded in the entry repo doc/architecture/多加载器与多版本.md §5.0.1 is why that is fatal. The 26.1 line
             // is the one place a range is real (26.1 / 26.1.1 / 26.1.2 share a jar), and it states it explicitly.
             if (dir.name.endsWith('-fabric')) {
                 def templateFile = new File(dir, 'src/main/resources/fabric.mod.json')
