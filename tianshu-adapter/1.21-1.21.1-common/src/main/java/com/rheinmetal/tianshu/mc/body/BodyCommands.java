@@ -7,6 +7,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.rheinmetal.tianshu.api.agent.AgentBody;
+import com.rheinmetal.tianshu.api.agent.BodyAccess;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -40,7 +41,20 @@ public final class BodyCommands {
                         .then(Commands.literal("despawn")
                                 .then(Commands.argument("id", StringArgumentType.word())
                                         .executes(BodyCommands::despawn)))
-                        .then(Commands.literal("list").executes(BodyCommands::list))));
+                        .then(Commands.literal("list").executes(BodyCommands::list))
+                        .then(Commands.literal("access")
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .then(Commands.argument("mode", StringArgumentType.word())
+                                                .suggests(BodyCommands::suggestAccess)
+                                                .executes(BodyCommands::access))))
+                        .then(Commands.literal("trust")
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .then(Commands.argument("player", StringArgumentType.word())
+                                                .executes(BodyCommands::trust))))
+                        .then(Commands.literal("untrust")
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .then(Commands.argument("player", StringArgumentType.word())
+                                                .executes(BodyCommands::untrust))))));
     }
 
     private static CompletableFuture<Suggestions> suggestKinds(CommandContext<CommandSourceStack> context,
@@ -49,6 +63,69 @@ public final class BodyCommands {
             builder.suggest(kind.token());
         }
         return builder.buildFuture();
+    }
+
+    private static CompletableFuture<Suggestions> suggestAccess(CommandContext<CommandSourceStack> context,
+                                                               SuggestionsBuilder builder) {
+        for (BodyAccess access : BodyAccess.values()) {
+            builder.suggest(access.name().toLowerCase(java.util.Locale.ROOT));
+        }
+        return builder.buildFuture();
+    }
+
+    private static int access(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        String id = StringArgumentType.getString(context, "id");
+        String mode = StringArgumentType.getString(context, "mode");
+        BodyAccess parsed = null;
+        for (BodyAccess candidate : BodyAccess.values()) {
+            if (candidate.name().equalsIgnoreCase(mode)) {
+                parsed = candidate;
+            }
+        }
+        if (parsed == null) {
+            source.sendFailure(Component.literal("unknown access mode: " + mode));
+            return 0;
+        }
+        if (!BodyRuntime.require().setAccess(id, parsed)) {
+            source.sendFailure(Component.literal("no live agent body: " + id));
+            return 0;
+        }
+        BodyAccess applied = parsed;
+        source.sendSuccess(() -> Component.literal("access of " + id + " is now "
+                + applied.name().toLowerCase(java.util.Locale.ROOT)), true);
+        return 1;
+    }
+
+    private static int trust(CommandContext<CommandSourceStack> context) {
+        return setTrusted(context, true);
+    }
+
+    private static int untrust(CommandContext<CommandSourceStack> context) {
+        return setTrusted(context, false);
+    }
+
+    private static int setTrusted(CommandContext<CommandSourceStack> context, boolean trusted) {
+        CommandSourceStack source = context.getSource();
+        String id = StringArgumentType.getString(context, "id");
+        String player = StringArgumentType.getString(context, "player");
+        java.util.UUID playerId;
+        try {
+            playerId = java.util.UUID.fromString(player);
+        } catch (IllegalArgumentException notAUuid) {
+            source.sendFailure(Component.literal("not a player UUID: " + player));
+            return 0;
+        }
+        boolean changed = trusted
+                ? BodyRuntime.require().trust(id, playerId)
+                : BodyRuntime.require().untrust(id, playerId);
+        if (!changed) {
+            source.sendFailure(Component.literal("no live agent body: " + id));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal((trusted ? "trusted " : "untrusted ") + player
+                + (trusted ? " for " : " on ") + id), true);
+        return 1;
     }
 
     private static int spawn(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {

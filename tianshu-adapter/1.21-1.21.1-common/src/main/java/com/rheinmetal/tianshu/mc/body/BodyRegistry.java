@@ -4,7 +4,11 @@ import com.rheinmetal.tianshu.api.agent.ActorPosition;
 import com.rheinmetal.tianshu.api.agent.AgentBody;
 import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
 import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
+import com.rheinmetal.tianshu.api.agent.BodyAccess;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -18,6 +22,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,8 +33,8 @@ import java.util.UUID;
  * The server-side agent bodies of this adapter. The registry owns the carriers and their inventories; the platform
  * only sees {@link AgentBody} snapshots through {@link #resolve(String)}.
  *
- * <p>Bodies live in memory and are not persisted: a restart drops them, which is the honest state until the
- * inventory format is decided. A removed entity makes its body disappear rather than turning into a still body.</p>
+ * <p>Bodies and their inventories are saved by {@link BodyPersistence}; without a running server they are memory
+ * state only. A removed entity makes its body disappear rather than turning into a still body.</p>
  */
 public final class BodyRegistry implements AgentBodyProvider {
 
@@ -37,6 +42,8 @@ public final class BodyRegistry implements AgentBodyProvider {
 
     private final Map<UUID, BodyState> bodies = new LinkedHashMap<>();
     private final Map<UUID, Integer> activeSlots = new LinkedHashMap<>();
+    private final Map<UUID, BodyAccess> accessPolicies = new LinkedHashMap<>();
+    private final Map<UUID, Set<UUID>> trusted = new LinkedHashMap<>();
     private final MinecraftServer server;
     private final ActionPlayerFactory actionPlayers;
     private AgentBodyActions actions;
@@ -67,6 +74,92 @@ public final class BodyRegistry implements AgentBodyProvider {
             activeSlots.put(id, slot);
         }
         return true;
+    }
+
+    /** The access policy of a body; a live body defaults to owner-only. */
+    public BodyAccess access(String bodyId) {
+        UUID id = parse(bodyId);
+        if (id == null) {
+            return BodyAccess.OWNER;
+        }
+        return accessPolicies.getOrDefault(id, BodyAccess.OWNER);
+    }
+
+    /** Sets the policy; owner is the default, so it is stored as "no entry". Returns false for an unknown body. */
+    public boolean setAccess(String bodyId, BodyAccess access) {
+        UUID id = parse(bodyId);
+        if (id == null || !bodies.containsKey(id) || access == null) {
+            return false;
+        }
+        if (access == BodyAccess.OWNER) {
+            accessPolicies.remove(id);
+        } else {
+            accessPolicies.put(id, access);
+        }
+        return true;
+    }
+
+    /** The players the owner trusted for this body. */
+    public Set<UUID> trusted(String bodyId) {
+        UUID id = parse(bodyId);
+        if (id == null) {
+            return Set.of();
+        }
+        return Set.copyOf(trusted.getOrDefault(id, Set.of()));
+    }
+
+    public boolean trust(String bodyId, UUID player) {
+        UUID id = parse(bodyId);
+        if (id == null || !bodies.containsKey(id) || player == null) {
+            return false;
+        }
+        trusted.computeIfAbsent(id, ignored -> new LinkedHashSet<>()).add(player);
+        return true;
+    }
+
+    public boolean untrust(String bodyId, UUID player) {
+        UUID id = parse(bodyId);
+        if (id == null || player == null) {
+            return false;
+        }
+        Set<UUID> players = trusted.get(id);
+        if (players == null) {
+            return true;
+        }
+        players.remove(player);
+        if (players.isEmpty()) {
+            trusted.remove(id);
+        }
+        return true;
+    }
+
+    /**
+     * Player-driven calls must pass the body's policy; the caller runtime and the server are trusted by
+     * construction, because they carry the operator permission that gates write tools in the first place.
+     */
+    @Override
+    public Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
+        if (caller == null || caller.kind() != ToolCaller.Kind.PLAYER) {
+            return Optional.empty();
+        }
+        UUID id = parse(bodyId);
+        if (id == null || !bodies.containsKey(id)) {
+            return Optional.empty();
+        }
+        UUID callerId = parse(caller.id());
+        if (callerId != null && callerId.equals(bodies.get(id).owner())) {
+            return Optional.empty();
+        }
+        BodyAccess policy = accessPolicies.getOrDefault(id, BodyAccess.OWNER);
+        if (policy == BodyAccess.OPEN) {
+            return Optional.empty();
+        }
+        if (policy == BodyAccess.TRUSTED && callerId != null
+                && trusted.getOrDefault(id, Set.of()).contains(callerId)) {
+            return Optional.empty();
+        }
+        return Optional.of(new ToolException(ToolError.NO_PERMISSION,
+                "you are not allowed to command this body"));
     }
 
     /** Spawns a carrier for {@code owner} at the owner's position and returns the new body. */
@@ -107,6 +200,8 @@ public final class BodyRegistry implements AgentBodyProvider {
         state.entity().discard();
         bodies.remove(state.id());
         activeSlots.remove(state.id());
+        accessPolicies.remove(state.id());
+        trusted.remove(state.id());
         return true;
     }
 

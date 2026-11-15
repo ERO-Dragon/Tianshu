@@ -1,9 +1,11 @@
 package com.rheinmetal.tianshu.mc.body;
 
+import com.rheinmetal.tianshu.api.agent.BodyAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -63,6 +65,12 @@ public final class BodyPersistence {
             tag.putUUID("owner", state.owner());
             tag.putBoolean("operator", state.operator());
             tag.putInt("activeSlot", bodies.activeSlot(state.id().toString()));
+            tag.putString("access", bodies.access(state.id().toString()).name());
+            ListTag trusted = new ListTag();
+            for (UUID player : bodies.trusted(state.id().toString())) {
+                trusted.add(StringTag.valueOf(player.toString()));
+            }
+            tag.put("trusted", trusted);
             ListTag inventory = new ListTag();
             if (state.inventory() != null) {
                 for (int slot = 0; slot < MAIN_SLOTS; slot++) {
@@ -136,7 +144,26 @@ public final class BodyPersistence {
         }
         bodies.restore(new BodyRegistry.BodyState(id, kind.get(), inventory, tag.getUUID("owner"),
                 tag.getBoolean("operator"), entity), tag.getInt("activeSlot"));
+        BodyAccess access = parseAccess(tag.getString("access"));
+        bodies.setAccess(id.toString(), access);
+        ListTag trusted = tag.getList("trusted", Tag.TAG_STRING);
+        for (int index = 0; index < trusted.size(); index++) {
+            try {
+                bodies.trust(id.toString(), UUID.fromString(trusted.getString(index)));
+            } catch (IllegalArgumentException notAUuid) {
+                LOGGER.warn("skipping malformed trusted player id: {}", trusted.getString(index));
+            }
+        }
         return true;
+    }
+
+    private static BodyAccess parseAccess(String name) {
+        for (BodyAccess access : BodyAccess.values()) {
+            if (access.name().equalsIgnoreCase(name)) {
+                return access;
+            }
+        }
+        return BodyAccess.OWNER;
     }
 
     private static Entity find(MinecraftServer server, UUID id) {
