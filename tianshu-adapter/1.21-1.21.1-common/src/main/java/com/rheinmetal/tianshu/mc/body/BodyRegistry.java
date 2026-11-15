@@ -319,6 +319,66 @@ public final class BodyRegistry implements AgentBodyProvider {
         return added;
     }
 
+    /**
+     * Handles a carrier death: with {@code keepInventory} the body is kept alive at full health; otherwise its
+     * inventory and equipment are dropped at its position and the registry entry is removed.
+     *
+     * <p>Returns true when the body was kept, which tells the loader hook to cancel the death.</p>
+     */
+    public boolean onDeath(Entity entity, boolean keepInventory) {
+        if (entity == null) {
+            return false;
+        }
+        BodyState state = bodies.get(entity.getUUID());
+        if (state == null) {
+            return false;
+        }
+        if (keepInventory) {
+            if (entity instanceof LivingEntity living) {
+                living.setHealth(living.getMaxHealth());
+                living.clearFire();
+            }
+            return true;
+        }
+        dropAll(state);
+        bodies.remove(state.id());
+        activeSlots.remove(state.id());
+        accessPolicies.remove(state.id());
+        trusted.remove(state.id());
+        equipment.remove(state.id());
+        return false;
+    }
+
+    private void dropAll(BodyState state) {
+        ServerLevel level = state.level();
+        Vec3 at = state.position();
+        List<ItemStack> stacks = new ArrayList<>();
+        if (state.inventory() != null) {
+            for (int slot = 0; slot < INVENTORY_SIZE; slot++) {
+                ItemStack stack = state.inventory().getItem(slot);
+                if (!stack.isEmpty()) {
+                    stacks.add(stack.copy());
+                    state.inventory().setItem(slot, ItemStack.EMPTY);
+                }
+            }
+            state.inventory().setChanged();
+        }
+        if (equipment.containsKey(state.id())) {
+            for (BodySlot slot : BodySlot.values()) {
+                ItemStack stack = equipment.get(state.id()).get(slot);
+                if (stack != null && !stack.isEmpty()) {
+                    stacks.add(stack.copy());
+                }
+                setEquipment(state.id().toString(), slot, ItemStack.EMPTY);
+            }
+        }
+        applyEquipment(state);
+        for (ItemStack stack : stacks) {
+            level.addFreshEntity(new net.minecraft.world.entity.item.ItemEntity(level, at.x, at.y + 0.5D, at.z,
+                    stack));
+        }
+    }
+
     @Override
     public Optional<AgentBody> resolve(String bodyId) {
         return state(bodyId).map(BodyRegistry::view);

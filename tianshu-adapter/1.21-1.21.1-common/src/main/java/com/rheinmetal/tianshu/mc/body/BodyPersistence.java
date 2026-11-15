@@ -60,6 +60,9 @@ public final class BodyPersistence {
         root.putInt("version", VERSION);
         ListTag saved = new ListTag();
         for (BodyRegistry.BodyState state : bodies.states()) {
+            if (state.entity().isRemoved()) {
+                continue;
+            }
             CompoundTag tag = new CompoundTag();
             tag.putUUID("id", state.id());
             tag.putString("kind", state.kind().token());

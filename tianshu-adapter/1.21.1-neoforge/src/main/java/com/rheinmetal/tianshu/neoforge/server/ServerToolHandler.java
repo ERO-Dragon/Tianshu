@@ -33,6 +33,8 @@ import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.common.NeoForge;
+import net.minecraft.world.level.GameRules;
 import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.host.ServerTicks;
 import com.rheinmetal.tianshu.mc.host.ServerPlayerAuthority;
@@ -46,6 +48,7 @@ import com.rheinmetal.tianshu.mc.tool.CraftSource;
 import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import com.rheinmetal.tianshu.mc.body.BodyCommands;
 import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
@@ -89,12 +92,23 @@ public final class ServerToolHandler {
         gameBus.addListener(ServerToolHandler::onPlayerLogin);
         gameBus.addListener(ServerToolHandler::onPlayerLogout);
         gameBus.addListener(ServerToolHandler::onServerStarting);
+        NeoForge.EVENT_BUS.addListener(ServerToolHandler::onLivingDeath);
         gameBus.addListener(ServerToolHandler::onServerStopping);
         gameBus.addListener(ServerToolHandler::onRegisterCommands);
         gameBus.addListener(ServerToolHandler::onServerTick);
     }
 
     /** Installs the server-side tool sources and registers the tools they back. */
+    private static void onLivingDeath(LivingDeathEvent event) {
+        BodyRuntime.current().ifPresent(bodies -> {
+            boolean keep = event.getEntity().level().getGameRules()
+                    .getBoolean(GameRules.RULE_KEEPINVENTORY);
+            if (bodies.onDeath(event.getEntity(), keep)) {
+                event.setCanceled(true);
+            }
+        });
+    }
+
     private static void onServerStarting(ServerStartingEvent event) {
         ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
         BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers);

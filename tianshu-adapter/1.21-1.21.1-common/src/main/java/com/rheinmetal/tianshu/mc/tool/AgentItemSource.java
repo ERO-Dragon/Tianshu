@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.mc.tool;
 import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.DropResult;
 import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.PickedItem;
@@ -111,6 +112,43 @@ public final class AgentItemSource implements AgentItemPort {
     private static String itemId(ItemStack stack) {
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return stack.isEmpty() || id == null ? "" : id.toString();
+    }
+
+    @Override
+    public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+        CompletableFuture<DropResult> result = new CompletableFuture<>();
+        server.execute(() -> {
+            try {
+                result.complete(dropNow(actor, slot, count));
+            } catch (ToolException failure) {
+                result.completeExceptionally(failure);
+            }
+        });
+        return result;
+    }
+
+    private DropResult dropNow(ActorRef actor, int slot, int count) {
+        BodyRegistry.BodyState state = bodies.state(actor.id()).orElseThrow(() -> new ToolException(
+                ToolError.UNAVAILABLE, "the agent body is not present"));
+        Container inventory = state.inventory();
+        if (inventory == null) {
+            throw new ToolException(ToolError.UNAVAILABLE, "that agent body has no inventory");
+        }
+        if (slot < 0 || slot >= MAIN_SLOTS) {
+            throw new ToolException(ToolError.INVALID_ARGS, "slot must be 0..35");
+        }
+        ItemStack stack = inventory.getItem(slot);
+        if (stack.isEmpty()) {
+            throw new ToolException(ToolError.INVALID_ARGS, "that inventory slot is empty");
+        }
+        int dropped = count <= 0 ? stack.getCount() : Math.min(count, stack.getCount());
+        ItemStack out = stack.copyWithCount(dropped);
+        stack.shrink(dropped);
+        inventory.setChanged();
+        net.minecraft.server.level.ServerLevel level = state.level();
+        level.addFreshEntity(new ItemEntity(level, state.position().x, state.position().y + 0.5D,
+                state.position().z, out));
+        return new DropResult(itemId(stack), dropped);
     }
 
     @Override

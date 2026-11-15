@@ -57,8 +57,10 @@ import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import com.rheinmetal.tianshu.mc.body.BodyPersistence;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.minecraft.world.level.GameRules;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
@@ -79,6 +81,10 @@ public final class FabricServerToolHandler {
     }
 
     public static void register() {
+        ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> BodyRuntime.current()
+                .map(bodies -> !bodies.onDeath(entity,
+                        entity.level().getGameRules().getBoolean(GameRules.RULE_KEEPINVENTORY)))
+                .orElse(true));
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             BodyRegistry bodies = BodyRuntime.start(server, actionPlayers);
