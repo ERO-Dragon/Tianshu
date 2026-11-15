@@ -18,6 +18,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Marker;
 import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -227,6 +228,38 @@ public final class BodyRegistry implements AgentBodyProvider {
         if (activeSlot >= 0) {
             activeSlots.put(state.id(), activeSlot);
         }
+    }
+
+    /** Adds items to a body's inventory, stacking first; returns how many fit. */
+    public int give(String bodyId, ItemStack stack) {
+        UUID id = parse(bodyId);
+        if (id == null || stack.isEmpty()) {
+            return 0;
+        }
+        BodyState state = bodies.get(id);
+        if (state == null || state.inventory() == null) {
+            return 0;
+        }
+        Container inventory = state.inventory();
+        int remaining = stack.getCount();
+        for (int slot = 0; slot < INVENTORY_SIZE && remaining > 0; slot++) {
+            ItemStack existing = inventory.getItem(slot);
+            if (existing.isEmpty()) {
+                int put = Math.min(remaining, stack.getMaxStackSize());
+                inventory.setItem(slot, new ItemStack(stack.getItem(), put));
+                remaining -= put;
+            } else if (ItemStack.isSameItemSameComponents(existing, stack)
+                    && existing.getCount() < existing.getMaxStackSize()) {
+                int put = Math.min(remaining, existing.getMaxStackSize() - existing.getCount());
+                existing.grow(put);
+                remaining -= put;
+            }
+        }
+        int added = stack.getCount() - remaining;
+        if (added > 0) {
+            inventory.setChanged();
+        }
+        return added;
     }
 
     @Override

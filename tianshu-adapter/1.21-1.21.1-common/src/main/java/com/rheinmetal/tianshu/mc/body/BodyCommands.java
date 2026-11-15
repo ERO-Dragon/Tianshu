@@ -54,7 +54,14 @@ public final class BodyCommands {
                         .then(Commands.literal("untrust")
                                 .then(Commands.argument("id", StringArgumentType.word())
                                         .then(Commands.argument("player", StringArgumentType.word())
-                                                .executes(BodyCommands::untrust))))));
+                                                .executes(BodyCommands::untrust))))
+                        .then(Commands.literal("give")
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .then(Commands.argument("item", StringArgumentType.word())
+                                                .then(Commands.argument("count",
+                                                                com.mojang.brigadier.arguments.IntegerArgumentType
+                                                                        .integer(1, 2304))
+                                                        .executes(BodyCommands::give)))))));
     }
 
     private static CompletableFuture<Suggestions> suggestKinds(CommandContext<CommandSourceStack> context,
@@ -126,6 +133,32 @@ public final class BodyCommands {
         source.sendSuccess(() -> Component.literal((trusted ? "trusted " : "untrusted ") + player
                 + (trusted ? " for " : " on ") + id), true);
         return 1;
+    }
+
+    private static int give(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        String id = StringArgumentType.getString(context, "id");
+        String itemToken = StringArgumentType.getString(context, "item");
+        net.minecraft.resources.ResourceLocation itemId = net.minecraft.resources.ResourceLocation.tryParse(itemToken);
+        net.minecraft.world.item.Item item = itemId == null ? null
+                : net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
+        if (item == null || item == net.minecraft.world.item.Items.AIR) {
+            source.sendFailure(Component.literal("unknown item: " + itemToken));
+            return 0;
+        }
+        if (BodyRuntime.require().state(id).isEmpty()) {
+            source.sendFailure(Component.literal("no live agent body: " + id));
+            return 0;
+        }
+        int count = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "count");
+        int added = BodyRuntime.require().give(id, new net.minecraft.world.item.ItemStack(item, count));
+        if (added <= 0) {
+            source.sendFailure(Component.literal("no room in " + id));
+            return 0;
+        }
+        int given = added;
+        source.sendSuccess(() -> Component.literal("gave " + given + " " + itemToken + " to " + id), true);
+        return added;
     }
 
     private static int spawn(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
