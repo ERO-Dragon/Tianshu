@@ -29,7 +29,11 @@ import java.util.concurrent.CompletableFuture;
  * which machines are understood (for now the furnace family); an unknown block is a refusal with a reason, never a
  * generic "run this block" escape hatch.</p>
  */
-public final class BlockMachineTool implements TianshuTool<MachineOpRequest, MachineOpResult> {
+public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args, MachineOpResult> {
+
+    /** {@code body} is optional: when present the machine works on that body's inventory. */
+    public record Args(int x, int y, int z, String operation, Integer playerSlot, String body) {
+    }
 
     public static final ToolId ID = ToolId.of("tianshu", "block.machine");
     private static final Set<String> OPERATIONS = Set.of("insert_fuel", "insert_input", "take_output");
@@ -51,7 +55,7 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
 
     @Override
     public Type argsType() {
-        return MachineOpRequest.class;
+        return Args.class;
     }
 
     @Override
@@ -77,6 +81,7 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
 
         JsonObject playerSlot = integer("Player inventory slot used by insert_fuel and insert_input, 0..35");
         properties.add("playerSlot", playerSlot);
+        properties.add("body", BodyToolSchemas.body());
 
         JsonArray required = new JsonArray();
         required.add("x");
@@ -92,11 +97,11 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
     }
 
     @Override
-    public CompletableFuture<MachineOpResult> invoke(ToolContext context, MachineOpRequest args) {
+    public CompletableFuture<MachineOpResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
         if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "block.machine runs as a player"));
+                    "block.machine runs as a player or an agent body"));
         }
         String operation = args == null || args.operation() == null
                 ? "" : args.operation().trim().toLowerCase(Locale.ROOT);
@@ -104,14 +109,15 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "block.machine needs one of: insert_fuel, insert_input, take_output"));
         }
-        if (!operation.equals("take_output") && (args.playerSlot() < 0 || args.playerSlot() >= 36)) {
+        int slot = args.playerSlot() == null ? -1 : args.playerSlot();
+        if (!operation.equals("take_output") && (slot < 0 || slot >= 36)) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "block.machine needs a player slot between 0 and 35 for insert operations"));
         }
         MachineOpRequest normalised = new MachineOpRequest(args.x(), args.y(), args.z(), operation,
-                operation.equals("take_output") ? -1 : args.playerSlot());
-        ActorRef actor = ActorRef.of(caller);
-        java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.USE);
+                operation.equals("take_output") ? -1 : slot);
+        ActorRef actor = ActorSelection.of(caller, args.body());
+        java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }

@@ -26,7 +26,11 @@ import java.util.concurrent.CompletableFuture;
  * <p>A write tool: off by default, operator-only, and it only ever crafts the recipe it was given — choosing the
  * recipe is the caller's job, so a wrong assumption becomes a visible refusal instead of a surprise item.</p>
  */
-public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftResult> {
+public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, CraftResult> {
+
+    /** {@code body} is optional: when present the craft runs on that body's inventory. */
+    public record Args(String recipeId, String body) {
+    }
 
     public static final ToolId ID = ToolId.of("tianshu", "craft.recipe");
 
@@ -47,7 +51,7 @@ public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftRes
 
     @Override
     public Type argsType() {
-        return CraftRequest.class;
+        return Args.class;
     }
 
     @Override
@@ -63,6 +67,7 @@ public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftRes
 
         JsonObject properties = new JsonObject();
         properties.add("recipeId", recipe);
+        properties.add("body", BodyToolSchemas.body());
 
         JsonArray required = new JsonArray();
         required.add("recipeId");
@@ -75,17 +80,17 @@ public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftRes
     }
 
     @Override
-    public CompletableFuture<CraftResult> invoke(ToolContext context, CraftRequest args) {
+    public CompletableFuture<CraftResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
         if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "craft.recipe runs as a player"));
+                    "craft.recipe runs as a player or an agent body"));
         }
         if (args == null || args.recipeId() == null || args.recipeId().isBlank()) {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
         }
-        ActorRef actor = ActorRef.of(caller);
+        ActorRef actor = ActorSelection.of(caller, args.body());
         java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());

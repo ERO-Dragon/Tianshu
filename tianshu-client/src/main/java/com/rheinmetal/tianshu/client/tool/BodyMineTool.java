@@ -58,11 +58,11 @@ public final class BodyMineTool implements TianshuTool<BodyMineTool.Args, Action
     @Override
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
-        properties.add("body", BodyToolSchemas.text("Agent body id from body.list"));
+        properties.add("body", BodyToolSchemas.body());
         properties.add("x", BodyToolSchemas.integer("Block x"));
         properties.add("y", BodyToolSchemas.integer("Block y"));
         properties.add("z", BodyToolSchemas.integer("Block z"));
-        return BodyToolSchemas.object(properties, "body", "x", "y", "z");
+        return BodyToolSchemas.object(properties, "x", "y", "z");
     }
 
     @Override

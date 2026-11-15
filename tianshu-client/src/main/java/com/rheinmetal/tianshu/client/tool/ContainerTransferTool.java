@@ -26,7 +26,13 @@ import java.util.concurrent.CompletableFuture;
  * <p>A write tool: off by default, operator-only, one slot pair per call. It refuses negative slots and counts
  * outside 1..64 before anything reaches the game, so a malformed call never becomes a partial move.</p>
  */
-public final class ContainerTransferTool implements TianshuTool<ContainerTransferRequest, ContainerTransferResult> {
+public final class ContainerTransferTool implements
+        TianshuTool<ContainerTransferTool.Args, ContainerTransferResult> {
+
+    /** {@code body} is optional: when present the transfer uses that body's inventory. */
+    public record Args(int x, int y, int z, int containerSlot, int playerSlot, int count, boolean toPlayer,
+                       String body) {
+    }
 
     public static final ToolId ID = ToolId.of("tianshu", "container.transfer");
 
@@ -47,7 +53,7 @@ public final class ContainerTransferTool implements TianshuTool<ContainerTransfe
 
     @Override
     public Type argsType() {
-        return ContainerTransferRequest.class;
+        return Args.class;
     }
 
     @Override
@@ -69,6 +75,7 @@ public final class ContainerTransferTool implements TianshuTool<ContainerTransfe
         direction.addProperty("type", "boolean");
         direction.addProperty("description", "true = container to player, false = player to container");
         properties.add("toPlayer", direction);
+        properties.add("body", BodyToolSchemas.body());
 
         JsonArray required = new JsonArray();
         required.add("x");
@@ -87,7 +94,7 @@ public final class ContainerTransferTool implements TianshuTool<ContainerTransfe
     }
 
     @Override
-    public CompletableFuture<ContainerTransferResult> invoke(ToolContext context, ContainerTransferRequest args) {
+    public CompletableFuture<ContainerTransferResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
         if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
@@ -98,13 +105,15 @@ public final class ContainerTransferTool implements TianshuTool<ContainerTransfe
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "container.transfer needs non-negative slots and a count between 1 and 64"));
         }
-        ActorRef actor = ActorRef.of(caller);
+        ActorRef actor = ActorSelection.of(caller, args.body());
         java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
+        ContainerTransferRequest request = new ContainerTransferRequest(args.x(), args.y(), args.z(),
+                args.containerSlot(), args.playerSlot(), args.count(), args.toPlayer());
         return TianshuRuntimePorts.find(ContainerTransferPort.class)
-                .map(port -> port.transfer(actor, args))
+                .map(port -> port.transfer(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "container access is only available on the server")));
     }

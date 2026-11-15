@@ -59,9 +59,9 @@ public final class BodyAttackTool implements TianshuTool<BodyAttackTool.Args, Ac
     @Override
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
-        properties.add("body", BodyToolSchemas.text("Agent body id from body.list"));
+        properties.add("body", BodyToolSchemas.body());
         properties.add("entity", BodyToolSchemas.text("Entity id (UUID)"));
-        return BodyToolSchemas.object(properties, "body", "entity");
+        return BodyToolSchemas.object(properties, "entity");
     }
 
     @Override

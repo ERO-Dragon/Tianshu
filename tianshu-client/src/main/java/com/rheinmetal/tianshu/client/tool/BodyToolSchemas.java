@@ -16,6 +16,14 @@ final class BodyToolSchemas {
         return property;
     }
 
+    /**
+     * The body parameter is optional on the wire: the caller runtime already knows which body it is driving and
+     * fills this in before dispatch, so the model does not spend tokens repeating an id it did not choose.
+     */
+    static JsonObject body() {
+        return text("Agent body id; the caller runtime fills it in when omitted");
+    }
+
     static JsonObject integer(String description) {
         JsonObject property = new JsonObject();
         property.addProperty("type", "integer");

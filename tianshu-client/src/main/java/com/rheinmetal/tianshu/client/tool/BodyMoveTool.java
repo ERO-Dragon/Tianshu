@@ -63,7 +63,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
     @Override
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
-        properties.add("body", BodyToolSchemas.text("Agent body id from body.list"));
+        properties.add("body", BodyToolSchemas.body());
         properties.add("x", BodyToolSchemas.integer("Target x"));
         properties.add("y", BodyToolSchemas.integer("Target y"));
         properties.add("z", BodyToolSchemas.integer("Target z"));
@@ -74,7 +74,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
         JsonObject mode = BodyToolSchemas.text("Movement mode; defaults to any");
         mode.add("enum", modes);
         properties.add("mode", mode);
-        return BodyToolSchemas.object(properties, "body", "x", "y", "z");
+        return BodyToolSchemas.object(properties, "x", "y", "z");
     }
 
     @Override

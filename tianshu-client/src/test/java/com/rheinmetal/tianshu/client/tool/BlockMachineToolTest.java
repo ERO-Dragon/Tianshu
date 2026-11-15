@@ -72,7 +72,7 @@ class BlockMachineToolTest {
     }
 
     @Test
-    void aBodyWithoutUseIsRefusedAsUnsupported() throws Exception {
+    void aBodyWithoutAnInventoryIsRefusedAsUnsupported() throws Exception {
         TianshuTools.register(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
         TestBodies.register("float", BodyCapability.MOVE, BodyCapability.LOOK);
