@@ -64,4 +64,9 @@ public interface AgentBodyActions {
     default Optional<BlockMachinePort> machine() {
         return Optional.empty();
     }
+
+    /** Using the item in the active slot (instant uses), behind {@code item.use}. */
+    default Optional<AgentItemUsePort> itemUse() {
+        return Optional.empty();
+    }
 }
