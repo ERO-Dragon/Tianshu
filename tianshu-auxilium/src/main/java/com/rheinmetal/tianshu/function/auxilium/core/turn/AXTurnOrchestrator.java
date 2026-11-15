@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.api.assembly.LocalPlayerIdentity;
 import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -619,14 +620,22 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
     private static ToolCaller toolCaller(AXTurnExecution execution) {
         String playerId = execution.delivery().playerId();
         if (!looksLikePlayerId(playerId)) {
-            // The scope model still carries a shared placeholder user, not a player uuid: without an identity there
-            // is no permission to look up, so the turn stays a plain agent turn instead of pretending.
+            // The scope model still carries a shared placeholder user, so fall back to the local player the client
+            // knows. Without one (menu, dedicated server) the turn stays a plain agent turn.
+            playerId = TianshuRuntimePorts.find(LocalPlayerIdentity.class)
+                    .flatMap(LocalPlayerIdentity::playerId)
+                    .orElse(null);
+        }
+        if (playerId == null) {
             return ToolCaller.agent(false);
         }
+        String owner = playerId;
         boolean operator = TianshuRuntimePorts.find(PlayerAuthority.class)
-                .map(authority -> authority.operator(playerId))
-                .orElse(false);
-        return ToolCaller.player(playerId, operator);
+                .map(authority -> authority.operator(owner))
+                .orElseGet(() -> TianshuRuntimePorts.find(LocalPlayerIdentity.class)
+                        .map(LocalPlayerIdentity::operator)
+                        .orElse(false));
+        return ToolCaller.player(owner, operator);
     }
 
     private static boolean looksLikePlayerId(String value) {
