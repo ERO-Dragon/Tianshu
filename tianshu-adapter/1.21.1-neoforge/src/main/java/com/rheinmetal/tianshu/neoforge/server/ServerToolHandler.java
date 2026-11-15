@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
+import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
@@ -15,23 +16,21 @@ import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
 import com.rheinmetal.tianshu.client.tool.BlockMachineTool;
-import com.rheinmetal.tianshu.client.tool.BodyAttackTool;
-import com.rheinmetal.tianshu.client.tool.BodyListTool;
-import com.rheinmetal.tianshu.client.tool.BodyLookTool;
-import com.rheinmetal.tianshu.client.tool.BodyMineTool;
-import com.rheinmetal.tianshu.client.tool.BodyMoveTool;
 import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
 import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
 import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
+import com.rheinmetal.tianshu.neoforge.body.NeoForgeActionPlayers;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
+import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
+import com.rheinmetal.tianshu.mc.tool.BlockPlaceSource;
 import com.rheinmetal.tianshu.mc.tool.BlockMachineSource;
 import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
 import com.rheinmetal.tianshu.mc.tool.CraftSource;
@@ -39,6 +38,7 @@ import com.rheinmetal.tianshu.mc.tool.LootQuerySource;
 import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import com.rheinmetal.tianshu.mc.body.BodyCommands;
+import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import com.rheinmetal.tianshu.mc.body.AgentActionSource;
@@ -77,12 +77,16 @@ public final class ServerToolHandler {
     /** Installs the server-side tool sources and registers the tools they back. */
     private static void onServerStarting(ServerStartingEvent event) {
         BodyRegistry bodies = BodyRuntime.start();
+        ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
         if (TianshuTools.find(RecipeQueryTool.ID) == null) {
             TianshuTools.register(new RecipeQueryTool());
         }
-        TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractSource(event.getServer()));
+        TianshuRuntimePorts.register(BlockInteractPort.class,
+                new BlockInteractSource(event.getServer(), bodies, actionPlayers));
+        TianshuRuntimePorts.register(BlockPlacePort.class,
+                new BlockPlaceSource(event.getServer(), bodies, actionPlayers));
         TianshuRuntimePorts.register(CraftPort.class, new CraftSource(event.getServer()));
         TianshuRuntimePorts.register(ContainerTransferPort.class,
                 new ContainerTransferSource(event.getServer()));
@@ -108,7 +112,7 @@ public final class ServerToolHandler {
         }
         TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
         TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
-        registerBodyTools(ServerActionConfig.BODY_ACTIONS.get());
+        registerBodyTools(ServerActionConfig.BODY_ACTIONS.get(), ServerActionConfig.BLOCK_PLACE.get());
     }
 
     private static void onServerStopping(ServerStoppingEvent event) {
@@ -116,26 +120,8 @@ public final class ServerToolHandler {
     }
 
     /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */
-    private static void registerBodyTools(boolean enabled) {
-        if (TianshuTools.find(BodyListTool.ID) == null) {
-            TianshuTools.register(new BodyListTool());
-        }
-        if (TianshuTools.find(BodyMoveTool.ID) == null) {
-            TianshuTools.register(new BodyMoveTool());
-        }
-        if (TianshuTools.find(BodyLookTool.ID) == null) {
-            TianshuTools.register(new BodyLookTool());
-        }
-        if (TianshuTools.find(BodyMineTool.ID) == null) {
-            TianshuTools.register(new BodyMineTool());
-        }
-        if (TianshuTools.find(BodyAttackTool.ID) == null) {
-            TianshuTools.register(new BodyAttackTool());
-        }
-        TianshuTools.setEnabled(BodyMoveTool.ID, enabled);
-        TianshuTools.setEnabled(BodyLookTool.ID, enabled);
-        TianshuTools.setEnabled(BodyMineTool.ID, enabled);
-        TianshuTools.setEnabled(BodyAttackTool.ID, enabled);
+    private static void registerBodyTools(boolean actionsEnabled, boolean placeEnabled) {
+        BodyToolRegistry.register(actionsEnabled, placeEnabled);
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {

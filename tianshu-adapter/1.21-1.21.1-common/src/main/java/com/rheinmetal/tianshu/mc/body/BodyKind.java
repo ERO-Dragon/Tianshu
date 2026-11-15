@@ -20,9 +20,9 @@ public enum BodyKind {
     /** A vanilla marker: invisible, no health, no collision, no inventory and no hands. */
     MARKER(Set.of(BodyCapability.MOVE, BodyCapability.LOOK)),
 
-    /** A gravity-free armour stand: it carries a 36-slot inventory and can strike and break. */
-    STAND(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.MINE, BodyCapability.ATTACK,
-            BodyCapability.INVENTORY));
+    /** A gravity-free armour stand: it carries a 36-slot inventory and can use, place, strike and break. */
+    STAND(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.USE, BodyCapability.PLACE,
+            BodyCapability.MINE, BodyCapability.ATTACK, BodyCapability.INVENTORY));
 
     private final Set<BodyCapability> capabilities;
 

@@ -19,6 +19,7 @@ public final class FabricToolConfig {
     private static final String CONTAINER_TRANSFER = "container_transfer";
     private static final String BLOCK_MACHINE = "block_machine";
     private static final String BODY_ACTIONS = "body_actions";
+    private static final String BLOCK_PLACE = "block_place";
 
     private static final Properties VALUES = new Properties();
 
@@ -28,6 +29,7 @@ public final class FabricToolConfig {
         VALUES.setProperty(CONTAINER_TRANSFER, "false");
         VALUES.setProperty(BLOCK_MACHINE, "false");
         VALUES.setProperty(BODY_ACTIONS, "false");
+        VALUES.setProperty(BLOCK_PLACE, "false");
     }
 
     private FabricToolConfig() {
@@ -72,5 +74,9 @@ public final class FabricToolConfig {
 
     public static boolean bodyActions() {
         return Boolean.parseBoolean(VALUES.getProperty(BODY_ACTIONS, "false").trim());
+    }
+
+    public static boolean blockPlace() {
+        return Boolean.parseBoolean(VALUES.getProperty(BLOCK_PLACE, "false").trim());
     }
 }

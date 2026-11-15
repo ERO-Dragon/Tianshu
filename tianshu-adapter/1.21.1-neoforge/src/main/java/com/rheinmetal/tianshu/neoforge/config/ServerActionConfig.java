@@ -24,6 +24,7 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue CONTAINER_TRANSFER;
     public static final ModConfigSpec.BooleanValue BLOCK_MACHINE;
     public static final ModConfigSpec.BooleanValue BODY_ACTIONS;
+    public static final ModConfigSpec.BooleanValue BLOCK_PLACE;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -53,6 +54,9 @@ public final class ServerActionConfig {
         BODY_ACTIONS = builder
                 .comment("Let the assistant move and act through agent bodies: move, look, mine, attack.")
                 .define("body_actions", false);
+        BLOCK_PLACE = builder
+                .comment("Let the assistant place blocks from the actor's inventory, with vanilla orientation and consumption.")
+                .define("block_place", false);
         builder.pop();
         SPEC = builder.build();
     }
