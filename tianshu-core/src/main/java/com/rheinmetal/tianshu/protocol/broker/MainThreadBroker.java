@@ -58,10 +58,10 @@ public final class MainThreadBroker implements ProtocolBroker {
 
     @Override
     public void cancel(String envelopeId, String reasonCode, String message) {
-        TianshuEnvelope pendingEnvelope = pending.remove(envelopeId);
-        if (pendingEnvelope != null) {
-            return;
-        }
+        // A queued envelope is cancelled by taking it out of the queue. One already running on the main thread cannot be
+        // interrupted there, so there is nothing else to do. The previous shape returned from both branches of an
+        // `if`, which read like an unfinished implementation.
+        pending.remove(envelopeId);
     }
 
     @Override

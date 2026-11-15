@@ -367,7 +367,14 @@ public class HuggingFaceDownloader {
                     adapt(control)
             );
         }
-        JsonArray root = GSON.fromJson(json, JsonArray.class);
+        JsonArray root;
+        try {
+            root = GSON.fromJson(json, JsonArray.class);
+        } catch (RuntimeException malformed) {
+            // A captive portal or a CDN error page answers 200 with HTML. Gson throws unchecked, which used to skip
+            // both the mirror fallback and the retry policy; a source failure has to look like one.
+            throw new IOException("HF_TREE_RESPONSE_INVALID repo=" + repoId, malformed);
+        }
         if (root == null) {
             throw new IOException("HF_TREE_RESPONSE_INVALID repo=" + repoId);
         }

@@ -80,7 +80,9 @@ class RecipeQueryToolTest {
                         JsonParser.parseString("{\"outputItemId\":\"minecraft:stick\",\"limit\":0}"),
                         ToolCaller.agent(false), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
-        assertEquals(1, lastQuery.get().limit());
+        // Omitted (0) means "give me the maximum", the same convention body.scan uses. It used to mean "1", which
+        // made "which recipes make X" answer with a single row.
+        assertEquals(RecipeQueryTool.MAX_LIMIT, lastQuery.get().limit());
     }
 
     @Test

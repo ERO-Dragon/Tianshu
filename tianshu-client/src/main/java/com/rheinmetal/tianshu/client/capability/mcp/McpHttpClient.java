@@ -29,6 +29,14 @@ public final class McpHttpClient extends AbstractMcpClient {
     protected JsonObject exchange(JsonObject request) throws IOException, InterruptedException {
         HttpResponse<String> response = send(request, true);
         if (response.statusCode() >= 300) {
+            // A 4xx/5xx carrying a JSON-RPC error is the server answering, not the connection failing. Treating every
+            // one of them as a transport failure took all of a server's tools offline over a single bad argument, and
+            // reconnected without honouring the backoff.
+            JsonObject remote = remoteError(response);
+            if (remote != null) {
+                throw new McpRemoteException("MCP HTTP " + response.statusCode() + ": "
+                        + (remote.has("message") ? remote.get("message").getAsString() : remote.toString()));
+            }
             throw new IOException("MCP HTTP " + response.statusCode());
         }
         if (response.body().isBlank()) {
@@ -52,6 +60,24 @@ public final class McpHttpClient extends AbstractMcpClient {
     @Override
     public void close() {
         // HTTP has no live connection to release; the session ends when the client is dropped.
+    }
+
+    /** The JSON-RPC error carried by an HTTP error response, or {@code null} when the body is not one. */
+    private static JsonObject remoteError(HttpResponse<String> response) {
+        if (response.body() == null || response.body().isBlank()) {
+            return null;
+        }
+        try {
+            JsonElement payload = JsonParser.parseString(response.body());
+            if (!payload.isJsonObject()) {
+                return null;
+            }
+            JsonObject object = payload.getAsJsonObject();
+            return object.has("error") && object.get("error").isJsonObject()
+                    ? object.getAsJsonObject("error") : null;
+        } catch (RuntimeException malformed) {
+            return null;
+        }
     }
 
     private HttpResponse<String> send(JsonObject body, boolean acceptSse)

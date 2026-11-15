@@ -87,6 +87,10 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
+        if (args == null) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
+                    "block.interact needs x, y and z"));
+        }
         BlockInteractRequest request = new BlockInteractRequest(args.x(), args.y(), args.z());
         return TianshuRuntimePorts.find(BlockInteractPort.class)
                 .map(port -> port.interact(scope.actor(), request))

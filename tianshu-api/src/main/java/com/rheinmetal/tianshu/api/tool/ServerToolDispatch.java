@@ -224,6 +224,22 @@ public final class ServerToolDispatch {
         if (COMPLETED.size() > MAX_CACHED_REPLIES) {
             long now = System.nanoTime();
             COMPLETED.entrySet().removeIf(entry -> now - entry.getValue().nanos() > REPLAY_WINDOW_NANOS);
+            // Expiry alone is not a cap: a burst of calls inside one replay window leaves every entry live, and the
+            // map grows past the budget it advertises. Evict the oldest until it actually fits.
+            while (COMPLETED.size() > MAX_CACHED_REPLIES) {
+                String oldestKey = null;
+                long oldestAt = Long.MAX_VALUE;
+                for (Map.Entry<String, Cached> entry : COMPLETED.entrySet()) {
+                    if (entry.getValue().nanos() < oldestAt) {
+                        oldestAt = entry.getValue().nanos();
+                        oldestKey = entry.getKey();
+                    }
+                }
+                if (oldestKey == null) {
+                    break;
+                }
+                COMPLETED.remove(oldestKey);
+            }
         }
     }
 }

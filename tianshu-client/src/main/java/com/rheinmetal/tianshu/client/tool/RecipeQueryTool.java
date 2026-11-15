@@ -100,6 +100,8 @@ public final class RecipeQueryTool implements TianshuTool<RecipeQuery, RecipeQue
     }
 
     static int clampLimit(int requested) {
-        return Math.max(1, Math.min(MAX_LIMIT, requested));
+        // Omitted (0) used to clamp to 1, so "which recipes make X" answered with a single row — while the sibling
+        // body.scan reads 0 as "the maximum". Same convention here now.
+        return requested <= 0 ? MAX_LIMIT : Math.min(MAX_LIMIT, requested);
     }
 }

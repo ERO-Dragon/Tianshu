@@ -114,6 +114,13 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
 
     @Override
     public void info(String message) {
+        // INFO is the debugging tier. The file stays the support surface for WARN/ERROR in every build, but an info
+        // line only lands while the same switch that enables in-game debugging is on — otherwise every module's
+        // diagnostic info (device names among it) reached the log in release builds too, which is the one path that
+        // bypassed the debug gate.
+        if (!inGameMessages.getAsBoolean()) {
+            return;
+        }
         writeRuntime("INFO", message, null);
     }
 

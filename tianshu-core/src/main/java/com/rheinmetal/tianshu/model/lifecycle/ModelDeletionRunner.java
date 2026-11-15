@@ -69,14 +69,17 @@ public final class ModelDeletionRunner {
                         .queueCapacity(2)
                         .build(),
                 () -> {
-                    boolean deleted;
+                    boolean deleted = false;
                     try {
                         deleted = deleteAction.delete();
                         refresher.refreshNow();
                     } finally {
+                        // The callback runs even when deleting or refreshing throws: the settings page is waiting on
+                        // it, and a model may already be gone from disk. Silence left the button on "deleting" for
+                        // the rest of the session.
                         deleting.set(false);
+                        notify(callback, deleted);
                     }
-                    notify(callback, deleted);
                 }
         );
         if (handle.state() == ProtocolTaskState.REJECTED) {

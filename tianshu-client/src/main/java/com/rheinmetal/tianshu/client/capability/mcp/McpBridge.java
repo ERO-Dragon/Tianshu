@@ -196,7 +196,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
             state.lastError = message;
             state.failures++;
             state.nextAttemptMillis = System.currentTimeMillis()
-                    + Math.min(MAX_BACKOFF_MILLIS, BASE_BACKOFF_MILLIS << Math.min(state.failures, 4));
+                    + Math.min(MAX_BACKOFF_MILLIS, BASE_BACKOFF_MILLIS << Math.min(state.failures, 5));
             problem(state.spec.name() + ": " + message);
         }
     }
@@ -252,11 +252,13 @@ public final class McpBridge implements McpStatus, AutoCloseable {
     }
 
     private boolean register(ServerState state, McpConnection client, JsonObject remote) {
-        String remoteName = remote.has("name") ? remote.get("name").getAsString() : "";
+        // Every field is read defensively: a server that writes one name as an object must cost us that tool, not the
+        // whole server — the parse used to sit outside the try below and took the connection down with it.
+        String remoteName = primitive(remote, "name", "");
         if (remoteName.isBlank()) {
             return false;
         }
-        String description = remote.has("description") ? remote.get("description").getAsString() : remoteName;
+        String description = primitive(remote, "description", remoteName);
         JsonObject schema = remote.has("inputSchema") && remote.get("inputSchema").isJsonObject()
                 ? remote.getAsJsonObject("inputSchema") : null;
         ToolId id = toolId(state.spec.name(), remoteName);
@@ -352,7 +354,15 @@ public final class McpBridge implements McpStatus, AutoCloseable {
     }
 
     private static String description(JsonObject remote, String fallback) {
-        return remote.has("description") ? remote.get("description").getAsString() : fallback;
+        return primitive(remote, "description", fallback);
+    }
+
+    /** Reads one optional string; a value of the wrong JSON shape is treated as absent, not as a fatal error. */
+    private static String primitive(JsonObject object, String key, String fallback) {
+        if (object == null || !object.has(key) || !object.get(key).isJsonPrimitive()) {
+            return fallback;
+        }
+        return object.get(key).getAsString();
     }
 
     private static String readContents(JsonObject result) {

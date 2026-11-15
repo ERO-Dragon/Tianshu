@@ -36,14 +36,21 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
         this.executionPolicy = executionPolicy == null ? new ProtocolExecutionPolicy() : executionPolicy;
     }
 
+    /** Guards the admit-or-reject decision; deliberately not the broker monitor, which the drain path also touches. */
+    private final Object admissionLock = new Object();
+
     @Override
     public BrokerSubmitResult submit(TianshuEnvelope envelope, HandlerRegistration registration, ProtocolRuntime runtime) {
-        if (queue.size() >= queueCapacity && shouldRejectWhenFull(envelope)) {
-            runtime.lifecycle().transition(envelope.envelopeId(), EnvelopeStatus.REJECTED, "BROKER_QUEUE_FULL", "Broker queue is full");
-            return BrokerSubmitResult.rejected("BROKER_QUEUE_FULL", "Broker queue is full");
+        synchronized (admissionLock) {
+            // The size check and the insert have to be one step: two callers could both see room for one and both
+            // insert, which made a "bounded" queue unbounded exactly when it was under load.
+            if (queue.size() >= queueCapacity && shouldRejectWhenFull(envelope)) {
+                runtime.lifecycle().transition(envelope.envelopeId(), EnvelopeStatus.REJECTED, "BROKER_QUEUE_FULL", "Broker queue is full");
+                return BrokerSubmitResult.rejected("BROKER_QUEUE_FULL", "Broker queue is full");
+            }
+            enqueue(new BrokerTask(envelope, registration, runtime));
+            runtime.lifecycle().transition(envelope.envelopeId(), EnvelopeStatus.QUEUED, "QUEUED", brokerId);
         }
-        enqueue(new BrokerTask(envelope, registration, runtime));
-        runtime.lifecycle().transition(envelope.envelopeId(), EnvelopeStatus.QUEUED, "QUEUED", brokerId);
         drain();
         return BrokerSubmitResult.accept();
     }

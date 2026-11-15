@@ -271,7 +271,13 @@ public final class ModelDownloadHttpClient {
             output.write(buffer, 0, read);
             downloaded += read;
             if (progress != null) {
-                progress.onProgress(downloaded, totalLength);
+                try {
+                    progress.onProgress(downloaded, totalLength);
+                } catch (RuntimeException listenerBug) {
+                    // A progress listener is a display concern. Letting it throw aborted the transfer with an
+                    // unclassified RuntimeException that skipped every cleanup path in this class (they only catch
+                    // IOException), leaving the partial file in an unknown state.
+                }
             }
         }
         return downloaded;

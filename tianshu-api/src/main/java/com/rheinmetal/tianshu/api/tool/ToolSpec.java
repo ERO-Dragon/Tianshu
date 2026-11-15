@@ -22,5 +22,8 @@ public record ToolSpec(
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(category, "category");
         Objects.requireNonNull(description, "description");
+        // Copied, not shared: the schema object belongs to the tool, and a consumer that edits the catalogue entry it
+        // was handed would otherwise be editing the registered tool's schema.
+        argsSchema = argsSchema == null ? null : argsSchema.deepCopy();
     }
 }

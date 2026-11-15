@@ -80,7 +80,16 @@ public final class SettingsSessionRegistry implements AutoCloseable {
         }
 
         for (ModuleSettingsSession session : dirtySessions) {
-            SettingsValidationResult validation = session.validate();
+            SettingsValidationResult validation;
+            try {
+                validation = session.validate();
+            } catch (RuntimeException failure) {
+                // A module's validate() reading config or parsing a number can throw. Letting it escape skipped every
+                // later session and surfaced as an unhandled exception in the settings screen, with nothing logged.
+                logs.error("settings.session.validate_failed module=" + session.moduleId(), failure);
+                return SettingsSaveResult.failure(UiText.key("tianshu.gui.settings.status.failed"),
+                        SettingsSaveResult.FailureType.VALIDATION);
+            }
             if (!validation.success()) {
                 return SettingsSaveResult.failure(validation.message(), SettingsSaveResult.FailureType.VALIDATION);
             }

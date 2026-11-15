@@ -159,16 +159,19 @@ public final class CapabilityCatalog {
                 PROVIDER_KERNEL,
                 attributes
         );
-        Entry existing = ENTRIES.get(descriptor.id());
-        if (existing != null && existing.handler() != null) {
-            throw new IllegalArgumentException(
-                    "capability id " + descriptor.id() + " is already used by a non-tool capability");
-        }
-        CapabilityChange.Action action = existing == null
-                ? CapabilityChange.Action.ADDED : CapabilityChange.Action.UPDATED;
-        ENTRIES.put(descriptor.id(), new Entry(descriptor, null));
+        CapabilityChange.Action[] action = {CapabilityChange.Action.ADDED};
+        // One atomic step: a get-then-put let a capability registered in between be overwritten by a tool row with no
+        // handler, which then routed every invoke for that id into the tool registry under a name it had never owned.
+        ENTRIES.compute(descriptor.id(), (key, existing) -> {
+            if (existing != null && existing.handler() != null) {
+                throw new IllegalArgumentException(
+                        "capability id " + key + " is already used by a non-tool capability");
+            }
+            action[0] = existing == null ? CapabilityChange.Action.ADDED : CapabilityChange.Action.UPDATED;
+            return new Entry(descriptor, null);
+        });
         REVISION.incrementAndGet();
-        notifyListeners(action, descriptor);
+        notifyListeners(action[0], descriptor);
     }
 
     /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */

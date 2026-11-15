@@ -49,6 +49,9 @@ public final class DeadLetterQueue {
     }
 
     public List<DeadLetterRecord> snapshot(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
         List<DeadLetterRecord> result = new ArrayList<>();
         int count = 0;
         for (DeadLetterRecord record : records) {
