@@ -43,6 +43,8 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyInventoryTool());
         ServerToolDeclarations.declare(new BodyPickupTool());
         ServerToolDeclarations.declare(new BodyEquipTool());
+        ServerToolDeclarations.declare(new BodyCollectTool());
+        ServerToolDeclarations.declare(new BodyFollowTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */

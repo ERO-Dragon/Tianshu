@@ -31,6 +31,13 @@ final class BodyToolSchemas {
         return property;
     }
 
+    static JsonObject number(String description) {
+        JsonObject property = new JsonObject();
+        property.addProperty("type", "number");
+        property.addProperty("description", description);
+        return property;
+    }
+
     static JsonObject object(JsonObject properties, String... required) {
         JsonArray names = new JsonArray();
         for (String name : required) {
