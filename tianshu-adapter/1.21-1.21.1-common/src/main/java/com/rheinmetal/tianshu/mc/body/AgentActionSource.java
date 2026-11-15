@@ -76,7 +76,8 @@ public final class AgentActionSource implements AgentActionPort {
         String blockId = id == null ? "" : id.toString();
         boolean broken = body.level().destroyBlock(pos, true, body.entity());
         return broken
-                ? ActionResult.done("broke " + blockId)
+                ? ActionResult.done("broke " + blockId + " at " + dimension + " " + pos.getX() + " "
+                        + pos.getY() + " " + pos.getZ())
                 : new ActionResult(ActionOutcome.NO_EFFECT, "the block did not break");
     }
 
