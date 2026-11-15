@@ -22,6 +22,10 @@ public enum BodyKind {
 
     /** A gravity-free armour stand: it carries a 36-slot inventory and can use, place, strike and break. */
     STAND(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.USE, BodyCapability.PLACE,
+            BodyCapability.MINE, BodyCapability.ATTACK, BodyCapability.INVENTORY)),
+
+    /** A pathfinder mob: same inventory and actions as the stand, but it can actually walk once navigation is wired. */
+    WALKER(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.USE, BodyCapability.PLACE,
             BodyCapability.MINE, BodyCapability.ATTACK, BodyCapability.INVENTORY));
 
     private final Set<BodyCapability> capabilities;

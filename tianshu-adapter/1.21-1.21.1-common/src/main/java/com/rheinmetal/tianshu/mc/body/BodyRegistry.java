@@ -70,11 +70,18 @@ public final class BodyRegistry implements AgentBodyProvider {
                 stand.setSilent(true);
                 yield stand;
             }
+            case WALKER -> {
+                WalkerBody walker = BodyCarriers.walker().create(level);
+                if (walker == null) {
+                    throw new IllegalStateException("cannot create a walker body");
+                }
+                yield walker;
+            }
         };
         Vec3 at = owner.position();
         entity.moveTo(at.x, at.y, at.z, owner.getYRot(), owner.getXRot());
         level.addFreshEntity(entity);
-        Container inventory = kind == BodyKind.STAND ? new SimpleContainer(INVENTORY_SIZE) : null;
+        Container inventory = kind == BodyKind.MARKER ? null : new SimpleContainer(INVENTORY_SIZE);
         BodyState state = new BodyState(entity.getUUID(), kind, inventory, owner.getUUID(),
                 owner.hasPermissions(2), entity);
         bodies.put(state.id(), state);

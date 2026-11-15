@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.fabric;
 
 import com.rheinmetal.tianshu.api.ModIdentity;
+import com.rheinmetal.tianshu.mc.body.BodyCarriers;
+import com.rheinmetal.tianshu.mc.body.WalkerBody;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.mc.host.ServerActionClient;
@@ -16,6 +18,11 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -37,6 +44,15 @@ public final class TianshuFabric implements ModInitializer {
     /** The wire protocol epoch, matching the NeoForge adapter's channel version. */
     public static final String PROTOCOL_VERSION = ProtocolWireVersion.VERSION;
 
+    /** The walking carrier; the only entity type this adapter registers. */
+    public static final EntityType<WalkerBody> WALKER = Registry.register(
+            BuiltInRegistries.ENTITY_TYPE,
+            ModIdentity.MOD_ID + ":walker",
+            EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
+                    .sized(0.6F, 1.8F)
+                    .clientTrackingRange(10)
+                    .build("tianshu_walker"));
+
     /** The action channel client: one per process, shared by the network registration and the event layer. */
     private static ServerActionClient actionClient;
 
@@ -53,6 +69,8 @@ public final class TianshuFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        FabricDefaultAttributeRegistry.register(WALKER, WalkerBody.createAttributes());
+        BodyCarriers.installWalker(WALKER);
         // Modules are platform-free: the only sane answer to "is it there?" has to come from here.
         TianshuRuntimePorts.register(InstalledMods.class,
                 modId -> modId != null && !modId.isBlank() && FabricLoader.getInstance().isModLoaded(modId));

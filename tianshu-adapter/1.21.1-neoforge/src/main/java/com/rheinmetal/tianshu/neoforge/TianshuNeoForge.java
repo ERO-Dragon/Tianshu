@@ -4,6 +4,9 @@ import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
 import com.rheinmetal.tianshu.api.assembly.KeyBindings;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.mc.body.BodyCarriers;
+import com.rheinmetal.tianshu.mc.body.WalkerBody;
+import com.rheinmetal.tianshu.neoforge.body.BodyWalkerRenderer;
 import com.rheinmetal.tianshu.neoforge.bootstrap.NeoForgeClientBootstrap;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
@@ -23,6 +26,12 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
+import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
+import net.neoforged.neoforge.registries.DeferredHolder;
+import net.neoforged.neoforge.registries.DeferredRegister;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 
 /**
  * The mod entry point, loaded on both sides.
@@ -35,6 +44,17 @@ import net.neoforged.neoforge.event.GameShuttingDownEvent;
 @Mod(TianshuNeoForge.MOD_ID)
 public final class TianshuNeoForge {
     public static final String MOD_ID = "tianshu_ferry";
+
+    /** The walking carrier; everything else about a body is not an entity type. */
+    private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
+            DeferredRegister.create(Registries.ENTITY_TYPE, MOD_ID);
+
+    public static final DeferredHolder<EntityType<?>, EntityType<WalkerBody>> WALKER = ENTITY_TYPES.register(
+            "walker",
+            () -> EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
+                    .sized(0.6F, 1.8F)
+                    .clientTrackingRange(10)
+                    .build("tianshu_walker"));
 
     /** {@code null} on a dedicated server: every client subsystem is constructed only on the client. */
     private final NeoForgeClientBootstrap clientBootstrap;
@@ -49,6 +69,11 @@ public final class TianshuNeoForge {
     private final GameFactCollector serverCollector;
 
     public TianshuNeoForge(IEventBus modEventBus, ModContainer modContainer) {
+        ENTITY_TYPES.register(modEventBus);
+        modEventBus.addListener((EntityAttributeCreationEvent event) -> {
+            event.put(WALKER.get(), WalkerBody.createAttributes().build());
+            BodyCarriers.installWalker(WALKER.get());
+        });
         // Modules are platform-free: when they integrate with an optional partner, the only sane answer to
         // "is it there?" has to come from here. Registered before any module assembles, on both sides.
         TianshuRuntimePorts.register(InstalledMods.class,
@@ -82,6 +107,8 @@ public final class TianshuNeoForge {
             NeoForge.EVENT_BUS.addListener(
                     (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) ->
                             toolCalls.onDisconnect());
+            modEventBus.addListener((net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) ->
+                    event.registerEntityRenderer(WALKER.get(), BodyWalkerRenderer::new));
             clientBootstrap = new NeoForgeClientBootstrap(serverActions);
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.
