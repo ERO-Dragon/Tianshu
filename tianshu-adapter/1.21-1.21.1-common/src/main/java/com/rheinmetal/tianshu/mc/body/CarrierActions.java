@@ -42,7 +42,7 @@ public final class CarrierActions implements AgentBodyActions {
 
     public CarrierActions(MinecraftServer server, BodyRegistry bodies, ActionPlayerFactory actionPlayers) {
         this.motion = new AgentMotionSource(server, bodies);
-        this.action = new AgentActionSource(server, bodies);
+        this.action = new AgentActionSource(server, bodies, actionPlayers);
         this.items = new AgentItemSource(server, bodies);
         this.query = new BodyQuerySource(server);
         this.placement = new BlockPlaceSource(server, bodies, actionPlayers);

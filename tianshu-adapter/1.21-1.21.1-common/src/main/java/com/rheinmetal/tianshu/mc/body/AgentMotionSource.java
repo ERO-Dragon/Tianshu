@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class AgentMotionSource implements AgentMotionPort {
 
     private static final int WALK_TIMEOUT_TICKS = 600;
+    /** Same threshold Promaid uses for "she has not moved for 40 ticks": stuck, not slowly progressing. */
+    private static final int STALL_TICKS = 40;
 
     private final MinecraftServer server;
     private final BodyRegistry bodies;
@@ -108,6 +110,10 @@ public final class AgentMotionSource implements AgentMotionPort {
         double arriveRadius = Math.max(0.5D, options.arriveRadius());
         double arriveSquared = arriveRadius * arriveRadius;
         AtomicInteger elapsed = new AtomicInteger();
+        double[] anchorX = {walker.getX()};
+        double[] anchorY = {walker.getY()};
+        double[] anchorZ = {walker.getZ()};
+        AtomicInteger idle = new AtomicInteger();
         Runnable step = new Runnable() {
             @Override
             public void run() {
@@ -116,6 +122,19 @@ public final class AgentMotionSource implements AgentMotionPort {
                 }
                 if (walker.isRemoved()) {
                     finish(ActionOutcome.REJECTED, "the body disappeared");
+                    return;
+                }
+                double movedX = walker.getX() - anchorX[0];
+                double movedY = walker.getY() - anchorY[0];
+                double movedZ = walker.getZ() - anchorZ[0];
+                if (movedX * movedX + movedY * movedY + movedZ * movedZ > 0.0025D) {
+                    anchorX[0] = walker.getX();
+                    anchorY[0] = walker.getY();
+                    anchorZ[0] = walker.getZ();
+                    idle.set(0);
+                } else if (idle.incrementAndGet() >= STALL_TICKS) {
+                    navigation.stop();
+                    finish(ActionOutcome.REJECTED, "the walk stalled");
                     return;
                 }
                 if (walker.position().distanceToSqr(target.x(), target.y(), target.z()) <= arriveSquared) {
