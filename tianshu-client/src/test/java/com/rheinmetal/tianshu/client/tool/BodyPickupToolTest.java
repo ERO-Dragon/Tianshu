@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.PickedItem;
 import com.rheinmetal.tianshu.api.agent.PickupResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -59,9 +60,17 @@ class BodyPickupToolTest {
     @Test
     void aBodyWithoutAnInventoryIsRefusedBeforeThePortIsTouched() throws Exception {
         AtomicBoolean reached = new AtomicBoolean();
-        TianshuRuntimePorts.register(AgentItemPort.class, (actor, radius) -> {
-            reached.set(true);
-            return CompletableFuture.completedFuture(new PickupResult(List.of()));
+        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+            @Override
+            public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
+                reached.set(true);
+                return CompletableFuture.completedFuture(new PickupResult(List.of()));
+            }
+
+            @Override
+            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+                throw new AssertionError("a pickup test must not equip");
+            }
         });
         enable();
         TestBodies.register("float", BodyCapability.MOVE);
@@ -76,10 +85,18 @@ class BodyPickupToolTest {
     @Test
     void aPickupReachesThePortAsTheNamedBody() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentItemPort.class, (actor, radius) -> {
-            seen.set(actor);
-            return CompletableFuture.completedFuture(
-                    new PickupResult(List.of(new PickedItem("minecraft:oak_log", 3))));
+        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+            @Override
+            public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
+                seen.set(actor);
+                return CompletableFuture.completedFuture(
+                        new PickupResult(List.of(new PickedItem("minecraft:oak_log", 3))));
+            }
+
+            @Override
+            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+                throw new AssertionError("a pickup test must not equip");
+            }
         });
         enable();
         TestBodies.register("body-1", BodyCapability.INVENTORY);
@@ -96,9 +113,17 @@ class BodyPickupToolTest {
     @Test
     void aPlayerWithoutABodyPicksUpAroundThePlayer() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentItemPort.class, (actor, radius) -> {
-            seen.set(actor);
-            return CompletableFuture.completedFuture(new PickupResult(List.of()));
+        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+            @Override
+            public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
+                seen.set(actor);
+                return CompletableFuture.completedFuture(new PickupResult(List.of()));
+            }
+
+            @Override
+            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+                throw new AssertionError("a pickup test must not equip");
+            }
         });
         enable();
 

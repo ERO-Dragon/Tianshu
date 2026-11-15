@@ -11,4 +11,10 @@ import java.util.concurrent.CompletableFuture;
 public interface AgentItemPort {
 
     CompletableFuture<PickupResult> pickup(ActorRef actor, int radius);
+
+    /**
+     * Chooses the body's active slot, or clears it with {@code slot=-1}. The slot only changes what later attacks
+     * and breaks use: whether the item is "held" visually is a carrier concern.
+     */
+    CompletableFuture<EquipResult> equip(ActorRef actor, int slot);
 }
