@@ -36,6 +36,37 @@ class AgentBodiesTest {
     }
 
     @Test
+    void actionsComeFromTheProviderThatOwnsTheBody() {
+        AgentBodyActions handlers = new AgentBodyActions() {
+        };
+        AgentBodyProvider provider = new AgentBodyProvider() {
+            @Override
+            public Optional<AgentBody> resolve(String bodyId) {
+                return "body-1".equals(bodyId) ? Optional.of(body("body-1", Set.of())) : Optional.empty();
+            }
+
+            @Override
+            public Optional<AgentBodyActions> actions(String bodyId) {
+                return "body-1".equals(bodyId) ? Optional.of(handlers) : Optional.empty();
+            }
+        };
+        AgentBodies.register(provider);
+
+        assertEquals(Optional.of(provider), AgentBodies.owner("body-1"));
+        assertEquals(Optional.of(handlers), AgentBodies.actions("body-1"));
+        assertTrue(AgentBodies.actions("body-2").isEmpty());
+    }
+
+    @Test
+    void aProviderWithoutHandlersOffersNoActions() {
+        AgentBodies.register(id -> "body-1".equals(id)
+                ? Optional.of(body("body-1", Set.of()))
+                : Optional.empty());
+
+        assertTrue(AgentBodies.actions("body-1").isEmpty());
+    }
+
+    @Test
     void aBodyThatDeclaresTheCapabilityPasses() {
         AgentBodies.register(id -> "body-1".equals(id)
                 ? Optional.of(body("body-1", Set.of(BodyCapability.MOVE, BodyCapability.MINE)))

@@ -3,7 +3,12 @@ package com.rheinmetal.tianshu.api.agent;
 import java.util.List;
 import java.util.Optional;
 
-/** Resolves an entity id to an agent body. Implemented by the mod that owns the entity type. */
+/**
+ * Owns one or more agent bodies: it resolves ids, enumerates live bodies and offers the handlers that act on them.
+ *
+ * <p>A provider that cannot act returns no {@link AgentBodyActions}; one that can returns the subset it supports.
+ * The built-in carriers and a third-party mod's carrier use exactly this contract.</p>
+ */
 public interface AgentBodyProvider {
 
     Optional<AgentBody> resolve(String bodyId);
@@ -11,5 +16,10 @@ public interface AgentBodyProvider {
     /** Every live body this provider holds; a provider that cannot enumerate returns none. */
     default List<AgentBody> all() {
         return List.of();
+    }
+
+    /** The handlers for one of this provider's bodies; empty when the provider offers no actions. */
+    default Optional<AgentBodyActions> actions(String bodyId) {
+        return Optional.empty();
     }
 }

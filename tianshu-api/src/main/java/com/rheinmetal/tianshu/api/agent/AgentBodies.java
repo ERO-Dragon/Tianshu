@@ -47,6 +47,24 @@ public final class AgentBodies {
         return List.copyOf(bodies);
     }
 
+    /** The provider that owns {@code bodyId}, if any; ownership decides which handler set acts for it. */
+    public static Optional<AgentBodyProvider> owner(String bodyId) {
+        if (bodyId == null || bodyId.isBlank()) {
+            return Optional.empty();
+        }
+        for (AgentBodyProvider provider : PROVIDERS) {
+            if (provider.resolve(bodyId).isPresent()) {
+                return Optional.of(provider);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** The handlers of the provider that owns {@code bodyId}; empty when nobody owns it or it offers none. */
+    public static Optional<AgentBodyActions> actions(String bodyId) {
+        return owner(bodyId).flatMap(provider -> provider.actions(bodyId));
+    }
+
     /**
      * Empty when the actor may perform {@code capability}; otherwise the error a caller should surface.
      *
