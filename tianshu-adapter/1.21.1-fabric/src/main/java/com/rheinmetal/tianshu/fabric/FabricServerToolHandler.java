@@ -51,6 +51,7 @@ import com.rheinmetal.tianshu.mc.body.BodyCommands;
 import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
+import com.rheinmetal.tianshu.mc.body.BodyPersistence;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -78,6 +79,7 @@ public final class FabricServerToolHandler {
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             BodyRegistry bodies = BodyRuntime.start(server, actionPlayers);
             TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
+            ServerTicks.INSTANCE.onNextTick(() -> BodyPersistence.load(server, bodies));
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
             TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(server));
@@ -120,8 +122,14 @@ public final class FabricServerToolHandler {
                 context.server().execute(() -> respond(context.player(), packet)));
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerLogin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> onPlayerLogout(handler.getPlayer()));
-        ServerLifecycleEvents.SERVER_STOPPED.register(server -> BodyRuntime.stop());
-        ServerTickEvents.END_SERVER_TICK.register(server -> ServerTicks.INSTANCE.fire());
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            BodyRuntime.current().ifPresent(registry -> BodyPersistence.save(server, registry));
+            BodyRuntime.stop();
+        });
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            ServerTicks.INSTANCE.fire();
+            BodyRuntime.current().ifPresent(registry -> BodyPersistence.tick(server, registry));
+        });
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) ->
                 BodyCommands.register(dispatcher));
     }

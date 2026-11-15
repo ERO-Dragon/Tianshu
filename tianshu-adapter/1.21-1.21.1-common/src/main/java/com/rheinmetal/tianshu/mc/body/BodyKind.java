@@ -7,13 +7,12 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The carriers this adapter can give an agent. Neither is a player: one has no body at all beyond a point in the
- * world, the other is a floating stand that can hold items.
+ * The carriers this adapter can give an agent. None is a player: one has no body at all beyond a point in the
+ * world, one is a floating stand that can hold items, one is a pathfinder mob.
  *
  * <p>Capabilities describe what the carrier is, not which tools exist yet. {@code MOVE} and {@code LOOK} are true of
- * both carriers; {@code MINE}, {@code ATTACK} and {@code INVENTORY} belong to the stand alone, because breaking and
- * striking go through a living carrier. {@code USE} is absent from both: vanilla block interaction needs a player
- * parameter and this adapter has no non-player path for it yet.</p>
+ * all three; {@code MINE}, {@code ATTACK}, {@code USE}, {@code PLACE} and {@code INVENTORY} belong to the carriers
+ * with a living body and a 36-slot store, because those actions go through a player-typed API or an entity path.</p>
  */
 public enum BodyKind {
 

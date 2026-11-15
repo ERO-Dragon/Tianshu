@@ -121,6 +121,19 @@ public final class BodyRegistry implements AgentBodyProvider {
         return List.copyOf(views);
     }
 
+    /** Every live body's full state; the persistence layer reads inventories from here. */
+    public List<BodyState> states() {
+        return List.copyOf(bodies.values());
+    }
+
+    /** Puts a body back after a restart; its entity already exists in the world. */
+    public void restore(BodyState state, int activeSlot) {
+        bodies.put(state.id(), state);
+        if (activeSlot >= 0) {
+            activeSlots.put(state.id(), activeSlot);
+        }
+    }
+
     @Override
     public Optional<AgentBody> resolve(String bodyId) {
         return state(bodyId).map(BodyRegistry::view);

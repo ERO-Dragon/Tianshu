@@ -47,6 +47,7 @@ import com.rheinmetal.tianshu.mc.body.BodyCommands;
 import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
+import com.rheinmetal.tianshu.mc.body.BodyPersistence;
 import com.rheinmetal.tianshu.mc.body.ActionRouter;
 import com.rheinmetal.tianshu.mc.body.CraftRouter;
 import com.rheinmetal.tianshu.mc.body.InteractRouter;
@@ -94,6 +95,7 @@ public final class ServerToolHandler {
         ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
         BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers);
         TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
+        ServerTicks.INSTANCE.onNextTick(() -> BodyPersistence.load(event.getServer(), bodies));
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
         if (TianshuTools.find(RecipeQueryTool.ID) == null) {
@@ -134,6 +136,7 @@ public final class ServerToolHandler {
     }
 
     private static void onServerStopping(ServerStoppingEvent event) {
+        BodyRuntime.current().ifPresent(registry -> BodyPersistence.save(event.getServer(), registry));
         BodyRuntime.stop();
         ServerTicks.INSTANCE.clear();
     }
@@ -145,6 +148,7 @@ public final class ServerToolHandler {
 
     private static void onServerTick(ServerTickEvent.Post event) {
         ServerTicks.INSTANCE.fire();
+        BodyRuntime.current().ifPresent(registry -> BodyPersistence.tick(event.getServer(), registry));
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {
