@@ -12,7 +12,7 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 & (Join-Path $root 'setup-workspace.ps1')
 
 if ($Version) {
-    git -C $root checkout $Version
+    git -C $root checkout "adapter/$Version"
     if ($LASTEXITCODE -ne 0) { throw "cannot checkout $Version" }
 }
 
@@ -23,3 +23,4 @@ if ($Feature) {
     & (Join-Path $root 'gradlew.bat') ":tianshu-adapter:$Version-$Loader:$Task"
 }
 exit $LASTEXITCODE
+
