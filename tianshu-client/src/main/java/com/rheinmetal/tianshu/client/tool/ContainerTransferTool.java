@@ -2,8 +2,6 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
@@ -96,24 +94,23 @@ public final class ContainerTransferTool implements
     @Override
     public CompletableFuture<ContainerTransferResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "container.transfer runs as a player or an agent body"));
+        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body(), ID);
+        if (scope.refusal().isPresent()) {
+            return CompletableFuture.failedFuture(scope.refusal().get());
         }
         if (args == null || args.containerSlot() < 0 || args.playerSlot() < 0
                 || args.playerSlot() >= 36 || args.count() < 1 || args.count() > 64) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "container.transfer needs non-negative slots and a count between 1 and 64"));
         }
-        ActorRef actor = ActorSelection.of(caller, args.body());
-        java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.INVENTORY);
+        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         ContainerTransferRequest request = new ContainerTransferRequest(args.x(), args.y(), args.z(),
                 args.containerSlot(), args.playerSlot(), args.count(), args.toPlayer());
         return TianshuRuntimePorts.find(ContainerTransferPort.class)
-                .map(port -> port.transfer(actor, request))
+                .map(port -> port.transfer(scope.actor(), request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "container access is only available on the server")));
     }

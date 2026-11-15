@@ -128,4 +128,32 @@ class BlockInteractToolTest {
                 .noneMatch(spec -> spec.id().equals(BlockInteractTool.ID)),
                 "a server tool is not advertised before its catalog arrives");
     }
+
+    @Test
+    void aPlayerMayDriveABodyInteraction() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<ActorRef> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractPort() {
+            @Override
+            public CompletableFuture<BlockInteractResult> interact(String playerId, BlockInteractRequest request) {
+                throw new AssertionError("body call must not fall back to the player path");
+            }
+
+            @Override
+            public CompletableFuture<BlockInteractResult> interact(ActorRef actor, BlockInteractRequest request) {
+                seen.set(actor);
+                return CompletableFuture.completedFuture(
+                        new BlockInteractResult("minecraft:oak_door", true, "operated"));
+            }
+        });
+        TianshuTools.register(new BlockInteractTool());
+        TianshuTools.setEnabled(BlockInteractTool.ID, true);
+        TestBodies.register("body-1", BodyCapability.USE);
+
+        JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3,\"body\":\"body-1\"}",
+                ToolCaller.player("p", true));
+
+        assertTrue(allowed.get("ok").getAsBoolean());
+        assertEquals(ActorRef.Kind.BODY, seen.get().kind());
+        assertEquals("body-1", seen.get().id());
+    }
 }

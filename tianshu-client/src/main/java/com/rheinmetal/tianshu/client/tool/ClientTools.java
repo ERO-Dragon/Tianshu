@@ -33,6 +33,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new CraftRecipeTool());
         ServerToolDeclarations.declare(new ContainerTransferTool());
         ServerToolDeclarations.declare(new BlockMachineTool());
+        ServerToolDeclarations.declare(new BlockPlaceTool());
         ServerToolDeclarations.declare(new BodyListTool());
         ServerToolDeclarations.declare(new BodyMoveTool());
         ServerToolDeclarations.declare(new BodyLookTool());

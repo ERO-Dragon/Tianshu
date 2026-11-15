@@ -4,7 +4,6 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.agent.ActionOutcome;
 import com.rheinmetal.tianshu.api.agent.ActionResult;
 import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentBody;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
@@ -68,27 +67,27 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
     @Override
     public CompletableFuture<ActionResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "body.look runs as a player or a body"));
+        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body(), ID);
+        if (scope.refusal().isPresent()) {
+            return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        if (args == null || args.body() == null || args.body().isBlank()) {
+        if (args == null || (caller.kind() != ToolCaller.Kind.BODY
+                && (args.body() == null || args.body().isBlank()))) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "body.look needs a body id"));
+                    "body.look needs a body id unless the caller is a body"));
         }
-        AgentBody body = AgentBodies.resolve(args.body()).orElse(null);
+        AgentBody body = AgentBodies.resolve(scope.actor().id()).orElse(null);
         if (body == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                    "agent body " + args.body() + " is not present"));
+                    "agent body " + scope.actor().id() + " is not present"));
         }
-        ActorRef actor = ActorRef.body(body.id(), caller.operator());
-        Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.LOOK);
+        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.LOOK);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         ActorPosition target = new ActorPosition(body.position().dimension(), args.x(), args.y(), args.z());
         return TianshuRuntimePorts.find(AgentMotionPort.class)
-                .map(port -> port.look(actor, target).thenCompose(result ->
+                .map(port -> port.look(scope.actor(), target).thenCompose(result ->
                         result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED
                                 ? CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.detail()))
                                 : CompletableFuture.completedFuture(result)))

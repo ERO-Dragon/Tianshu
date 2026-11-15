@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.client.tool;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.agent.ActionOutcome;
 import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentActionPort;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentBody;
@@ -67,27 +66,26 @@ public final class BodyAttackTool implements TianshuTool<BodyAttackTool.Args, Ac
     @Override
     public CompletableFuture<ActionResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "body.attack runs as a player or a body"));
+        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body(), ID);
+        if (scope.refusal().isPresent()) {
+            return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        if (args == null || args.body() == null || args.body().isBlank()
-                || args.entity() == null || args.entity().isBlank()) {
+        if (args == null || args.entity() == null || args.entity().isBlank()
+                || (caller.kind() != ToolCaller.Kind.BODY && (args.body() == null || args.body().isBlank()))) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "body.attack needs a body id and an entity id"));
+                    "body.attack needs an entity id and, unless the caller is a body, a body id"));
         }
-        AgentBody body = AgentBodies.resolve(args.body()).orElse(null);
+        AgentBody body = AgentBodies.resolve(scope.actor().id()).orElse(null);
         if (body == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                    "agent body " + args.body() + " is not present"));
+                    "agent body " + scope.actor().id() + " is not present"));
         }
-        ActorRef actor = ActorRef.body(body.id(), caller.operator());
-        Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.ATTACK);
+        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.ATTACK);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         return TianshuRuntimePorts.find(AgentActionPort.class)
-                .map(port -> port.attack(actor, new EntityTarget(args.entity())).thenCompose(result ->
+                .map(port -> port.attack(scope.actor(), new EntityTarget(args.entity())).thenCompose(result ->
                         result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED
                                 ? CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.detail()))
                                 : CompletableFuture.completedFuture(result)))

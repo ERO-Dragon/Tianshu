@@ -2,8 +2,6 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.CraftPort;
@@ -82,21 +80,20 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
     @Override
     public CompletableFuture<CraftResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "craft.recipe runs as a player or an agent body"));
+        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body(), ID);
+        if (scope.refusal().isPresent()) {
+            return CompletableFuture.failedFuture(scope.refusal().get());
         }
         if (args == null || args.recipeId() == null || args.recipeId().isBlank()) {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
         }
-        ActorRef actor = ActorSelection.of(caller, args.body());
-        java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.INVENTORY);
+        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         return TianshuRuntimePorts.find(CraftPort.class)
-                .map(port -> port.craft(actor, new CraftRequest(args.recipeId().trim()))
+                .map(port -> port.craft(scope.actor(), new CraftRequest(args.recipeId().trim()))
                         .thenCompose(result -> result.crafted()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.agent.ActionOutcome;
 import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentBody;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
@@ -80,21 +79,21 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
     @Override
     public CompletableFuture<MoveResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "body.move runs as a player or a body"));
+        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body(), ID);
+        if (scope.refusal().isPresent()) {
+            return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        if (args == null || args.body() == null || args.body().isBlank()) {
+        if (args == null || (caller.kind() != ToolCaller.Kind.BODY
+                && (args.body() == null || args.body().isBlank()))) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "body.move needs a body id"));
+                    "body.move needs a body id unless the caller is a body"));
         }
-        AgentBody body = AgentBodies.resolve(args.body()).orElse(null);
+        AgentBody body = AgentBodies.resolve(scope.actor().id()).orElse(null);
         if (body == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                    "agent body " + args.body() + " is not present"));
+                    "agent body " + scope.actor().id() + " is not present"));
         }
-        ActorRef actor = ActorRef.body(body.id(), caller.operator());
-        Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.MOVE);
+        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.MOVE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
@@ -109,7 +108,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
         }
         ActorPosition target = new ActorPosition(body.position().dimension(), args.x(), args.y(), args.z());
         return TianshuRuntimePorts.find(AgentMotionPort.class)
-                .map(port -> port.move(actor, target, new MoveOptions(mode, MoveOptions.DEFAULT.arriveRadius()))
+                .map(port -> port.move(scope.actor(), target, new MoveOptions(mode, MoveOptions.DEFAULT.arriveRadius()))
                         .thenCompose(result -> result.outcome() == ActionOutcome.REJECTED
                                 || result.outcome() == ActionOutcome.FAILED
                                 ? CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.detail()))

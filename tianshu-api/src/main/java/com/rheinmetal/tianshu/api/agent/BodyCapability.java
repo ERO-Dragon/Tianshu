@@ -16,6 +16,9 @@ public enum BodyCapability {
     /** Applies a "use" action to a block or a held item, without implying hands or a tool. */
     USE,
 
+    /** Puts a block into the world from its own inventory, without implying that it can hold or swing an item. */
+    PLACE,
+
     /** Breaks blocks, with or without a tool. */
     MINE,
 
