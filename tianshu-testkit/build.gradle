@@ -17,9 +17,15 @@ dependencies {
     api project(':tianshu-echo')
     api project(':tianshu-weaving')
     api project(':tianshu-auxilium')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+test {
+    useJUnitPlatform()
 }
 

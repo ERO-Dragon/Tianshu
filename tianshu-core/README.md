@@ -2,7 +2,7 @@
 
 Ferry is the base of Tianshu, the conversational agent: it provides the UI, key bindings, settings, world state and local audio, and feature modules run on top of it.
 
-**Game versions**: NeoForge from 1.20.1, Fabric from 1.20, one jar per Minecraft version (see the [documentation index](../doc/README.md)).
+**Game versions**: NeoForge from 1.20.1, Fabric from 1.20, one jar per Minecraft version (see the [documentation index](../../Tianshu/doc/README.md)).
 **Loaders**: NeoForge / Fabric
 **Dependencies**: `tianshu_foundry` (local runtime library) — **optional for Ferry** (recommended on the client; without it the console runs but no AI feature works; not needed on a server); feature modules — optional, client-only, and they do require both Ferry and Foundry. A server only installs Ferry itself.
 **Third-party integration**: built to host external modules — any mod can join through the public ports and the assembly API; see the repository's [external integration guide](../EXTERNAL_INTEGRATION_GUIDE.md).
@@ -30,4 +30,4 @@ Ferry is the base of Tianshu, the conversational agent: it provides the UI, key 
 
 This mod is open source under the GNU Lesser General Public License v3.0 (© 2026 Ero-Dragon).
 
-More: [documentation index](../doc/README.md) · [architecture overview](../doc/architecture/模块架构.md) · [external integration guide](../EXTERNAL_INTEGRATION_GUIDE.md)
+More: [documentation index](../../Tianshu/doc/README.md) · [architecture overview](../../Tianshu/doc/architecture/模块架构.md) · [external integration guide](../EXTERNAL_INTEGRATION_GUIDE.md)

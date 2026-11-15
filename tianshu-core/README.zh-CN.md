@@ -2,7 +2,7 @@
 
 舟楫是天枢（对话智能体）的基座：负责界面、按键、设置、世界状态与本地音频；功能模组装在舟楫上运行。
 
-**游戏版本**：NeoForge 1.20.1 起、Fabric 1.20 起，每个 Minecraft 版本一个 jar（版本线见[文档索引](../doc/README.md)）。
+**游戏版本**：NeoForge 1.20.1 起、Fabric 1.20 起，每个 Minecraft 版本一个 jar（版本线见[文档索引](../../Tianshu/doc/README.md)）。
 **加载器**：NeoForge / Fabric
 **依赖**：`tianshu_foundry`（百工 / Foundry，本地推理运行时）——**舟楫不强制**（客户端建议安装，否则只有控制台没有 AI；服务端不需要）；功能模组——可选，客户端硬依赖百工与舟楫。服务端只装舟楫本身即可。
 **外部接入**：对第三方模块接入友好——任何模组都可以通过公开端口与装配 API 接入，详情见仓库的[外部集成指南](../EXTERNAL_INTEGRATION_GUIDE.md)。
@@ -30,4 +30,4 @@
 
 本模组以 GNU 宽通用公共许可证第 3 版（LGPL-3.0）开源（© 2026 Ero-Dragon）。
 
-更多文档：[文档索引](../doc/README.md) · [架构总览](../doc/architecture/模块架构.md) · [外部接入指南](../EXTERNAL_INTEGRATION_GUIDE.md)
+更多文档：[文档索引](../../Tianshu/doc/README.md) · [架构总览](../../Tianshu/doc/architecture/模块架构.md) · [外部接入指南](../EXTERNAL_INTEGRATION_GUIDE.md)
