@@ -17,6 +17,7 @@
 | [协议中心](protocol/TianshuProtocolCenter.md) | 信封、broker、topic、生命周期 |
 | [协议适配指南](protocol/TianshuProtocolAdapterGuide.md) | 模块如何接协议中心 |
 | [CoreManager 说明书](core/CoreManager_说明书.md) | 宿主生命周期与能力的参考手册 |
+| [载体接入指南](architecture/载体接入指南.md) | 第三方模组如何提供自有载体：实体、provider、处理器、外观与持久化边界 |
 | [外部接入指南](../EXTERNAL_INTEGRATION_GUIDE.md) | 第三方模组如何依赖天枢与应用接入 API |
 
 ## 功能模块文档
