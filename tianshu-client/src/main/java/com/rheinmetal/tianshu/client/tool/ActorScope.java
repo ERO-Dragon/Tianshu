@@ -4,11 +4,14 @@ import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
 /**
  * Who a world-facing tool call runs as: the caller itself, or the body it names.
@@ -60,5 +63,17 @@ final class ActorScope {
     /** Empty when this actor may perform the capability; a body that does not declare it is refused here. */
     Optional<ToolException> capabilityRefusal(BodyCapability capability) {
         return AgentBodies.checkCapability(actor(), capability);
+    }
+
+    /**
+     * Runs a long body operation under the body's single-operation slot, binding the call's cancellation signal so
+     * the server-side tick loop can observe a cancel or timeout.
+     */
+    static <T> CompletableFuture<T> guarded(ActorRef actor, ToolContext context,
+                                            Supplier<CompletableFuture<T>> operation) {
+        if (actor.kind() != ActorRef.Kind.BODY) {
+            return operation.get();
+        }
+        return BodyOperations.guarded(actor.id(), context.cancellation(), operation);
     }
 }

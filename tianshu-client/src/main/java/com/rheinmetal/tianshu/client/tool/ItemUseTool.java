@@ -110,10 +110,16 @@ public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionRe
         }
         ItemUseTarget use = target;
         ActorRef actor = scope.actor();
-        return TianshuRuntimePorts.find(AgentItemUsePort.class)
-                .map(port -> port.use(actor, use, args == null || args.holdTicks() == null
-                        ? 0 : Math.max(0, args.holdTicks())))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "item use is only available on the server")));
+        return ActorScope.guarded(actor, context,
+                () -> TianshuRuntimePorts.find(AgentItemUsePort.class)
+                        .map(port -> port.use(actor, use, args == null || args.holdTicks() == null
+                                ? 0 : Math.max(0, args.holdTicks())))
+                        .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                                "item use is only available on the server"))));
+    }
+
+    @Override
+    public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
+        return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(category()).withTimeout(25_000L);
     }
 }

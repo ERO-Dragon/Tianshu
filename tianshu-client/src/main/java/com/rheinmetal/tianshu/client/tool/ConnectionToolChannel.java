@@ -135,6 +135,10 @@ public final class ConnectionToolChannel implements ServerToolChannel {
                     if (slots.decrementAndGet() == 0) {
                         inFlight.remove(callerKey, slots);
                     }
+                    if (failure instanceof java.util.concurrent.TimeoutException) {
+                        // The server is still running the call; tell it to stop so its tick loops can clean up.
+                        notifyServerCancel(requestId, caller);
+                    }
                 });
         try {
             transport.get().send(requestId, id, args, caller, timeoutMillis);
@@ -148,24 +152,33 @@ public final class ConnectionToolChannel implements ServerToolChannel {
 
     @Override
     public boolean cancel(String requestId) {
+        return cancel(requestId, ToolCaller.mod("tianshu"));
+    }
+
+    /** Cancels a pending call and tells the server to stop it, keyed by the caller that started it. */
+    public boolean cancel(String requestId, ToolCaller caller) {
         CompletableFuture<JsonElement> future = requestId == null ? null : pending.remove(requestId);
         if (future == null) {
             return false;
         }
         future.completeExceptionally(new ToolException(ToolError.CANCELLED, "the call was cancelled"));
-        Optional<ToolTransport> transport = TianshuRuntimePorts.find(ToolTransport.class);
-        if (transport.isEmpty()) {
-            return true;
+        notifyServerCancel(requestId, caller);
+        return true;
+    }
+
+    private static void notifyServerCancel(String requestId, ToolCaller caller) {
+        if (requestId == null) {
+            return;
         }
         JsonObject args = new JsonObject();
         args.addProperty("requestId", requestId);
         try {
-            transport.get().send("cancel-" + UUID.randomUUID(), ReservedToolCalls.CANCEL, args,
-                    ToolCaller.mod("tianshu"), 2_000L);
+            TianshuRuntimePorts.find(ToolTransport.class).ifPresent(transport ->
+                    transport.send("cancel-" + UUID.randomUUID(), ReservedToolCalls.CANCEL, args,
+                            caller == null ? ToolCaller.mod("tianshu") : caller, 2_000L));
         } catch (RuntimeException ignored) {
-            // The local future is already cancelled; the server simply keeps doing its best-effort work.
+            // The local caller already gave up; the server simply keeps doing its best-effort work.
         }
-        return true;
     }
 
     private void completePending(String requestId, JsonElement result) {

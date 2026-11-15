@@ -107,13 +107,21 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
                     "unknown movement mode: " + args.mode()));
         }
         ActorPosition target = new ActorPosition(body.position().dimension(), args.x(), args.y(), args.z());
-        return TianshuRuntimePorts.find(AgentMotionPort.class)
-                .map(port -> port.move(scope.actor(), target, new MoveOptions(mode, MoveOptions.DEFAULT.arriveRadius()))
-                        .thenCompose(result -> result.outcome() == ActionOutcome.REJECTED
-                                || result.outcome() == ActionOutcome.FAILED
-                                ? CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.detail()))
-                                : CompletableFuture.completedFuture(result)))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "agent bodies move only on the server")));
+        return ActorScope.guarded(scope.actor(), context,
+                () -> TianshuRuntimePorts.find(AgentMotionPort.class)
+                        .map(port -> port.move(scope.actor(), target,
+                                        new MoveOptions(mode, MoveOptions.DEFAULT.arriveRadius()))
+                                .thenCompose(result -> result.outcome() == ActionOutcome.REJECTED
+                                        || result.outcome() == ActionOutcome.FAILED
+                                        ? CompletableFuture.failedFuture(
+                                                new ToolException(ToolError.FAILED, result.detail()))
+                                        : CompletableFuture.completedFuture(result)))
+                        .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                                "agent bodies move only on the server"))));
+    }
+
+    @Override
+    public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
+        return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(category()).withTimeout(35_000L);
     }
 }

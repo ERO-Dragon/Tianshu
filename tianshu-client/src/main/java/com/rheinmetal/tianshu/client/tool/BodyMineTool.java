@@ -86,12 +86,19 @@ public final class BodyMineTool implements TianshuTool<BodyMineTool.Args, Action
             return CompletableFuture.failedFuture(refusal.get());
         }
         BlockTarget target = new BlockTarget(body.position().dimension(), args.x(), args.y(), args.z());
-        return TianshuRuntimePorts.find(AgentActionPort.class)
-                .map(port -> port.mine(scope.actor(), target).thenCompose(result ->
-                        result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED
-                                ? CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.detail()))
-                                : CompletableFuture.completedFuture(result)))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "agent bodies act only on the server")));
+        return ActorScope.guarded(scope.actor(), context,
+                () -> TianshuRuntimePorts.find(AgentActionPort.class)
+                        .map(port -> port.mine(scope.actor(), target).thenCompose(result ->
+                                result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED
+                                        ? CompletableFuture.failedFuture(
+                                                new ToolException(ToolError.FAILED, result.detail()))
+                                        : CompletableFuture.completedFuture(result)))
+                        .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                                "agent bodies act only on the server"))));
+    }
+
+    @Override
+    public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
+        return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(category()).withTimeout(70_000L);
     }
 }

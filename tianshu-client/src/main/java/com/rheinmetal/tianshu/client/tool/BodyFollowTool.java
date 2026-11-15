@@ -118,6 +118,10 @@ public final class BodyFollowTool implements TianshuTool<BodyFollowTool.Args, Fo
                 if (result.isDone()) {
                     return;
                 }
+                if (BodyOperations.cancelled(actor.id())) {
+                    finish(ActionOutcome.REJECTED, lastDistance[0], "the call was cancelled");
+                    return;
+                }
                 AgentBody body = AgentBodies.resolve(actor.id()).orElse(null);
                 if (body == null) {
                     finish(ActionOutcome.REJECTED, lastDistance[0], "the agent body is not present");
@@ -171,8 +175,15 @@ public final class BodyFollowTool implements TianshuTool<BodyFollowTool.Args, Fo
                         failure.getMessage() == null ? "the follow failed" : failure.getMessage());
             }
         };
-        ticks.get().onNextTick(step);
-        return result;
+        return ActorScope.guarded(actor, context, () -> {
+            ticks.get().onNextTick(step);
+            return result;
+        });
+    }
+
+    @Override
+    public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
+        return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(category()).withTimeout(305_000L);
     }
 
     private static EntityHit nearest(List<EntityHit> hits, ActorPosition from) {

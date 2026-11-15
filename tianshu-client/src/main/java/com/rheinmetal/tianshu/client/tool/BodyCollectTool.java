@@ -47,6 +47,7 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
     private static final int MAX_COUNT = 64;
     private static final int MAX_RADIUS = 16;
     private static final int DEFAULT_RADIUS = 8;
+    private static final int BUDGET_SECONDS = 120;
 
     /** {@code mode} selects how to reach the block: any/walk/teleport. */
     public record Args(String body, String block, int count, int radius, String mode) {
@@ -118,14 +119,29 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
         int count = args.count() <= 0 ? 1 : Math.min(args.count(), MAX_COUNT);
         int radius = args.radius() <= 0 ? DEFAULT_RADIUS : Math.min(args.radius(), MAX_RADIUS);
         ActorRef actor = scope.actor();
-        return run(actor, args.block().trim(), count, 0, mode, radius);
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(BUDGET_SECONDS);
+        return ActorScope.guarded(actor, context, () -> run(actor, args.block().trim(), count, 0, mode, radius,
+                deadline));
+    }
+
+    @Override
+    public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
+        return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(category()).withTimeout(125_000L);
     }
 
     private CompletableFuture<CollectResult> run(ActorRef actor, String blockId, int wanted, int collected,
-                                                 MoveMode mode, int radius) {
+                                                 MoveMode mode, int radius, long deadline) {
         if (collected >= wanted) {
             return CompletableFuture.completedFuture(
                     new CollectResult(collected, 0, "collected " + collected + " " + blockId));
+        }
+        if (BodyOperations.cancelled(actor.id())) {
+            return CompletableFuture.completedFuture(new CollectResult(collected, wanted - collected,
+                    "the call was cancelled"));
+        }
+        if (System.nanoTime() > deadline) {
+            return CompletableFuture.completedFuture(new CollectResult(collected, wanted - collected,
+                    "the collect budget was exhausted"));
         }
         AgentBody body = AgentBodies.resolve(actor.id()).orElse(null);
         if (body == null) {
@@ -171,7 +187,7 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
                                             }
                                             return items.get().pickup(actor, 3)
                                                     .thenCompose(pickup -> run(actor, blockId, wanted,
-                                                            collected + 1, mode, radius));
+                                                            collected + 1, mode, radius, deadline));
                                         });
                             });
                 });
