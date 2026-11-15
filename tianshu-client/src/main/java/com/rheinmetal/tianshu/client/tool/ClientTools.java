@@ -39,6 +39,8 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyLookTool());
         ServerToolDeclarations.declare(new BodyMineTool());
         ServerToolDeclarations.declare(new BodyAttackTool());
+        ServerToolDeclarations.declare(new BodyScanTool());
+        ServerToolDeclarations.declare(new BodyInventoryTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */
