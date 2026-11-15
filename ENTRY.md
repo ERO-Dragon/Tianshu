@@ -42,7 +42,7 @@ cd ..\Tianshu-features\tianshu-echo
 
 ## 分支
 
-- 版本分支：`1.20` … `26.3`，只保留 adapter/common；
+- 版本分支：`adapter/1.20` … `adapter/26.3`，只保留 adapter/common；
 - `ferry`：平台层；
 - `features`：功能模组；
 - `master`：入口脚本，不含源码；

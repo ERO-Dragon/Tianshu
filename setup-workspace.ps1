@@ -30,7 +30,7 @@ function Ensure-Worktree([string]$Path, [string]$Branch, [switch]$AnyBranch) {
 
 Ensure-Worktree (Join-Path $workspace 'Tianshu-ferry') 'ferry'
 Ensure-Worktree (Join-Path $workspace 'Tianshu-features') 'features'
-Ensure-Worktree (Join-Path $workspace 'Tianshu-adapter') '1.21.1' -AnyBranch
+Ensure-Worktree (Join-Path $workspace 'Tianshu-adapter') 'adapter/1.21.1' -AnyBranch
 
 $adapter = Join-Path $workspace 'Tianshu-adapter'
 $libs = Join-Path $root 'libs'
