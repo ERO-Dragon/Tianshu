@@ -7,7 +7,10 @@
 
 | 名称 | 类型 | 替代项 | 引入版本 | 计划移除 | 说明 |
 |---|---|---|---|---|---|
-| — | — | — | — | — | — |
+| `BlockInteractPort.interact(String, BlockInteractRequest)` | 方法 | `interact(ActorRef, BlockInteractRequest)` | 1.0.0 | 2.0.0 | 玩家回落桥；全部 adapter 分支实现 Actor 版本后删除 |
+| `ContainerTransferPort.transfer(String, ContainerTransferRequest)` | 方法 | `transfer(ActorRef, ContainerTransferRequest)` | 1.0.0 | 2.0.0 | 同上 |
+| `CraftPort.craft(String, CraftRequest)` | 方法 | `craft(ActorRef, CraftRequest)` | 1.0.0 | 2.0.0 | 同上 |
+| `BlockMachinePort.operate(String, MachineOpRequest)` | 方法 | `operate(ActorRef, MachineOpRequest)` | 1.0.0 | 2.0.0 | 同上 |
 
 ## 登记方式
 
