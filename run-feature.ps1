@@ -1,7 +1,8 @@
 param(
     [string]$Feature = '',
     [ValidateSet('neoforge', 'fabric')]
-    [string]$Loader = 'neoforge'
+    [string]$Loader = 'neoforge',
+    [string]$Task = 'runClient'
 )
 $ErrorActionPreference = 'Stop'
 $featuresRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -14,5 +15,5 @@ $entry = Join-Path $adapterRoot 'run.ps1'
 if (-not (Test-Path $entry)) {
     throw "adapter entry not found: $entry"
 }
-& $entry -Feature $Feature -Loader $Loader
+& $entry -Feature $Feature -Loader $Loader -Task $Task
 exit $LASTEXITCODE
