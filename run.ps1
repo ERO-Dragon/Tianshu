@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 param(
     [string]$Version = '',
     [ValidateSet('neoforge', 'fabric')]
