@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.neoforge.server;
 
 import com.rheinmetal.tianshu.api.agent.AgentActionPort;
 import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
+import com.rheinmetal.tianshu.api.agent.AgentItemUsePort;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -52,6 +53,7 @@ import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import com.rheinmetal.tianshu.mc.body.BodyPersistence;
 import com.rheinmetal.tianshu.mc.body.ActionRouter;
 import com.rheinmetal.tianshu.mc.body.CraftRouter;
+import com.rheinmetal.tianshu.mc.body.UseItemRouter;
 import com.rheinmetal.tianshu.mc.body.InteractRouter;
 import com.rheinmetal.tianshu.mc.body.MachineRouter;
 import com.rheinmetal.tianshu.mc.body.TransferRouter;
@@ -116,6 +118,7 @@ public final class ServerToolHandler {
         TianshuRuntimePorts.register(AgentActionPort.class, new ActionRouter());
         TianshuRuntimePorts.register(AgentWorldQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));
         TianshuRuntimePorts.register(AgentItemPort.class, new ItemRouter(new AgentItemSource(event.getServer(), bodies)));
+        TianshuRuntimePorts.register(AgentItemUsePort.class, new UseItemRouter());
         if (TianshuTools.find(LootQueryTool.ID) == null) {
             TianshuTools.register(new LootQueryTool());
         }
