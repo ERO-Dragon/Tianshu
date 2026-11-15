@@ -69,4 +69,9 @@ public interface AgentBodyActions {
     default Optional<AgentItemUsePort> itemUse() {
         return Optional.empty();
     }
+
+    /** Interacting with an entity, behind {@code entity.use}. */
+    default Optional<AgentEntityUsePort> entityUse() {
+        return Optional.empty();
+    }
 }
