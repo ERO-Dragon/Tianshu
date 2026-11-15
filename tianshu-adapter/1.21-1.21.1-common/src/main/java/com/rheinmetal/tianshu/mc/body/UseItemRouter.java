@@ -15,10 +15,10 @@ import java.util.concurrent.CompletableFuture;
 public final class UseItemRouter implements AgentItemUsePort {
 
     @Override
-    public CompletableFuture<ActionResult> use(ActorRef actor, ItemUseTarget target) {
+    public CompletableFuture<ActionResult> use(ActorRef actor, ItemUseTarget target, int holdTicks) {
         return AgentBodies.actions(actor.id())
                 .flatMap(AgentBodyActions::itemUse)
-                .map(handler -> handler.use(actor, target))
+                .map(handler -> handler.use(actor, target, holdTicks))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no item use handler for this body")));
     }
