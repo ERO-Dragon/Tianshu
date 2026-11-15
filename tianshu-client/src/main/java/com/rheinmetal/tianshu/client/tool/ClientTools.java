@@ -43,6 +43,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyInventoryTool());
         ServerToolDeclarations.declare(new BodyPickupTool());
         ServerToolDeclarations.declare(new BodyEquipTool());
+        ServerToolDeclarations.declare(new BodyDropTool());
         ServerToolDeclarations.declare(new BodyCollectTool());
         ServerToolDeclarations.declare(new BodyFollowTool());
         ServerToolDeclarations.declare(new ItemUseTool());

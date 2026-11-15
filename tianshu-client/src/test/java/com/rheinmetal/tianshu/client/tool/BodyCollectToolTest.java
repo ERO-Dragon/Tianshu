@@ -13,6 +13,7 @@ import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
 import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.DropResult;
 import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
@@ -177,7 +178,12 @@ class BodyCollectToolTest {
                     }
 
                     @Override
-                    public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
+                    public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
+            }
+
+            @Override
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                         throw new AssertionError("collect must not equip");
                     }
                 });

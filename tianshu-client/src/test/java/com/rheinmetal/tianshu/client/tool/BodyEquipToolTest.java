@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.DropResult;
 import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
@@ -79,6 +80,11 @@ class BodyEquipToolTest {
             }
 
             @Override
+            public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
+            }
+
+            @Override
             public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 reached.set(true);
                 return CompletableFuture.completedFuture(new EquipResult(BodySlot.MAIN_HAND, -1, "", 0));
@@ -102,6 +108,11 @@ class BodyEquipToolTest {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 throw new AssertionError("equip test must not pick up");
+            }
+
+            @Override
+            public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
             }
 
             @Override

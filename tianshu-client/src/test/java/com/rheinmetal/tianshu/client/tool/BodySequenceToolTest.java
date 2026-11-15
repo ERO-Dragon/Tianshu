@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.agent.BlockTarget;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.agent.EntityTarget;
+import com.rheinmetal.tianshu.api.agent.DropResult;
 import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.MoveOptions;
@@ -157,7 +158,12 @@ class BodySequenceToolTest {
                     }
 
                     @Override
-                    public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
+                    public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
+            }
+
+            @Override
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                         order.add("equip");
                         return CompletableFuture.completedFuture(
                                 new EquipResult(request.target(), request.inventorySlot(), "minecraft:stone", 1));

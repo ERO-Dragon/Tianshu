@@ -4,6 +4,7 @@ import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
+import com.rheinmetal.tianshu.api.agent.DropResult;
 import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.PickupResult;
@@ -34,6 +35,15 @@ public final class ItemRouter implements AgentItemPort {
         return AgentBodies.actions(actor.id())
                 .flatMap(AgentBodyActions::items)
                 .map(handler -> handler.pickup(actor, radius))
+                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                        "no item handler for this body")));
+    }
+
+    @Override
+    public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+        return AgentBodies.actions(actor.id())
+                .flatMap(AgentBodyActions::items)
+                .map(handler -> handler.drop(actor, slot, count))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no item handler for this body")));
     }

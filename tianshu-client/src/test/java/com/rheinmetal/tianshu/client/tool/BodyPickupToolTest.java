@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.DropResult;
 import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
@@ -70,6 +71,11 @@ class BodyPickupToolTest {
             }
 
             @Override
+            public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
+            }
+
+            @Override
             public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 throw new AssertionError("a pickup test must not equip");
             }
@@ -93,6 +99,11 @@ class BodyPickupToolTest {
                 seen.set(actor);
                 return CompletableFuture.completedFuture(
                         new PickupResult(List.of(new PickedItem("minecraft:oak_log", 3))));
+            }
+
+            @Override
+            public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
             }
 
             @Override
@@ -120,6 +131,11 @@ class BodyPickupToolTest {
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 seen.set(actor);
                 return CompletableFuture.completedFuture(new PickupResult(List.of()));
+            }
+
+            @Override
+            public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
             }
 
             @Override
