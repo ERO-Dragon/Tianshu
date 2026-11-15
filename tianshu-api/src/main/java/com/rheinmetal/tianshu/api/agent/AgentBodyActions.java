@@ -1,6 +1,10 @@
 package com.rheinmetal.tianshu.api.agent;
 
+import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
+import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
+import com.rheinmetal.tianshu.api.game.CraftPort;
 
 import java.util.Optional;
 
@@ -38,6 +42,26 @@ public interface AgentBodyActions {
 
     /** Placing a block from the carrier's inventory, behind {@code block.place}. */
     default Optional<BlockPlacePort> placement() {
+        return Optional.empty();
+    }
+
+    /** Using a block, behind {@code block.interact}. */
+    default Optional<BlockInteractPort> interaction() {
+        return Optional.empty();
+    }
+
+    /** Crafting with the carrier's inventory, behind {@code craft.recipe}. */
+    default Optional<CraftPort> craft() {
+        return Optional.empty();
+    }
+
+    /** Moving items between a container and the carrier, behind {@code container.transfer}. */
+    default Optional<ContainerTransferPort> transfer() {
+        return Optional.empty();
+    }
+
+    /** Working a furnace-family machine with the carrier's inventory, behind {@code block.machine}. */
+    default Optional<BlockMachinePort> machine() {
         return Optional.empty();
     }
 }
