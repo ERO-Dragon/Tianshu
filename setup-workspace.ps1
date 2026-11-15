@@ -36,7 +36,8 @@ $adapter = Join-Path $workspace 'Tianshu-adapter'
 $libs = Join-Path $root 'libs'
 $adapterLibs = Join-Path $adapter 'libs'
 if ((Test-Path $libs) -and -not (Test-Path $adapterLibs)) {
-    Copy-Item $libs $adapterLibs -Recurse
-    Write-Host "copied libs to $adapterLibs"
+    New-Item -ItemType Directory -Path $adapterLibs | Out-Null
+    Copy-Item (Join-Path $libs '*.jar') $adapterLibs
+    Write-Host "copied adapter jars to $adapterLibs"
 }
 Write-Host 'workspace ready'
