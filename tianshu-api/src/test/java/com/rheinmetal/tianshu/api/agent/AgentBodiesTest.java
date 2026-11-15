@@ -67,6 +67,29 @@ class AgentBodiesTest {
     }
 
     @Test
+    void accessIsJudgedByTheOwningProviderForPlayerCalls() {
+        AgentBodyProvider provider = new AgentBodyProvider() {
+            @Override
+            public Optional<AgentBody> resolve(String bodyId) {
+                return "body-1".equals(bodyId) ? Optional.of(body("body-1", Set.of())) : Optional.empty();
+            }
+
+            @Override
+            public Optional<com.rheinmetal.tianshu.api.tool.ToolException> checkAccess(
+                    com.rheinmetal.tianshu.api.tool.ToolCaller caller, String bodyId) {
+                return Optional.of(new com.rheinmetal.tianshu.api.tool.ToolException(
+                        com.rheinmetal.tianshu.api.tool.ToolError.NO_PERMISSION, "denied"));
+            }
+        };
+        AgentBodies.register(provider);
+
+        assertTrue(AgentBodies.checkAccess(
+                com.rheinmetal.tianshu.api.tool.ToolCaller.player("p", true), "body-1").isPresent());
+        assertTrue(AgentBodies.checkAccess(
+                com.rheinmetal.tianshu.api.tool.ToolCaller.agent(true), "body-1").isEmpty());
+    }
+
+    @Test
     void aBodyThatDeclaresTheCapabilityPasses() {
         AgentBodies.register(id -> "body-1".equals(id)
                 ? Optional.of(body("body-1", Set.of(BodyCapability.MOVE, BodyCapability.MINE)))

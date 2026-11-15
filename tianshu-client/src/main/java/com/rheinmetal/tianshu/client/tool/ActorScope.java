@@ -36,7 +36,12 @@ final class ActorScope {
             return new ActorScope(ActorRef.of(caller), null);
         }
         if (bodyId != null && !bodyId.isBlank()) {
-            return new ActorScope(ActorRef.body(bodyId.trim(), caller.operator()), null);
+            String trimmed = bodyId.trim();
+            Optional<ToolException> denied = AgentBodies.checkAccess(caller, trimmed);
+            if (denied.isPresent()) {
+                return new ActorScope(null, denied.get());
+            }
+            return new ActorScope(ActorRef.body(trimmed, caller.operator()), null);
         }
         return new ActorScope(ActorRef.of(caller), null);
     }

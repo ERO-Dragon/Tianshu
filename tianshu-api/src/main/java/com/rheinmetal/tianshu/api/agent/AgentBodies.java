@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.agent;
 
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 
@@ -63,6 +64,22 @@ public final class AgentBodies {
     /** The handlers of the provider that owns {@code bodyId}; empty when nobody owns it or it offers none. */
     public static Optional<AgentBodyActions> actions(String bodyId) {
         return owner(bodyId).flatMap(provider -> provider.actions(bodyId));
+    }
+
+    /**
+     * Empty when {@code caller} may command {@code bodyId}; a refusal otherwise.
+     *
+     * <p>Only player-driven calls are judged: the conversation runtime and the server already carry operator
+     * permission, and judging them here would deny the assistant its own bodies.</p>
+     */
+    public static Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
+        if (caller == null || caller.kind() != ToolCaller.Kind.PLAYER) {
+            return Optional.empty();
+        }
+        if (bodyId == null || bodyId.isBlank()) {
+            return Optional.empty();
+        }
+        return owner(bodyId).flatMap(provider -> provider.checkAccess(caller, bodyId));
     }
 
     /**
