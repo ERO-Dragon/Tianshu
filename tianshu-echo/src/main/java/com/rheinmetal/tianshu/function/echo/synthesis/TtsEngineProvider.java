@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.function.echo.synthesis;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureCode;
+import com.rheinmetal.tianshu.function.echo.runtime.TtsFailureException;
 import com.rheinmetal.tianshu.function.echo.synthesis.cloud.CloudTtsBackend;
 import com.rheinmetal.tianshu.function.echo.synthesis.cloud.EdgeTtsCredentials;
 import com.rheinmetal.tianshu.function.echo.synthesis.cloud.EdgeTtsTransport;
@@ -168,7 +170,16 @@ public final class TtsEngineProvider {
     private Candidate candidate(TtsBackendSelection selection) {
         return switch (selection.backendType()) {
             case CLOUD -> {
-                CloudTtsBackend created = (CloudTtsBackend) createBackend(TtsBackendType.CLOUD);
+                CloudTtsBackend created;
+                try {
+                    created = (CloudTtsBackend) createBackend(TtsBackendType.CLOUD);
+                } catch (LinkageError missing) {
+                    // The MP3 decoder ships as a nested jar; if the loader did not put it on the mod's
+                    // classpath, the failure used to surface as a generic "synthesis failed". Name it so the
+                    // player and the log say what is actually missing.
+                    throw new TtsFailureException(TtsFailureCode.CLOUD_DECODER_UNAVAILABLE,
+                            "cloud decoder is unavailable: " + missing.getMessage());
+                }
                 CloudTtsBackendSelection cloud = (CloudTtsBackendSelection) selection;
                 yield new Candidate(created, () -> created.initialize(cloud.profile()));
             }

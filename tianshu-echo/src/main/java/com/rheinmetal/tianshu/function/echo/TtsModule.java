@@ -202,7 +202,6 @@ public final class TtsModule implements TianshuManagedModule {
                 this::publishPlaybackStatus,
                 this::publishRequestStatus,
                 adapter::publishLoadingActivity,
-                config::isTtsStreamingSynthesisEnabled,
                 loadQueue,
                 this::markModelBusy
         );

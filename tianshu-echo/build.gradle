@@ -153,4 +153,9 @@ jar {
     from(configurations.jarJarPayload) {
         into 'META-INF/jarjar'
     }
+    // The metadata belongs to the packaged jar only: keeping it out of the dev class output is what stops NeoForge
+    // from looking for a nested jar that the source-set run does not build.
+    from('src/main/templates/META-INF/jarjar') {
+        into 'META-INF/jarjar'
+    }
 }

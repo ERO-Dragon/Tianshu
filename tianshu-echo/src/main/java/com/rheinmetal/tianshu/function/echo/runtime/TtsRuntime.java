@@ -93,7 +93,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<TtsPlaybackState> playbackStatePublisher,
             Consumer<TtsRequestStatusPayload> requestStatusPublisher
     ) {
-        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, requestStatusPublisher, ignored -> { }, () -> true);
+        this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher, requestStatusPublisher, ignored -> { }, null, ignored -> { });
     }
 
     public TtsRuntime(
@@ -104,12 +104,11 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<TtsSession> sessionStatusPublisher,
             Consumer<TtsPlaybackState> playbackStatePublisher,
             Consumer<TtsRequestStatusPayload> requestStatusPublisher,
-            Consumer<Boolean> modelLoadingPublisher,
-            BooleanSupplier streamingSynthesisEnabled
+            Consumer<Boolean> modelLoadingPublisher
     ) {
         this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher,
                 playbackStatePublisher, requestStatusPublisher, modelLoadingPublisher,
-                streamingSynthesisEnabled, null, ignored -> { });
+                null, ignored -> { });
     }
 
     /**
@@ -127,7 +126,6 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<TtsPlaybackState> playbackStatePublisher,
             Consumer<TtsRequestStatusPayload> requestStatusPublisher,
             Consumer<Boolean> modelLoadingPublisher,
-            BooleanSupplier streamingSynthesisEnabled,
             NativeModelLoadQueue loadQueue,
             Consumer<Boolean> availability
     ) {
@@ -135,7 +133,7 @@ public final class TtsRuntime implements TtsPlaybackListener {
         this.executorManager = executorManager;
         this.synthesisEngine = synthesisEngine;
         this.synthesisScheduler = new TtsSynthesisScheduler(executorManager, synthesisEngine);
-        this.synthesisPolicy = new TtsAdaptiveSynthesisPolicy(streamingSynthesisEnabled);
+        this.synthesisPolicy = new TtsAdaptiveSynthesisPolicy();
         this.synthesisTaskCoordinator = new TtsSynthesisTaskCoordinator(synthesisEngine, synthesisScheduler, synthesisPolicy, lastFailure::set);
         this.modelLifecycleCoordinator = new TtsModelLifecycleCoordinator(executorManager, synthesisEngine, lastFailure::set, modelLoadingPublisher, loadQueue);
         this.modelLifecycleCoordinator.observeAvailability(availability);
@@ -154,11 +152,10 @@ public final class TtsRuntime implements TtsPlaybackListener {
             Consumer<TtsPlaybackState> playbackStatePublisher,
             Consumer<TtsRequestStatusPayload> requestStatusPublisher,
             Consumer<Boolean> modelLoadingPublisher,
-            BooleanSupplier streamingSynthesisEnabled,
             NativeModelLoadQueue loadQueue
     ) {
         this(env, executorManager, synthesisEngine, audioBridge, sessionStatusPublisher, playbackStatePublisher,
-                requestStatusPublisher, modelLoadingPublisher, streamingSynthesisEnabled, loadQueue, ignored -> { });
+                requestStatusPublisher, modelLoadingPublisher, loadQueue, ignored -> { });
     }
 
     public TtsOperationResult prepare(Consumer<Boolean> completion) {

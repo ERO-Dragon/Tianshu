@@ -3,7 +3,6 @@
   "tianshu.gui.tts.description": "Manage voice playback models, preview, speed, and voice cloning",
   "tianshu.gui.tts.enabled": "Enable TTS Voice Playback",
   "tianshu.gui.tts.section.main": "Main Settings",
-  "tianshu.gui.tts.section.synthesis": "Synthesis",
   "tianshu.gui.tts.section.preview": "Preview",
   "tianshu.gui.tts.section.model_status": "Model Description",
   "tianshu.gui.tts.section.voice": "Voice Cloning",
@@ -24,7 +23,6 @@
   "tianshu.gui.tts.option.speed": "Speed",
   "tianshu.gui.tts.option.speaker_id": "Speaker ID",
   "tianshu.gui.tts.option.voice_sample": "Cloned Voice",
-  "tianshu.gui.tts.option.streaming_synthesis": "Streaming Synthesis",
   "tianshu.gui.tts.preview.default_text": "This is a Tianshu speech preview.",
   "tianshu.gui.tts.validation.invalid_speaker_id": "Speaker ID must be a non-negative integer",
   "tianshu.gui.tts.model.description.moss": "Autoregressive high-naturalness speech synthesis",
@@ -153,5 +151,6 @@
   "tianshu.gui.tts.cloud.voice.en_us_aria": "Aria (F)",
   "tianshu.gui.tts.cloud.voice.en_us_guy": "Guy (M)",
   "tianshu.gui.tts.validation.cloud_settings": "Choose a cloud provider and voice first",
-  "tianshu.gui.tts.validation.cloud_endpoint": "The endpoint has to be ws:// or wss://; leave it blank for the default"
+  "tianshu.gui.tts.validation.cloud_endpoint": "The endpoint has to be ws:// or wss://; leave it blank for the default",
+  "tianshu.gui.tts.failure.cloud_decoder_unavailable": "The cloud decoder is unavailable (the MP3 decoder is missing from the jar)"
 }

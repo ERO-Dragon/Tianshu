@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMetrics;
 import com.rheinmetal.tianshu.function.echo.synthesis.TtsSynthesisMode;
 
 import java.util.List;
-import java.util.function.BooleanSupplier;
 
 /**
  * Chooses between streaming and full synthesis for playback batches.
@@ -31,16 +30,10 @@ final class TtsAdaptiveSynthesisPolicy {
 
     private final RollingEstimate fullEstimate = new RollingEstimate(DEFAULT_FULL_RTF);
     private final RollingEstimate streamingEstimate = new RollingEstimate(DEFAULT_STREAMING_RTF);
-    private final BooleanSupplier streamingSynthesisEnabled;
     private double firstAudioMillisPerChar = DEFAULT_FIRST_AUDIO_MILLIS_PER_CHAR;
     private double audioMillisPerChar = DEFAULT_AUDIO_MILLIS_PER_CHAR;
 
     TtsAdaptiveSynthesisPolicy() {
-        this(() -> true);
-    }
-
-    TtsAdaptiveSynthesisPolicy(BooleanSupplier streamingSynthesisEnabled) {
-        this.streamingSynthesisEnabled = streamingSynthesisEnabled == null ? () -> true : streamingSynthesisEnabled;
     }
 
     synchronized TtsSynthesisDecision planPlayback(
@@ -55,9 +48,6 @@ final class TtsAdaptiveSynthesisPolicy {
             return new TtsSynthesisDecision(0, "", TtsSynthesisMode.FULL);
         }
         if (!isStreamingAutoregressive(backend)) {
-            return decision(availableSentences, 1, TtsSynthesisMode.FULL);
-        }
-        if (!streamingSynthesisAllowed()) {
             return decision(availableSentences, 1, TtsSynthesisMode.FULL);
         }
         if (firstBatch) {
@@ -96,7 +86,7 @@ final class TtsAdaptiveSynthesisPolicy {
         }
         return decision(
                 availableSentences,
-                streamingSynthesisAllowed() ? sentenceCount : 1,
+                sentenceCount,
                 TtsSynthesisMode.FULL
         );
     }
@@ -126,10 +116,6 @@ final class TtsAdaptiveSynthesisPolicy {
         if (observedAudioMillisPerChar > 0L) {
             audioMillisPerChar = ewma(audioMillisPerChar, observedAudioMillisPerChar, EWMA_ALPHA);
         }
-    }
-
-    private boolean streamingSynthesisAllowed() {
-        return streamingSynthesisEnabled.getAsBoolean();
     }
 
     private boolean fullFits(String text, long remainingAudioMillis) {

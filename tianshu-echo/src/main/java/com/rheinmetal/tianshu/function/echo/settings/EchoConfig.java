@@ -14,7 +14,6 @@ import java.util.Objects;
 public final class EchoConfig implements EchoConfiguration, EchoSettingsAccess {
 
     private static final String KEY_ENABLED = "enabled";
-    private static final String KEY_STREAMING = "streamingSynthesis";
     private static final String KEY_PREVIEW_TEXT = "previewText";
     private static final String KEY_GITHUB_PROXY = "githubProxyUrl";
     private static final String KEY_CUSTOM_NAME = "customTtsName";
@@ -24,7 +23,6 @@ public final class EchoConfig implements EchoConfiguration, EchoSettingsAccess {
     private static final String KEY_CLOUD_VOICE = "cloudVoice";
 
     private static final boolean DEFAULT_ENABLED = true;
-    private static final boolean DEFAULT_STREAMING = true;
     private static final String DEFAULT_PREVIEW_TEXT = "";
     private static final String DEFAULT_GITHUB_PROXY = "https://gh-proxy.org/";
     private static final String DEFAULT_CUSTOM_NAME = "";
@@ -62,18 +60,8 @@ public final class EchoConfig implements EchoConfiguration, EchoSettingsAccess {
     }
 
     @Override
-    public boolean isTtsStreamingSynthesisEnabled() {
-        return store.getBoolean(KEY_STREAMING, DEFAULT_STREAMING);
-    }
-
-    @Override
     public void setTtsEnabled(boolean enabled) {
         store.setBoolean(KEY_ENABLED, enabled);
-    }
-
-    @Override
-    public void setTtsStreamingSynthesisEnabled(boolean enabled) {
-        store.setBoolean(KEY_STREAMING, enabled);
     }
 
     @Override

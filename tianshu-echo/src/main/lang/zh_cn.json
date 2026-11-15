@@ -3,7 +3,6 @@
   "tianshu.gui.tts.description": "管理语音播报模型、试听、语速和音色克隆",
   "tianshu.gui.tts.enabled": "启用 TTS 语音播报",
   "tianshu.gui.tts.section.main": "主设置",
-  "tianshu.gui.tts.section.synthesis": "合成方式",
   "tianshu.gui.tts.section.preview": "试听",
   "tianshu.gui.tts.section.model_status": "模型描述",
   "tianshu.gui.tts.section.voice": "音色克隆",
@@ -24,7 +23,6 @@
   "tianshu.gui.tts.option.speed": "语速",
   "tianshu.gui.tts.option.speaker_id": "音色编号",
   "tianshu.gui.tts.option.voice_sample": "克隆音色",
-  "tianshu.gui.tts.option.streaming_synthesis": "流式合成",
   "tianshu.gui.tts.preview.default_text": "这是一段天枢语音播报试听",
   "tianshu.gui.tts.validation.invalid_speaker_id": "音色编号必须是非负整数",
   "tianshu.gui.tts.model.description.moss": "自回归高自然度语音合成",
@@ -153,5 +151,6 @@
   "tianshu.gui.tts.cloud.voice.en_us_aria": "Aria（女）",
   "tianshu.gui.tts.cloud.voice.en_us_guy": "Guy（男）",
   "tianshu.gui.tts.validation.cloud_settings": "云端服务商或音色尚未选定",
-  "tianshu.gui.tts.validation.cloud_endpoint": "端点必须是 ws:// 或 wss:// 地址，留空使用默认"
+  "tianshu.gui.tts.validation.cloud_endpoint": "端点必须是 ws:// 或 wss:// 地址，留空使用默认",
+  "tianshu.gui.tts.failure.cloud_decoder_unavailable": "云端解码组件不可用（安装包内缺少 MP3 解码器）"
 }
