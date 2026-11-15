@@ -19,9 +19,9 @@ public final class BodyRuntime {
     private BodyRuntime() {
     }
 
-    public static synchronized BodyRegistry start(MinecraftServer server) {
+    public static synchronized BodyRegistry start(MinecraftServer server, ActionPlayerFactory actionPlayers) {
         stop();
-        registry = new BodyRegistry(server);
+        registry = new BodyRegistry(server, actionPlayers);
         unregister = AgentBodies.register(registry);
         return registry;
     }

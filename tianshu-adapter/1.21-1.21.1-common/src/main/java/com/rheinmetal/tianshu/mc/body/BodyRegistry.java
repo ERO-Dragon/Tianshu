@@ -38,10 +38,12 @@ public final class BodyRegistry implements AgentBodyProvider {
     private final Map<UUID, BodyState> bodies = new LinkedHashMap<>();
     private final Map<UUID, Integer> activeSlots = new LinkedHashMap<>();
     private final MinecraftServer server;
+    private final ActionPlayerFactory actionPlayers;
     private AgentBodyActions actions;
 
-    public BodyRegistry(MinecraftServer server) {
+    public BodyRegistry(MinecraftServer server, ActionPlayerFactory actionPlayers) {
         this.server = server;
+        this.actionPlayers = actionPlayers;
     }
 
     /** The body's active main slot, or -1 when nothing is equipped. */
@@ -130,7 +132,7 @@ public final class BodyRegistry implements AgentBodyProvider {
             return Optional.empty();
         }
         if (actions == null) {
-            actions = new CarrierActions(server, this);
+            actions = new CarrierActions(server, this, actionPlayers);
         }
         return Optional.of(actions);
     }

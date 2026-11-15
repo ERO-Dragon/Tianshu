@@ -47,7 +47,10 @@ import com.rheinmetal.tianshu.mc.body.BodyCommands;
 import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
-import com.rheinmetal.tianshu.mc.body.AgentActionSource;
+import com.rheinmetal.tianshu.mc.body.ActionRouter;
+import com.rheinmetal.tianshu.mc.body.ItemRouter;
+import com.rheinmetal.tianshu.mc.body.PlaceRouter;
+import com.rheinmetal.tianshu.mc.body.QueryRouter;
 import com.rheinmetal.tianshu.mc.body.MotionRouter;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
@@ -84,9 +87,9 @@ public final class ServerToolHandler {
 
     /** Installs the server-side tool sources and registers the tools they back. */
     private static void onServerStarting(ServerStartingEvent event) {
-        BodyRegistry bodies = BodyRuntime.start(event.getServer());
-        TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
         ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
+        BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers);
+        TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
         if (TianshuTools.find(RecipeQueryTool.ID) == null) {
@@ -95,15 +98,15 @@ public final class ServerToolHandler {
         TianshuRuntimePorts.register(BlockInteractPort.class,
                 new BlockInteractSource(event.getServer(), bodies, actionPlayers));
         TianshuRuntimePorts.register(BlockPlacePort.class,
-                new BlockPlaceSource(event.getServer(), bodies, actionPlayers));
+                new PlaceRouter(new BlockPlaceSource(event.getServer(), bodies, actionPlayers)));
         TianshuRuntimePorts.register(CraftPort.class, new CraftSource(event.getServer()));
         TianshuRuntimePorts.register(ContainerTransferPort.class,
                 new ContainerTransferSource(event.getServer()));
         TianshuRuntimePorts.register(BlockMachinePort.class, new BlockMachineSource(event.getServer()));
         TianshuRuntimePorts.register(AgentMotionPort.class, new MotionRouter());
-        TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(event.getServer(), bodies));
-        TianshuRuntimePorts.register(AgentWorldQueryPort.class, new BodyQuerySource(event.getServer()));
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(event.getServer(), bodies));
+        TianshuRuntimePorts.register(AgentActionPort.class, new ActionRouter());
+        TianshuRuntimePorts.register(AgentWorldQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));
+        TianshuRuntimePorts.register(AgentItemPort.class, new ItemRouter(new AgentItemSource(event.getServer(), bodies)));
         if (TianshuTools.find(LootQueryTool.ID) == null) {
             TianshuTools.register(new LootQueryTool());
         }
