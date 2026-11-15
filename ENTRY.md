@@ -47,6 +47,20 @@ cd ..\Tianshu-ferry
 - 改 `features`：`cd ..\Tianshu-features`
 - 两个目录已固定在对应分支，不需要在主仓库 `git checkout`。
 
+## 文档
+
+`doc/` 只在入口仓维护，`ferry` / `features` / `adapter` 分支不再保留副本。
+
+测试通过 `WorkspacePaths.doc(...)` 解析文档根，顺序是：
+
+1. `-Dtianshu.docRoot=<目录>`；
+2. 当前工作区自己的 `doc/`；
+3. 顺着 `.git` 文件找到主工作区（入口仓）的 `doc/`。
+
+所以从 adapter 工作区跑测试时，文档会直接落到入口仓，不需要额外配置。
+
+各模块 README 用 `../../Tianshu/doc/...` 指过来，入口仓目录改名时要一并替换。
+
 ## 分支
 
 - 版本分支：`adapter/1.20` … `adapter/26.3`，只保留 adapter/common；
