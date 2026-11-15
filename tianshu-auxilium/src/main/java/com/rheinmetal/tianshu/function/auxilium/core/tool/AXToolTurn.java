@@ -58,12 +58,21 @@ public final class AXToolTurn {
      * @param executor runs one call; production wraps {@link AXToolExecutor}, tests inject a stub
      */
     public static AXToolTurn start(List<ToolSpec> catalogue, LLMPromptRequestPayload base, ToolExecutor executor) {
+        return start(catalogue, base, executor, ToolCaller.agent(false));
+    }
+
+    /**
+     * Starts a turn as {@code caller}: the catalogue, the capability list and every tool call then run with that
+     * caller's identity and permission, so a player-driven turn can use write tools and body access rules.
+     */
+    public static AXToolTurn start(List<ToolSpec> catalogue, LLMPromptRequestPayload base, ToolExecutor executor,
+                                   ToolCaller caller) {
         Objects.requireNonNull(base, "base");
         Objects.requireNonNull(executor, "executor");
+        ToolCaller effective = caller == null ? ToolCaller.agent(false) : caller;
         List<MessageItemPayload> messages = base.messages();
         boolean hasTools = catalogue != null && catalogue.stream().anyMatch(ToolSpec::enabled);
-        ToolCaller caller = ToolCaller.agent(false);
-        String readable = CapabilityExposure.describe(CapabilityExposure.exposed(caller, ToolSide.CLIENT).stream()
+        String readable = CapabilityExposure.describe(CapabilityExposure.exposed(effective, ToolSide.CLIENT).stream()
                 .filter(descriptor -> !descriptor.kind().isTool())
                 .toList());
         List<MessageItemPayload> conversation = new ArrayList<>();
@@ -81,7 +90,7 @@ public final class AXToolTurn {
             conversation.add(new MessageItemPayload("system", system.toString()));
         }
         conversation.addAll(messages);
-        return new AXToolTurn(ToolCaller.agent(false), executor,
+        return new AXToolTurn(effective, executor,
                 hasTools ? ToolCatalogText.describe(catalogue) : "", conversation, DEFAULT_MAX_TOOL_ROUNDS);
     }
 

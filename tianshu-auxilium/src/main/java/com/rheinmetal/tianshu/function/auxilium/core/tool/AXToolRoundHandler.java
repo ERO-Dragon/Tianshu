@@ -59,20 +59,30 @@ public final class AXToolRoundHandler implements AXLlmRequestHandler {
      */
     public static AXToolRoundHandler prepare(LLMPromptRequestPayload base, AXLlmRequestHandler delivery,
                                              Submit submit, Runnable discardHeld) {
+        return prepare(base, delivery, submit, discardHeld, ToolCaller.agent(false));
+    }
+
+    /**
+     * Prepares a tool-enabled turn for {@code caller}: its permission decides the catalogue, and each call runs
+     * with the same identity so body access rules and write gating see the real caller.
+     */
+    public static AXToolRoundHandler prepare(LLMPromptRequestPayload base, AXLlmRequestHandler delivery,
+                                             Submit submit, Runnable discardHeld, ToolCaller caller) {
         Objects.requireNonNull(base, "base");
         Objects.requireNonNull(delivery, "delivery");
         Objects.requireNonNull(submit, "submit");
         Objects.requireNonNull(discardHeld, "discardHeld");
-        List<ToolSpec> catalogue = TianshuTools.catalog(ToolCaller.agent(false), ToolSide.CLIENT);
+        ToolCaller effective = caller == null ? ToolCaller.agent(false) : caller;
+        List<ToolSpec> catalogue = TianshuTools.catalog(effective, ToolSide.CLIENT);
         AXToolTurn turn = AXToolTurn.start(catalogue, base, call ->
-                TianshuTools.callJson(call.toolId(), call.args(), ToolCaller.agent(false))
+                TianshuTools.callJson(call.toolId(), call.args(), effective)
                         .exceptionally(failure -> {
                             com.google.gson.JsonObject error = new com.google.gson.JsonObject();
                             error.addProperty("ok", false);
                             error.addProperty("code", "FAILED");
                             error.addProperty("message", String.valueOf(failure));
                             return error;
-                        }));
+                        }), effective);
         if (!turn.toolsAvailable()) {
             return null;
         }

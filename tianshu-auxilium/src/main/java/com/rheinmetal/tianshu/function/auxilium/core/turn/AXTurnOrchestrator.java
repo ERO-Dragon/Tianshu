@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.function.auxilium.core.turn;
 
+import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextCollector;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextBudget;
 import com.rheinmetal.tianshu.function.auxilium.core.context.AXContextSnapshot;
@@ -480,7 +483,7 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
         AXToolRoundHandler toolRound = AXRunPolicy.simple().toolsAllowed()
                 ? AXToolRoundHandler.prepare(llmPayload, pending,
                         (payload, handler) -> submitAgentRequest(execution, deliveryEnvelope, payload, handler),
-                        pending::discardHeldStream)
+                        pending::discardHeldStream, toolCaller(execution))
                 : null;
         LLMPromptRequestPayload firstPayload = toolRound == null ? llmPayload : toolRound.firstPayload(llmPayload);
         AXLlmRequestHandler firstHandler = toolRound == null ? pending : toolRound;
@@ -606,6 +609,22 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
             return new AXTurnCancellation(messageOf(failure), DialogueReleaseReason.OWNER_FAILED);
         }
         return new AXTurnCancellation("AX run terminated: " + termination.name(), DialogueReleaseReason.OWNER_FAILED);
+    }
+
+    /**
+     * The identity this turn's tool calls run as: the initiating player when the turn names one, otherwise the
+     * agent. Operator permission comes from the game side; without a server it is false, which keeps write tools
+     * off rather than guessing.
+     */
+    private static ToolCaller toolCaller(AXTurnExecution execution) {
+        String playerId = execution.delivery().playerId();
+        boolean operator = TianshuRuntimePorts.find(PlayerAuthority.class)
+                .map(authority -> authority.operator(playerId))
+                .orElse(false);
+        if (playerId == null || playerId.isBlank()) {
+            return ToolCaller.agent(operator);
+        }
+        return ToolCaller.player(playerId, operator);
     }
 
     private static String messageOf(Throwable failure) {
