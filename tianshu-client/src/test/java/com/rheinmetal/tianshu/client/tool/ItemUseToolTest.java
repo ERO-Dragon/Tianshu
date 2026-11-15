@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -60,26 +61,29 @@ class ItemUseToolTest {
     void usingAnItemOnTheAirReachesThePortAsTheBody() throws Exception {
         AtomicBoolean reached = new AtomicBoolean();
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentItemUsePort.class, (actor, target) -> {
+        AtomicInteger holdSeen = new AtomicInteger(-1);
+        TianshuRuntimePorts.register(AgentItemUsePort.class, (actor, target, holdTicks) -> {
             reached.set(true);
             seen.set(actor);
+            holdSeen.set(holdTicks);
             assertTrue(target instanceof ItemUseTarget.Air);
             return CompletableFuture.completedFuture(new ActionResult(ActionOutcome.DONE, "used"));
         });
         enable();
         TestBodies.register("body-1", BodyCapability.USE, BodyCapability.INVENTORY);
 
-        JsonObject result = envelope("{\"body\":\"body-1\"}", ToolCaller.player("p", true));
+        JsonObject result = envelope("{\"body\":\"body-1\",\"holdTicks\":12}", ToolCaller.player("p", true));
 
         assertTrue(result.get("ok").getAsBoolean());
         assertTrue(reached.get());
         assertEquals(ActorRef.Kind.BODY, seen.get().kind());
+        assertEquals(12, holdSeen.get());
     }
 
     @Test
     void aBodyWithoutUseIsRefusedBeforeThePortIsTouched() throws Exception {
         AtomicBoolean reached = new AtomicBoolean();
-        TianshuRuntimePorts.register(AgentItemUsePort.class, (actor, target) -> {
+        TianshuRuntimePorts.register(AgentItemUsePort.class, (actor, target, holdTicks) -> {
             reached.set(true);
             return CompletableFuture.completedFuture(new ActionResult(ActionOutcome.DONE, "used"));
         });

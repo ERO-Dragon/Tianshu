@@ -33,7 +33,7 @@ public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionRe
     public static final ToolId ID = ToolId.of("tianshu", "item.use");
 
     /** {@code x/y/z} absent means "use it on the air"; a face is optional and derived when omitted. */
-    public record Args(String body, Integer x, Integer y, Integer z, String face) {
+    public record Args(String body, Integer x, Integer y, Integer z, String face, Integer holdTicks) {
     }
 
     @Override
@@ -69,6 +69,7 @@ public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionRe
         properties.add("y", BodyToolSchemas.integer("Target block y"));
         properties.add("z", BodyToolSchemas.integer("Target block z"));
         properties.add("face", BodyToolSchemas.text("Block face: up, down, north, south, east, west"));
+        properties.add("holdTicks", BodyToolSchemas.integer("Held-use ticks; 0 means the item's own duration"));
         return BodyToolSchemas.object(properties);
     }
 
@@ -110,7 +111,8 @@ public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionRe
         ItemUseTarget use = target;
         ActorRef actor = scope.actor();
         return TianshuRuntimePorts.find(AgentItemUsePort.class)
-                .map(port -> port.use(actor, use))
+                .map(port -> port.use(actor, use, args == null || args.holdTicks() == null
+                        ? 0 : Math.max(0, args.holdTicks())))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "item use is only available on the server")));
     }
