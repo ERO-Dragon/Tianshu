@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
+import com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -116,6 +117,8 @@ public final class ServerToolHandler {
         BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers);
         TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
         TianshuRuntimePorts.register(PlayerAuthority.class, new ServerPlayerAuthority(event.getServer()));
+        // The operator's ceiling on server-side tools; read live from the config so a reload takes effect.
+        TianshuRuntimePorts.register(ServerAutonomyCeiling.class, ServerActionConfig::autonomyCeiling);
         ServerTicks.INSTANCE.onNextTick(() -> BodyPersistence.load(event.getServer(), bodies));
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
@@ -191,7 +194,11 @@ public final class ServerToolHandler {
 
     private static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            ToolCatalogPushRegistry.unregister(player.getUUID().toString());
+            String playerId = player.getUUID().toString();
+            ToolCatalogPushRegistry.unregister(playerId);
+            // The throttle is keyed by (tool, caller); without this the buckets of every player who ever called a
+            // tool stay for the life of the process.
+            TianshuTools.clearRateLimits(playerId);
         }
     }
 
@@ -220,8 +227,18 @@ public final class ServerToolHandler {
         }
         ToolCaller caller = ToolCaller.player(player.getUUID().toString(), player.hasPermissions(OPERATOR_PERMISSION_LEVEL));
         ServerToolDispatch.respond(caller, packet.requestId(), packet.toolId(), packet.argsJson())
-                .thenAccept(reply -> send(player, new ToolCallResultPacket(reply.requestId(), reply.ok(),
-                        reply.valueJson(), reply.errorCode(), reply.message())));
+                .whenComplete((reply, failure) -> {
+                    if (reply != null) {
+                        send(player, new ToolCallResultPacket(reply.requestId(), reply.ok(),
+                                reply.valueJson(), reply.errorCode(), reply.message()));
+                    } else if (failure != null) {
+                        // Answer instead of staying silent: a dropped reply arrives at the client as a timeout,
+                        // which blames the network for a server-side failure.
+                        send(player, new ToolCallResultPacket(packet.requestId(), false, "",
+                                com.rheinmetal.tianshu.api.tool.ToolError.FAILED.name(),
+                                "the server failed to run the tool"));
+                    }
+                });
     }
     private static void send(ServerPlayer player, ToolCallResultPacket result) {
         MinecraftServer server = player.level().getServer();

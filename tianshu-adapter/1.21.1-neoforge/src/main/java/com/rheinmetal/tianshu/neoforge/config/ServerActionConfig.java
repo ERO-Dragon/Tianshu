@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.config;
 
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
@@ -25,6 +26,7 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue BLOCK_MACHINE;
     public static final ModConfigSpec.BooleanValue BODY_ACTIONS;
     public static final ModConfigSpec.BooleanValue BLOCK_PLACE;
+    public static final ModConfigSpec.ConfigValue<String> AUTONOMY_CEILING;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -58,7 +60,21 @@ public final class ServerActionConfig {
                 .comment("Let the assistant place blocks from the actor's inventory, with vanilla orientation and consumption.")
                 .define("block_place", false);
         builder.pop();
+        builder.comment("How much an agent may do on this server, whatever the client configures for itself.")
+                .push("autonomy");
+        AUTONOMY_CEILING = builder
+                .comment("Highest tier a server-side tool may require:",
+                        "read_only = reads only; conservative = survival actions, no cheats (default);",
+                        "full = teleport, weather, item grants, spawns, broadcasts.",
+                        "A client cannot go above this, whatever it set for itself. Raise it only if you mean to")
+                .define("ceiling", "conservative");
+        builder.pop();
         SPEC = builder.build();
+    }
+
+    /** The ceiling as the tool layer understands it; unreadable text falls back to the safe middle tier. */
+    public static ToolAutonomy autonomyCeiling() {
+        return ToolAutonomy.parse(AUTONOMY_CEILING.get(), ToolAutonomy.CONSERVATIVE);
     }
 
     private ServerActionConfig() {

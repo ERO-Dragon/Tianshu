@@ -89,10 +89,13 @@ public final class AgentItemSource implements AgentItemPort {
             if (current.isEmpty()) {
                 return new EquipResult(target, -1, "", 0);
             }
-            int moved = Inventories.add(inventory, current, MAIN_SLOTS);
-            if (moved < current.getCount()) {
+            // Ask for the room before moving anything. `add` places whatever fits, so checking its result
+            // afterwards leaves the partial move in the inventory while the equipment slot still holds the full
+            // stack: the items would be duplicated instead of the equip failing.
+            if (Inventories.roomFor(inventory, current, MAIN_SLOTS) < current.getCount()) {
                 throw new ToolException(ToolError.FAILED, "no room in the body inventory");
             }
+            Inventories.add(inventory, current, MAIN_SLOTS);
             bodies.setEquipment(actor.id(), target, ItemStack.EMPTY);
             bodies.applyEquipment(state);
             return new EquipResult(target, -1, "", 0);

@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.fabric;
 
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
+
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -30,6 +32,12 @@ public final class FabricServerActionConfig {
 
     private static final Map<String, Boolean> SWITCHES = new LinkedHashMap<>();
 
+    /** Key of the operator's ceiling; read_only, conservative (default) or full. */
+    private static final String AUTONOMY_CEILING_KEY = "autonomy.ceiling";
+
+    /** The operator's ceiling on server-side tools; loaded as text so a typo cannot fail startup. */
+    private static volatile String ceiling = "conservative";
+
     static {
         for (String action : ACTIONS) {
             SWITCHES.put(action, false);
@@ -56,6 +64,16 @@ public final class FabricServerActionConfig {
         for (String action : ACTIONS) {
             SWITCHES.put(action, Boolean.parseBoolean(values.getProperty(key(action), "false").trim()));
         }
+        ceiling = values.getProperty(AUTONOMY_CEILING_KEY, "conservative");
+    }
+
+    /**
+     * The highest tier a server-side tool may require, whatever the client configured for itself.
+     *
+     * <p>Unreadable text falls back to the safe middle tier, matching the NeoForge default.</p>
+     */
+    public static ToolAutonomy autonomyCeiling() {
+        return ToolAutonomy.parse(ceiling, ToolAutonomy.CONSERVATIVE);
     }
 
     public static boolean enabled(String action) {
@@ -77,6 +95,7 @@ public final class FabricServerActionConfig {
         for (String action : ACTIONS) {
             values.setProperty(key(action), "false");
         }
+        values.setProperty(AUTONOMY_CEILING_KEY, "conservative");
         try {
             Files.createDirectories(file.getParent());
             try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
