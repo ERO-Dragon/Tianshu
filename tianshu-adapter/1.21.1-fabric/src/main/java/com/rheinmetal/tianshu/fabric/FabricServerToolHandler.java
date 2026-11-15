@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.fabric;
 import com.rheinmetal.tianshu.api.agent.AgentActionPort;
 import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
 import com.rheinmetal.tianshu.api.agent.AgentItemUsePort;
+import com.rheinmetal.tianshu.api.agent.AgentEntityUsePort;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -44,6 +45,7 @@ import com.rheinmetal.tianshu.mc.tool.ServerRecipeQuerySource;
 import com.rheinmetal.tianshu.client.tool.routing.ActionRouter;
 import com.rheinmetal.tianshu.client.tool.routing.CraftRouter;
 import com.rheinmetal.tianshu.client.tool.routing.UseItemRouter;
+import com.rheinmetal.tianshu.client.tool.routing.EntityUseRouter;
 import com.rheinmetal.tianshu.client.tool.routing.InteractRouter;
 import com.rheinmetal.tianshu.client.tool.routing.MachineRouter;
 import com.rheinmetal.tianshu.client.tool.routing.TransferRouter;
@@ -109,6 +111,7 @@ public final class FabricServerToolHandler {
             TianshuRuntimePorts.register(AgentWorldQueryPort.class, new QueryRouter(new BodyQuerySource(server)));
             TianshuRuntimePorts.register(AgentItemPort.class, new ItemRouter(new AgentItemSource(server, bodies)));
         TianshuRuntimePorts.register(AgentItemUsePort.class, new UseItemRouter());
+        TianshuRuntimePorts.register(AgentEntityUsePort.class, new EntityUseRouter());
             if (TianshuTools.find(LootQueryTool.ID) == null) {
                 TianshuTools.register(new LootQueryTool());
             }

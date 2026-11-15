@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.mc.body;
 
 import com.rheinmetal.tianshu.api.agent.AgentActionPort;
 import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
+import com.rheinmetal.tianshu.api.agent.AgentEntityUsePort;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentItemUsePort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
@@ -42,6 +43,7 @@ public final class CarrierActions implements AgentBodyActions {
     private final ContainerTransferPort transfer;
     private final BlockMachinePort machine;
     private final AgentItemUsePort itemUse;
+    private final AgentEntityUsePort entityUse;
 
     public CarrierActions(MinecraftServer server, BodyRegistry bodies, ActionPlayerFactory actionPlayers) {
         this.motion = new AgentMotionSource(server, bodies);
@@ -54,6 +56,7 @@ public final class CarrierActions implements AgentBodyActions {
         this.transfer = new ContainerTransferSource(server);
         this.machine = new BlockMachineSource(server);
         this.itemUse = new AgentItemUseSource(server, bodies, actionPlayers);
+        this.entityUse = new AgentEntityUseSource(server, bodies, actionPlayers);
     }
 
     @Override
@@ -104,5 +107,10 @@ public final class CarrierActions implements AgentBodyActions {
     @Override
     public Optional<AgentItemUsePort> itemUse() {
         return Optional.of(itemUse);
+    }
+
+    @Override
+    public Optional<AgentEntityUsePort> entityUse() {
+        return Optional.of(entityUse);
     }
 }

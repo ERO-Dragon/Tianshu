@@ -12,6 +12,11 @@ import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.block.Block;
+import java.util.UUID;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -103,8 +108,12 @@ public final class BodyQuerySource implements AgentWorldQueryPort {
             if (state.isAir()) {
                 continue;
             }
+            TagKey<Block> blockTag = blockTag(request.blockFilter());
             ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-            if (id == null || !id.toString().equals(request.blockFilter())) {
+            boolean matches = blockTag != null
+                    ? state.is(blockTag)
+                    : id != null && id.toString().equals(request.blockFilter());
+            if (!matches) {
                 continue;
             }
             found.add(new BlockHit(id.toString(), dimension, pos.getX(), pos.getY(), pos.getZ()));
@@ -128,7 +137,18 @@ public final class BodyQuerySource implements AgentWorldQueryPort {
                 continue;
             }
             ResourceLocation type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-            if (type == null || !type.toString().equals(request.entityFilter())) {
+            String filter = request.entityFilter();
+            UUID wanted = uuid(filter);
+            TagKey<EntityType<?>> typeTag = entityTag(filter);
+            boolean matches;
+            if (wanted != null) {
+                matches = entity.getUUID().equals(wanted);
+            } else if (typeTag != null) {
+                matches = entity.getType().is(typeTag);
+            } else {
+                matches = type != null && type.toString().equals(filter);
+            }
+            if (!matches) {
                 continue;
             }
             found.add(new EntityHit(entity.getUUID().toString(), type.toString(), dimension,
@@ -153,6 +173,33 @@ public final class BodyQuerySource implements AgentWorldQueryPort {
             slots.add(new InventoryEntry(slot, id == null ? "" : id.toString(), stack.getCount()));
         }
         return new InventorySnapshot(List.copyOf(slots));
+    }
+
+    private static TagKey<Block> blockTag(String filter) {
+        if (filter == null || !filter.startsWith("#")) {
+            return null;
+        }
+        ResourceLocation id = ResourceLocation.tryParse(filter.substring(1));
+        return id == null ? null : TagKey.create(Registries.BLOCK, id);
+    }
+
+    private static TagKey<EntityType<?>> entityTag(String filter) {
+        if (filter == null || !filter.startsWith("#")) {
+            return null;
+        }
+        ResourceLocation id = ResourceLocation.tryParse(filter.substring(1));
+        return id == null ? null : TagKey.create(Registries.ENTITY_TYPE, id);
+    }
+
+    private static UUID uuid(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException notAUuid) {
+            return null;
+        }
     }
 
     private static ToolException absent(ActorRef actor) {

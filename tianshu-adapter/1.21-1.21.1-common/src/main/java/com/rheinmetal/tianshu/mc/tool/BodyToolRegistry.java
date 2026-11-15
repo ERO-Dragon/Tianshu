@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.client.tool.BlockPlaceTool;
 import com.rheinmetal.tianshu.client.tool.BodyAttackTool;
 import com.rheinmetal.tianshu.client.tool.BodyEquipTool;
 import com.rheinmetal.tianshu.client.tool.BodyDropTool;
+import com.rheinmetal.tianshu.client.tool.EntityUseTool;
 import com.rheinmetal.tianshu.client.tool.ItemUseTool;
 import com.rheinmetal.tianshu.client.tool.BodySequenceTool;
 import com.rheinmetal.tianshu.client.tool.BodyCollectTool;
@@ -45,6 +46,7 @@ public final class BodyToolRegistry {
         ensure(BodyFollowTool.ID, BodyFollowTool::new);
         ensure(ItemUseTool.ID, ItemUseTool::new);
         ensure(BodySequenceTool.ID, BodySequenceTool::new);
+        ensure(EntityUseTool.ID, EntityUseTool::new);
         ensure(BlockPlaceTool.ID, BlockPlaceTool::new);
         ensure(BodyScanTool.ID, BodyScanTool::new);
         ensure(BodyInventoryTool.ID, BodyInventoryTool::new);
@@ -59,6 +61,7 @@ public final class BodyToolRegistry {
         TianshuTools.setEnabled(BodyFollowTool.ID, actionsEnabled);
         TianshuTools.setEnabled(ItemUseTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BodySequenceTool.ID, actionsEnabled);
+        TianshuTools.setEnabled(EntityUseTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BlockPlaceTool.ID, placeEnabled);
     }
 
