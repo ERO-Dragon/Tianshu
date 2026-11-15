@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
@@ -31,6 +32,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
+import com.rheinmetal.tianshu.mc.host.ServerTicks;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
 import com.rheinmetal.tianshu.mc.tool.BlockPlaceSource;
 import com.rheinmetal.tianshu.mc.tool.BodyQuerySource;
@@ -49,6 +51,7 @@ import com.rheinmetal.tianshu.mc.body.AgentActionSource;
 import com.rheinmetal.tianshu.mc.body.AgentMotionSource;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -76,11 +79,13 @@ public final class ServerToolHandler {
         gameBus.addListener(ServerToolHandler::onServerStarting);
         gameBus.addListener(ServerToolHandler::onServerStopping);
         gameBus.addListener(ServerToolHandler::onRegisterCommands);
+        gameBus.addListener(ServerToolHandler::onServerTick);
     }
 
     /** Installs the server-side tool sources and registers the tools they back. */
     private static void onServerStarting(ServerStartingEvent event) {
         BodyRegistry bodies = BodyRuntime.start();
+        TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
         ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
         TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
         TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
@@ -123,11 +128,16 @@ public final class ServerToolHandler {
 
     private static void onServerStopping(ServerStoppingEvent event) {
         BodyRuntime.stop();
+        ServerTicks.INSTANCE.clear();
     }
 
     /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */
     private static void registerBodyTools(boolean actionsEnabled, boolean placeEnabled) {
         BodyToolRegistry.register(actionsEnabled, placeEnabled);
+    }
+
+    private static void onServerTick(ServerTickEvent.Post event) {
+        ServerTicks.INSTANCE.fire();
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {

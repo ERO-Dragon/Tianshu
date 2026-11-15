@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
@@ -27,6 +28,7 @@ import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 
 import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
+import com.rheinmetal.tianshu.mc.host.ServerTicks;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
 import com.rheinmetal.tianshu.mc.tool.BlockPlaceSource;
 import com.rheinmetal.tianshu.mc.tool.BodyQuerySource;
@@ -44,6 +46,7 @@ import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
@@ -66,6 +69,7 @@ public final class FabricServerToolHandler {
     public static void register() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             BodyRegistry bodies = BodyRuntime.start();
+            TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(server));
@@ -110,6 +114,7 @@ public final class FabricServerToolHandler {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerLogin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> onPlayerLogout(handler.getPlayer()));
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> BodyRuntime.stop());
+        ServerTickEvents.END_SERVER_TICK.register(server -> ServerTicks.INSTANCE.fire());
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) ->
                 BodyCommands.register(dispatcher));
     }
