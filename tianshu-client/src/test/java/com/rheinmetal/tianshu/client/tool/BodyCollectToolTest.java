@@ -12,6 +12,8 @@ import com.rheinmetal.tianshu.api.agent.AgentBody;
 import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
 import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
+import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
 import com.rheinmetal.tianshu.api.agent.BlockHit;
@@ -175,7 +177,7 @@ class BodyCollectToolTest {
                     }
 
                     @Override
-                    public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+                    public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                         throw new AssertionError("collect must not equip");
                     }
                 });

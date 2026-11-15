@@ -13,8 +13,8 @@ public interface AgentItemPort {
     CompletableFuture<PickupResult> pickup(ActorRef actor, int radius);
 
     /**
-     * Chooses the body's active slot, or clears it with {@code slot=-1}. The slot only changes what later attacks
-     * and breaks use: whether the item is "held" visually is a carrier concern.
+     * Moves an inventory slot onto a body slot, or clears it with {@code inventorySlot=-1}. The main hand only
+     * changes what later attacks and breaks use; the other slots are applied to the carrier, so armour counts.
      */
-    CompletableFuture<EquipResult> equip(ActorRef actor, int slot);
+    CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request);
 }

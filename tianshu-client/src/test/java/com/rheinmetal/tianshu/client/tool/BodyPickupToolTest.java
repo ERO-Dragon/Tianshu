@@ -5,6 +5,8 @@ import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
+import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.PickedItem;
@@ -68,7 +70,7 @@ class BodyPickupToolTest {
             }
 
             @Override
-            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 throw new AssertionError("a pickup test must not equip");
             }
         });
@@ -94,7 +96,7 @@ class BodyPickupToolTest {
             }
 
             @Override
-            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 throw new AssertionError("a pickup test must not equip");
             }
         });
@@ -121,7 +123,7 @@ class BodyPickupToolTest {
             }
 
             @Override
-            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 throw new AssertionError("a pickup test must not equip");
             }
         });

@@ -5,6 +5,8 @@ import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
+import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.PickupResult;
@@ -77,9 +79,9 @@ class BodyEquipToolTest {
             }
 
             @Override
-            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 reached.set(true);
-                return CompletableFuture.completedFuture(new EquipResult(slot, "", 0));
+                return CompletableFuture.completedFuture(new EquipResult(BodySlot.MAIN_HAND, -1, "", 0));
             }
         });
         enable();
@@ -103,10 +105,10 @@ class BodyEquipToolTest {
             }
 
             @Override
-            public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 seen.set(actor);
-                slotSeen.set(slot);
-                return CompletableFuture.completedFuture(new EquipResult(slot, "minecraft:iron_sword", 1));
+                slotSeen.set(request.inventorySlot());
+                return CompletableFuture.completedFuture(new EquipResult(BodySlot.MAIN_HAND, request.inventorySlot(), "minecraft:iron_sword", 1));
             }
         });
         enable();

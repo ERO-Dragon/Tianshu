@@ -1,14 +1,19 @@
 package com.rheinmetal.tianshu.api.agent;
 
-import java.util.Objects;
-
-/** What a body holds in its active slot; {@code slot=-1} and an empty id mean "nothing equipped". */
-public record EquipResult(int slot, String itemId, int count) {
+/**
+ * What a body slot now holds; an empty {@code itemId} with count zero means the slot is empty.
+ */
+public record EquipResult(BodySlot target, int inventorySlot, String itemId, int count) {
 
     public EquipResult {
-        Objects.requireNonNull(itemId, "itemId");
-        if (slot < -1) {
-            throw new IllegalArgumentException("slot must be -1 or a main-slot index: " + slot);
+        if (target == null) {
+            throw new IllegalArgumentException("target is required");
+        }
+        if (itemId == null) {
+            throw new IllegalArgumentException("itemId is required");
+        }
+        if (count < 0) {
+            throw new IllegalArgumentException("count must not be negative");
         }
     }
 }

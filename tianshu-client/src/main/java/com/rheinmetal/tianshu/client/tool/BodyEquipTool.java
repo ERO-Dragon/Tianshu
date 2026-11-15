@@ -4,6 +4,8 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -15,18 +17,19 @@ import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.lang.reflect.Type;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
-/** Chooses the body's active main slot; attacks and breaks then use that item. */
+/** Moves an inventory slot onto the body's main hand, off hand or an armour slot; -1 clears the target. */
 public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, EquipResult> {
 
     public static final ToolId ID = ToolId.of("tianshu", "body.equip");
 
     private static final int MAIN_SLOTS = 36;
 
-    /** {@code slot=-1} clears the selection. */
-    public record Args(String body, int slot) {
+    /** {@code slot=-1} clears {@code target}; {@code target} defaults to the main hand. */
+    public record Args(String body, int slot, String target) {
     }
 
     @Override
@@ -41,7 +44,7 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
 
     @Override
     public String description() {
-        return "Chooses which inventory slot the body uses for attacks and breaks; -1 clears it.";
+        return "Equips an inventory slot into the body's main hand, off hand, head, chest, legs or feet; -1 clears.";
     }
 
     @Override
@@ -58,7 +61,8 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
         properties.add("body", BodyToolSchemas.body());
-        properties.add("slot", BodyToolSchemas.integer("Main inventory slot 0..35, or -1 to clear"));
+        properties.add("slot", BodyToolSchemas.integer("Main inventory slot 0..35, or -1 to clear the target"));
+        properties.add("target", BodyToolSchemas.text("main, offhand, head, chest, legs or feet; defaults to main"));
         return BodyToolSchemas.object(properties, "slot");
     }
 
@@ -77,14 +81,23 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "slot must be -1 or 0..35"));
         }
+        BodySlot target;
+        try {
+            target = args.target() == null || args.target().isBlank()
+                    ? BodySlot.MAIN_HAND
+                    : BodySlot.valueOf(args.target().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknownTarget) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
+                    "target must be main, offhand, head, chest, legs or feet"));
+        }
         Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         ActorRef actor = scope.actor();
-        int slot = args.slot();
+        EquipRequest request = new EquipRequest(args.slot(), target);
         return TianshuRuntimePorts.find(AgentItemPort.class)
-                .map(port -> port.equip(actor, slot))
+                .map(port -> port.equip(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "equipping is only available on the server")));
     }
