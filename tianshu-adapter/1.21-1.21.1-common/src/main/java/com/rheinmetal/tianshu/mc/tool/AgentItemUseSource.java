@@ -123,11 +123,11 @@ public final class AgentItemUseSource implements AgentItemUsePort {
                     : new ActionResult(ActionOutcome.NO_EFFECT, "nothing happened"));
             return;
         }
-        startHeldUse(level, player, context, itemId, holdTicks, result);
+        startHeldUse(level, player, context, itemId, holdTicks, result, actor.id());
     }
 
     private void startHeldUse(ServerLevel level, Player player, ActionContext context, String itemId,
-                              int holdTicks, CompletableFuture<ActionResult> result) {
+                              int holdTicks, CompletableFuture<ActionResult> result, String actorId) {
         ServerTickPort ticks = TianshuRuntimePorts.find(ServerTickPort.class).orElse(null);
         if (ticks == null) {
             player.stopUsingItem();
@@ -152,6 +152,11 @@ public final class AgentItemUseSource implements AgentItemUsePort {
             @Override
             public void run() {
                 if (result.isDone()) {
+                    return;
+                }
+                if (com.rheinmetal.tianshu.client.tool.BodyOperations.cancelled(actorId)) {
+                    player.stopUsingItem();
+                    finish(ActionOutcome.REJECTED, "the call was cancelled");
                     return;
                 }
                 if (!player.isUsingItem()) {

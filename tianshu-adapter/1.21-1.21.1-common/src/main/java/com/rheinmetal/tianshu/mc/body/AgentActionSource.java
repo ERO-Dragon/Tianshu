@@ -117,6 +117,10 @@ public final class AgentActionSource implements AgentActionPort {
                 if (result.isDone()) {
                     return;
                 }
+                if (com.rheinmetal.tianshu.client.tool.BodyOperations.cancelled(actor.id())) {
+                    finish(ActionOutcome.REJECTED, "the call was cancelled");
+                    return;
+                }
                 if (body.entity().isRemoved()) {
                     finish(ActionOutcome.REJECTED, "the body disappeared");
                     return;

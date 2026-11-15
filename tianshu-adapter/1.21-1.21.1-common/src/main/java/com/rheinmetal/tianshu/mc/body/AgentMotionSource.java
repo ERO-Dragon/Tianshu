@@ -9,6 +9,9 @@ import com.rheinmetal.tianshu.api.agent.MoveMode;
 import com.rheinmetal.tianshu.api.agent.MoveOptions;
 import com.rheinmetal.tianshu.api.agent.MoveResult;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
+import com.rheinmetal.tianshu.client.tool.BodyOperations;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
@@ -118,6 +121,12 @@ public final class AgentMotionSource implements AgentMotionPort {
             @Override
             public void run() {
                 if (result.isDone()) {
+                    return;
+                }
+                if (com.rheinmetal.tianshu.client.tool.BodyOperations.cancelled(actor.id())) {
+                    navigation.stop();
+                    result.completeExceptionally(new com.rheinmetal.tianshu.api.tool.ToolException(
+                            com.rheinmetal.tianshu.api.tool.ToolError.CANCELLED, "the call was cancelled"));
                     return;
                 }
                 if (walker.isRemoved()) {
