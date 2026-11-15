@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.neoforge;
 
 import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
+import com.rheinmetal.tianshu.api.assembly.LocalPlayerIdentity;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
 import com.rheinmetal.tianshu.api.assembly.KeyBindings;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -11,6 +12,7 @@ import com.rheinmetal.tianshu.neoforge.bootstrap.NeoForgeClientBootstrap;
 import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
+import com.rheinmetal.tianshu.mc.host.ClientPlayerIdentity;
 import com.rheinmetal.tianshu.mc.host.ServerActionClient;
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
@@ -113,6 +115,7 @@ public final class TianshuNeoForge {
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.
             TianshuRuntimePorts.register(ClientKeyBindings.class, new VanillaKeyBindings());
+            TianshuRuntimePorts.register(LocalPlayerIdentity.class, new ClientPlayerIdentity());
             // A module that wants a key declares it here while its jar loads; the platform registers it in the
             // key-mapping event later, so the module never touches a KeyMapping.
             TianshuRuntimePorts.register(KeyBindings.class, clientBootstrap.keyBindings());

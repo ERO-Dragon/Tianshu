@@ -1,10 +1,12 @@
 package com.rheinmetal.tianshu.fabric;
 
 import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
+import com.rheinmetal.tianshu.api.assembly.LocalPlayerIdentity;
 import com.rheinmetal.tianshu.api.assembly.KeyBindings;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.mc.event.NamedObjectReloadListener;
 import com.rheinmetal.tianshu.mc.ui.VanillaKeyBindings;
+import com.rheinmetal.tianshu.mc.host.ClientPlayerIdentity;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -44,6 +46,7 @@ public final class TianshuFabricClient implements ClientModInitializer {
         // A module's settings row may want to send the player to the controls screen; the binding is a Minecraft
         // object, so opening that screen is a platform job offered through a port.
         TianshuRuntimePorts.register(ClientKeyBindings.class, new VanillaKeyBindings());
+        TianshuRuntimePorts.register(LocalPlayerIdentity.class, new ClientPlayerIdentity());
         // A module that wants a key declares it here while its jar loads; the platform registers it below, so the
         // module never touches a KeyMapping.
         TianshuRuntimePorts.register(KeyBindings.class, bootstrap.keyBindings());
