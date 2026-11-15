@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.Gson;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.google.gson.GsonBuilder;
@@ -116,11 +117,12 @@ public final class TianshuTools {
         Objects.requireNonNull(caller, "caller");
         Objects.requireNonNull(side, "side");
         List<ToolSpec> specs = new ArrayList<>();
+        ToolAutonomy allowed = autonomyFor(side, caller);
         for (TianshuTool<?, ?> tool : TOOLS.values()) {
             if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
                 continue;
             }
-            if (side == ToolSide.CLIENT && !ToolAutonomyGate.permits(tool.requiredAutonomy())) {
+            if (!allowed.permits(tool.requiredAutonomy())) {
                 continue;
             }
             if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
@@ -368,9 +370,11 @@ public final class TianshuTools {
         if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
             throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " needs an operator");
         }
-        if (!ToolAutonomyGate.permits(tool.requiredAutonomy())) {
+        ToolAutonomy allowed = autonomyFor(side, caller);
+        if (!allowed.permits(tool.requiredAutonomy())) {
             throw new ToolException(ToolError.NO_PERMISSION,
-                    "tool " + id + " needs " + tool.requiredAutonomy() + " autonomy");
+                    "tool " + id + " needs " + tool.requiredAutonomy() + " autonomy; "
+                            + (side == ToolSide.SERVER ? "this server allows " : "this caller allows ") + allowed);
         }
         requireWithinRateLimit(tool, caller);
         if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
@@ -468,5 +472,29 @@ public final class TianshuTools {
         envelope.addProperty("code", code.name());
         envelope.addProperty("message", message);
         return envelope;
+    }
+
+    /**
+     * The tier that governs one call.
+     *
+     * <p>Client-side execution is bounded by the caller's own tier: that is where a module decides how far its agent
+     * may go, and two modules in one process may decide differently. Server-side execution is bounded by
+     * {@link ServerAutonomyCeiling} instead, because the server cannot see which module asked and must not accept a
+     * claim it cannot verify.</p>
+     */
+    public static ToolAutonomy autonomyFor(ToolSide side, ToolCaller caller) {
+        return side == ToolSide.SERVER ? serverAutonomyCeiling() : caller.autonomy();
+    }
+
+    /**
+     * The server's ceiling, or {@link ToolAutonomy#FULL} when the host published none.
+     *
+     * <p>Absence means "no extra restriction" on purpose: a dedicated server installs the port from its config, while
+     * a single-player world has no reason to restrict its own owner.</p>
+     */
+    private static ToolAutonomy serverAutonomyCeiling() {
+        return TianshuRuntimePorts.find(ServerAutonomyCeiling.class)
+                .map(ServerAutonomyCeiling::max)
+                .orElse(ToolAutonomy.FULL);
     }
 }

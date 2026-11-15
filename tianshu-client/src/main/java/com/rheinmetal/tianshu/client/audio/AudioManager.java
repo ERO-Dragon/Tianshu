@@ -27,7 +27,15 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
     private final LogSink logSink;
     private final DiagnosticSink diagnostics;
 
-    private TargetDataLine targetDataLine;
+    /**
+     * The line the capture worker is currently reading.
+     *
+     * <p>{@code volatile} because two threads own different halves of its life: the capture thread assigns it and
+     * clears it, and the release path (another thread, when the microphone changes or the world closes) reads it to
+     * stop and close the line. Without the visibility guarantee the release path could read {@code null} and leave the
+     * worker blocked inside {@code read()} for the rest of the session, holding a thread and the device.</p>
+     */
+    private volatile TargetDataLine targetDataLine;
     private SourceDataLine sourceDataLine;
     private SourceDataLine ttsDataLine;
     private final AtomicInteger ttsPlaybackTurnId = new AtomicInteger(0);

@@ -12,7 +12,7 @@ public final class ToolWireLimits {
 
     public static final int MAX_REQUEST_ID = 64;
     public static final int MAX_TOOL_ID = 64;
-    /** One less than the 32767-byte {@code writeUtf} limit, so a request or a result can always be encoded. */
+    /** The largest string {@code writeUtf} accepts: it counts characters, not encoded bytes. */
     public static final int MAX_JSON = 32_767;
     public static final int MAX_CODE = 64;
     public static final int MAX_MESSAGE = 512;

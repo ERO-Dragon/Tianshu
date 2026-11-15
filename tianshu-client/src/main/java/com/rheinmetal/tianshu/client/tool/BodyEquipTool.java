@@ -17,7 +17,6 @@ import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.lang.reflect.Type;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -62,7 +61,8 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
         JsonObject properties = new JsonObject();
         properties.add("body", BodyToolSchemas.body());
         properties.add("slot", BodyToolSchemas.integer("Main inventory slot 0..35, or -1 to clear the target"));
-        properties.add("target", BodyToolSchemas.text("main, offhand, head, chest, legs or feet; defaults to main"));
+        properties.add("target", BodyToolSchemas.text(BodySlot.wireNameList()
+                + "; defaults to " + BodySlot.MAIN_HAND.wireName()));
         return BodyToolSchemas.object(properties, "slot");
     }
 
@@ -81,14 +81,13 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "slot must be -1 or 0..35"));
         }
-        BodySlot target;
-        try {
-            target = args.target() == null || args.target().isBlank()
-                    ? BodySlot.MAIN_HAND
-                    : BodySlot.valueOf(args.target().trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException unknownTarget) {
+        // The schema advertises BodySlot.wireNameList(); parsing reads the same source, so the two cannot drift.
+        BodySlot target = args.target() == null || args.target().isBlank()
+                ? BodySlot.MAIN_HAND
+                : BodySlot.fromWireName(args.target());
+        if (target == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "target must be main, offhand, head, chest, legs or feet"));
+                    "target must be " + BodySlot.wireNameList()));
         }
         Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
         if (refusal.isPresent()) {

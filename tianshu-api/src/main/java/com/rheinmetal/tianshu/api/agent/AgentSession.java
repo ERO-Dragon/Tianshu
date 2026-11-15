@@ -105,6 +105,8 @@ public final class AgentSession {
             object.addProperty("binding", row.binding().toString());
             object.addProperty("description", row.description());
             object.addProperty("permission", row.permission().name());
+            // Present for tools; an agent needs "exists but is switched off" to be distinguishable from "absent".
+            object.addProperty("enabled", enabledOf(row));
             capabilityRows.add(object);
         }
         document.add("capabilities", capabilityRows);
@@ -141,5 +143,14 @@ public final class AgentSession {
     /** Best effort, as documented on {@link ToolCallHandle#cancel}. */
     public boolean cancel(String requestId) {
         return TianshuTools.cancel(requestId);
+    }
+
+    /** {@code attributes.enabled} when a tool published one; anything else means "not switched off". */
+    private static boolean enabledOf(CapabilityDescriptor descriptor) {
+        JsonElement value = descriptor.attributes().get("enabled");
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+            return true;
+        }
+        return value.getAsBoolean();
     }
 }

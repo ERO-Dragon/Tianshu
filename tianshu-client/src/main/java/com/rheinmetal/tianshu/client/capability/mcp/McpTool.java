@@ -5,10 +5,14 @@ import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /** One remote MCP tool, presented to the agent as a normal local tool. */
@@ -22,9 +26,10 @@ final class McpTool implements TianshuTool<JsonObject, JsonObject> {
     private final ToolAutonomy autonomy;
     private final String serverName;
     private final Consumer<String> transportFailure;
+    private final Executor calls;
 
     McpTool(String serverName, ToolId id, McpConnection client, String remoteName, String description,
-            JsonObject schema, ToolAutonomy autonomy, Consumer<String> transportFailure) {
+            JsonObject schema, ToolAutonomy autonomy, Consumer<String> transportFailure, Executor calls) {
         this.serverName = serverName;
         this.id = id;
         this.client = client;
@@ -33,6 +38,7 @@ final class McpTool implements TianshuTool<JsonObject, JsonObject> {
         this.schema = schema;
         this.autonomy = autonomy;
         this.transportFailure = transportFailure;
+        this.calls = calls;
     }
 
     @Override
@@ -76,20 +82,21 @@ final class McpTool implements TianshuTool<JsonObject, JsonObject> {
             try {
                 return client.callTool(remoteName, args == null ? new JsonObject() : args);
             } catch (McpRemoteException rejected) {
-                // The server is fine; this one call was rejected.
-                JsonObject error = new JsonObject();
-                error.addProperty("ok", false);
-                error.addProperty("code", "FAILED");
-                error.addProperty("message", String.valueOf(rejected.getMessage()));
-                return error;
-            } catch (Exception failure) {
+                // The server is fine; this one call was rejected. Fail the future so the platform's envelope
+                // stays flat ({"ok":false,...}) — returning a nested error object would be wrapped by
+                // TianshuTools.successEnvelope and reach the model as a success.
+                throw new ToolException(ToolError.FAILED,
+                        "MCP " + serverName + " rejected " + remoteName + ": " + rejected.getMessage());
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new ToolException(ToolError.CANCELLED, "the MCP call was interrupted");
+            } catch (IOException transport) {
+                // Only a transport failure takes the server's tools offline; a bad argument or a malformed
+                // payload is a per-call problem.
                 transportFailure.accept(serverName);
-                JsonObject error = new JsonObject();
-                error.addProperty("ok", false);
-                error.addProperty("code", "UNAVAILABLE");
-                error.addProperty("message", String.valueOf(failure.getMessage()));
-                return error;
+                throw new ToolException(ToolError.UNAVAILABLE,
+                        "MCP " + serverName + " is unreachable: " + transport.getMessage());
             }
-        });
+        }, calls);
     }
 }

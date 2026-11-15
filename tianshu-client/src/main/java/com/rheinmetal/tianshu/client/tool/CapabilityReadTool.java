@@ -133,7 +133,8 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
                     String code = envelope.has("code") ? envelope.get("code").getAsString() : "FAILED";
                     String message = envelope.has("message") ? envelope.get("message").getAsString() : code;
                     return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
-                            com.rheinmetal.tianshu.api.tool.ToolError.valueOf(code),
+                            com.rheinmetal.tianshu.api.tool.ToolError.fromWire(
+                                    code, com.rheinmetal.tianshu.api.tool.ToolError.FAILED),
                             code + ": " + message));
                 });
     }

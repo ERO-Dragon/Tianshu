@@ -368,20 +368,13 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
     }
 
     private static BodySlot bodySlot(JsonObject step) {
-        String raw = step.has("target") ? text(step, "target") : "main";
-        try {
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-                case "main", "main_hand" -> BodySlot.MAIN_HAND;
-                case "offhand", "off_hand" -> BodySlot.OFF_HAND;
-                case "head" -> BodySlot.HEAD;
-                case "chest" -> BodySlot.CHEST;
-                case "legs" -> BodySlot.LEGS;
-                case "feet" -> BodySlot.FEET;
-                default -> throw new ToolException(ToolError.INVALID_ARGS, "unknown equip target: " + raw);
-            };
-        } catch (IllegalArgumentException unknown) {
-            throw new ToolException(ToolError.INVALID_ARGS, "unknown equip target: " + raw);
+        String raw = step.has("target") ? text(step, "target") : BodySlot.MAIN_HAND.wireName();
+        BodySlot slot = BodySlot.fromWireName(raw);
+        if (slot == null) {
+            throw new ToolException(ToolError.INVALID_ARGS,
+                    "unknown equip target: " + raw + "; expected " + BodySlot.wireNameList());
         }
+        return slot;
     }
 
     private static double number(JsonObject step, String key) {

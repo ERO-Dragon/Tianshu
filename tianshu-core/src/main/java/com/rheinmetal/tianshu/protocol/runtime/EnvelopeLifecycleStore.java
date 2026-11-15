@@ -27,6 +27,13 @@ public final class EnvelopeLifecycleStore {
     }
 
     public void transition(String envelopeId, EnvelopeStatus status, String reasonCode, String message) {
+        EnvelopeStatus current = statuses.get(envelopeId);
+        if (current != null && isTerminal(current) && current != status) {
+            // Terminal is final. Letting a late transition overwrite it made the status run backwards — a completed
+            // envelope became failed, a rejected one became cancelled — and every observer that compares states saw
+            // an impossible sequence.
+            return;
+        }
         statuses.put(envelopeId, status);
         transitions.computeIfAbsent(envelopeId, key -> new CopyOnWriteArrayList<>()).add(new EnvelopeTransition(envelopeId, status, reasonCode, message, System.currentTimeMillis()));
     }

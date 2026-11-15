@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,15 +14,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Risk tiers: read-only hides writes, conservative allows survival writes, full adds the privileged end. */
+/**
+ * Risk tiers: read-only hides writes, conservative allows survival writes, full adds the privileged end.
+ *
+ * <p>The tier belongs to the caller, so every case here builds the caller it means to test instead of mutating a
+ * process-wide setting. The last two cases cover the server's side of the same question, which the client's tier is
+ * not allowed to widen.</p>
+ */
 class ToolAutonomyTest {
 
     private static final ToolId WRITE = ToolId.of("test", "autonomy.write");
     private static final ToolId FULL_ONLY = ToolId.of("test", "autonomy.full");
+    private static final String MODULE = "module.test";
 
     @BeforeEach
     void setUp() {
-        ToolAutonomyGate.reset();
         TianshuTools.clearRateLimits();
         TianshuTools.register(new WriteTool());
         TianshuTools.register(new FullOnlyTool());
@@ -41,67 +48,107 @@ class ToolAutonomyTest {
         TianshuTools.unregister(WRITE);
         TianshuTools.unregister(FULL_ONLY);
         TianshuTools.uninstallServerChannel();
-        ToolAutonomyGate.reset();
+        TianshuRuntimePorts.clear();
     }
 
     @Test
-    void readOnlyHidesAndRefusesEveryWrite() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.READ_ONLY);
+    void aReadOnlyCallerHidesAndRefusesEveryWrite() throws Exception {
+        ToolCaller caller = ToolCaller.agent(MODULE, true, ToolAutonomy.READ_ONLY);
 
-        assertFalse(visible(WRITE));
-        assertFalse(visible(FULL_ONLY));
-        assertEquals("NO_PERMISSION", callClient(WRITE).get("code").getAsString());
-        assertEquals("NO_PERMISSION", callClient(FULL_ONLY).get("code").getAsString());
+        assertFalse(visible(WRITE, caller));
+        assertFalse(visible(FULL_ONLY, caller));
+        assertEquals("NO_PERMISSION", callClient(WRITE, caller).get("code").getAsString());
+        assertEquals("NO_PERMISSION", callClient(FULL_ONLY, caller).get("code").getAsString());
     }
 
     @Test
-    void conservativeAllowsSurvivalWritesButNotThePrivilegedEnd() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.CONSERVATIVE);
+    void aConservativeCallerAllowsSurvivalWritesButNotThePrivilegedEnd() throws Exception {
+        ToolCaller caller = ToolCaller.agent(MODULE, true, ToolAutonomy.CONSERVATIVE);
 
-        assertTrue(visible(WRITE));
-        assertFalse(visible(FULL_ONLY));
-        assertTrue(callClient(WRITE).get("ok").getAsBoolean());
-        assertEquals("NO_PERMISSION", callClient(FULL_ONLY).get("code").getAsString());
+        assertTrue(visible(WRITE, caller));
+        assertFalse(visible(FULL_ONLY, caller));
+        assertTrue(callClient(WRITE, caller).get("ok").getAsBoolean());
+
+        JsonObject refused = callClient(FULL_ONLY, caller);
+        assertEquals("NO_PERMISSION", refused.get("code").getAsString());
+        assertTrue(refused.get("message").getAsString().contains("CONSERVATIVE"),
+                "the refusal has to name the tier that was applied: " + refused);
     }
 
     @Test
-    void fullAllowsEveryTier() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.FULL);
+    void aFullCallerAllowsEveryTier() throws Exception {
+        ToolCaller caller = ToolCaller.agent(MODULE, true, ToolAutonomy.FULL);
 
-        assertTrue(visible(WRITE));
-        assertTrue(visible(FULL_ONLY));
-        assertTrue(callClient(WRITE).get("ok").getAsBoolean());
-        assertTrue(callClient(FULL_ONLY).get("ok").getAsBoolean());
+        assertTrue(visible(WRITE, caller));
+        assertTrue(visible(FULL_ONLY, caller));
+        assertTrue(callClient(WRITE, caller).get("ok").getAsBoolean());
+        assertTrue(callClient(FULL_ONLY, caller).get("ok").getAsBoolean());
+    }
+
+    /**
+     * The reason the tier moved onto the caller: two AI modules in one process have to be able to disagree, and a
+     * process-wide setting can only ever hold one of the two answers.
+     */
+    @Test
+    void twoModulesInOneProcessKeepTheirOwnTiers() throws Exception {
+        ToolCaller cautious = ToolCaller.agent("module.cautious", true, ToolAutonomy.READ_ONLY);
+        ToolCaller bold = ToolCaller.agent("module.bold", true, ToolAutonomy.FULL);
+
+        assertFalse(visible(FULL_ONLY, cautious));
+        assertTrue(visible(FULL_ONLY, bold));
+        assertEquals("NO_PERMISSION", callClient(FULL_ONLY, cautious).get("code").getAsString());
+        assertTrue(callClient(FULL_ONLY, bold).get("ok").getAsBoolean());
     }
 
     @Test
-    void theGateStillNeedsAnOperator() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.FULL);
+    void anOperatorIsStillNeededAtTheTopTier() throws Exception {
+        ToolCaller notOperator = ToolCaller.agent(MODULE, false, ToolAutonomy.FULL);
 
-        JsonObject denied = TianshuTools.callJson(WRITE, new JsonObject(), ToolCaller.agent(false), ToolSide.CLIENT)
+        JsonObject denied = TianshuTools.callJson(WRITE, new JsonObject(), notOperator, ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
+
         assertEquals("NO_PERMISSION", denied.get("code").getAsString());
     }
 
+    /**
+     * Server-side execution is the server's decision: its ceiling applies even to a caller that claims the top tier,
+     * because the server cannot verify that claim and must not widen on it.
+     */
     @Test
-    void serverDispatchAppliesTheSameTier() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.CONSERVATIVE);
+    void theServerCeilingBoundsEvenAFullCaller() throws Exception {
+        TianshuRuntimePorts.register(ServerAutonomyCeiling.class, () -> ToolAutonomy.CONSERVATIVE);
+        ToolCaller full = ToolCaller.agent(MODULE, true, ToolAutonomy.FULL);
 
-        assertTrue(TianshuTools.callJson(WRITE, new JsonObject(), ToolCaller.player("p", true), ToolSide.SERVER)
+        assertTrue(TianshuTools.callJson(WRITE, new JsonObject(), full, ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS).get("ok").getAsBoolean());
-        assertEquals("NO_PERMISSION",
-                TianshuTools.callJson(FULL_ONLY, new JsonObject(), ToolCaller.player("p", true), ToolSide.SERVER)
-                        .get(2, TimeUnit.SECONDS).get("code").getAsString());
+
+        JsonObject refused = TianshuTools.callJson(FULL_ONLY, new JsonObject(), full, ToolSide.SERVER)
+                .get(2, TimeUnit.SECONDS);
+        assertEquals("NO_PERMISSION", refused.get("code").getAsString());
+        assertTrue(refused.get("message").getAsString().contains("this server allows CONSERVATIVE"),
+                "the refusal must name the ceiling so an operator can find the switch: " + refused);
+
+        assertFalse(TianshuTools.catalog(full, ToolSide.SERVER).stream()
+                        .anyMatch(spec -> spec.id().equals(FULL_ONLY)),
+                "a ceiling the server enforces must also keep the tool out of the catalogue it pushes");
     }
 
-    private static boolean visible(ToolId id) {
-        return TianshuTools.catalog(ToolCaller.agent(true), ToolSide.CLIENT).stream()
+    @Test
+    void noPublishedCeilingMeansNoExtraRestriction() throws Exception {
+        ToolCaller full = ToolCaller.agent(MODULE, true, ToolAutonomy.FULL);
+
+        assertTrue(TianshuTools.callJson(FULL_ONLY, new JsonObject(), full, ToolSide.SERVER)
+                        .get(2, TimeUnit.SECONDS).get("ok").getAsBoolean(),
+                "a single-player world publishes no ceiling and must not restrict its own owner");
+    }
+
+    private static boolean visible(ToolId id, ToolCaller caller) {
+        return TianshuTools.catalog(caller, ToolSide.CLIENT).stream()
                 .anyMatch(spec -> spec.id().equals(id));
     }
 
-    private static JsonObject callClient(ToolId id) throws Exception {
-        return TianshuTools.callJson(id, new JsonObject(), ToolCaller.agent(true), ToolSide.CLIENT)
-                .get(2, TimeUnit.SECONDS);
+    private static JsonObject callClient(ToolId id, ToolCaller caller) throws Exception {
+        return TianshuTools.callJson(id, new JsonObject(), caller, ToolSide.CLIENT).get(2, TimeUnit.SECONDS);
     }
 
     public static final class Args {

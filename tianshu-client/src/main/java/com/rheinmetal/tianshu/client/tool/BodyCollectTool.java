@@ -182,12 +182,23 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
                                             }
                                             if (items.isEmpty()) {
                                                 return CompletableFuture.completedFuture(new CollectResult(
-                                                        collected + 1, remaining - 1,
+                                                        collected, wanted - collected,
                                                         "mined " + blockId + " but this body has no item handler"));
                                             }
                                             return items.get().pickup(actor, 3)
-                                                    .thenCompose(pickup -> run(actor, blockId, wanted,
-                                                            collected + 1, mode, radius, deadline));
+                                                    .thenCompose(pickup -> {
+                                                        if (pickup.items().isEmpty()) {
+                                                            // The block broke but its drop never reached the body:
+                                                            // counting it would tell the caller it has materials
+                                                            // it does not have.
+                                                            return CompletableFuture.completedFuture(
+                                                                    new CollectResult(collected, wanted - collected,
+                                                                            "mined " + blockId
+                                                                                    + " but nothing was picked up"));
+                                                        }
+                                                        return run(actor, blockId, wanted,
+                                                                collected + 1, mode, radius, deadline);
+                                                    });
                                         });
                             });
                 });

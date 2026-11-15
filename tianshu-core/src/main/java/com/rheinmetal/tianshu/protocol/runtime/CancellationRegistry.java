@@ -3,12 +3,22 @@ package com.rheinmetal.tianshu.protocol.runtime;
 import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
+/**
+ * Who wants to know when an envelope is cancelled.
+ *
+ * <p>A callback is dropped as soon as it fires: it was registered for one envelope's cancellation, and keeping it
+ * afterwards pinned the registering module — usually through a lambda that captured it — for the rest of the session.
+ * A callback that throws is isolated, so one consumer's bug cannot stop the others from being told, and cannot escape
+ * into the cancelling call itself.</p>
+ */
 public final class CancellationRegistry {
     private final EnvelopeLifecycleStore lifecycleStore;
     private final Map<String, List<Consumer<TianshuEnvelope>>> callbacks = new ConcurrentHashMap<>();
@@ -30,10 +40,7 @@ public final class CancellationRegistry {
     }
 
     public void cancelChildren(String envelopeId, String reasonCode, String message) {
-        lifecycleStore.findEnvelope(envelopeId).ifPresent(envelope -> cancelEnvelope(envelope, reasonCode, message));
-        for (TianshuEnvelope child : lifecycleStore.childrenOf(envelopeId)) {
-            cancelChildren(child.envelopeId(), reasonCode, message);
-        }
+        cancelChildren(envelopeId, reasonCode, message, new HashSet<>());
     }
 
     public void cancelTrace(String traceId, String reasonCode, String message) {
@@ -42,14 +49,34 @@ public final class CancellationRegistry {
         }
     }
 
+    /** {@code visited} keeps a malformed parent chain from turning the walk into unbounded recursion. */
+    private void cancelChildren(String envelopeId, String reasonCode, String message, Set<String> visited) {
+        if (!visited.add(envelopeId)) {
+            return;
+        }
+        lifecycleStore.findEnvelope(envelopeId).ifPresent(envelope -> cancelEnvelope(envelope, reasonCode, message));
+        for (TianshuEnvelope child : lifecycleStore.childrenOf(envelopeId)) {
+            cancelChildren(child.envelopeId(), reasonCode, message, visited);
+        }
+    }
+
     private void cancelEnvelope(TianshuEnvelope envelope, String reasonCode, String message) {
         EnvelopeStatus status = lifecycleStore.statusOf(envelope.envelopeId());
-        if (status == EnvelopeStatus.COMPLETED || status == EnvelopeStatus.CANCELLED || status == EnvelopeStatus.DEAD_LETTERED) {
+        if (status == EnvelopeStatus.COMPLETED || status == EnvelopeStatus.CANCELLED
+                || status == EnvelopeStatus.DEAD_LETTERED) {
             return;
         }
         lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.CANCELLED, reasonCode, message);
-        for (Consumer<TianshuEnvelope> callback : callbacks.getOrDefault(envelope.envelopeId(), List.of())) {
-            callback.accept(envelope);
+        List<Consumer<TianshuEnvelope>> registered = callbacks.remove(envelope.envelopeId());
+        if (registered == null) {
+            return;
+        }
+        for (Consumer<TianshuEnvelope> callback : registered) {
+            try {
+                callback.accept(envelope);
+            } catch (RuntimeException failed) {
+                // One consumer must not stop the others from being told the call was cancelled.
+            }
         }
     }
 }

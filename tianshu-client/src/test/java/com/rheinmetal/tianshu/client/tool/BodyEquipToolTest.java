@@ -143,4 +143,51 @@ class BodyEquipToolTest {
         assertFalse(refused.get("ok").getAsBoolean());
         assertEquals("INVALID_ARGS", refused.get("code").getAsString());
     }
+
+    /**
+     * Every name the schema advertises has to be a name the parser accepts.
+     *
+     * <p>Both sides read {@link BodySlot#wireNameList()}, which is the point: the previous version advertised
+     * {@code main}/{@code offhand} and parsed {@code MAIN}/{@code OFFHAND}, so a model following the description
+     * was refused every time and had nothing to correct itself with.</p>
+     */
+    @Test
+    void everySlotNameTheSchemaAdvertisesIsAccepted() throws Exception {
+        AtomicReference<BodySlot> seen = new AtomicReference<>();
+        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+            @Override
+            public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
+                throw new AssertionError("equip test must not pick up");
+            }
+
+            @Override
+            public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
+                throw new AssertionError("this test must not drop");
+            }
+
+            @Override
+            public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
+                seen.set(request.target());
+                return CompletableFuture.completedFuture(
+                        new EquipResult(request.target(), request.inventorySlot(), "", 1));
+            }
+        });
+        enable();
+        TestBodies.register("body-1", BodyCapability.INVENTORY);
+
+        String description = new BodyEquipTool().argsSchema().getAsJsonObject("properties")
+                .getAsJsonObject("target").get("description").getAsString();
+
+        for (BodySlot slot : BodySlot.values()) {
+            assertTrue(description.contains(slot.wireName()),
+                    "the schema must advertise " + slot.wireName() + ": " + description);
+            seen.set(null);
+            TianshuTools.clearRateLimits();
+            JsonObject result = envelope("{\"body\":\"body-1\",\"slot\":1,\"target\":\""
+                    + slot.wireName() + "\"}", ToolCaller.player("p", true));
+            assertTrue(result.get("ok").getAsBoolean(),
+                    slot.wireName() + " must be accepted, got " + result);
+            assertEquals(slot, seen.get(), "the port must see " + slot.wireName());
+        }
+    }
 }

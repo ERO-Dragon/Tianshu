@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -55,7 +56,12 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
     }
 
     public synchronized int getInt(String key, int fallback) {
-        return (int) getLong(key, fallback);
+        long value = getLong(key, fallback);
+        if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+            logs.warn("module config value is out of int range, using the default: key=" + key + ", file=" + file);
+            return fallback;
+        }
+        return (int) value;
     }
 
     public synchronized long getLong(String key, long fallback) {
@@ -85,9 +91,15 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
     }
 
     public synchronized List<String> getStringList(String key, List<String> fallback) {
-        String value = getString(key, null);
-        if (value == null || value.isEmpty()) {
+        loadOnce();
+        // Read the raw property rather than going through getString: "present but empty" has to stay distinguishable
+        // from "absent", or a list the module deliberately emptied would come back as the fallback on the next read.
+        String value = values.getProperty(key);
+        if (value == null) {
             return fallback;
+        }
+        if (value.isEmpty()) {
+            return List.of();
         }
         return List.copyOf(new ArrayList<>(Arrays.asList(value.split(LIST_SEPARATOR, -1))));
     }
@@ -131,12 +143,8 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            if (corrupt && Files.isRegularFile(file)) {
-                // The file this store read was unparsable. Keep it next to the new one instead of silently
-                // overwriting the player's (broken but recoverable) settings on the first save.
-                Files.move(file, file.resolveSibling(file.getFileName() + ".corrupt"),
-                        StandardCopyOption.REPLACE_EXISTING);
-                corrupt = false;
+            if (corrupt) {
+                preserveUnreadableFile();
             }
             // A unique temporary name, not a fixed ".tmp": two stores for the same module (or a crash mid-write)
             // must never clobber each other's staging file.
@@ -166,18 +174,40 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
         }
     }
 
+    /**
+     * Moves a file this store could not read out of the way before the first save.
+     *
+     * <p>Deliberately defensive: when {@link Files#notExists} confirms the file is absent the overwrite loses
+     * nothing, but in every other case — present, or existence unknown because the check itself failed — the
+     * original is moved aside, and if even that fails the save fails. Overwriting without a backup is the one
+     * outcome this method exists to make impossible.</p>
+     */
+    private void preserveUnreadableFile() throws IOException {
+        if (Files.notExists(file)) {
+            corrupt = false;
+            return;
+        }
+        Files.move(file, file.resolveSibling(file.getFileName() + ".corrupt"),
+                StandardCopyOption.REPLACE_EXISTING);
+        corrupt = false;
+    }
+
     private void loadOnce() {
         if (loaded) {
             return;
         }
         loaded = true;
-        if (!Files.isRegularFile(file)) {
-            return;
-        }
         try (InputStream in = Files.newInputStream(file)) {
             values.load(in);
-        } catch (IOException failure) {
-            logs.error("failed to read module config: " + file, failure);
+        } catch (NoSuchFileException absent) {
+            // First run: there is nothing on disk to merge with, so the defaults are the file. This is the only
+            // failure that may be followed by an overwrite without a backup.
+        } catch (IOException unreadable) {
+            // The file exists but this process cannot read it — a locked file on Windows, an ACL change, a flaky
+            // share. Treated exactly like a damaged file: save() backs it up first, so a transient read failure
+            // can never replace the player's keys (api keys, prompts, paths) with defaults.
+            logs.error("failed to read module config, will not overwrite it: " + file, unreadable);
+            corrupt = true;
         } catch (IllegalArgumentException malformed) {
             // Properties reports a malformed \\uXXXX escape as an unchecked exception; letting it escape
             // would fail the module's prepare() instead of starting with defaults.

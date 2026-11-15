@@ -45,4 +45,23 @@ class McpConfigTest {
     void aMissingFileIsSimplyEmpty() {
         assertTrue(McpConfig.load(root.resolve("absent.json")).isEmpty());
     }
+
+    @Test
+    void aServerThatDoesNotStateItsAutonomyGetsTheConservativeTier() throws Exception {
+        Path config = root.resolve("default-autonomy.json");
+        Files.writeString(config, """
+                {"servers": [
+                  {"name": "docs", "url": "http://127.0.0.1:1/mcp"},
+                  {"name": "typo", "url": "http://127.0.0.1:2/mcp", "autonomy": "chat"}
+                ]}
+                """, StandardCharsets.UTF_8);
+
+        List<McpServerSpec> specs = McpConfig.load(config);
+
+        assertEquals(2, specs.size());
+        assertEquals(ToolAutonomy.CONSERVATIVE, specs.get(0).autonomy(),
+                "a server that says nothing must not be handed the privileged tier by omission");
+        assertEquals(ToolAutonomy.CONSERVATIVE, specs.get(1).autonomy(),
+                "an unreadable tier must fall back to the safe one, not the privileged one");
+    }
 }

@@ -33,16 +33,10 @@ public record McpServerSpec(String name, Type type, String url, List<String> com
     }
 
     static McpServerSpec fromJson(JsonObject json) {
-        String name = json.has("name") ? json.get("name").getAsString() : "";
-        String url = json.has("url") ? json.get("url").getAsString() : "";
-        String type = json.has("type") ? json.get("type").getAsString() : (url.isBlank() ? "stdio" : "http");
-        String level = json.has("autonomy") ? json.get("autonomy").getAsString() : "full";
-        ToolAutonomy autonomy;
-        try {
-            autonomy = ToolAutonomy.valueOf(level.trim().toUpperCase(java.util.Locale.ROOT));
-        } catch (RuntimeException malformed) {
-            autonomy = ToolAutonomy.FULL;
-        }
+        String name = text(json, "name", "");
+        String url = text(json, "url", "");
+        String type = text(json, "type", url.isBlank() ? "stdio" : "http");
+        ToolAutonomy autonomy = ToolAutonomy.parse(text(json, "autonomy", DEFAULT_AUTONOMY.name()), DEFAULT_AUTONOMY);
         List<String> command = new ArrayList<>();
         if (json.has("command") && json.get("command").isJsonArray()) {
             JsonArray array = json.getAsJsonArray("command");
@@ -57,5 +51,22 @@ public record McpServerSpec(String name, Type type, String url, List<String> com
             parsed = Type.HTTP;
         }
         return new McpServerSpec(name, parsed, url, command, autonomy);
+    }
+
+    /**
+     * The default tier for a server that does not state one.
+     *
+     * <p>{@code CONSERVATIVE} on purpose: a server that forgot to say how much power it wants must not be handed
+     * the privileged tier by omission. Raised by writing {@code "autonomy": "full"} in the config, which is a
+     * deliberate act the operator takes.</p>
+     */
+    static final ToolAutonomy DEFAULT_AUTONOMY = ToolAutonomy.CONSERVATIVE;
+
+    /** Reads one optional string; a non-primitive value is treated as absent instead of failing the whole file. */
+    private static String text(JsonObject json, String key, String fallback) {
+        if (!json.has(key) || !json.get(key).isJsonPrimitive()) {
+            return fallback;
+        }
+        return json.get(key).getAsString();
     }
 }

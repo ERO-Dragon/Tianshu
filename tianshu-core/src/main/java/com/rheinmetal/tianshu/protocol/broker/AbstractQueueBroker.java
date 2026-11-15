@@ -107,8 +107,14 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
             if (task.registration().capabilityDescriptor().completionPolicy() == CompletionPolicy.AUTO_COMPLETE_ON_RETURN && !runtime.cancellation().isCancelled(envelope.envelopeId())) {
                 runtime.lifecycle().transition(envelope.envelopeId(), EnvelopeStatus.COMPLETED, "COMPLETED", brokerId);
             }
-        } catch (Exception exception) {
-            runtime.handleFailure(envelope, "HANDLER_EXCEPTION", exception.getMessage(), exception);
+        } catch (Throwable failure) {
+            // Errors get the same treatment as exceptions. Before this, a LinkageError from a native backend — the
+            // case this codebase actually hits — left the envelope in RUNNING forever: no terminal state means the
+            // trace is never reclaimed, and nothing anywhere said the handler had died.
+            runtime.handleFailure(envelope, "HANDLER_EXCEPTION", failure.getMessage(), failure);
+            if (failure instanceof Error fatal) {
+                throw fatal;
+            }
         } finally {
             running.remove(envelope.envelopeId());
             drain();

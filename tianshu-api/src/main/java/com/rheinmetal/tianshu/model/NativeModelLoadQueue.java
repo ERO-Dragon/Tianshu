@@ -136,19 +136,30 @@ public final class NativeModelLoadQueue {
      * Claims the primary (retrieval) lane.
      *
      * <p>Announces that a primary load is still to come, so worse tiers must wait for its outcome before
-     * they may start — and clears a primary permit left behind by a previous attempt whose lane submission
-     * was cancelled, which would otherwise park this claim for good.
+     * they may start.</p>
      *
-     * <p>Only a <em>primary</em> permit is abandoned here. A speech load that happens to be running when a
-     * new session claims retrieval is left alone: dropping its permit would let the two overlap, which is
-     * the one thing this queue exists to prevent.
+     * <p>This deliberately does <b>not</b> clear a permit that is already held. It used to, to recover from
+     * an attempt whose lane submission never ran — but {@code active} cannot tell "granted, not yet
+     * submitted" apart from "submitted and running": the grant happens under this queue's lock and the
+     * submission happens after it, so every reclaim rule has a window in which the next session clears the
+     * permit of a load that is at that moment allocating its weights. That is the overlapping peak this
+     * queue exists to prevent, and it is not a trade worth making for a rare recovery.</p>
+     *
+     * <p>A permit that really is stale therefore surfaces as {@link Outcome#REFUSED} on later loads and
+     * through {@link #activeModuleId()}, and its owner frees it with {@link #release(String)} or
+     * {@link #abandon(Tier)}. Failing closed is the intended behaviour: a refused load says why, an OOM
+     * kill does not.</p>
      */
     public void claimPrimary() {
         synchronized (lock) {
-            if (active != null && active.tier == Tier.PRIMARY) {
-                active = null;
-            }
             expectLocked(Tier.PRIMARY);
+        }
+    }
+
+    /** The module currently holding the permit, or {@code ""} when it is free. Diagnostics and tests only. */
+    public String activeModuleId() {
+        synchronized (lock) {
+            return active == null ? "" : active.moduleId;
         }
     }
 
@@ -340,7 +351,12 @@ public final class NativeModelLoadQueue {
     private void grantAll(List<Request> granted) {
         for (Request request : granted) {
             for (Observer observer : observers) {
-                observer.onGranted(request.moduleId, request.action);
+                try {
+                    observer.onGranted(request.moduleId, request.action);
+                } catch (RuntimeException ignored) {
+                    // A status channel that throws must not cost every later model load its turn: the permit
+                    // belongs to the load, not to whoever wanted to display it.
+                }
             }
             try {
                 request.submit.run();
@@ -350,6 +366,11 @@ public final class NativeModelLoadQueue {
                 // owner check makes this a no-op if the submit runnable already handed it back itself
                 // before throwing.
                 release(request.moduleId);
+            } catch (Error fatal) {
+                // Same reasoning for a linkage or native failure. claimPrimary() no longer reclaims a held
+                // permit, so a permit lost here would park every later model load for the whole session.
+                release(request.moduleId);
+                throw fatal;
             }
         }
     }

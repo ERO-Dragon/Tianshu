@@ -36,5 +36,24 @@ public enum ToolError {
     BUSY,
 
     /** The tool itself failed. */
-    FAILED
+    FAILED;
+
+    /**
+     * Reads a wire code, falling back to {@code fallback} for anything this enum does not name.
+     *
+     * <p>The envelope's {@code code} is written by whoever produced the error: the capability table emits
+     * {@code UNKNOWN_CAPABILITY}, which is deliberately not a tool code, and a third-party provider may emit its
+     * own. A reader that assumes otherwise throws while it is already handling a failure, which loses the code
+     * and the message together.</p>
+     */
+    public static ToolError fromWire(String code, ToolError fallback) {
+        if (code == null || code.isBlank()) {
+            return fallback;
+        }
+        try {
+            return valueOf(code.trim());
+        } catch (IllegalArgumentException unknown) {
+            return fallback;
+        }
+    }
 }

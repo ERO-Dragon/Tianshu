@@ -33,4 +33,21 @@ public enum ToolAutonomy {
     public boolean mayWrite() {
         return this != READ_ONLY;
     }
+
+    /**
+     * Reads a tier named in configuration text; empty or unreadable text falls back to {@code fallback}.
+     *
+     * <p>Config is hand-edited, so a typo must not fail startup. Each caller passes the side it wants to fail to,
+     * and every call site chooses the safe one rather than the privileged one.</p>
+     */
+    public static ToolAutonomy parse(String text, ToolAutonomy fallback) {
+        if (text == null || text.isBlank()) {
+            return fallback;
+        }
+        try {
+            return valueOf(text.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return fallback;
+        }
+    }
 }

@@ -23,6 +23,7 @@ import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.MoveOptions;
 import com.rheinmetal.tianshu.api.agent.MoveResult;
+import com.rheinmetal.tianshu.api.agent.PickedItem;
 import com.rheinmetal.tianshu.api.agent.PickupResult;
 import com.rheinmetal.tianshu.api.agent.ScanRequest;
 import com.rheinmetal.tianshu.api.agent.ScanResult;
@@ -50,6 +51,8 @@ class BodyCollectToolTest {
     private final AtomicInteger mines = new AtomicInteger();
     private final AtomicInteger pickups = new AtomicInteger();
     private final AtomicInteger moves = new AtomicInteger();
+    /** What the fake pickup reports as collected; an empty list is "the drop never reached the body". */
+    private List<PickedItem> pickupYield = List.of(new PickedItem("minecraft:stone", 1));
 
     @BeforeEach
     void clearThrottle() {
@@ -174,7 +177,7 @@ class BodyCollectToolTest {
                     @Override
                     public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                         pickups.incrementAndGet();
-                        return CompletableFuture.completedFuture(new PickupResult(List.of()));
+                        return CompletableFuture.completedFuture(new PickupResult(pickupYield));
                     }
 
                     @Override
@@ -204,6 +207,31 @@ class BodyCollectToolTest {
         assertEquals(2, pickups.get());
         assertEquals(2, moves.get());
         assertEquals(2, result.getAsJsonObject("result").get("collected").getAsInt());
+    }
+
+    /**
+     * {@code collected} exists to tell the caller what it actually owns. A block that broke but whose drop
+     * never reached the body must not be counted: the agent would go on to craft with materials it does not
+     * have, and nothing in the answer would explain the failure later.
+     */
+    @Test
+    void aPickupThatCollectsNothingIsNotCounted() throws Exception {
+        pickupYield = List.of();
+        installWorld();
+        enable();
+
+        JsonObject result = envelope("{\"body\":\"body-1\",\"block\":\"minecraft:stone\",\"count\":2}",
+                ToolCaller.player("p", true));
+
+        assertTrue(result.get("ok").getAsBoolean());
+        assertEquals(1, mines.get(), "it must stop instead of mining blocks whose drops vanish");
+        assertEquals(1, pickups.get());
+
+        JsonObject value = result.getAsJsonObject("result");
+        assertEquals(0, value.get("collected").getAsInt(), "nothing was collected, so nothing may be reported");
+        assertEquals(2, value.get("remaining").getAsInt());
+        assertTrue(value.get("detail").getAsString().contains("nothing was picked up"),
+                "the answer has to say why it stopped: " + value);
     }
 
     @Test

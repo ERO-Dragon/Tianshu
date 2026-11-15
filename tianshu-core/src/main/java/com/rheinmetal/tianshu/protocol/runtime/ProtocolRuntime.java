@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.protocol.runtime;
 
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
 import com.rheinmetal.tianshu.protocol.DeadLetterPolicy;
@@ -69,6 +70,7 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     private final ProtocolContext context;
     private final AtomicLong acceptedEnvelopes = new AtomicLong();
     private final AtomicBoolean retentionSweepRunning = new AtomicBoolean();
+    private final LogSink logs;
     private final long retainedEnvelopeMillis;
     private final int retentionSweepInterval;
     private final int maxRetainedTraces;
@@ -86,8 +88,18 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     }
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, TriggerRegistry triggerRegistry, ProtocolRuntimePolicy runtimePolicy) {
+        this(mainThreadExecutor, triggerRegistry, runtimePolicy, LogSink.SYSTEM);
+    }
+
+    /**
+     * @param logSink where failures go; {@link LogSink#SYSTEM} by default, so a failure is never silent. Tests inject
+     *                a recorder to assert what was reported.
+     */
+    public ProtocolRuntime(MainThreadExecutor mainThreadExecutor, TriggerRegistry triggerRegistry,
+                           ProtocolRuntimePolicy runtimePolicy, LogSink logSink) {
         ProtocolRuntimePolicy effectivePolicy = runtimePolicy == null ? ProtocolRuntimePolicy.defaults() : runtimePolicy;
-        this.deadLetterQueue = new DeadLetterQueue(effectivePolicy.deadLetterCapacity(), lifecycleStore);
+        this.logs = logSink == null ? LogSink.SYSTEM : logSink;
+        this.deadLetterQueue = new DeadLetterQueue(effectivePolicy.deadLetterCapacity(), lifecycleStore, this.logs);
         this.stormGuard = new StormGuard(effectivePolicy.defaultStormLimitPerSecond(), effectivePolicy.maxTraceDepth());
         this.triggerRegistry = triggerRegistry == null ? new TriggerRegistry() : triggerRegistry;
         this.executorManager = new ProtocolExecutorManager(mainThreadExecutor, effectivePolicy.executorPolicy());
@@ -144,15 +156,17 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         }
         lifecycleStore.accept(envelope);
         sweepRetentionIfDue();
+        if (envelope.header().packetType() == PacketType.CANCEL) {
+            // Handled before the storm guard on purpose: a cancel shares its source's rate window with the flood it
+            // exists to stop, so throttling it means the one message that could end the storm is the one dropped.
+            handleCancelEnvelope(envelope);
+            return;
+        }
         int depth = traceDepth(envelope);
         int topicLimit = topicRegistry.find(envelope.header().target()).map(TopicDescriptor::stormLimitPerSecond).orElse(0);
         GuardResult guardResult = stormGuard.check(envelope, depth, topicLimit);
         if (!guardResult.accepted()) {
             deadLetterQueue.add(envelope, guardResult.code(), guardResult.message(), DeadLetterPolicy.LOG_ONLY);
-            return;
-        }
-        if (envelope.header().packetType() == PacketType.CANCEL) {
-            handleCancelEnvelope(envelope);
             return;
         }
         List<HandlerRegistration> registrations = resolveHandlers(envelope);
@@ -283,9 +297,16 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     }
 
     public void handleFailure(TianshuEnvelope envelope, String reasonCode, String message, Throwable throwable) {
-        lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.FAILED, reasonCode, message == null ? "" : message);
+        // Reported before the transition, because a failure that only lands in a status field is invisible: the
+        // caller sees an envelope that never completed and has nothing to search the logs for.
+        String detail = message == null ? "" : message;
+        logs.error("protocol envelope failed: id=" + envelope.envelopeId()
+                + ", trace=" + envelope.traceId()
+                + ", code=" + reasonCode
+                + (detail.isEmpty() ? "" : ", message=" + detail), throwable);
+        lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.FAILED, reasonCode, detail);
         if (envelope.header().failurePolicy() == FailurePolicy.PROPAGATE_CANCEL) {
-            applyCancellation(envelope, reasonCode, message == null ? "" : message);
+            applyCancellation(envelope, reasonCode, detail);
         }
     }
 

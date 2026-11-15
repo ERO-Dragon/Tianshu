@@ -6,12 +6,13 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
-import com.rheinmetal.tianshu.api.tool.ToolAutonomyGate;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The consumer side of the capability table: which rows to show a model and how to render them.
@@ -27,22 +28,63 @@ public final class CapabilityExposure {
     private CapabilityExposure() {
     }
 
-    /** The rows a consumer on {@code side} may expose to {@code caller}: reachable, permitted, not a connector. */
+    /**
+     * The rows a consumer on {@code side} may expose to {@code caller}: reachable, permitted, not a connector.
+     *
+     * <p>Switched-off tools are included, carrying {@code attributes.enabled = false}: the catalogue's other
+     * discovery path already lists them so a model can say "this exists but is turned off", and two views of the
+     * same table disagreeing about whether a tool exists is worse than a slightly longer list.</p>
+     *
+     * <p>Every attribute read is tolerant. {@code attributes} is an open bag by contract, so a provider can put
+     * anything under {@code autonomy}; an unreadable value hides that one row instead of failing the call, or one
+     * third-party descriptor breaks every consumer's capability view.</p>
+     */
     public static List<CapabilityDescriptor> exposed(ToolCaller caller, ToolSide side) {
-        return CapabilityCatalog.list().stream()
-                .filter(descriptor -> !descriptor.kind().equals(CapabilityKind.CONNECTOR))
-                .filter(descriptor -> side != ToolSide.CLIENT || !descriptor.kind().isTool()
-                        || !descriptor.attributes().has("autonomy")
-                        || ToolAutonomyGate.permits(ToolAutonomy.valueOf(
-                                descriptor.attributes().get("autonomy").getAsString())))
-                .filter(descriptor -> !descriptor.kind().isTool()
-                        || !descriptor.attributes().has("enabled")
-                        || descriptor.attributes().get("enabled").getAsBoolean())
-                .filter(descriptor -> descriptor.side() != ToolSide.SERVER
-                        || side == ToolSide.SERVER
-                        || TianshuTools.serverAvailable())
-                .filter(descriptor -> descriptor.permission() != ToolPermission.OPERATOR || caller.operator())
-                .toList();
+        ToolAutonomy allowed = TianshuTools.autonomyFor(side, caller);
+        List<CapabilityDescriptor> rows = new ArrayList<>();
+        for (CapabilityDescriptor descriptor : CapabilityCatalog.list()) {
+            if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
+                continue;
+            }
+            if (!reachable(descriptor, side)
+                    || !permitted(descriptor, caller)
+                    || !autonomyAllows(descriptor, allowed)) {
+                continue;
+            }
+            rows.add(descriptor);
+        }
+        return List.copyOf(rows);
+    }
+
+    private static boolean reachable(CapabilityDescriptor descriptor, ToolSide side) {
+        return descriptor.side() != ToolSide.SERVER || side == ToolSide.SERVER || TianshuTools.serverAvailable();
+    }
+
+    private static boolean permitted(CapabilityDescriptor descriptor, ToolCaller caller) {
+        return descriptor.permission() != ToolPermission.OPERATOR || caller.operator();
+    }
+
+    /**
+     * Whether the tier governing this side permits this row.
+     *
+     * <p>An unreadable tier hides the row: failing closed keeps a typo in someone else's metadata from widening
+     * what the model is offered.</p>
+     */
+    private static boolean autonomyAllows(CapabilityDescriptor descriptor, ToolAutonomy allowed) {
+        if (!descriptor.kind().isTool()) {
+            return true;
+        }
+        JsonElement declared = descriptor.attributes().get("autonomy");
+        if (declared == null || !declared.isJsonPrimitive()) {
+            return true;
+        }
+        ToolAutonomy required;
+        try {
+            required = ToolAutonomy.valueOf(declared.getAsString().trim().toUpperCase(Locale.ROOT));
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
+        return allowed.permits(required);
     }
 
     /** Renders the exposed rows as a prompt block; connectors never appear. */

@@ -7,12 +7,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A deliberately small JSON-Schema check for tool arguments: {@code type}, {@code required}, {@code properties},
- * {@code additionalProperties: false}, {@code enum}, numeric bounds, string length and array items.
+ * A deliberately small JSON-Schema check for tool arguments: {@code type}, {@code required},
+ * {@code properties}, {@code additionalProperties: false}, {@code enum} and array items.
  *
- * <p>It is not a full validator and does not pretend to be: unsupported keywords are ignored rather than rejected,
- * so a richer schema never blocks a call. The point is to catch the ordinary "wrong type / missing field" mistakes
- * before the tool runs, with a path the model can repair.</p>
+ * <p>It is not a full validator and does not pretend to be. Numeric bounds and string lengths are <b>not</b>
+ * enforced here — several tools clamp a request into their own range instead of rejecting it, and the schema is the
+ * model's guide rather than a second clamp. Unsupported keywords are ignored rather than rejected, so a richer schema
+ * never blocks a call. The point is to catch the ordinary "wrong type / missing field" mistakes before the tool runs,
+ * with a path the model can repair.</p>
  */
 public final class ToolArgumentValidator {
 

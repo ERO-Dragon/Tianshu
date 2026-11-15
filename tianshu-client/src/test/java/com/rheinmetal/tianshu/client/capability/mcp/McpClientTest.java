@@ -7,7 +7,6 @@ import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
-import com.rheinmetal.tianshu.api.tool.ToolAutonomyGate;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
@@ -50,7 +49,6 @@ class McpClientTest {
         if (server != null) {
             server.stop(0);
         }
-        ToolAutonomyGate.reset();
     }
 
     @Test
@@ -85,7 +83,6 @@ class McpClientTest {
 
     @Test
     void reconnectingOneServerLeavesTheOtherAlone() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.FULL);
         McpBridge bridge = McpBridge.install(List.of(
                 McpServerSpec.http("a", url, ToolAutonomy.FULL),
                 McpServerSpec.http("b", url, ToolAutonomy.FULL)));
@@ -107,8 +104,29 @@ class McpClientTest {
     }
 
     @Test
+    void aFailedResourceReadRebuildsTheConnection() throws Exception {
+        McpBridge bridge = McpBridge.install(List.of(McpServerSpec.http("srv", url, ToolAutonomy.CONSERVATIVE)));
+        try {
+            int before = initializations.get();
+
+            JsonObject envelope = CapabilityCatalog.invoke(McpBridge.capabilityId("srv", "res", "broken"),
+                            new JsonObject(), ToolCaller.agent(false), ToolSide.CLIENT)
+                    .get(5, TimeUnit.SECONDS);
+            assertFalse(envelope.get("ok").getAsBoolean(), envelope.toString());
+
+            for (int attempt = 0; attempt < 200 && initializations.get() == before; attempt++) {
+                Thread.sleep(10);
+            }
+            assertTrue(initializations.get() > before,
+                    "a read that never reached the server must rebuild the connection, not leave it 'connected' "
+                            + "and timing out for the rest of the session");
+        } finally {
+            bridge.close();
+        }
+    }
+
+    @Test
     void bridgePublishesRemoteToolsAndRemovesThemOnClose() throws Exception {
-        ToolAutonomyGate.setMode(ToolAutonomy.FULL);
         McpBridge bridge = McpBridge.install(List.of(McpServerSpec.http("srv", url, ToolAutonomy.FULL)));
         try {
             assertEquals(1, bridge.toolCount(), bridge.problems().toString());
@@ -116,7 +134,17 @@ class McpClientTest {
             assertTrue(bridge.status().get(0).connected());
             assertEquals(1, bridge.status().get(0).toolCount());
             ToolId id = McpBridge.toolId("srv", "echo");
-            JsonObject result = TianshuTools.callJson(id, new JsonObject(), ToolCaller.agent(false), ToolSide.CLIENT)
+
+            // The server is configured FULL, so a caller below that tier must not reach it. This is the axis that
+            // used to be process-wide — and, stuck at its default, the reason a normally configured MCP server was
+            // invisible to every caller.
+            JsonObject refused = TianshuTools.callJson(id, new JsonObject(), ToolCaller.agent(false), ToolSide.CLIENT)
+                    .get(5, TimeUnit.SECONDS);
+            assertFalse(refused.get("ok").getAsBoolean(), refused.toString());
+            assertEquals("NO_PERMISSION", refused.get("code").getAsString());
+
+            ToolCaller full = ToolCaller.agent("module.test", false, ToolAutonomy.FULL);
+            JsonObject result = TianshuTools.callJson(id, new JsonObject(), full, ToolSide.CLIENT)
                     .get(5, TimeUnit.SECONDS);
             assertTrue(result.get("ok").getAsBoolean(), result.toString());
             assertEquals("hello", result.getAsJsonObject("result").getAsJsonArray("content")
@@ -124,11 +152,11 @@ class McpClientTest {
 
             CapabilityId resource = McpBridge.capabilityId("srv", "res", "memo");
             assertEquals("resource body", CapabilityCatalog.invoke(resource, new JsonObject(),
-                    ToolCaller.agent(false), ToolSide.CLIENT).get(5, TimeUnit.SECONDS)
+                    full, ToolSide.CLIENT).get(5, TimeUnit.SECONDS)
                     .get("text").getAsString());
             CapabilityId prompt = McpBridge.capabilityId("srv", "prompt", "greet");
             assertEquals("Hello from MCP", CapabilityCatalog.invoke(prompt, new JsonObject(),
-                    ToolCaller.agent(false), ToolSide.CLIENT).get(5, TimeUnit.SECONDS)
+                    full, ToolSide.CLIENT).get(5, TimeUnit.SECONDS)
                     .get("text").getAsString());
         } finally {
             bridge.close();
@@ -179,11 +207,23 @@ class McpClientTest {
             resource.addProperty("description", "A note");
             resource.addProperty("mimeType", "text/plain");
             resources.add(resource);
+            JsonObject broken = new JsonObject();
+            broken.addProperty("uri", "broken://one");
+            broken.addProperty("name", "broken");
+            broken.addProperty("mimeType", "text/plain");
+            resources.add(broken);
             result.add("resources", resources);
             respond(exchange, request, result);
             return;
         }
         if ("resources/read".equals(method)) {
+            String requested = request.has("params") && request.getAsJsonObject("params").has("uri")
+                    ? request.getAsJsonObject("params").get("uri").getAsString() : "";
+            if (requested.startsWith("broken")) {
+                // No response at all: this is a read that never reached a server able to answer it.
+                exchange.close();
+                return;
+            }
             JsonObject result = new JsonObject();
             JsonArray contents = new JsonArray();
             JsonObject content = new JsonObject();

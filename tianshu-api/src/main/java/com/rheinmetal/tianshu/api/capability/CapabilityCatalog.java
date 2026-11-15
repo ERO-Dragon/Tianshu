@@ -5,16 +5,14 @@ import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolId;
-import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;

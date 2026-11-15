@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -45,6 +47,20 @@ public final class McpBridge implements McpStatus, AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "tianshu-mcp");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * Where a remote tool call runs.
+     *
+     * <p>A dedicated pool rather than the common {@code ForkJoinPool}: an MCP call blocks on the network, and on a
+     * client the common pool only has core-count-minus-one threads, so a couple of slow servers used to stall
+     * unrelated work that happened to share it. Bounded on purpose — the call budget is already limited by
+     * {@code ToolConcurrency}, and an unbounded pool would turn a slow server into thread growth.</p>
+     */
+    private final ExecutorService calls = Executors.newFixedThreadPool(4, runnable -> {
+        Thread thread = new Thread(runnable, "tianshu-mcp-call");
         thread.setDaemon(true);
         return thread;
     });
@@ -107,6 +123,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
             return;
         }
         scheduler.shutdownNow();
+        calls.shutdownNow();
         synchronized (this) {
             for (ServerState state : states.values()) {
                 cleanup(state);
@@ -244,7 +261,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
                 ? remote.getAsJsonObject("inputSchema") : null;
         ToolId id = toolId(state.spec.name(), remoteName);
         McpTool tool = new McpTool(state.spec.name(), id, client, remoteName, description, schema,
-                state.spec.autonomy(), this::onTransportFailure);
+                state.spec.autonomy(), this::onTransportFailure, calls);
         try {
             TianshuTools.register(tool);
             state.tools.add(id);
@@ -255,7 +272,7 @@ public final class McpBridge implements McpStatus, AutoCloseable {
         }
     }
 
-    private void registerResources(ServerState state, McpConnection client) {
+    private void registerResources(ServerState state, McpConnection client) throws IOException, InterruptedException {
         try {
             for (JsonObject remote : client.listResources()) {
                 String uri = remote.has("uri") ? remote.get("uri").getAsString() : "";
@@ -275,18 +292,29 @@ public final class McpBridge implements McpStatus, AutoCloseable {
                 CapabilityCatalog.register(descriptor, (context, args) -> {
                     try {
                         return CompletableFuture.completedFuture(textEnvelope(readContents(client.readResource(uri))));
-                    } catch (Exception failure) {
-                        return CompletableFuture.completedFuture(errorEnvelope(failure));
+                    } catch (McpRemoteException rejected) {
+                        // The server answered: that one read was refused, the connection itself is fine.
+                        return CompletableFuture.completedFuture(errorEnvelope(rejected));
+                    } catch (IOException | InterruptedException transport) {
+                        // The read never reached the server. Rebuild instead of keeping a server that still claims to
+                        // be connected and then times out on every later read.
+                        if (transport instanceof InterruptedException) {
+                            Thread.currentThread().interrupt();
+                        }
+                        onTransportFailure(state.spec.name());
+                        return CompletableFuture.completedFuture(errorEnvelope(transport));
+                    } catch (RuntimeException malformed) {
+                        return CompletableFuture.completedFuture(errorEnvelope(malformed));
                     }
                 });
                 state.capabilities.add(id);
             }
-        } catch (Exception unsupported) {
+        } catch (McpRemoteException unsupported) {
             // A server may not implement resources; that is not a reason to lose its tools.
         }
     }
 
-    private void registerPrompts(ServerState state, McpConnection client) {
+    private void registerPrompts(ServerState state, McpConnection client) throws IOException, InterruptedException {
         try {
             for (JsonObject remote : client.listPrompts()) {
                 String name = remote.has("name") ? remote.get("name").getAsString() : "";
@@ -304,13 +332,21 @@ public final class McpBridge implements McpStatus, AutoCloseable {
                     try {
                         JsonObject result = client.getPrompt(name, args == null ? new JsonObject() : args);
                         return CompletableFuture.completedFuture(textEnvelope(readMessages(result)));
-                    } catch (Exception failure) {
-                        return CompletableFuture.completedFuture(errorEnvelope(failure));
+                    } catch (McpRemoteException rejected) {
+                        return CompletableFuture.completedFuture(errorEnvelope(rejected));
+                    } catch (IOException | InterruptedException transport) {
+                        if (transport instanceof InterruptedException) {
+                            Thread.currentThread().interrupt();
+                        }
+                        onTransportFailure(state.spec.name());
+                        return CompletableFuture.completedFuture(errorEnvelope(transport));
+                    } catch (RuntimeException malformed) {
+                        return CompletableFuture.completedFuture(errorEnvelope(malformed));
                     }
                 });
                 state.capabilities.add(id);
             }
-        } catch (Exception unsupported) {
+        } catch (McpRemoteException unsupported) {
             // Same as resources: prompts are optional.
         }
     }

@@ -55,20 +55,27 @@ class CapabilityCatalogTest {
 
 
     @Test
-    void aDisabledToolDisappearsFromTheExposure() {
+    void aDisabledToolStaysVisibleWithItsEnabledFlagOff() {
         TianshuTools.register(new EchoTool());
         CapabilityId id = CapabilityId.of("test", "echo");
-        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
-                .anyMatch(descriptor -> descriptor.id().equals(id)));
+        assertTrue(exposed(id), "a freshly registered tool is exposed");
 
         TianshuTools.setEnabled(ECHO, false);
-        assertFalse(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
-                .anyMatch(descriptor -> descriptor.id().equals(id)));
+
+        assertTrue(exposed(id),
+                "a switched-off tool stays listed, so an agent can report 'exists but is off' instead of "
+                        + "seeing it vanish and having nothing to say");
         assertFalse(CapabilityCatalog.find(id).orElseThrow().attributes().get("enabled").getAsBoolean());
 
         TianshuTools.clearEnabledOverride(ECHO);
-        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
-                .anyMatch(descriptor -> descriptor.id().equals(id)));
+
+        assertTrue(exposed(id), "clearing the override returns the tool to its category default");
+        assertTrue(CapabilityCatalog.find(id).orElseThrow().attributes().get("enabled").getAsBoolean());
+    }
+
+    private static boolean exposed(CapabilityId id) {
+        return CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
+                .anyMatch(descriptor -> descriptor.id().equals(id));
     }
 
     @Test

@@ -231,4 +231,27 @@ class NativeModelLoadQueueTest {
                 queue.request(TTS, "tts-model", submit("tts"), NativeModelLoadQueue.Tier.DEFERRED),
                 "the reload's own release must leave the gate free, and the duplicate must not disturb it");
     }
+
+    /**
+     * Re-entering a world calls {@code claimPrimary()} again while the previous session's retrieval load may
+     * still be allocating native memory. The permit belongs to that load until it releases it: clearing it here
+     * is what let two native models peak at once, which is the failure the gate exists to prevent.
+     */
+    @Test
+    void claimingRetrievalDoesNotStealThePermitOfARunningLoad() {
+        queue.claimPrimary();
+        assertEquals(NativeModelLoadQueue.Outcome.GRANTED,
+                queue.request(LLM, "embedding", submit("llm"), NativeModelLoadQueue.Tier.PRIMARY));
+
+        queue.claimPrimary();
+
+        assertEquals(LLM, queue.activeModuleId(), "the running load must keep the permit");
+        assertEquals(NativeModelLoadQueue.Outcome.PARKED,
+                queue.request(LLM, "embedding-again", submit("again"), NativeModelLoadQueue.Tier.PRIMARY),
+                "a second retrieval load must wait instead of peaking alongside the first");
+        assertEquals(List.of("llm"), ran);
+
+        queue.release(LLM);
+        assertEquals(List.of("llm", "again"), ran, "the queued load runs once the running one releases");
+    }
 }
