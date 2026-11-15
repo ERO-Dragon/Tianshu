@@ -10,6 +10,7 @@ import com.rheinmetal.tianshu.client.tool.BodyListTool;
 import com.rheinmetal.tianshu.client.tool.BodyLookTool;
 import com.rheinmetal.tianshu.client.tool.BodyMineTool;
 import com.rheinmetal.tianshu.client.tool.BodyMoveTool;
+import com.rheinmetal.tianshu.client.tool.BodyPickupTool;
 import com.rheinmetal.tianshu.client.tool.BodyScanTool;
 
 import java.util.function.Supplier;
@@ -31,6 +32,7 @@ public final class BodyToolRegistry {
         ensure(BodyLookTool.ID, BodyLookTool::new);
         ensure(BodyMineTool.ID, BodyMineTool::new);
         ensure(BodyAttackTool.ID, BodyAttackTool::new);
+        ensure(BodyPickupTool.ID, BodyPickupTool::new);
         ensure(BlockPlaceTool.ID, BlockPlaceTool::new);
         ensure(BodyScanTool.ID, BodyScanTool::new);
         ensure(BodyInventoryTool.ID, BodyInventoryTool::new);
@@ -38,6 +40,7 @@ public final class BodyToolRegistry {
         TianshuTools.setEnabled(BodyLookTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BodyMineTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BodyAttackTool.ID, actionsEnabled);
+        TianshuTools.setEnabled(BodyPickupTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BlockPlaceTool.ID, placeEnabled);
     }
 

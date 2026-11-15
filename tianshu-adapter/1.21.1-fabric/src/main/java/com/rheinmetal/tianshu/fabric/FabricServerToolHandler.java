@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.fabric;
 
 import com.rheinmetal.tianshu.api.agent.AgentActionPort;
 import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
+import com.rheinmetal.tianshu.api.agent.AgentItemPort;
 import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
@@ -29,6 +30,7 @@ import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
 import com.rheinmetal.tianshu.mc.tool.BlockPlaceSource;
 import com.rheinmetal.tianshu.mc.tool.BodyQuerySource;
+import com.rheinmetal.tianshu.mc.tool.AgentItemSource;
 import com.rheinmetal.tianshu.mc.tool.BlockMachineSource;
 import com.rheinmetal.tianshu.mc.tool.ContainerTransferSource;
 import com.rheinmetal.tianshu.mc.tool.CraftSource;
@@ -81,6 +83,7 @@ public final class FabricServerToolHandler {
             TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionSource(server, bodies));
             TianshuRuntimePorts.register(AgentActionPort.class, new AgentActionSource(server, bodies));
             TianshuRuntimePorts.register(AgentWorldQueryPort.class, new BodyQuerySource(server));
+            TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemSource(server));
             if (TianshuTools.find(LootQueryTool.ID) == null) {
                 TianshuTools.register(new LootQueryTool());
             }
