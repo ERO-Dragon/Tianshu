@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.mc.body;
 
 import com.rheinmetal.tianshu.api.agent.BodyAccess;
+import com.rheinmetal.tianshu.api.agent.BodySlot;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -71,6 +72,18 @@ public final class BodyPersistence {
                 trusted.add(StringTag.valueOf(player.toString()));
             }
             tag.put("trusted", trusted);
+            ListTag equipment = new ListTag();
+            for (BodySlot slot : BodySlot.values()) {
+                ItemStack stack = bodies.equipment(state.id().toString(), slot);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                CompoundTag item = new CompoundTag();
+                item.putString("slot", slot.name());
+                item.put("item", stack.save(server.registryAccess()));
+                equipment.add(item);
+            }
+            tag.put("equipment", equipment);
             ListTag inventory = new ListTag();
             if (state.inventory() != null) {
                 for (int slot = 0; slot < MAIN_SLOTS; slot++) {
@@ -144,6 +157,27 @@ public final class BodyPersistence {
         }
         bodies.restore(new BodyRegistry.BodyState(id, kind.get(), inventory, tag.getUUID("owner"),
                 tag.getBoolean("operator"), entity), tag.getInt("activeSlot"));
+        ListTag equipment = tag.getList("equipment", Tag.TAG_COMPOUND);
+        for (int index = 0; index < equipment.size(); index++) {
+            CompoundTag item = equipment.getCompound(index);
+            BodySlot slot = null;
+            for (BodySlot candidate : BodySlot.values()) {
+                if (candidate.name().equals(item.getString("slot"))) {
+                    slot = candidate;
+                }
+            }
+            if (slot == null || !item.contains("item")) {
+                continue;
+            }
+            Optional<ItemStack> stack = ItemStack.parse(server.registryAccess(), item.get("item"));
+            if (stack.isPresent()) {
+                bodies.setEquipment(id.toString(), slot, stack.get());
+            }
+        }
+        BodyRegistry.BodyState restored = bodies.state(id.toString()).orElse(null);
+        if (restored != null) {
+            bodies.applyEquipment(restored);
+        }
         BodyAccess access = parseAccess(tag.getString("access"));
         bodies.setAccess(id.toString(), access);
         ListTag trusted = tag.getList("trusted", Tag.TAG_STRING);

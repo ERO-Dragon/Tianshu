@@ -2,6 +2,8 @@ package com.rheinmetal.tianshu.mc.tool;
 
 import com.rheinmetal.tianshu.api.agent.ActorRef;
 import com.rheinmetal.tianshu.api.agent.AgentItemPort;
+import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.agent.EquipRequest;
 import com.rheinmetal.tianshu.api.agent.EquipResult;
 import com.rheinmetal.tianshu.api.agent.PickedItem;
 import com.rheinmetal.tianshu.api.agent.PickupResult;
@@ -42,11 +44,11 @@ public final class AgentItemSource implements AgentItemPort {
     }
 
     @Override
-    public CompletableFuture<EquipResult> equip(ActorRef actor, int slot) {
+    public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
         CompletableFuture<EquipResult> result = new CompletableFuture<>();
         server.execute(() -> {
             try {
-                result.complete(equipNow(actor, slot));
+                result.complete(equipNow(actor, request));
             } catch (ToolException failure) {
                 result.completeExceptionally(failure);
             }
@@ -54,7 +56,7 @@ public final class AgentItemSource implements AgentItemPort {
         return result;
     }
 
-    private EquipResult equipNow(ActorRef actor, int slot) {
+    private EquipResult equipNow(ActorRef actor, EquipRequest request) {
         if (actor.kind() != ActorRef.Kind.BODY) {
             throw new ToolException(ToolError.INVALID_ARGS, "equipping is a body concept");
         }
@@ -64,21 +66,51 @@ public final class AgentItemSource implements AgentItemPort {
         if (inventory == null) {
             throw new ToolException(ToolError.UNAVAILABLE, "that agent body has no inventory");
         }
+        int slot = request.inventorySlot();
+        BodySlot target = request.target();
         if (slot < -1 || slot >= MAIN_SLOTS) {
             throw new ToolException(ToolError.INVALID_ARGS, "slot must be -1 or 0..35");
         }
-        if (!bodies.setActiveSlot(actor.id(), slot)) {
-            throw new ToolException(ToolError.UNAVAILABLE, "the agent body is not present");
+        if (target == BodySlot.MAIN_HAND) {
+            if (!bodies.setActiveSlot(actor.id(), slot)) {
+                throw new ToolException(ToolError.UNAVAILABLE, "the agent body is not present");
+            }
+            if (slot < 0) {
+                bodies.applyEquipment(state);
+                return new EquipResult(BodySlot.MAIN_HAND, -1, "", 0);
+            }
+            ItemStack stack = inventory.getItem(slot);
+            bodies.applyEquipment(state);
+            return new EquipResult(BodySlot.MAIN_HAND, slot, itemId(stack), stack.getCount());
         }
         if (slot < 0) {
-            return new EquipResult(-1, "", 0);
+            ItemStack current = bodies.equipment(actor.id(), target);
+            if (current.isEmpty()) {
+                return new EquipResult(target, -1, "", 0);
+            }
+            int moved = Inventories.add(inventory, current, MAIN_SLOTS);
+            if (moved < current.getCount()) {
+                throw new ToolException(ToolError.FAILED, "no room in the body inventory");
+            }
+            bodies.setEquipment(actor.id(), target, ItemStack.EMPTY);
+            bodies.applyEquipment(state);
+            return new EquipResult(target, -1, "", 0);
         }
-        ItemStack stack = inventory.getItem(slot);
-        if (stack.isEmpty()) {
-            return new EquipResult(slot, "", 0);
+        ItemStack from = inventory.getItem(slot);
+        if (from.isEmpty()) {
+            throw new ToolException(ToolError.INVALID_ARGS, "that inventory slot is empty");
         }
+        ItemStack previous = bodies.equipment(actor.id(), target);
+        bodies.setEquipment(actor.id(), target, from);
+        inventory.setItem(slot, previous.isEmpty() ? ItemStack.EMPTY : previous.copy());
+        inventory.setChanged();
+        bodies.applyEquipment(state);
+        return new EquipResult(target, slot, itemId(from), from.getCount());
+    }
+
+    private static String itemId(ItemStack stack) {
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        return new EquipResult(slot, id == null ? "" : id.toString(), stack.getCount());
+        return stack.isEmpty() || id == null ? "" : id.toString();
     }
 
     @Override

@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
 import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
 import com.rheinmetal.tianshu.api.agent.BodyAccess;
 import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.agent.BodySlot;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
@@ -16,12 +17,15 @@ import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Marker;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,6 +49,7 @@ public final class BodyRegistry implements AgentBodyProvider {
     private final Map<UUID, Integer> activeSlots = new LinkedHashMap<>();
     private final Map<UUID, BodyAccess> accessPolicies = new LinkedHashMap<>();
     private final Map<UUID, Set<UUID>> trusted = new LinkedHashMap<>();
+    private final Map<UUID, EnumMap<BodySlot, ItemStack>> equipment = new LinkedHashMap<>();
     private final MinecraftServer server;
     private final ActionPlayerFactory actionPlayers;
     private AgentBodyActions actions;
@@ -203,6 +208,7 @@ public final class BodyRegistry implements AgentBodyProvider {
         activeSlots.remove(state.id());
         accessPolicies.remove(state.id());
         trusted.remove(state.id());
+        equipment.remove(state.id());
         return true;
     }
 
@@ -228,6 +234,57 @@ public final class BodyRegistry implements AgentBodyProvider {
         if (activeSlot >= 0) {
             activeSlots.put(state.id(), activeSlot);
         }
+        applyEquipment(state);
+    }
+
+    /** The item equipped on one body slot; empty when nothing is equipped there. */
+    public ItemStack equipment(String bodyId, BodySlot slot) {
+        UUID id = parse(bodyId);
+        if (id == null || slot == null) {
+            return ItemStack.EMPTY;
+        }
+        EnumMap<BodySlot, ItemStack> slots = equipment.get(id);
+        return slots == null ? ItemStack.EMPTY : slots.getOrDefault(slot, ItemStack.EMPTY);
+    }
+
+    /** Replaces one equipment slot; an empty stack clears it. */
+    public void setEquipment(String bodyId, BodySlot slot, ItemStack stack) {
+        UUID id = parse(bodyId);
+        if (id == null || slot == null || !bodies.containsKey(id)) {
+            return;
+        }
+        if (stack == null || stack.isEmpty()) {
+            EnumMap<BodySlot, ItemStack> slots = equipment.get(id);
+            if (slots != null) {
+                slots.remove(slot);
+                if (slots.isEmpty()) {
+                    equipment.remove(id);
+                }
+            }
+            return;
+        }
+        equipment.computeIfAbsent(id, ignored -> new EnumMap<>(BodySlot.class)).put(slot, stack.copy());
+    }
+
+    /** Pushes every equipment slot onto the carrier entity, so vanilla armour and offhand rules apply. */
+    public void applyEquipment(BodyState state) {
+        if (!(state.entity() instanceof LivingEntity living)) {
+            return;
+        }
+        for (BodySlot slot : BodySlot.values()) {
+            living.setItemSlot(mcSlot(slot), equipment(state.id().toString(), slot));
+        }
+    }
+
+    private static EquipmentSlot mcSlot(BodySlot slot) {
+        return switch (slot) {
+            case MAIN_HAND -> EquipmentSlot.MAINHAND;
+            case OFF_HAND -> EquipmentSlot.OFFHAND;
+            case HEAD -> EquipmentSlot.HEAD;
+            case CHEST -> EquipmentSlot.CHEST;
+            case LEGS -> EquipmentSlot.LEGS;
+            case FEET -> EquipmentSlot.FEET;
+        };
     }
 
     /** Adds items to a body's inventory, stacking first; returns how many fit. */
