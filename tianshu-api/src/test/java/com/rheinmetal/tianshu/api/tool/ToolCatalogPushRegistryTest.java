@@ -8,6 +8,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,6 +53,23 @@ class ToolCatalogPushRegistryTest {
 
         assertEquals(before, seen.size());
         assertEquals(0, ToolCatalogPushRegistry.subscriberCount());
+    }
+
+    @Test
+    void aCatalogueChangeReachesTheSubscriberWithoutTheCallerPushing() throws Exception {
+        TianshuTools.register(new PushTool(READ, ToolPermission.EVERYONE));
+        List<List<String>> seen = new CopyOnWriteArrayList<>();
+        ToolCatalogPushRegistry.register("p1", false, (player, ids) -> seen.add(ids));
+        seen.clear();
+
+        // A change-driven publish runs on the registry's own thread, so the caller must not have to do anything.
+        TianshuTools.register(new PushTool(OPERATOR, ToolPermission.EVERYONE));
+
+        for (int attempt = 0; attempt < 200 && seen.isEmpty(); attempt++) {
+            Thread.sleep(5L);
+        }
+        assertTrue(seen.stream().anyMatch(ids -> ids.contains(OPERATOR.toString())),
+                "the change should have been pushed: " + seen);
     }
 
     private record PushTool(ToolId id, ToolPermission permission) implements TianshuTool<JsonObject, JsonObject> {

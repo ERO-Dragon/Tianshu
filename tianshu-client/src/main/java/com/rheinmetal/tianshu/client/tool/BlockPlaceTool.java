@@ -60,9 +60,9 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
         JsonObject properties = new JsonObject();
         properties.add("body", BodyToolSchemas.body());
         properties.add("item", BodyToolSchemas.text("Item id, for example minecraft:torch"));
-        properties.add("x", BodyToolSchemas.integer("Block x"));
-        properties.add("y", BodyToolSchemas.integer("Block y"));
-        properties.add("z", BodyToolSchemas.integer("Block z"));
+        properties.add("x", BodyToolSchemas.coordinate("Block x"));
+        properties.add("y", BodyToolSchemas.coordinate("Block y"));
+        properties.add("z", BodyToolSchemas.coordinate("Block z"));
         JsonArray faces = new JsonArray();
         for (BlockFace face : BlockFace.values()) {
             faces.add(face.name().toLowerCase(Locale.ROOT));

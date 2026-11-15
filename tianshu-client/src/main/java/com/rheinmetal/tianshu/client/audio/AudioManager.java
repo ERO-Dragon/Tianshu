@@ -1,12 +1,8 @@
 package com.rheinmetal.tianshu.client.audio;
 
 import com.rheinmetal.tianshu.client.host.ClientAudioDeviceCatalog;
-import com.rheinmetal.tianshu.protocol.ProtocolModuleIds;
 import com.rheinmetal.tianshu.api.IAudioBridge;
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
-import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
-import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 
 import javax.sound.sampled.*;
@@ -37,17 +33,8 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
      */
     private volatile TargetDataLine targetDataLine;
     private SourceDataLine sourceDataLine;
-    private SourceDataLine ttsDataLine;
-    private final AtomicInteger ttsPlaybackTurnId = new AtomicInteger(0);
-    private volatile String ttsRequestId = "";
-    private volatile long ttsOpenedAtNanos;
-    private volatile long ttsLastWriteAtNanos;
-    private volatile long ttsWriteNanos;
-    private volatile long ttsDrainNanos;
-    private volatile long ttsWriteCount;
-    private volatile long ttsBytesWritten;
-    private volatile long ttsMaxWriteGapMillis;
-    private volatile int ttsMinAvailableBytes = Integer.MAX_VALUE;
+    /** The TTS output channel; everything about the speech line lives there. */
+    private final TtsChannel ttsChannel;
 
     private final AtomicBoolean isHardwareRunning = new AtomicBoolean(false);
     private final AtomicBoolean isRecording = new AtomicBoolean(false);
@@ -85,7 +72,6 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
     private volatile Mixer.Info currentMicMixer = null;
     private volatile int currentMicIndex = -1;
-    private volatile Runnable onPlaybackFinished;
     private final AtomicBoolean micTransition = new AtomicBoolean(false);
     private volatile String pendingMicName = null;
     private volatile List<String> availableMicNames = List.of();
@@ -102,34 +88,29 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
     public AudioManager(LogSink logSink, DiagnosticSink diagnostics) {
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
+        this.ttsChannel = new TtsChannel(this.logSink, this.diagnostics);
     }
 
     private Mixer.Info findRealPhysicalMic(DataLine.Info info) {
         Mixer.Info fallbackMic = null;
         for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
-            String name = mixerInfo.getName().toLowerCase();
-            String desc = mixerInfo.getDescription().toLowerCase();
-
-            if (name.contains("主声音捕获") ||
-                    name.contains("软件") || name.contains("software") || name.contains("回环") || name.contains("loopback")
-                    || name.contains("立体声混音") || name.contains("stereo mix") || name.contains("虚拟音频")
-                    || name.contains("virtual audio cable") || name.contains("wave out")) {
+            if (!DeviceSelection.isRealInput(mixerInfo.getName())) {
                 continue;
             }
-
             try {
                 Mixer mixer = AudioSystem.getMixer(mixerInfo);
                 if (mixer.isLineSupported(info)) {
-                    if (desc.contains("high definition audio") || desc.contains("usb audio") ||
-                            desc.contains("realtek") || name.contains("usb") || desc.contains("logitech") ||
-                            desc.contains("razer") || desc.contains("hyperx") || desc.contains("steelseries")) {
+                    if (DeviceSelection.isPreferredInput(mixerInfo.getName(), mixerInfo.getDescription())) {
                         logSink.info("audio.microphone.selected name=" + mixerInfo.getName());
                         return mixerInfo;
                     }
                     if (fallbackMic == null)
                         fallbackMic = mixerInfo;
                 }
-            } catch (Exception e) {
+            } catch (Exception unreadable) {
+                // A mixer whose lines cannot be inspected is not a candidate; say so at debug level rather than
+                // swallowing it, because "no microphone found" and "every mixer threw" used to look identical.
+                logSink.info("audio.mixer.unreadable name=" + mixerInfo.getName() + " cause=" + unreadable);
             }
         }
         if (fallbackMic != null)
@@ -360,114 +341,30 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
     @Override
     public void startTtsPlayback(String requestId, int sampleRate) {
-        stopTtsPlayback();
-        ttsRequestId = requestId == null ? "" : requestId.trim();
-        ttsOpenedAtNanos = 0L;
-        ttsLastWriteAtNanos = 0L;
-        ttsWriteNanos = 0L;
-        ttsDrainNanos = 0L;
-        ttsWriteCount = 0L;
-        ttsBytesWritten = 0L;
-        ttsMaxWriteGapMillis = 0L;
-        ttsMinAvailableBytes = Integer.MAX_VALUE;
-        ttsPlaybackTurnId.incrementAndGet();
-        try {
-            AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
-            DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
-            if (!AudioSystem.isLineSupported(info))
-                return;
-            ttsDataLine = (SourceDataLine) AudioSystem.getLine(info);
-            ttsDataLine.open(format);
-            ttsDataLine.start();
-            ttsOpenedAtNanos = System.nanoTime();
-            logSink.info("audio.tts_channel.opened sampleRate=" + sampleRate);
-        } catch (LineUnavailableException e) {
-            logSink.error("audio.tts_channel.open_failed", e);
-        }
+        ttsChannel.start(requestId, sampleRate);
     }
 
     @Override
     public void feedTtsAudio(byte[] audioData) {
-        feedTtsAudio(ttsRequestId, audioData);
+        ttsChannel.feed(ttsChannel.requestId(), audioData);
     }
 
     @Override
     public void feedTtsAudio(String requestId, byte[] audioData) {
-        SourceDataLine line = ttsDataLine;
-        if (line == null || !line.isOpen()) return;
-        if (audioData == null || audioData.length == 0) return;
-        try {
-            long writeStarted = System.nanoTime();
-            line.write(audioData, 0, audioData.length);
-            long now = System.nanoTime();
-            if (ttsLastWriteAtNanos > 0L) {
-                ttsMaxWriteGapMillis = Math.max(ttsMaxWriteGapMillis,
-                        Math.max(0L, (writeStarted - ttsLastWriteAtNanos) / 1_000_000L));
-            }
-            ttsLastWriteAtNanos = now;
-            ttsWriteNanos += Math.max(0L, now - writeStarted);
-            ttsWriteCount++;
-            ttsBytesWritten += audioData.length;
-            try {
-                ttsMinAvailableBytes = Math.min(ttsMinAvailableBytes, line.available());
-            } catch (IllegalStateException ignored) {
-            }
-        } catch (Exception ignored) {
-        }
+        ttsChannel.feed(requestId, audioData);
     }
 
     @Override
     public void finishTtsPlayback() {
-        finishTtsPlayback(ttsRequestId);
+        ttsChannel.finish(ttsChannel.requestId());
     }
 
     @Override
     public void finishTtsPlayback(String requestId) {
-        SourceDataLine line = ttsDataLine;
-        if (line != null) {
-            try {
-                long drainStarted = System.nanoTime();
-                line.drain();
-                ttsDrainNanos = Math.max(0L, System.nanoTime() - drainStarted);
-            } catch (Exception e) {
-                logSink.error("audio.tts_channel.drain_failed", e);
-            }
-        }
-        publishTtsPlaybackMetrics(requestId);
-        // Detach the completion hook before closing the device: a graceful finish must still
-        // deliver it, while an abort through stopTtsPlayback() drops it. Closing the channel and
-        // reporting completion are separate responsibilities and must not share one call.
-        Runnable finished = detachPlaybackFinishedCallback();
-        closeTtsChannel();
-        if (finished != null) {
-            finished.run();
-        }
+        ttsChannel.finish(requestId);
     }
 
-    private void publishTtsPlaybackMetrics(String requestId) {
-        if (requestId == null || requestId.isBlank() || ttsOpenedAtNanos <= 0L) {
-            return;
-        }
-        long endedAtNanos = System.nanoTime();
-        diagnostics.publish(DiagnosticEvent.now(
-                ProtocolModuleIds.PLATFORM_AUDIO,
-                "AUDIO_LINE_METRICS",
-                DiagnosticSeverity.DEBUG,
-                DiagnosticPrivacy.REDACTED,
-                ttsPlaybackMetricAttributes(
-                        requestId,
-                        ttsOpenedAtNanos,
-                        endedAtNanos,
-                        ttsWriteNanos,
-                        ttsDrainNanos,
-                        ttsWriteCount,
-                        ttsBytesWritten,
-                        ttsMaxWriteGapMillis,
-                        ttsMinAvailableBytes
-                )
-        ));
-    }
-
+    /** Kept as the facade's view of the metric shape; the channel owns the values. */
     static Map<String, String> ttsPlaybackMetricAttributes(
             String requestId,
             long openedAtNanos,
@@ -479,53 +376,23 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
             long maxWriteGapMillis,
             int minAvailableBytes
     ) {
-        String normalizedRequestId = requestId == null ? "" : requestId.trim();
-        long lineOpenMillis = Math.max(0L, endedAtNanos - openedAtNanos) / 1_000_000L;
-        return Map.of(
-                "requestId", normalizedRequestId,
-                "lineOpenMillis", Long.toString(lineOpenMillis),
-                "writeMillis", Long.toString(Math.max(0L, writeNanos) / 1_000_000L),
-                "drainMillis", Long.toString(Math.max(0L, drainNanos) / 1_000_000L),
-                "writeCount", Long.toString(Math.max(0L, writeCount)),
-                "bytesWritten", Long.toString(Math.max(0L, bytesWritten)),
-                "maxWriteGapMillis", Long.toString(Math.max(0L, maxWriteGapMillis)),
-                "minAvailableBytes", Integer.toString(Math.max(0, minAvailableBytes == Integer.MAX_VALUE ? 0 : minAvailableBytes)),
-                "writeGapObserved", Boolean.toString(maxWriteGapMillis > 0L && writeCount > 1L)
-        );
+        return TtsChannel.metricAttributes(requestId, openedAtNanos, endedAtNanos, writeNanos, drainNanos,
+                writeCount, bytesWritten, maxWriteGapMillis, minAvailableBytes);
     }
 
     @Override
     public void setOnPlaybackFinished(Runnable callback) {
-        this.onPlaybackFinished = callback;
-    }
-
-    /** Removes and returns the pending completion hook so it is delivered at most once. */
-    private Runnable detachPlaybackFinishedCallback() {
-        Runnable callback = onPlaybackFinished;
-        onPlaybackFinished = null;
-        return callback;
-    }
-
-    /** Closes the TTS channel without touching completion bookkeeping. */
-    private void closeTtsChannel() {
-        SourceDataLine line = ttsDataLine;
-        ttsDataLine = null;
-        if (line == null) {
-            return;
-        }
-        try {
-            line.stop();
-            line.close();
-        } catch (Exception e) {
-            logSink.error("audio.tts_channel.close_failed", e);
-        }
+        ttsChannel.setOnPlaybackFinished(callback);
     }
 
     @Override
     public void stopTtsPlayback() {
-        // An aborted utterance must never report playback completion.
-        onPlaybackFinished = null;
-        closeTtsChannel();
+        ttsChannel.abort();
+    }
+
+    @Override
+    public void stopTtsPlayback(String requestId) {
+        ttsChannel.stop(requestId);
     }
 
     @Override
@@ -576,23 +443,8 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
 
     private List<String> enumerateMicNames() {
         List<String> names = new ArrayList<>();
-        AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
-        DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
-        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
-            String name = mixerInfo.getName().toLowerCase();
-            if (name.contains("主声音捕获") || name.contains("软件") || name.contains("software")
-                    || name.contains("回环") || name.contains("loopback") || name.contains("立体声混音")
-                    || name.contains("stereo mix") || name.contains("虚拟音频") || name.contains("virtual audio cable")
-                    || name.contains("wave out")) {
-                continue;
-            }
-            try {
-                Mixer mixer = AudioSystem.getMixer(mixerInfo);
-                if (mixer.isLineSupported(info)) {
-                    names.add(mixerInfo.getName());
-                }
-            } catch (Exception ignored) {
-            }
+        for (Mixer.Info mixerInfo : getAvailableMicMixers()) {
+            names.add(mixerInfo.getName());
         }
         return names;
     }
@@ -602,11 +454,7 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
         AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
         DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
         for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
-            String name = mixerInfo.getName().toLowerCase();
-            if (name.contains("主声音捕获") || name.contains("软件") || name.contains("software")
-                    || name.contains("回环") || name.contains("loopback") || name.contains("立体声混音")
-                    || name.contains("stereo mix") || name.contains("虚拟音频") || name.contains("virtual audio cable")
-                    || name.contains("wave out")) {
+            if (!DeviceSelection.isRealInput(mixerInfo.getName())) {
                 continue;
             }
             try {
@@ -614,7 +462,9 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
                 if (mixer.isLineSupported(info)) {
                     mixers.add(mixerInfo);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception unreadable) {
+                // Same reason as in findRealPhysicalMic: an unreadable mixer is skipped, visibly.
+                logSink.info("audio.mixer.unreadable name=" + mixerInfo.getName() + " cause=" + unreadable);
             }
         }
         return mixers;

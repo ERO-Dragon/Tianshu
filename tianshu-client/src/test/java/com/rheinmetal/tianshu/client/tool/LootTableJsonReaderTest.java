@@ -60,4 +60,35 @@ class LootTableJsonReaderTest {
                 """);
         assertTrue(LootTableJsonReader.itemIds(table, id -> null).isEmpty());
     }
+
+    @Test
+    void aFieldWrittenInTheWrongShapeCostsThatEntryAndNothingElse() {
+        // Legal JSON, wrong shape: an object where a string belongs. Reading it with getAsString() threw out of the
+        // reader, so a single odd entry in a datapack cost the whole loot table.
+        JsonElement table = JsonParser.parseString("""
+                {"pools":[{"entries":[
+                  {"type": {"value": "minecraft:item"}, "name": "minecraft:lost"},
+                  {"type": "minecraft:item", "name": {"value": "minecraft:lost_too"}},
+                  {"type": "minecraft:item", "name": "minecraft:cobblestone"}
+                ]}]}
+                """);
+
+        assertEquals(Set.of("minecraft:cobblestone"), LootTableJsonReader.itemIds(table, id -> null));
+    }
+
+    @Test
+    void aResolverThatThrowsDoesNotLoseTheRestOfTheTable() {
+        JsonElement table = JsonParser.parseString("""
+                {"pools":[{"entries":[
+                  {"type": "minecraft:loot_table", "value": "broken:table"},
+                  {"type": "minecraft:item", "name": "minecraft:stone"}
+                ]}]}
+                """);
+
+        Set<String> items = LootTableJsonReader.itemIds(table, id -> {
+            throw new IllegalStateException("cannot read " + id);
+        });
+
+        assertEquals(Set.of("minecraft:stone"), items);
+    }
 }

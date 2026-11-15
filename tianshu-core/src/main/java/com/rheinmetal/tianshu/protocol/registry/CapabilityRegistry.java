@@ -18,7 +18,20 @@ public final class CapabilityRegistry {
         for (CapabilityDescriptor capability : moduleDescriptor.capabilities()) {
             HandlerRegistration registration = new HandlerRegistration(moduleDescriptor, capability, handler);
             capabilityHandlers.compute(capability.capabilityId(), (key, existing) -> {
-                List<HandlerRegistration> result = existing == null ? new ArrayList<>() : new ArrayList<>(existing);
+                List<HandlerRegistration> result = new ArrayList<>(existing == null ? 1 : existing.size() + 1);
+                if (existing != null) {
+                    // One module owns one handler per (capability, payload type): registering the same module again
+                    // replaces its previous registration instead of adding a second one. Appending used to deliver
+                    // every envelope twice — ProtocolRuntime treats "more than one registration" as a fan-out, while
+                    // ModuleRegistry deduplicated by moduleId, so the two tables disagreed about the same module.
+                    for (HandlerRegistration current : existing) {
+                        boolean sameOwner = current.moduleDescriptor().moduleId().equals(moduleDescriptor.moduleId())
+                                && current.capabilityDescriptor().supportedPayloadType() == capability.supportedPayloadType();
+                        if (!sameOwner) {
+                            result.add(current);
+                        }
+                    }
+                }
                 result.add(registration);
                 return Collections.unmodifiableList(result);
             });

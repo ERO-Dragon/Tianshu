@@ -93,9 +93,9 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
         JsonObject kind = BodyToolSchemas.text("Step kind");
         kind.add("enum", kinds);
         properties.add("kind", kind);
-        properties.add("x", BodyToolSchemas.integer("Target x (move/look/mine/place/interact/item_use)"));
-        properties.add("y", BodyToolSchemas.integer("Target y"));
-        properties.add("z", BodyToolSchemas.integer("Target z"));
+        properties.add("x", BodyToolSchemas.coordinate("Target x (move/look/mine/place/interact/item_use)"));
+        properties.add("y", BodyToolSchemas.coordinate("Target y"));
+        properties.add("z", BodyToolSchemas.coordinate("Target z"));
         properties.add("mode", BodyToolSchemas.text("Move mode for move steps: any, walk, fly, teleport"));
         properties.add("item", BodyToolSchemas.text("Item id for a place step"));
         properties.add("face", BodyToolSchemas.text("Block face for place/interact/item_use"));
@@ -141,27 +141,52 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "body.sequence needs an agent body"));
         }
+        ActorRef actor = scope.actor();
+        // A body that cannot be resolved has no dimension to plan against; the old code froze an empty string into
+        // every step and let the adapter explain it as "the target is in another dimension".
+        String dimension = dimensionOf(actor);
+        if (dimension.isBlank()) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                    "this body is no longer available"));
+        }
         List<SequenceStep> steps;
         try {
-            steps = parse(scope.actor(), args == null ? null : args.steps());
+            steps = parse(dimension, args == null ? null : args.steps());
         } catch (ToolException invalid) {
             return CompletableFuture.failedFuture(invalid);
         }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(BUDGET_SECONDS);
-        ActorRef actor = scope.actor();
-        return ActorScope.guarded(actor, context, () -> run(actor, steps, 0, new ArrayList<>(), deadline));
+        return ActorScope.guarded(actor, context, () -> run(actor, steps, 0, new ArrayList<>(), deadline, dimension))
+                .thenApply(BodySequenceTool::demandCompletion);
     }
 
-    private List<SequenceStep> parse(ActorRef actor, JsonArray rawSteps) {
+    /**
+     * Turns a partial run into a failed call.
+     *
+     * <p>A stop was reported only inside the result, so an orchestration layer that looks at the envelope's top-level
+     * {@code ok} read "step 0 was refused" as a success — the exact opposite of what happened. The step index and the
+     * reason travel in the failure message; the full per-step report stays available to code that drives the body
+     * layer directly, through {@link SequenceResult#completed()}.</p>
+     */
+    private static SequenceResult demandCompletion(SequenceResult result) {
+        if (result.completed()) {
+            return result;
+        }
+        throw new ToolException(ToolError.FAILED, "body.sequence stopped at step " + result.failedIndex()
+                + ": " + result.detail());
+    }
+
+    private static String dimensionOf(ActorRef actor) {
+        return AgentBodies.resolve(actor.id()).map(body -> body.position().dimension()).orElse("");
+    }
+
+    private List<SequenceStep> parse(String dimension, JsonArray rawSteps) {
         if (rawSteps == null || rawSteps.isEmpty()) {
             throw new ToolException(ToolError.INVALID_ARGS, "body.sequence needs at least one step");
         }
         if (rawSteps.size() > MAX_STEPS) {
             throw new ToolException(ToolError.INVALID_ARGS, "too many steps: " + rawSteps.size() + " > " + MAX_STEPS);
         }
-        String dimension = AgentBodies.resolve(actor.id())
-                .map(body -> body.position().dimension())
-                .orElse("");
         List<SequenceStep> steps = new ArrayList<>();
         for (int index = 0; index < rawSteps.size(); index++) {
             JsonElement element = rawSteps.get(index);
@@ -188,7 +213,8 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
     }
 
     private CompletableFuture<SequenceResult> run(ActorRef actor, List<SequenceStep> steps, int index,
-                                                  List<SequenceResult.StepReport> reports, long deadline) {
+                                                  List<SequenceResult.StepReport> reports, long deadline,
+                                                  String dimension) {
         if (index >= steps.size()) {
             return CompletableFuture.completedFuture(new SequenceResult(List.copyOf(reports), -1,
                     "all " + steps.size() + " steps completed"));
@@ -199,22 +225,33 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
         if (System.nanoTime() > deadline) {
             return CompletableFuture.completedFuture(stop(reports, index, "the sequence budget was exhausted"));
         }
-        SequenceStep current = steps.get(index);
-        Optional<ToolException> refusal = capabilityRefusal(actor, current);
+        // Every step carries the dimension that was current when the sequence was parsed. If the body was moved to
+        // another dimension in between (a portal, a command, another player), the remaining steps would describe a
+        // coordinate in a world the body is no longer in — and the adapter would report it as a cross-dimension
+        // attempt. Stop and say so instead of acting somewhere else.
+        String current = dimensionOf(actor);
+        if (!current.equals(dimension)) {
+            return CompletableFuture.completedFuture(stop(reports, index, current.isBlank()
+                    ? "the body disappeared after step " + (index - 1)
+                    : "the body moved to " + current + " after step " + (index - 1)
+                            + "; the remaining steps were planned in " + dimension));
+        }
+        SequenceStep current_step = steps.get(index);
+        Optional<ToolException> refusal = capabilityRefusal(actor, current_step);
         if (refusal.isPresent()) {
-            reports.add(new SequenceResult.StepReport(current.kind(), false, refusal.get().getMessage()));
+            reports.add(new SequenceResult.StepReport(current_step.kind(), false, refusal.get().getMessage()));
             return CompletableFuture.completedFuture(stop(reports, index, refusal.get().getMessage()));
         }
-        return dispatch(actor, current).handle((outcome, failure) -> {
+        return dispatch(actor, current_step).handle((outcome, failure) -> {
             boolean ok = failure == null && outcome != null && outcome.ok();
             String detail = failure != null
                     ? (failure.getMessage() == null ? "the step failed" : failure.getMessage())
                     : (outcome == null ? "the step produced no answer" : outcome.detail());
-            reports.add(new SequenceResult.StepReport(current.kind(), ok, detail));
+            reports.add(new SequenceResult.StepReport(current_step.kind(), ok, detail));
             if (!ok) {
                 return CompletableFuture.completedFuture(stop(reports, index, detail));
             }
-            return run(actor, steps, index + 1, reports, deadline);
+            return run(actor, steps, index + 1, reports, deadline, dimension);
         }).thenCompose(next -> next);
     }
 
@@ -331,17 +368,23 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
     }
 
     private static ActorPosition position(String dimension, JsonObject step) {
-        return new ActorPosition(dimension, number(step, "x"), number(step, "y"), number(step, "z"));
+        return BodyTargets.position(dimension, number(step, "x"), number(step, "y"), number(step, "z"));
     }
 
     private static BlockTarget block(String dimension, JsonObject step) {
-        return new BlockTarget(dimension, integer(step, "x", Integer.MIN_VALUE),
+        return BodyTargets.block(dimension, integer(step, "x", Integer.MIN_VALUE),
                 integer(step, "y", Integer.MIN_VALUE), integer(step, "z", Integer.MIN_VALUE));
     }
 
     private static ItemUseTarget itemUse(String dimension, JsonObject step) {
-        if (!step.has("x") && !step.has("y") && !step.has("z")) {
+        int given = (step.has("x") ? 1 : 0) + (step.has("y") ? 1 : 0) + (step.has("z") ? 1 : 0);
+        if (given == 0) {
             return ItemUseTarget.Air.INSTANCE;
+        }
+        if (given != 3) {
+            // Same rule as item.use: all three coordinates or none. Half a target used to mean "on the air".
+            throw new ToolException(ToolError.INVALID_ARGS,
+                    "an item_use step needs all of x, y and z, or none of them");
         }
         return new ItemUseTarget.Block(block(dimension, step), face(step));
     }

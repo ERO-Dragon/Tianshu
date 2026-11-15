@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.runtime;
 
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.tool.ClientTools;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
@@ -21,8 +22,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.io.IOException;
 
 public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     /** How long shutdown waits for the kernel to tear its modules down before releasing client resources anyway. */
@@ -36,9 +39,11 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private final Runnable shutdownAudio;
     private final Runnable closeDiagnostics;
     private final Runnable closeIndex;
+    private final LogSink logs;
     private final Runnable onWorldReady;
     private final Consumer<Throwable> onWorldFailure;
     private final AtomicLong generation = new AtomicLong();
+    private final AtomicBoolean released = new AtomicBoolean();
     private volatile SkillFileProvider skills;
     private volatile SkillFileProvider builtInSkills;
     private volatile TextCapabilityProvider resources;
@@ -48,7 +53,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private volatile McpBridge mcp;
     private volatile McpServer mcpServer;
     private volatile ScheduledExecutorService catalogRefresher;
-    private final Object lifecycleMonitor = new Object();
+    private final Object stateLock = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
     private boolean worldSessionRequested;
 
@@ -66,6 +71,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 services.audioManager()::shutdown,
                 services.diagnosticRouter()::close,
                 () -> { },
+                services.diagnosticRouter(),
                 onWorldReady,
                 onWorldFailure
         );
@@ -78,6 +84,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             Runnable shutdownAudio,
             Runnable closeDiagnostics,
             Runnable closeIndex,
+            LogSink logs,
             Runnable onWorldReady,
             Consumer<Throwable> onWorldFailure
     ) {
@@ -87,57 +94,123 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         this.shutdownAudio = Objects.requireNonNull(shutdownAudio, "shutdownAudio");
         this.closeDiagnostics = Objects.requireNonNull(closeDiagnostics, "closeDiagnostics");
         this.closeIndex = Objects.requireNonNull(closeIndex, "closeIndex");
+        this.logs = logs == null ? LogSink.NOOP : logs;
         this.onWorldReady = onWorldReady == null ? () -> { } : onWorldReady;
         this.onWorldFailure = onWorldFailure == null ? ignored -> { } : onWorldFailure;
     }
 
     @Override
     public void startClient() {
-        synchronized (lifecycleMonitor) {
+        synchronized (stateLock) {
             if (state != ClientSessionState.NEW) {
                 return;
             }
+            state = ClientSessionState.INITIALIZING;
+        }
+        try {
+            // Required, and deliberately not isolated: a duplicate tool registration or a transport that cannot be
+            // installed leaves a session that would keep answering with a half-filled tool table. Failing here is the
+            // honest outcome, and the state machine then refuses to open a world.
+            ClientTools.register();
+            ConnectionToolChannel.install();
+        } catch (RuntimeException failure) {
+            failInitialization(failure);
+            return;
+        }
+        installContentProviders();
+        installMcp();
+        installCatalogRefresher();
+        try {
+            startClientResources.run();
+        } catch (RuntimeException failure) {
+            failInitialization(failure);
+            return;
+        }
+        boolean resumeWorld;
+        synchronized (stateLock) {
             state = ClientSessionState.CLIENT_READY;
+            resumeWorld = worldSessionRequested;
         }
-        ClientTools.register();
-        builtInSkills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
-        skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills"));
-        builtInResources = TextCapabilityProvider.installClasspath(CapabilityKind.RESOURCE, "tianshu",
-                "tianshu/resources");
-        builtInPrompts = TextCapabilityProvider.installClasspath(CapabilityKind.PROMPT, "tianshu",
-                "tianshu/prompts");
-        resources = TextCapabilityProvider.install(CapabilityKind.RESOURCE, "user",
-                Path.of("config", "Tianshu", "resources"));
-        prompts = TextCapabilityProvider.install(CapabilityKind.PROMPT, "user",
-                Path.of("config", "Tianshu", "prompts"));
-        Path mcpConfig = Path.of("config", "Tianshu", "mcp.json");
-        mcp = McpBridge.start(mcpConfig);
-        if (mcp != null) {
-            TianshuRuntimePorts.register(McpStatus.class, mcp);
+        if (resumeWorld) {
+            // A login that arrived while we were installing must not be lost: the request could not start then.
+            startRequestedWorldSession();
         }
-        McpServerSettings serverSettings = McpConfig.server(mcpConfig);
-        if (serverSettings.enabled()) {
-            try {
-                mcpServer = McpServer.start(serverSettings.port());
-            } catch (java.io.IOException bindFailure) {
-                System.getLogger("tianshu.mcp").log(System.Logger.Level.WARNING,
-                        "MCP server did not start: {0}", bindFailure.getMessage());
+    }
+
+    /**
+     * Installs one optional piece, logging and continuing on failure.
+     *
+     * <p>These are content sources and the MCP bridge: with any of them missing the session still works, it just has
+     * less to offer. Previously one exception during installation aborted the remaining ones <em>after</em> the state
+     * machine had already claimed {@code CLIENT_READY}, so the world opened on a half-built client and every later
+     * {@code startClient} returned early.</p>
+     */
+    private void installOptional(String what, Installation install) {
+        try {
+            install.run();
+        } catch (IOException | RuntimeException failure) {
+            logs.warn("client subsystem unavailable: " + what, failure);
+        }
+    }
+
+    /** One installation step; a subsystem may fail with a checked I/O error (binding a port, reading a directory). */
+    @FunctionalInterface
+    private interface Installation {
+        void run() throws IOException;
+    }
+
+    private void installContentProviders() {
+        installOptional("built-in skills",
+                () -> builtInSkills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills"));
+        installOptional("user skills",
+                () -> skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills")));
+        installOptional("built-in resources", () -> builtInResources = TextCapabilityProvider.installClasspath(
+                CapabilityKind.RESOURCE, "tianshu", "tianshu/resources"));
+        installOptional("built-in prompts", () -> builtInPrompts = TextCapabilityProvider.installClasspath(
+                CapabilityKind.PROMPT, "tianshu", "tianshu/prompts"));
+        installOptional("user resources", () -> resources = TextCapabilityProvider.install(
+                CapabilityKind.RESOURCE, "user", Path.of("config", "Tianshu", "resources")));
+        installOptional("user prompts", () -> prompts = TextCapabilityProvider.install(
+                CapabilityKind.PROMPT, "user", Path.of("config", "Tianshu", "prompts")));
+    }
+
+    private void installMcp() {
+        Path config = Path.of("config", "Tianshu", "mcp.json");
+        installOptional("mcp servers", () -> {
+            McpBridge bridge = McpBridge.start(config, logs);
+            mcp = bridge;
+            TianshuRuntimePorts.register(McpStatus.class, bridge);
+        });
+        installOptional("mcp endpoint", () -> {
+            McpServerSettings settings = McpConfig.server(config, logs);
+            if (settings.enabled()) {
+                mcpServer = McpServer.start(settings.port(), logs);
             }
-        }
-        ConnectionToolChannel.install();
-        catalogRefresher = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        });
+    }
+
+    private void installCatalogRefresher() {
+        ScheduledExecutorService refresher = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "tianshu-catalog");
             thread.setDaemon(true);
             return thread;
         });
-        catalogRefresher.scheduleWithFixedDelay(TianshuClientRuntime::refreshCatalogQuietly,
+        refresher.scheduleWithFixedDelay(TianshuClientRuntime::refreshCatalogQuietly,
                 CATALOG_REFRESH_SECONDS, CATALOG_REFRESH_SECONDS, TimeUnit.SECONDS);
-        startClientResources.run();
+        catalogRefresher = refresher;
+    }
+
+    private void failInitialization(RuntimeException failure) {
+        synchronized (stateLock) {
+            state = ClientSessionState.CLIENT_FAILED;
+        }
+        logs.error("client initialization failed", failure);
+        onWorldFailure.accept(failure);
     }
 
     @Override
     public void startWorldSession() {
-        synchronized (lifecycleMonitor) {
+        synchronized (stateLock) {
             if (state == ClientSessionState.SHUTDOWN) {
                 return;
             }
@@ -147,11 +220,17 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     }
 
     private void startRequestedWorldSession() {
+        boolean needsInstall;
+        synchronized (stateLock) {
+            needsInstall = state == ClientSessionState.NEW;
+        }
+        if (needsInstall) {
+            // Outside the monitor on purpose: installation can block on the network (MCP handshakes), and holding the
+            // state lock for it would block shutdown() for as long as a dead server takes to answer.
+            startClient();
+        }
         long requestGeneration;
-        synchronized (lifecycleMonitor) {
-            if (state == ClientSessionState.NEW) {
-                startClient();
-            }
+        synchronized (stateLock) {
             if (!worldSessionRequested || state != ClientSessionState.CLIENT_READY) {
                 return;
             }
@@ -164,7 +243,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     @Override
     public void stopWorldSession() {
         long requestGeneration;
-        synchronized (lifecycleMonitor) {
+        synchronized (stateLock) {
             worldSessionRequested = false;
             if (state != ClientSessionState.WORLD_STARTING && state != ClientSessionState.WORLD_RUNNING) {
                 return;
@@ -177,52 +256,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
 
     @Override
     public void shutdown() {
-        ScheduledExecutorService refresher = catalogRefresher;
-        if (refresher != null) {
-            refresher.shutdownNow();
-            catalogRefresher = null;
-        }
-        SkillFileProvider provider = skills;
-        if (provider != null) {
-            provider.unload();
-            skills = null;
-        }
-        SkillFileProvider builtIn = builtInSkills;
-        if (builtIn != null) {
-            builtIn.unload();
-            builtInSkills = null;
-        }
-        TextCapabilityProvider resourceProvider = resources;
-        if (resourceProvider != null) {
-            resourceProvider.unload();
-            resources = null;
-        }
-        TextCapabilityProvider promptProvider = prompts;
-        if (promptProvider != null) {
-            promptProvider.unload();
-            prompts = null;
-        }
-        TextCapabilityProvider builtInResourceProvider = builtInResources;
-        if (builtInResourceProvider != null) {
-            builtInResourceProvider.unload();
-            builtInResources = null;
-        }
-        TextCapabilityProvider builtInPromptProvider = builtInPrompts;
-        if (builtInPromptProvider != null) {
-            builtInPromptProvider.unload();
-            builtInPrompts = null;
-        }
-        McpServer server = mcpServer;
-        if (server != null) {
-            server.close();
-            mcpServer = null;
-        }
-        McpBridge bridge = mcp;
-        if (bridge != null) {
-            bridge.close();
-            mcp = null;
-        }
-        synchronized (lifecycleMonitor) {
+        synchronized (stateLock) {
             if (state == ClientSessionState.SHUTDOWN) {
                 return;
             }
@@ -230,21 +264,80 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             worldSessionRequested = false;
             generation.incrementAndGet();
         }
+        // Our own poller first: it must not observe a session that is already going down.
+        ScheduledExecutorService refresher = catalogRefresher;
+        if (refresher != null) {
+            refresher.shutdownNow();
+            catalogRefresher = null;
+        }
+        CompletableFuture<Void> destroyed = core.destroy();
         try {
             // Bounded on purpose: this runs on the client thread during shutdown, and an unbounded join on a
             // module teardown that never returns would hang the process with no way out but killing it.
-            core.destroy().get(DESTROY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            destroyed.get(DESTROY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            releaseClientServices();
         } catch (TimeoutException timeout) {
             onWorldFailure.accept(timeout);
+            // The kernel is still tearing its modules down. Releasing the diagnostic sink now would discard their
+            // last lines, so the release waits for the teardown instead of racing it.
+            destroyed.whenComplete((ignored, failure) -> releaseClientServices());
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             onWorldFailure.accept(interrupted);
+            destroyed.whenComplete((ignored, failure) -> releaseClientServices());
         } catch (ExecutionException failure) {
             onWorldFailure.accept(failure.getCause() == null ? failure : failure.getCause());
-        } finally {
-            shutdownAudio.run();
-            closeDiagnostics.run();
-            closeIndex.run();
+            releaseClientServices();
+        }
+    }
+
+    /**
+     * Releases what the client installed, once.
+     *
+     * <p>Runs only after the kernel has finished destroying its modules — the modules use these providers, so closing
+     * them first was tearing the floor out from under the teardown. The order here is the reverse of installation, and
+     * the diagnostic sink goes last so a provider that complains while closing is still heard.</p>
+     */
+    private void releaseClientServices() {
+        if (!released.compareAndSet(false, true)) {
+            return;
+        }
+        unload(builtInSkills);
+        builtInSkills = null;
+        unload(skills);
+        skills = null;
+        unload(builtInResources);
+        builtInResources = null;
+        unload(builtInPrompts);
+        builtInPrompts = null;
+        unload(resources);
+        resources = null;
+        unload(prompts);
+        prompts = null;
+        McpServer server = mcpServer;
+        if (server != null) {
+            mcpServer = null;
+            server.close();
+        }
+        McpBridge bridge = mcp;
+        if (bridge != null) {
+            mcp = null;
+            bridge.close();
+        }
+        shutdownAudio.run();
+        closeDiagnostics.run();
+        closeIndex.run();
+    }
+
+    private static void unload(SkillFileProvider provider) {
+        if (provider != null) {
+            provider.unload();
+        }
+    }
+
+    private static void unload(TextCapabilityProvider provider) {
+        if (provider != null) {
+            provider.unload();
         }
     }
 
@@ -268,7 +361,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     }
 
     private void completeWorldStart(long requestGeneration, Boolean running, Throwable failure) {
-        synchronized (lifecycleMonitor) {
+        synchronized (stateLock) {
             if (requestGeneration != generation.get() || state != ClientSessionState.WORLD_STARTING) {
                 return;
             }
@@ -288,7 +381,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private void completeWorldStop(long requestGeneration, Throwable failure) {
         releaseCaptureHardware.run();
         boolean restartRequested = false;
-        synchronized (lifecycleMonitor) {
+        synchronized (stateLock) {
             if (requestGeneration == generation.get() && state == ClientSessionState.WORLD_STOPPING) {
                 state = ClientSessionState.CLIENT_READY;
                 restartRequested = worldSessionRequested;

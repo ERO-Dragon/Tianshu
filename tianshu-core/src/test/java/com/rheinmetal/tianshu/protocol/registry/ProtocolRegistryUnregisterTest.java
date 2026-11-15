@@ -47,6 +47,20 @@ class ProtocolRegistryUnregisterTest {
     }
 
     @Test
+    void reRegisteringAModuleReplacesItsHandlerInsteadOfAddingASecondOne() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        CapabilityDescriptor capability = capability("TEST.REPEATED_CAPABILITY");
+        ModuleDescriptor module = module("module.first", List.of(capability));
+
+        registry.register(module, NOOP_HANDLER);
+        registry.register(module, NOOP_HANDLER);
+
+        // Two registrations made ProtocolRuntime fan out to both, so every envelope reached the handler twice while the
+        // module table still held the module once.
+        assertEquals(1, registry.findCapability("TEST.REPEATED_CAPABILITY").size());
+    }
+
+    @Test
     void responseUnregisterKeepsOtherHandlersForSameRequest() {
         ResponseHandlerRegistry registry = new ResponseHandlerRegistry();
         CapabilityDescriptor response = capability("TEST.RESPONSE");

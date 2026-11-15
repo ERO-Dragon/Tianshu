@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.protocol.broker;
 
 import com.rheinmetal.tianshu.protocol.EnvelopeStatus;
+import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.registry.HandlerRegistration;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutionPolicy;
@@ -20,7 +21,10 @@ public final class ExclusiveInterruptBroker extends AbstractQueueBroker {
         for (Map.Entry<String, BrokerTask> entry : new ArrayList<>(running.entrySet())) {
             TianshuEnvelope runningEnvelope = entry.getValue().envelope();
             if (envelope.header().priority().weight() > runningEnvelope.header().priority().weight()) {
-                runtime.cancellation().cancelSelf(runningEnvelope.envelopeId(), "RESOURCE_PREEMPTED", "Preempted by higher priority envelope");
+                // Through the broker's own cancel path, so the victim is interrupted as well as marked: the whole
+                // point of this broker type is that a higher-priority envelope takes the slot back from a long
+                // action, and marking it cancelled while letting it run on did not free anything.
+                cancel(runningEnvelope.envelopeId(), "RESOURCE_PREEMPTED", "Preempted by higher priority envelope");
             }
         }
         return super.submit(envelope, registration, runtime);
@@ -28,7 +32,13 @@ public final class ExclusiveInterruptBroker extends AbstractQueueBroker {
 
     @Override
     protected boolean shouldRejectWhenFull(TianshuEnvelope envelope) {
-        return envelope.header().priority().weight() < 300;
+        return ProtocolBroker.belowFloor(Priority.NORMAL, envelope);
+    }
+
+    /** This is the one broker type that promises to stop a running task, and the one that declares it. */
+    @Override
+    protected boolean interruptsRunningTasks() {
+        return true;
     }
 
     @Override

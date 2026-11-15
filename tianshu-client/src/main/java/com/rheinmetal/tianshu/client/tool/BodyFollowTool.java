@@ -29,6 +29,7 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -111,11 +112,21 @@ public final class BodyFollowTool implements TianshuTool<BodyFollowTool.Args, Fo
         CompletableFuture<FollowResult> result = new CompletableFuture<>();
         AtomicInteger steps = new AtomicInteger();
         int maxSteps = seconds * STEPS_PER_SECOND;
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
         double[] lastDistance = {Double.NaN};
         Runnable step = new Runnable() {
             @Override
             public void run() {
                 if (result.isDone()) {
+                    return;
+                }
+                if (System.nanoTime() > deadlineNanos) {
+                    // A wall clock, not only the step counter. One step waits on a move that can take seconds, so
+                    // counting steps let the body keep walking long past the budget — and the platform's own timeout
+                    // completed a *derived* future, so this one stayed pending: the slot stayed held and every later
+                    // body.* call answered BUSY for five minutes. Completing this future here is what releases it.
+                    finish(ActionOutcome.REJECTED, lastDistance[0],
+                            "the follow used its " + seconds + "s budget");
                     return;
                 }
                 if (BodyOperations.cancelled(actor.id())) {

@@ -37,7 +37,9 @@ import com.rheinmetal.tianshu.protocol.registry.ValidationResult;
 import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
 
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -147,15 +149,11 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     }
 
     public void submit(TianshuEnvelope envelope) {
-        long now = System.currentTimeMillis();
-        if (envelope.header().isExpired(now)) {
-            lifecycleStore.accept(envelope);
-            sweepRetentionIfDue();
-            deadLetterQueue.add(envelope, "ENVELOPE_EXPIRED", "Envelope expired before dispatch", DeadLetterPolicy.LOG_ONLY);
-            return;
-        }
         lifecycleStore.accept(envelope);
         sweepRetentionIfDue();
+        if (expireIfDue(envelope)) {
+            return;
+        }
         if (envelope.header().packetType() == PacketType.CANCEL) {
             // Handled before the storm guard on purpose: a cancel shares its source's rate window with the flood it
             // exists to stop, so throttling it means the one message that could end the storm is the one dropped.
@@ -296,6 +294,25 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.COMPLETED, "CANCEL_DISPATCHED", "Cancel applied to " + payload.targetEnvelopeId());
     }
 
+    /**
+     * Drops an envelope whose deadline has passed, recording it and saying why.
+     *
+     * <p>Called at submit and again when a broker is about to run a task. The second check is the one that matters for
+     * queued work: an envelope submitted with a two-second deadline that waited five minutes behind a full queue used to
+     * be executed anyway, and {@link EnvelopeStatus#EXPIRED} was never written by any code path.</p>
+     *
+     * @return whether the envelope was dropped
+     */
+    public boolean expireIfDue(TianshuEnvelope envelope) {
+        if (!envelope.header().isExpired(System.currentTimeMillis())) {
+            return false;
+        }
+        lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.EXPIRED, "ENVELOPE_EXPIRED",
+                "Expired before dispatch");
+        deadLetterQueue.add(envelope, "ENVELOPE_EXPIRED", "Envelope expired before dispatch", DeadLetterPolicy.LOG_ONLY);
+        return true;
+    }
+
     public void handleFailure(TianshuEnvelope envelope, String reasonCode, String message, Throwable throwable) {
         // Reported before the transition, because a failure that only lands in a status field is invisible: the
         // caller sees an envelope that never completed and has nothing to search the logs for.
@@ -336,9 +353,26 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         }
     }
 
-    private int traceDepth(TianshuEnvelope envelope) {        int depth = 0;
+    /**
+     * How deep this envelope is in its derivation chain, up to the point where the storm guard's answer is decided.
+     *
+     * <p>The walk used to follow {@code parentId} with neither cycle protection nor a bound, and {@code parentId} is a
+     * public setter: an envelope whose parent chain looped back onto itself hung the calling thread — possibly the
+     * server tick thread — because the depth comparison happened only after the walk returned. Now a revisited id ends
+     * the walk, and the search stops as soon as it is past {@link StormGuard#maxTraceDepth()}.</p>
+     */
+    private int traceDepth(TianshuEnvelope envelope) {
+        int ceiling = stormGuard.maxTraceDepth() + 1;
+        int depth = 0;
+        Set<String> visited = new HashSet<>();
+        visited.add(envelope.envelopeId());
         String parentId = envelope.parentId();
-        while (parentId != null) {
+        while (parentId != null && depth < ceiling) {
+            if (!visited.add(parentId)) {
+                // A chain that revisits an id is a loop, not a depth. Reporting the ceiling makes the guard reject it
+                // instead of dispatching an envelope whose ancestry cannot be established.
+                return ceiling;
+            }
             depth++;
             parentId = lifecycleStore.findEnvelope(parentId).map(TianshuEnvelope::parentId).orElse(null);
         }

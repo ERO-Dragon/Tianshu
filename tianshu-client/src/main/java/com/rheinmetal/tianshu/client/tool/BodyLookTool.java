@@ -58,9 +58,9 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
         properties.add("body", BodyToolSchemas.body());
-        properties.add("x", BodyToolSchemas.integer("Target x"));
-        properties.add("y", BodyToolSchemas.integer("Target y"));
-        properties.add("z", BodyToolSchemas.integer("Target z"));
+        properties.add("x", BodyToolSchemas.coordinate("Target x"));
+        properties.add("y", BodyToolSchemas.coordinate("Target y"));
+        properties.add("z", BodyToolSchemas.coordinate("Target z"));
         return BodyToolSchemas.object(properties, "x", "y", "z");
     }
 
@@ -85,7 +85,7 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
-        ActorPosition target = new ActorPosition(body.position().dimension(), args.x(), args.y(), args.z());
+        ActorPosition target = BodyTargets.position(body.position().dimension(), args.x(), args.y(), args.z());
         return TianshuRuntimePorts.find(AgentMotionPort.class)
                 .map(port -> port.look(scope.actor(), target).thenCompose(result ->
                         result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED

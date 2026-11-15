@@ -68,9 +68,11 @@ public final class AgentSession {
 
     /** One machine-readable contract an external agent can fetch before its first call. */
     public JsonObject describe() {
+        // One read of the table, so the revision the document quotes is the revision its rows came from.
+        CapabilityCatalog.Snapshot table = CapabilityCatalog.snapshot();
         JsonObject document = new JsonObject();
         document.addProperty("protocol", PROTOCOL);
-        document.addProperty("revision", CapabilityCatalog.revision());
+        document.addProperty("revision", table.revision());
         JsonObject identity = new JsonObject();
         identity.addProperty("kind", caller.kind().name());
         identity.addProperty("id", caller.id());
@@ -98,7 +100,7 @@ public final class AgentSession {
         document.add("tools", toolRows);
 
         JsonArray capabilityRows = new JsonArray();
-        for (CapabilityDescriptor row : capabilities()) {
+        for (CapabilityDescriptor row : CapabilityExposure.exposed(caller, side, table.descriptors())) {
             JsonObject object = new JsonObject();
             object.addProperty("id", row.id().toString());
             object.addProperty("kind", row.kind().toString());

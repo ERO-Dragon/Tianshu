@@ -147,6 +147,45 @@ class BodyFollowToolTest {
     }
 
     @Test
+    void theSecondsBudgetStopsTheFollowAndReleasesTheBody() throws Exception {
+        installBody(50.0D);
+        // A tick port that holds the step instead of running it, so the test can let the budget expire first — this is
+        // what a busy server looks like from the tool's side.
+        java.util.List<Runnable> held = new java.util.ArrayList<>();
+        TianshuRuntimePorts.register(ServerTickPort.class, task -> {
+            held.add(task);
+            return () -> {
+            };
+        });
+        enable();
+
+        JsonObject ignored = null;
+        // Submitted without waiting: this future only completes when the follow stops, and the test is the one holding
+        // the tick that would have stopped it.
+        CompletableFuture<JsonObject> pending = TianshuTools.callJson(BodyFollowTool.ID,
+                JsonParser.parseString("{\"body\":\"body-1\",\"entity\":\"minecraft:zombie\",\"seconds\":1}"),
+                ToolCaller.player("p", true), ToolSide.SERVER);
+        assertEquals(1, held.size(), "the follow should be waiting for its first tick");
+
+        Thread.sleep(1_100L);
+        held.get(0).run();
+
+        JsonObject result = pending.get(3, TimeUnit.SECONDS);
+        assertTrue(result.get("ok").getAsBoolean(), result.toString());
+
+        Thread.sleep(1_100L);
+        held.get(0).run();
+
+        JsonObject follow = result.getAsJsonObject("result");
+        assertEquals("REJECTED", follow.get("outcome").getAsString(),
+                "a follow that used its budget must stop, not keep walking: " + follow);
+        assertEquals(0, moves.get(), "no step may start after the budget is gone");
+        assertTrue(BodyOperations.acquire("body-1").isEmpty(),
+                "the body's operation slot must be free again once the follow stopped");
+        BodyOperations.release("body-1");
+    }
+
+    @Test
     void aTargetAlreadyInReachCompletesWithoutMoving() throws Exception {
         installBody(1.0D);
         TianshuRuntimePorts.register(ServerTickPort.class, task -> {

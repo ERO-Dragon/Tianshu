@@ -130,6 +130,11 @@ public final class ClientDiagnosticRouter implements DiagnosticSink, LogSink, Au
     }
 
     @Override
+    public void warn(String message, Throwable failure) {
+        writeRuntime("WARN", message, failure);
+    }
+
+    @Override
     public void error(String message, Throwable failure) {
         writeRuntime("ERROR", message, failure);
     }

@@ -27,6 +27,8 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
     protected final ProtocolExecutorManager executorManager;
     protected final ProtocolExecutionPolicy executionPolicy;
     protected final AtomicBoolean draining = new AtomicBoolean(false);
+    /** The executor handle of each dispatch, so a cancel can reach the thread instead of only the status table. */
+    private final Map<String, ProtocolTaskHandle> handles = new ConcurrentHashMap<>();
 
     protected AbstractQueueBroker(String brokerId, int queueCapacity, int maxConcurrency, ProtocolExecutorManager executorManager, ProtocolExecutionPolicy executionPolicy) {
         this.brokerId = brokerId;
@@ -59,6 +61,18 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
         return true;
     }
 
+    /**
+     * Whether cancelling should also interrupt a task that is already running.
+     *
+     * <p>Off for the ordinary queue brokers and on only for {@link com.rheinmetal.tianshu.protocol.BrokerType#EXCLUSIVE_INTERRUPT}:
+     * for most brokers a cancel means "this envelope will not run and its result is void", delivered through the
+     * cancellation registry, and interrupting a handler in the middle of an I/O call has to be a deliberate per-broker
+     * choice. Carrying the handle lets the broker that promises interruption actually deliver it.</p>
+     */
+    protected boolean interruptsRunningTasks() {
+        return false;
+    }
+
     protected void enqueue(BrokerTask task) {
         queue.offer(task);
     }
@@ -84,6 +98,8 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
                                     + handle.failureCause().map(Throwable::getMessage).orElse(""),
                             handle.failureCause().orElse(null)
                     );
+                } else {
+                    handles.put(task.envelope().envelopeId(), handle);
                 }
             }
         } finally {
@@ -109,6 +125,11 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
         ProtocolRuntime runtime = task.runtime();
         try {
             if (runtime.cancellation().isCancelled(envelope.envelopeId())) return;
+            if (runtime.expireIfDue(envelope)) {
+                // The submit-time check was the only one, so an envelope that waited five minutes behind a full queue
+                // ran anyway and ENVELOPE_EXPIRED was never recorded anywhere.
+                return;
+            }
             runtime.lifecycle().transition(envelope.envelopeId(), EnvelopeStatus.RUNNING, "RUNNING", brokerId);
             task.registration().handler().handle(envelope, runtime.context());
             if (task.registration().capabilityDescriptor().completionPolicy() == CompletionPolicy.AUTO_COMPLETE_ON_RETURN && !runtime.cancellation().isCancelled(envelope.envelopeId())) {
@@ -123,6 +144,7 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
                 throw fatal;
             }
         } finally {
+            handles.remove(envelope.envelopeId());
             running.remove(envelope.envelopeId());
             drain();
         }
@@ -140,6 +162,12 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
             runningTask.runtime().cancellation().cancelSelf(envelopeId, reasonCode, message);
         }
         queue.removeIf(task -> task.envelope().envelopeId().equals(envelopeId));
+        ProtocolTaskHandle handle = handles.get(envelopeId);
+        if (handle != null && interruptsRunningTasks()) {
+            // Only the broker that promises interruption interrupts; for the others the cancelled status above is the
+            // contract, and an interrupt would reach into a handler that never agreed to be stopped.
+            handle.cancel(reasonCode);
+        }
     }
 
     @Override

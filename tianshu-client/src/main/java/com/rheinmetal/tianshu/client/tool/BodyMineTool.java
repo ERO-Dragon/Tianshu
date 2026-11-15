@@ -58,9 +58,9 @@ public final class BodyMineTool implements TianshuTool<BodyMineTool.Args, Action
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
         properties.add("body", BodyToolSchemas.body());
-        properties.add("x", BodyToolSchemas.integer("Block x"));
-        properties.add("y", BodyToolSchemas.integer("Block y"));
-        properties.add("z", BodyToolSchemas.integer("Block z"));
+        properties.add("x", BodyToolSchemas.coordinate("Block x"));
+        properties.add("y", BodyToolSchemas.coordinate("Block y"));
+        properties.add("z", BodyToolSchemas.coordinate("Block z"));
         return BodyToolSchemas.object(properties, "x", "y", "z");
     }
 
@@ -85,7 +85,7 @@ public final class BodyMineTool implements TianshuTool<BodyMineTool.Args, Action
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
-        BlockTarget target = new BlockTarget(body.position().dimension(), args.x(), args.y(), args.z());
+        BlockTarget target = BodyTargets.block(body.position().dimension(), args.x(), args.y(), args.z());
         return ActorScope.guarded(scope.actor(), context,
                 () -> TianshuRuntimePorts.find(AgentActionPort.class)
                         .map(port -> port.mine(scope.actor(), target).thenCompose(result ->

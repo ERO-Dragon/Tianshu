@@ -40,9 +40,21 @@ public final class CapabilityExposure {
      * third-party descriptor breaks every consumer's capability view.</p>
      */
     public static List<CapabilityDescriptor> exposed(ToolCaller caller, ToolSide side) {
+        return exposed(caller, side, CapabilityCatalog.snapshot().descriptors());
+    }
+
+    /**
+     * The same rows, filtered from a table the caller already holds.
+     *
+     * <p>Takes the rows rather than reading the catalog again so a document can quote a revision and its content
+     * together: reading the revision and then the table separately let another thread register something in between,
+     * and the answer described a table that never existed at that revision.</p>
+     */
+    public static List<CapabilityDescriptor> exposed(ToolCaller caller, ToolSide side,
+                                                     List<CapabilityDescriptor> table) {
         ToolAutonomy allowed = TianshuTools.autonomyFor(side, caller);
         List<CapabilityDescriptor> rows = new ArrayList<>();
-        for (CapabilityDescriptor descriptor : CapabilityCatalog.list()) {
+        for (CapabilityDescriptor descriptor : table) {
             if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
                 continue;
             }

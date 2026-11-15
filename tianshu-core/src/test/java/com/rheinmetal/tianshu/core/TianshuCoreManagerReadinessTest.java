@@ -25,18 +25,18 @@ class TianshuCoreManagerReadinessTest {
         );
 
         assertFalse(coreManager.isEnvironmentReady());
-        assertFalse(coreManager.isEnvironmentSetupCompleted());
+        assertFalse(coreManager.isInitialized());
 
         coreManager.startRuntimeSession().get(5, TimeUnit.SECONDS);
 
         assertTrue(coreManager.isEnvironmentReady());
-        assertTrue(coreManager.isEnvironmentSetupCompleted());
+        assertTrue(coreManager.isInitialized());
         assertTrue(coreManager.isEngineReady());
 
         coreManager.destroy().get(5, TimeUnit.SECONDS);
 
         assertFalse(coreManager.isEnvironmentReady());
-        assertFalse(coreManager.isEnvironmentSetupCompleted());
+        assertFalse(coreManager.isInitialized());
     }
 
     private static final class NoopAudioBridge implements IAudioBridge {

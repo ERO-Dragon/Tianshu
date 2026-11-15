@@ -199,6 +199,14 @@ public final class TianshuTools {
         return safe;
     }
 
+    /** Records the id the server's replay window is keyed by, so a caller that lost the answer can present it again. */
+    private static JsonObject withRequestId(JsonObject envelope, String requestId) {
+        if (requestId != null && !requestId.isBlank()) {
+            envelope.addProperty("requestId", requestId);
+        }
+        return envelope;
+    }
+
     private static CompletableFuture<JsonObject> executeJson(TianshuTool<?, ?> tool, JsonElement args,
                                                              ToolCaller caller, ToolSide side,
                                                              CancellationSignal cancellation) {
@@ -235,6 +243,24 @@ public final class TianshuTools {
 
     /** A JSON call with a handle, so the caller can cancel an in-flight server call. */
     public static ToolCallHandle callHandled(ToolId id, JsonElement args, ToolCaller caller, ToolSide side) {
+        return callHandled(id, args, caller, side, null);
+    }
+
+    /**
+     * The same call, with the request id chosen by the caller.
+     *
+     * <p>The server executes a {@code (caller, requestId)} pair once and replays the stored reply for a short window
+     * ({@link ServerToolDispatch}). That window was useless to a retrying caller, because every attempt minted a fresh
+     * uuid: a {@code block.place} that timed out was genuinely performed twice when the model tried again. A caller
+     * that may retry now passes the id it used before and gets the original answer instead of a second world write.</p>
+     *
+     * <p>{@code requestId} is echoed into the envelope, including on failure, so a caller that never saw an answer —
+     * a timeout is the case that matters — can still learn which id to present.</p>
+     *
+     * @param requestId the id to present, or {@code null}/blank to mint a new one
+     */
+    public static ToolCallHandle callHandled(ToolId id, JsonElement args, ToolCaller caller, ToolSide side,
+                                             String requestId) {
         long started = System.nanoTime();
         try {
             TianshuTool<?, ?> tool = requireUsable(id, caller, side);
@@ -251,13 +277,15 @@ public final class TianshuTools {
                     return new CallResult("", CompletableFuture.completedFuture(withMetadata(errorEnvelope(
                             ToolError.UNSUPPORTED_SIDE, "tool " + id + " needs the server component"), started)));
                 }
-                String requestId = "tool-" + UUID.randomUUID();
-                CompletableFuture<JsonObject> result = channel.call(requestId, id, safeArgs, caller,
+                String effectiveRequestId = requestId == null || requestId.isBlank()
+                        ? "tool-" + UUID.randomUUID()
+                        : requestId.trim();
+                CompletableFuture<JsonObject> result = channel.call(effectiveRequestId, id, safeArgs, caller,
                                 tool.policy().timeoutMillis())
-                        .handle((value, failure) -> withMetadata(failure == null
+                        .handle((value, failure) -> withRequestId(withMetadata(failure == null
                                 ? successEnvelope(value)
-                                : failureEnvelope(translate(failure, id)), started));
-                return new CallResult(requestId, result);
+                                : failureEnvelope(translate(failure, id)), started), effectiveRequestId));
+                return new CallResult(effectiveRequestId, result);
             }
             return new CallResult("", executeJson(tool, safeArgs, caller, side, CancellationSignal.NEVER)
                     .thenApply(envelope -> withMetadata(envelope, started)));

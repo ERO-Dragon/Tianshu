@@ -120,15 +120,24 @@ public class HuggingFaceDownloader {
     }
 
     /**
-     * The host to try after a connectivity failure: the other one, with the cached verdict dropped.
+     * The host to try after a connectivity failure: the other one, and it becomes the active host.
      *
-     * <p>This is the part that actually self-heals. A probe can only be wrong in the direction of "looks
-     * reachable"; a download that dies in transit is proof it is not, so the cache is cleared and the
-     * sibling host gets one immediate attempt.
+     * <p>A probe can only be wrong in the direction of "looks reachable"; a download that dies in transit is proof it
+     * is not, so the sibling host gets one immediate attempt. The one that is about to serve data is then adopted as
+     * the active host: only clearing the cache made the next file probe again, and on a network where the API answers
+     * but the file CDN is filtered, that probe keeps picking the official host — every file then burns its whole retry
+     * budget before falling back to the mirror that works. One model is a dozen files, so that is the difference
+     * between minutes and an hour.</p>
      */
     private String fallbackBaseUrl(String failedBaseUrl) {
-        resetDomainCache();
-        return sources.officialBase().equals(failedBaseUrl) ? sources.mirrorBase() : sources.officialBase();
+        String fallback = sources.officialBase().equals(failedBaseUrl) ? sources.mirrorBase() : sources.officialBase();
+        adoptBaseUrl(fallback);
+        return fallback;
+    }
+
+    /** Records the host the session is actually using, so later files skip both the probe and the failure. */
+    private static synchronized void adoptBaseUrl(String baseUrl) {
+        activeBaseUrl = baseUrl;
     }
 
     /** Connectivity-class failures are the ones a different host may fix; HTTP and disk errors are not. */
@@ -205,7 +214,7 @@ public class HuggingFaceDownloader {
             int fileIndex = index + 1;
             Path localPath = targetDir.resolve(filePath).normalize();
             ensureWithinTarget(localPath, targetDir);
-            if (skipExisting && Files.isRegularFile(localPath) && Files.size(localPath) > 0L) {
+            if (skipExisting && existingFileIsUsable(localPath, repositoryFile)) {
                 notifySkipped(progress, filePath, fileIndex, toDownload.size(), completedBytes, totalBytes, repositoryFile.size());
                 completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
                 continue;
@@ -261,7 +270,7 @@ public class HuggingFaceDownloader {
             int fileIndex = index + 1;
             Path localPath = vocoderDir.resolve(filePath).normalize();
             ensureWithinTarget(localPath, vocoderDir);
-            if (Files.isRegularFile(localPath) && Files.size(localPath) > 0L) {
+            if (existingFileIsUsable(localPath, repositoryFile)) {
                 notifySkipped(progress, filePath, fileIndex, toDownload.size(), completedBytes, totalBytes, repositoryFile.size());
                 completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
                 continue;
@@ -434,9 +443,15 @@ public class HuggingFaceDownloader {
         String filePath = file.path();
         List<URI> candidates = sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath);
         try {
-            downloadCandidates(candidates, target, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, file.size());
+            downloadCandidates(candidates, target, file, maxRetries, control, progress,
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes);
         } catch (IOException failure) {
+            IOException rejected = verificationFailureIn(failure);
+            if (rejected != null) {
+                // The bytes were wrong, not the route to them: the retries already happened inside the transfer loop,
+                // so report the published fact instead of "all sources failed", which sent the user to their network.
+                throw rejected;
+            }
             if (!isConnectivityFailure(failure)) {
                 throw failure;
             }
@@ -445,11 +460,49 @@ public class HuggingFaceDownloader {
                     + "; retrying via " + fallback);
             downloadCandidates(
                     sources.huggingFaceFileCandidates(fallback, repoId, revision, filePath),
-                    target, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes, file.size());
+                    target, file, maxRetries, control, progress,
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes);
         }
-        verifyDownloadedFile(target, file);
         env.info("HF_FILE_COMPLETE repo=" + repoId + " file=" + filePath);
+    }
+
+    /** The @return the verification failure anywhere in the aggregated cause tree, or null when there was none. */
+    private static IOException verificationFailureIn(Throwable failure) {
+        return scanForVerificationFailure(failure, 0);
+    }
+
+    private static IOException scanForVerificationFailure(Throwable failure, int depth) {
+        if (failure == null || depth > 8) {
+            return null;
+        }
+        if (failure instanceof VerificationFailure rejected) {
+            return rejected;
+        }
+        IOException fromCause = scanForVerificationFailure(failure.getCause(), depth + 1);
+        if (fromCause != null) {
+            return fromCause;
+        }
+        for (Throwable suppressed : failure.getSuppressed()) {
+            IOException fromSuppressed = scanForVerificationFailure(suppressed, depth + 1);
+            if (fromSuppressed != null) {
+                return fromSuppressed;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A transfer whose bytes do not match what the repository published.
+     *
+     * <p>Its own type so the caller can tell it apart from a transport failure after the retries: a bad body is a
+     * reason to re-download from the source that served it, not to switch hosts.</p>
+     */
+    static final class VerificationFailure extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        VerificationFailure(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     /**
@@ -483,6 +536,41 @@ public class HuggingFaceDownloader {
         }
     }
 
+    /**
+     * Whether a file already on disk may stand in for this repository file.
+     *
+     * <p>The check used to be "is a non-empty file", so anything left by an older layout, a hand copy or a killed
+     * process was never examined again — and a file whose size happened to match but whose content did not survived
+     * to crash the native loader. Now the published size and checksum are compared, and a bad copy is removed so the
+     * download below cannot skip it as "already present".</p>
+     *
+     * @return true when the existing file is the published one; false when it must be re-downloaded
+     */
+    private boolean existingFileIsUsable(Path local, RepositoryFile file) throws IOException {
+        if (!Files.isRegularFile(local)) {
+            return false;
+        }
+        long actualSize = Files.size(local);
+        if (actualSize <= 0L) {
+            Files.deleteIfExists(local);
+            return false;
+        }
+        if (file.size() > 0L && actualSize != file.size()) {
+            Files.deleteIfExists(local);
+            return false;
+        }
+        String expected = file.sha256();
+        if (expected == null || expected.isBlank()) {
+            // Nothing published to compare against: size is all the repository gave us.
+            return true;
+        }
+        if (expected.equalsIgnoreCase(sha256(local))) {
+            return true;
+        }
+        Files.deleteIfExists(local);
+        return false;
+    }
+
     private static String sha256(Path file) throws IOException {
         MessageDigest digest;
         try {
@@ -508,6 +596,7 @@ public class HuggingFaceDownloader {
     private void downloadCandidates(
             List<URI> candidates,
             Path target,
+            RepositoryFile file,
             int maxRetries,
             DownloadControl control,
             DownloadProgressListener progress,
@@ -515,8 +604,7 @@ public class HuggingFaceDownloader {
             int fileIndex,
             int totalFiles,
             long fileStartBytes,
-            long overallTotalBytes,
-            long knownFileSize
+            long overallTotalBytes
     ) throws IOException {
         http.download(
                 candidates,
@@ -526,10 +614,19 @@ public class HuggingFaceDownloader {
                 (downloaded, total) -> {
                     if (progress != null) {
                         progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
-                        long effectiveFileTotal = total > 0L ? total : knownFileSize;
+                        long effectiveFileTotal = total > 0L ? total : file.size();
                         long overallDownloaded = fileStartBytes + downloaded;
                         long overallTotal = overallTotalBytes > 0L ? overallTotalBytes : 0L;
                         progress.onOverallProgress(overallDownloaded, overallTotal);
+                    }
+                },
+                // Verified while it is still the ".downloading" file: the promotion only happens for bytes that match
+                // the published size and digest, and a rejected body is deleted so the retry starts from zero.
+                temporary -> {
+                    try {
+                        verifyDownloadedFile(temporary, file);
+                    } catch (IOException rejected) {
+                        throw new VerificationFailure(rejected.getMessage(), rejected);
                     }
                 }
         );

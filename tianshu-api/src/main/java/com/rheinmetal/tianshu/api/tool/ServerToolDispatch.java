@@ -137,7 +137,10 @@ public final class ServerToolDispatch {
         return Reply.of(requestId, true, result.toString(), "", "");
     }
 
-    /** Tests and a server restart use this; the replay window is not meant to outlive the session. */
+    /**
+     * Forgets every cached reply. Tests use this; the replay window is not meant to outlive the process, so nothing in
+     * production calls it — the javadoc used to claim a server restart would, and no restart path does.
+     */
     public static void clear() {
         COMPLETED.clear();
         IN_FLIGHT.clear();

@@ -82,6 +82,11 @@ public final class DownloadGate {
     /**
      * Aborts active transfers once per session. Later calls are no-ops: the session is already
      * cancelled, so a second abort request has nothing left to interrupt.
+     *
+     * <p>The once-only latch is about this notification only. {@link #cancel()} must not share it: a caller that
+     * aborted transfers first and then cancelled the session found the latch already spent, so the disconnect was
+     * skipped and the download thread stayed blocked in {@code read()} for its full timeout while the UI sat in
+     * CANCELLING.</p>
      */
     public void cancelActiveTransfers() {
         boolean notifyTransfers;
@@ -120,17 +125,16 @@ public final class DownloadGate {
     }
 
     private void requestCancellation(boolean keepPartialDownload) {
-        boolean notifyTransfers;
         synchronized (monitor) {
             cancelled = true;
             keepPartial = keepPartialDownload;
             paused = false;
-            notifyTransfers = !cancelNotified;
             cancelNotified = true;
             monitor.notifyAll();
         }
-        if (notifyTransfers) {
-            cancelTransfers.run();
-        }
+        // Unconditional on purpose: the session is over, so every transport has to be disconnected now. This used to
+        // live behind the once-only latch shared with cancelActiveTransfers(), which meant "abort, then cancel" never
+        // disconnected at all.
+        cancelTransfers.run();
     }
 }

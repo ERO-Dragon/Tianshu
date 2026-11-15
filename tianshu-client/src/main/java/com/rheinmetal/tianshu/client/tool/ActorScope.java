@@ -19,6 +19,11 @@ import java.util.function.Supplier;
  * <p>This is the single place that turns a {@link ToolCaller} plus an optional body id into an
  * {@link ActorRef}, so tools do not each re-implement the same three branches. Capability refusal stays in
  * {@link AgentBodies#checkCapability} and is exposed here only so a tool can check before touching a port.</p>
+ *
+ * <p>An AI module can drive a body (that is a product decision, recorded as DEC-2): its call is judged with the same
+ * tool permissions a player call would get — {@code ToolPermission} does not look at the caller kind — and the body it
+ * names in {@code args.body} is adopted. It has to name one: falling through to "the caller itself" would invent an
+ * actor nobody asked for, which is how these tools used to answer a refusal no agent could act on.</p>
  */
 final class ActorScope {
 
@@ -31,11 +36,19 @@ final class ActorScope {
     }
 
     static ActorScope of(ToolCaller caller, String bodyId, ToolId tool) {
-        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
+        boolean agent = caller.kind() == ToolCaller.Kind.AGENT;
+        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY && !agent) {
             return new ActorScope(null, new ToolException(ToolError.NO_PERMISSION,
-                    tool.name() + " runs as a player or an agent body"));
+                    tool.name() + " runs as a player, an agent body or an agent driving one"));
         }
         if (caller.kind() == ToolCaller.Kind.BODY) {
+            // A body always runs as itself. Naming a different body used to be ignored silently, which meant a call
+            // could look accepted while acting as someone else.
+            if (bodyId != null && !bodyId.isBlank() && !bodyId.trim().equals(caller.id())) {
+                return new ActorScope(null, new ToolException(ToolError.INVALID_ARGS,
+                        tool.name() + " can only run as the calling body (" + caller.id() + "), not "
+                                + bodyId.trim()));
+            }
             return new ActorScope(ActorRef.of(caller), null);
         }
         if (bodyId != null && !bodyId.isBlank()) {
@@ -45,6 +58,10 @@ final class ActorScope {
                 return new ActorScope(null, denied.get());
             }
             return new ActorScope(ActorRef.body(trimmed, caller.operator()), null);
+        }
+        if (agent) {
+            return new ActorScope(null, new ToolException(ToolError.INVALID_ARGS,
+                    tool.name() + " needs the body to act through (args.body)"));
         }
         return new ActorScope(ActorRef.of(caller), null);
     }

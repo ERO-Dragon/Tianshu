@@ -65,6 +65,33 @@ class ConnectionToolChannelTest {
     }
 
     @Test
+    void aCallerChosenRequestIdTravelsToTheServerAndComesBackInTheEnvelope() throws Exception {
+        // The server executes one (caller, requestId) pair once and replays the reply for a short window. That only
+        // helps a retrying caller if it can present the same id and learn it — every attempt used to mint a fresh
+        // uuid, so a timed-out write was genuinely performed twice when the model tried again.
+        ToolCallHandle handle = TianshuTools.callHandled(REMOTE, JsonParser.parseString("{\"text\":\"hi\"}"),
+                ToolCaller.agent(false), ToolSide.CLIENT, "retry-me-1");
+        assertEquals("retry-me-1", lastRequestId.get(), "the id the caller chose must be the one sent");
+
+        ConnectionToolChannel.complete(lastRequestId.get(), JsonParser.parseString("{\"reply\":\"world\"}"));
+
+        JsonObject result = handle.result().get(2, TimeUnit.SECONDS);
+        assertTrue(result.get("ok").getAsBoolean(), result.toString());
+        assertEquals("retry-me-1", result.get("requestId").getAsString(),
+                "the envelope carries the id so a caller that never saw an answer can retry with it");
+    }
+
+    @Test
+    void aCallWithoutAChosenIdStillMintsOne() throws Exception {
+        ToolCallHandle handle = TianshuTools.callHandled(REMOTE, JsonParser.parseString("{}"),
+                ToolCaller.agent(false), ToolSide.CLIENT);
+
+        assertTrue(lastRequestId.get().startsWith("tool-"), lastRequestId.get());
+        ConnectionToolChannel.complete(lastRequestId.get(), JsonParser.parseString("{\"reply\":\"ok\"}"));
+        assertEquals(lastRequestId.get(), handle.result().get(2, TimeUnit.SECONDS).get("requestId").getAsString());
+    }
+
+    @Test
     void aCallTravelsOutAndCompletesWhenTheAnswerArrives() throws Exception {
         CompletableFuture<JsonObject> envelope = TianshuTools.callJson(REMOTE,
                 JsonParser.parseString("{\"text\":\"hello\"}"), ToolCaller.agent(false), ToolSide.CLIENT);

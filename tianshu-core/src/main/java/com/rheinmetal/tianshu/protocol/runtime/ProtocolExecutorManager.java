@@ -210,7 +210,15 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         private final String key;
         private final PriorityBlockingQueue<QueuedTask<?>> queue = new PriorityBlockingQueue<>();
         private final AtomicBoolean draining = new AtomicBoolean(false);
-        private int running;
+        /**
+         * The handles taking up this group's concurrency budget.
+         *
+         * <p>Handles rather than a counter: a handle cancelled before its wrapper starts never runs, so nothing would
+         * ever decrement a counter — a {@code Future.cancel(true)} from a broker's cancel path would silently eat one
+         * slot of this group's budget for the rest of the session. A handle that is already done stops counting the
+         * moment it is asked.</p>
+         */
+        private final Set<ProtocolTaskHandle> inFlight = new java.util.LinkedHashSet<>();
 
         private TaskGroup(String key) {
             this.key = key;
@@ -236,12 +244,13 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
                 while (true) {
                     QueuedTask<?> task;
                     synchronized (this) {
+                        forgetFinished();
                         task = queue.peek();
-                        if (task == null || running >= task.handle.spec.maxConcurrency()) {
+                        if (task == null || inFlight.size() >= task.handle.spec.maxConcurrency()) {
                             break;
                         }
                         queue.poll();
-                        running++;
+                        inFlight.add(task.handle);
                     }
                     submitToLane(task);
                 }
@@ -249,8 +258,9 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
                 draining.set(false);
                 boolean shouldDrainAgain;
                 synchronized (this) {
-                    shouldDrainAgain = !queue.isEmpty() && running < queue.peek().handle.spec.maxConcurrency();
-                    if (running == 0 && queue.isEmpty()) {
+                    forgetFinished();
+                    shouldDrainAgain = !queue.isEmpty() && inFlight.size() < queue.peek().handle.spec.maxConcurrency();
+                    if (inFlight.isEmpty() && queue.isEmpty()) {
                         taskGroups.remove(key, this);
                     }
                 }
@@ -260,21 +270,26 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
             }
         }
 
+        /** Drops handles that finished (or were cancelled) without their wrapper ever reporting back. */
+        private void forgetFinished() {
+            inFlight.removeIf(ProtocolTaskHandle::isDone);
+        }
+
         private <T> void submitToLane(QueuedTask<T> task) {
             ThreadPoolExecutor executor = executorFor(task.handle.spec.lane());
             try {
-                Future<?> future = executor.submit(() -> runManaged(task.handle, task.callable, this::finishOne));
+                Future<?> future = executor.submit(() -> runManaged(task.handle, task.callable, () -> finishOne(task.handle)));
                 task.handle.setFuture(future);
             } catch (RejectedExecutionException exception) {
                 task.handle.setFailureCause(exception);
                 task.handle.setState(ProtocolTaskState.REJECTED);
-                finishOne();
+                finishOne(task.handle);
             }
         }
 
-        private void finishOne() {
+        private void finishOne(ProtocolTaskHandle handle) {
             synchronized (this) {
-                running = Math.max(0, running - 1);
+                inFlight.remove(handle);
             }
             drain();
         }

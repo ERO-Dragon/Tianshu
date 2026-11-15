@@ -98,11 +98,21 @@ public final class SettingsSessionRegistry implements AutoCloseable {
         boolean savedAny = false;
         boolean requiresRestart = false;
         boolean requiresReload = false;
+        List<String> savedModules = new ArrayList<>();
         for (ModuleSettingsSession session : dirtySessions) {
             SettingsSaveResult result = saveSafely(session);
             if (!result.success()) {
+                // A module's save is committed one at a time, so the ones before it are already on disk and cannot be
+                // rolled back from here. The screen shows the failing module's message, which is right; what was
+                // missing is any record of the ones that did land — a user reading "save failed" and retrying only
+                // the failed module is the expected behaviour, and support reading the log needs to know the split.
+                if (!savedModules.isEmpty()) {
+                    logs.warn("settings.save_partial saved=" + String.join(",", savedModules)
+                            + " failed=" + session.moduleId() + " (already-saved modules stay saved)");
+                }
                 return result.failureType() == SettingsSaveResult.FailureType.UNKNOWN ? SettingsSaveResult.failure(result.message(), SettingsSaveResult.FailureType.SAVE) : result;
             }
+            savedModules.add(session.moduleId());
             savedAny = true;
             requiresRestart = requiresRestart || result.requiresRestart();
             requiresReload = requiresReload || result.requiresReload();

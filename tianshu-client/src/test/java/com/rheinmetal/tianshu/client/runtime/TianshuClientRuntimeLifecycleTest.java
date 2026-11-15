@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.runtime;
 
+import com.rheinmetal.tianshu.api.LogSink;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
@@ -100,14 +101,53 @@ class TianshuClientRuntimeLifecycleTest {
         assertEquals(ClientSessionState.WORLD_RUNNING, runtime.state());
     }
 
+    @Test
+    void aClientThatCouldNotInstallItselfNeverOpensAWorld() {
+        FakeCore core = new FakeCore();
+        TianshuClientRuntime runtime = runtime(core, () -> {
+            throw new IllegalStateException("no client resources");
+        }, new AtomicInteger(), new AtomicInteger());
+
+        runtime.startClient();
+        assertEquals(ClientSessionState.CLIENT_FAILED, runtime.state());
+
+        runtime.startWorldSession();
+
+        assertEquals(0, core.starts.get(),
+                "a session that failed to install must not hand a half-built client to the world");
+        assertEquals(ClientSessionState.CLIENT_FAILED, runtime.state());
+    }
+
+    @Test
+    void shutdownStillReleasesAfterAFailedInstallation() {
+        FakeCore core = new FakeCore();
+        AtomicInteger closedResources = new AtomicInteger();
+        TianshuClientRuntime runtime = runtime(core, () -> {
+            throw new IllegalStateException("no client resources");
+        }, new AtomicInteger(), closedResources);
+
+        runtime.startClient();
+        runtime.shutdown();
+
+        assertEquals(1, core.destroys.get());
+        assertEquals(3, closedResources.get());
+        assertEquals(ClientSessionState.SHUTDOWN, runtime.state());
+    }
+
     private static TianshuClientRuntime runtime(FakeCore core, AtomicInteger releaseCapture, AtomicInteger closedResources) {
+        return runtime(core, () -> { }, releaseCapture, closedResources);
+    }
+
+    private static TianshuClientRuntime runtime(FakeCore core, Runnable startClientResources,
+                                                AtomicInteger releaseCapture, AtomicInteger closedResources) {
         return new TianshuClientRuntime(
                 core,
-                () -> { },
+                startClientResources,
                 releaseCapture::incrementAndGet,
                 closedResources::incrementAndGet,
                 closedResources::incrementAndGet,
                 closedResources::incrementAndGet,
+                LogSink.NOOP,
                 () -> { },
                 ignored -> { }
         );

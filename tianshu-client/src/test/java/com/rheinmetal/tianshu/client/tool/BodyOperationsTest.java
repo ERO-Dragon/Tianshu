@@ -52,11 +52,36 @@ class BodyOperationsTest {
     void theBoundSignalIsWhatAdaptersPoll() {
         AtomicBoolean cancelled = new AtomicBoolean();
         CancellationSignal signal = cancelled::get;
+        assertTrue(BodyOperations.acquire("body-1").isEmpty());
         BodyOperations.bindCancellation("body-1", signal);
         assertFalse(BodyOperations.cancelled("body-1"));
         cancelled.set(true);
         assertTrue(BodyOperations.cancelled("body-1"));
         BodyOperations.release("body-1");
         assertFalse(BodyOperations.cancelled("body-1"));
+    }
+
+    @Test
+    void aSignalBoundWithoutTheSlotIsIgnored() {
+        // Binding before a grant belongs to no operation; consulting it would let a dead call stop the next one.
+        BodyOperations.bindCancellation("body-1", () -> true);
+
+        assertFalse(BodyOperations.cancelled("body-1"));
+    }
+
+    @Test
+    void aLateCompletionOfAReclaimedOperationDoesNotFreeTheNextSlot() {
+        CompletableFuture<String> abandoned = new CompletableFuture<>();
+        BodyOperations.guarded("body-1", CancellationSignal.NEVER, () -> abandoned);
+
+        // The old operation's future was dropped, so its slot is reclaimed as stale and a new operation takes it.
+        BodyOperations.release("body-1");
+        assertTrue(BodyOperations.acquire("body-1").isEmpty());
+
+        // The abandoned call now finally completes. Its release must not free the new generation's slot.
+        abandoned.complete("done");
+
+        assertTrue(BodyOperations.acquire("body-1").isPresent(),
+                "a release from an older generation must not take the slot away from the current one");
     }
 }

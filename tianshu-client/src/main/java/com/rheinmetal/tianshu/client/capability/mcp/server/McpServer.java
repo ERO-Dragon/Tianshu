@@ -3,7 +3,9 @@ package com.rheinmetal.tianshu.client.capability.mcp.server;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
@@ -18,9 +20,11 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * A local, read-only MCP endpoint: an external agent can list and read skills, resources and prompts from the
@@ -31,21 +35,29 @@ import java.util.concurrent.TimeUnit;
 public final class McpServer implements AutoCloseable {
 
     private static final String READ_TOOL = "read_capability";
+    // JSON-RPC 2.0 codes. -32700 is "the request was not JSON"; -32602 is "the JSON was fine but these parameters are
+    // not"; -32000 is the implementation-defined server-error space.
+    private static final int PARSE_ERROR = -32700;
+    private static final int INVALID_REQUEST = -32600;
+    private static final int INVALID_PARAMS = -32602;
+    private static final int SERVER_ERROR = -32000;
 
     private final HttpServer http;
+    private final LogSink logs;
     private final ExecutorService executor = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "tianshu-mcp-server");
         thread.setDaemon(true);
         return thread;
     });
 
-    private McpServer(HttpServer http) {
+    private McpServer(HttpServer http, LogSink logs) {
         this.http = http;
+        this.logs = logs == null ? LogSink.SYSTEM : logs;
     }
 
-    public static McpServer start(int port) throws IOException {
+    public static McpServer start(int port, LogSink logs) throws IOException {
         HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
-        McpServer server = new McpServer(http);
+        McpServer server = new McpServer(http, logs);
         http.createContext("/mcp", server::handle);
         http.setExecutor(server.executor);
         http.start();
@@ -63,34 +75,93 @@ public final class McpServer implements AutoCloseable {
     }
 
     private void handle(HttpExchange exchange) throws IOException {
+        JsonElement id = null;
         try {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            JsonElement parsed = JsonParser.parseString(body);
+            JsonElement parsed;
+            try {
+                parsed = JsonParser.parseString(body);
+            } catch (JsonParseException malformed) {
+                // The only case that may answer "malformed JSON": nothing could be read out of the body at all, so
+                // there is no id to attach the error to either.
+                respond(exchange, error(null, PARSE_ERROR, "malformed JSON: " + malformed.getMessage()));
+                return;
+            }
             if (!parsed.isJsonObject()) {
-                respond(exchange, error(null, -32600, "invalid request"));
+                respond(exchange, error(null, INVALID_REQUEST, "invalid request"));
                 return;
             }
             JsonObject request = parsed.getAsJsonObject();
-            JsonElement id = request.has("id") ? request.get("id") : null;
-            String method = request.has("method") ? request.get("method").getAsString() : "";
-            JsonObject params = request.has("params") && request.get("params").isJsonObject()
-                    ? request.getAsJsonObject("params") : new JsonObject();
+            id = request.has("id") ? request.get("id") : null;
             if (id == null) {
                 exchange.sendResponseHeaders(202, -1);
                 exchange.close();
                 return;
             }
-            JsonObject result;
-            try {
-                result = dispatch(method, params);
-            } catch (IllegalArgumentException bad) {
-                respond(exchange, error(id, -32602, bad.getMessage()));
-                return;
-            }
-            respond(exchange, success(id, result));
-        } catch (RuntimeException bad) {
-            respond(exchange, error(null, -32700, "malformed JSON"));
+            String method = primitive(request, "method", "");
+            JsonObject params = request.has("params") && request.get("params").isJsonObject()
+                    ? request.getAsJsonObject("params") : new JsonObject();
+            respond(exchange, success(id, dispatch(method, params)));
+        } catch (CompletionException failed) {
+            // A capability that failed or timed out. This used to arrive as -32700 "malformed JSON" with no id, so
+            // the caller was told its JSON was wrong and could not even match the answer to its request.
+            respondQuietly(exchange, failureResponse(id, failed));
+        } catch (JsonParseException unexpected) {
+            respondQuietly(exchange, failureResponse(id, unexpected));
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
+            respondQuietly(exchange, error(id, INVALID_PARAMS, String.valueOf(invalid.getMessage())));
+        } catch (RuntimeException unexpected) {
+            logs.error("mcp server failed to handle " + (id == null ? "a request" : "request " + id), unexpected);
+            respondQuietly(exchange, failureResponse(id, unexpected));
         }
+    }
+
+    /**
+     * The reply for a failure that is not the caller's fault: a server error carried by the request id.
+     *
+     * <p>Package-visible so the classification can be tested without waiting out a capability timeout; that branch is
+     * what used to answer "malformed JSON" with no id at all.</p>
+     */
+    static JsonObject failureResponse(JsonElement id, Throwable failure) {
+        return error(id, SERVER_ERROR, describe(failure));
+    }
+
+    /** Answers a request whose body already went wrong; a failure to write is not worth a second exception. */
+    private void respondQuietly(HttpExchange exchange, JsonObject payload) {
+        try {
+            respond(exchange, payload);
+        } catch (IOException writeFailure) {
+            logs.warn("mcp server could not write a response", writeFailure);
+        }
+    }
+
+    private static String describe(Throwable failure) {
+        Throwable cause = failure instanceof CompletionException && failure.getCause() != null
+                ? failure.getCause() : failure;
+        if (cause instanceof TimeoutException) {
+            return "the capability did not answer in time";
+        }
+        String message = cause.getMessage();
+        return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
+    }
+
+    /**
+     * Reads one optional string parameter.
+     *
+     * <p>Used for every parameter instead of {@code get("x").getAsString()}: a client that sends an object where a
+     * string belongs then reads as "this parameter is missing" (and gets -32602 from the normal validation) instead of
+     * throwing an {@code UnsupportedOperationException} that had to be classified as a server error.</p>
+     */
+    private static String primitive(JsonObject object, String key, String fallback) {
+        if (!object.has(key) || !object.get(key).isJsonPrimitive()) {
+            return fallback;
+        }
+        return object.get(key).getAsString();
+    }
+
+    /** The text of a capability envelope: its content, or the failure message when it has none. */
+    private static String textOf(JsonObject content) {
+        return content.has("text") ? primitive(content, "text", "") : primitive(content, "message", "");
     }
 
     private JsonObject dispatch(String method, JsonObject params) {
@@ -145,7 +216,7 @@ public final class McpServer implements AutoCloseable {
     }
 
     private JsonObject toolsCall(JsonObject params) {
-        String name = params.has("name") ? params.get("name").getAsString() : "";
+        String name = primitive(params, "name", "");
         if (!READ_TOOL.equals(name)) {
             throw new IllegalArgumentException("unknown tool: " + name);
         }
@@ -157,8 +228,7 @@ public final class McpServer implements AutoCloseable {
         JsonArray items = new JsonArray();
         JsonObject item = new JsonObject();
         item.addProperty("type", "text");
-        item.addProperty("text", content.has("text") ? content.get("text").getAsString()
-                : content.has("message") ? content.get("message").getAsString() : "");
+        item.addProperty("text", textOf(content));
         items.add(item);
         result.add("content", items);
         result.addProperty("isError", failed);
@@ -181,13 +251,12 @@ public final class McpServer implements AutoCloseable {
     }
 
     private JsonObject resourcesRead(JsonObject params) {
-        String uri = params.has("uri") ? params.get("uri").getAsString() : "";
+        String uri = primitive(params, "uri", "");
         CapabilityId id = idFromUri(uri);
         JsonObject content = invoke(id, new JsonObject());
         JsonObject item = new JsonObject();
         item.addProperty("uri", uri);
-        item.addProperty("text", content.has("text") ? content.get("text").getAsString()
-                : content.has("message") ? content.get("message").getAsString() : "");
+        item.addProperty("text", textOf(content));
         JsonArray contents = new JsonArray();
         contents.add(item);
         JsonObject result = new JsonObject();
@@ -209,7 +278,7 @@ public final class McpServer implements AutoCloseable {
     }
 
     private JsonObject promptsGet(JsonObject params) {
-        String name = params.has("name") ? params.get("name").getAsString() : "";
+        String name = primitive(params, "name", "");
         JsonObject arguments = params.has("arguments") && params.get("arguments").isJsonObject()
                 ? params.getAsJsonObject("arguments") : new JsonObject();
         JsonObject content = invoke(CapabilityId.parse(name), arguments);
@@ -217,7 +286,7 @@ public final class McpServer implements AutoCloseable {
         message.addProperty("role", "user");
         JsonObject text = new JsonObject();
         text.addProperty("type", "text");
-        text.addProperty("text", content.has("text") ? content.get("text").getAsString() : "");
+        text.addProperty("text", textOf(content));
         message.add("content", text);
         JsonArray messages = new JsonArray();
         messages.add(message);
@@ -227,7 +296,7 @@ public final class McpServer implements AutoCloseable {
     }
 
     private JsonObject invoke(JsonObject arguments) {
-        String id = arguments.has("id") ? arguments.get("id").getAsString() : "";
+        String id = primitive(arguments, "id", "");
         if (id.isBlank()) {
             throw new IllegalArgumentException("id is required");
         }

@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.agent.MoveResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
@@ -141,5 +142,40 @@ class BodyAccessTest {
 
         assertTrue(result.get("ok").getAsBoolean());
         assertTrue(motionReached.get());
+    }
+
+    @Test
+    void anAgentDrivesTheBodyItNames() throws Exception {
+        installGuardedBody();
+
+        // DEC-2: an AI module may drive a body. Before this, the same call was answered NO_PERMISSION, so the whole
+        // body layer was unreachable from the agent — the only caller these tools exist for.
+        JsonObject result = envelope("{\"body\":\"body-1\",\"x\":1,\"y\":64,\"z\":1}",
+                ToolCaller.agent("module.test", true, ToolAutonomy.CONSERVATIVE));
+
+        assertTrue(result.get("ok").getAsBoolean(), result.toString());
+        assertTrue(motionReached.get());
+    }
+
+    @Test
+    void anAgentThatNamesNoBodyIsRefusedInsteadOfActingAsItself() {
+        installGuardedBody();
+
+        ToolException refusal = ActorScope.of(ToolCaller.agent("module.test", true, ToolAutonomy.CONSERVATIVE),
+                null, BodyMoveTool.ID).refusal().orElseThrow();
+
+        assertEquals(ToolError.INVALID_ARGS, refusal.code());
+        assertFalse(motionReached.get());
+    }
+
+    @Test
+    void aBodyNamingAnotherBodyIsRefusedInsteadOfIgnoringIt() {
+        installGuardedBody();
+
+        ToolException refusal = ActorScope.of(ToolCaller.body("body-1", true), "body-2", BodyMoveTool.ID)
+                .refusal().orElseThrow();
+
+        assertEquals(ToolError.INVALID_ARGS, refusal.code());
+        assertTrue(refusal.getMessage().contains("body-2"), refusal.getMessage());
     }
 }

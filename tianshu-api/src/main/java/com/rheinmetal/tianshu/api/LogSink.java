@@ -22,6 +22,10 @@ public interface LogSink {
 
         @Override public void warn(String message) { logger.log(System.Logger.Level.WARNING, message); }
 
+        @Override public void warn(String message, Throwable failure) {
+            logger.log(System.Logger.Level.WARNING, message, failure);
+        }
+
         @Override public void error(String message, Throwable failure) {
             logger.log(System.Logger.Level.ERROR, message, failure);
         }
@@ -30,6 +34,17 @@ public interface LogSink {
     void info(String message);
 
     void warn(String message);
+
+    /**
+     * A warning that has a cause.
+     *
+     * <p>Defaulted so an existing implementation keeps compiling; a sink that can record a stack (the client
+     * diagnostic log) should override it, because "the subsystem is unavailable" without a cause is exactly the
+     * kind of line that leaves nothing to act on.</p>
+     */
+    default void warn(String message, Throwable failure) {
+        warn(failure == null ? message : message + ": " + failure);
+    }
 
     void error(String message, Throwable failure);
 }

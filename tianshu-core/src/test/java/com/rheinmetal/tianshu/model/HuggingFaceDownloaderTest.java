@@ -166,6 +166,30 @@ class HuggingFaceDownloaderTest {
         }
     }
 
+    @Test
+    void aCorruptBodyIsRetriedOnTheSameHostInsteadOfFailingTheInstall() throws Exception {
+        try (ModelDownloadTestServer official = new ModelDownloadTestServer();
+             ModelDownloadTestServer mirror = new ModelDownloadTestServer()) {
+            String body = "model-content";
+            official.enqueue("/api/models/org/model/tree/main", ModelDownloadTestServer.text(200,
+                    "[{\"type\":\"file\",\"path\":\"model.onnx\",\"size\":" + body.length() + ","
+                            + "\"lfs\":{\"oid\":\"" + sha256(body) + "\",\"size\":" + body.length() + "}}]"));
+            // Same length, different bytes: only the published digest can tell them apart. The first response is the
+            // corrupt one, the second is the published file.
+            official.enqueue("/org/model/resolve/main/model.onnx",
+                    ModelDownloadTestServer.text(200, "wrong-content"),
+                    ModelDownloadTestServer.text(200, body));
+
+            downloader(official, mirror).downloadModelFiles("org/model", tempDir, "main", false, 2);
+
+            assertEquals(body, Files.readString(tempDir.resolve("model.onnx"), StandardCharsets.UTF_8));
+            assertEquals(2, official.requests("/org/model/resolve/main/model.onnx"),
+                    "the corrupt attempt must be retried; verification used to run after the whole retry loop");
+            assertEquals(0, mirror.requests("/org/model/resolve/main/model.onnx"),
+                    "wrong bytes are not a reason to switch hosts");
+        }
+    }
+
     private static HuggingFaceDownloader downloader(ModelDownloadTestServer official, ModelDownloadTestServer mirror) {
         FakeGameEnvironment env = new FakeGameEnvironment();
         return new HuggingFaceDownloader(

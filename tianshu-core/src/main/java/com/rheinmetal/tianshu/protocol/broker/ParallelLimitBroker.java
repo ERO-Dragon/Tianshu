@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.protocol.broker;
 
+import com.rheinmetal.tianshu.protocol.Priority;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutionPolicy;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolExecutorManager;
@@ -11,6 +12,6 @@ public final class ParallelLimitBroker extends AbstractQueueBroker {
 
     @Override
     protected boolean shouldRejectWhenFull(TianshuEnvelope envelope) {
-        return envelope.header().priority().weight() < 400;
+        return ProtocolBroker.belowFloor(Priority.HIGH, envelope);
     }
 }

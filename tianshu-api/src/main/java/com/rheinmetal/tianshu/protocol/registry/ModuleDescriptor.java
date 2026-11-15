@@ -8,6 +8,28 @@ import com.rheinmetal.tianshu.protocol.ThreadPolicy;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * What a module declares about itself when it registers.
+ *
+ * <p><b>Which of these the runtime actually enforces</b>, so nobody again reads a declaration as a guarantee:</p>
+ *
+ * <ul>
+ *   <li>Enforced: {@link #moduleId()}, {@link #capabilities()}, {@link #defaultThreadPolicy()} (the execution policy
+ *       falls back to it), {@link #maxConcurrency()} and {@link #queueCapacity()} (the broker is created from them).</li>
+ *   <li><b>Declarative only</b>: {@link #defaultCancellationScope()}, {@link #defaultFailurePolicy()},
+ *       {@link #defaultDeliveryPolicy()}, {@link #cancellable()} and {@link #supportsStreaming()}. They describe the
+ *       module and are worth reading for diagnosis, but nothing acts on them: the adapter stamps the cancellation
+ *       scope, failure policy and delivery policy onto each envelope it builds from its own options, and delivery
+ *       behaviour at runtime comes from {@link CapabilityDescriptor#requiredBrokerType()} —
+ *       {@code LATEST_ONLY}/{@code COALESCE} are broker types, not delivery policies. Declaring
+ *       {@code cancellable = false} here does not make a module uncancellable, and declaring a delivery policy here
+ *       does not make the runtime coalesce anything.</li>
+ * </ul>
+ *
+ * <p>The two sets are kept apart on purpose rather than unified: envelopes are built by the adapter, which already
+ * applies these policies, so having the runtime read them a second time would give the same decision two sources of
+ * truth. What was wrong was not their presence but that they read like settings.</p>
+ */
 public final class ModuleDescriptor {
     private final String moduleId;
     private final List<CapabilityDescriptor> capabilities;
@@ -41,7 +63,9 @@ public final class ModuleDescriptor {
     public ThreadPolicy defaultThreadPolicy() { return defaultThreadPolicy; }
     public CancellationScope defaultCancellationScope() { return defaultCancellationScope; }
     public FailurePolicy defaultFailurePolicy() { return defaultFailurePolicy; }
+    /** Declarative only — see the class javadoc. The adapter applies the policy it was given, not this value. */
     public DeliveryPolicy defaultDeliveryPolicy() { return defaultDeliveryPolicy; }
+    /** Declarative only — see the class javadoc. Cancellation is decided by the envelope's {@code CancellationScope}. */
     public boolean cancellable() { return cancellable; }
     public boolean supportsStreaming() { return supportsStreaming; }
     public int maxConcurrency() { return maxConcurrency; }

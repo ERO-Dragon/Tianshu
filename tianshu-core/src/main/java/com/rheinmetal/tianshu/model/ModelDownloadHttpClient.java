@@ -48,6 +48,24 @@ public final class ModelDownloadHttpClient {
             DownloadControl control,
             ProgressListener progress
     ) throws IOException {
+        download(candidates, target, policy, control, progress, null);
+    }
+
+    /**
+     * Downloads {@code target}, running {@code verifier} on the bytes while they are still the temporary file.
+     *
+     * <p>The verification therefore happens before the file is promoted, and inside the retry loop: a truncated or
+     * proxied body is a failed attempt that re-downloads from scratch (the verifier deletes what it rejected), while a
+     * file that never verified never reaches the final path where a concurrent model load could read it.</p>
+     */
+    public void download(
+            List<URI> candidates,
+            Path target,
+            RetryPolicy policy,
+            DownloadControl control,
+            ProgressListener progress,
+            Verifier verifier
+    ) throws IOException {
         Objects.requireNonNull(target, "target");
         Path absoluteTarget = target.toAbsolutePath().normalize();
         Path parent = absoluteTarget.getParent();
@@ -60,6 +78,9 @@ public final class ModelDownloadHttpClient {
         try {
             executeCandidates(candidates, policy, control, (candidate, retryPolicy) -> {
                 downloadOnce(candidate, temporary, metadataFile, retryPolicy, control, progress);
+                if (verifier != null) {
+                    verifier.verify(temporary);
+                }
                 moveIntoPlace(temporary, absoluteTarget);
                 Files.deleteIfExists(metadataFile);
                 return Boolean.TRUE;
@@ -68,6 +89,11 @@ public final class ModelDownloadHttpClient {
             cleanupUntrustedPartial(temporary, metadataFile, validateCandidates(candidates));
             throw failure;
         }
+    }
+
+    /** Checks the bytes while they are still the {@code .downloading} file; throws to reject the attempt. */
+    public interface Verifier {
+        void verify(Path file) throws IOException;
     }
 
     public void cancelActiveTransfers() {
@@ -306,6 +332,28 @@ public final class ModelDownloadHttpClient {
             }
         }
     }
+    /**
+     * Whether this failure came from the local filesystem rather than from the source.
+     *
+     * <p>{@link java.nio.file.FileSystemException} and its subclasses (access denied, read-only, a target held open)
+     * only come from local file operations. A full disk arrives as a plain {@code IOException} whose message is the
+     * only signal the JVM offers, so the text is checked as a last resort — a wrong answer here costs one retry, while
+     * missing it costs a several-gigabyte re-download of a file that cannot possibly be written.</p>
+     */
+    static boolean isLocalStorageFailure(IOException failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.nio.file.FileSystemException) {
+                return true;
+            }
+        }
+        String message = failure.getMessage();
+        if (message == null) {
+            return false;
+        }
+        return message.contains("No space left") || message.contains("not enough space")
+                || message.contains("Read-only file system") || message.contains("Too many open files");
+    }
+
     private <T> T executeCandidates(
             List<URI> candidates,
             RetryPolicy policy,
@@ -325,6 +373,13 @@ public final class ModelDownloadHttpClient {
                     throw cancelled;
                 } catch (IOException failure) {
                     checkControl(control);
+                    if (isLocalStorageFailure(failure)) {
+                        // The source had nothing to do with it — a full disk, a read-only directory, a file the native
+                        // runtime still holds open. Retrying re-downloads the whole file for a failure that is not
+                        // about the network, and then reports "all sources failed", which sends the user to check
+                        // their connection. Fail now, with a code that names the real problem.
+                        throw new IOException("MODEL_DOWNLOAD_LOCAL_STORAGE_FAILED file=" + failure.getMessage(), failure);
+                    }
                     IOException attemptFailure = new IOException(
                             "MODEL_DOWNLOAD_SOURCE_ATTEMPT_FAILED source=" + candidate
                                     + " attempt=" + attempt,

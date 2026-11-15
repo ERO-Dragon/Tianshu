@@ -121,14 +121,11 @@ public class TianshuCoreManager implements ModuleRuntimeServices {
         return status().acceptsRuntimeRequests();
     }
 
-    public boolean isEnvironmentSetupCompleted() {
-        return lifecycleCoordinator.isInitialized();
-    }
-
     public boolean isEngineReady() {
         return status().coreRunning();
     }
 
+    /** Whether the kernel has finished its one-time set-up. */
     public boolean isInitialized() {
         return lifecycleCoordinator.isInitialized();
     }

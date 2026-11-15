@@ -35,6 +35,10 @@ class McpClientTest {
     private final AtomicBoolean sessionSeen = new AtomicBoolean();
     private final java.util.concurrent.atomic.AtomicInteger initializations =
             new java.util.concurrent.atomic.AtomicInteger();
+    /** Emits a tools/list entry whose {@code name} is an object: legal JSON, unusable as a tool. */
+    private volatile boolean malformedToolList;
+    /** Answers tools/call with HTTP 400 plus a JSON-RPC error: the server refusing one call, not a dead connection. */
+    private volatile boolean rejectCallsWith400;
 
     @BeforeEach
     void startServer() throws IOException {
@@ -166,6 +170,77 @@ class McpClientTest {
         assertFalse(bridge.status().get(0).connected());
     }
 
+    @Test
+    void aServerConfiguredWithoutATierIsUsableByAPlainCaller() throws Exception {
+        // No "autonomy" in the config: the spec's default tier is the conservative one, which is exactly what a plain
+        // caller carries. This is P0-2 pinned from the other side — the configuration that used to register tools
+        // nobody could see or call, while looking perfectly valid.
+        McpBridge bridge = McpBridge.install(List.of(McpServerSpec.fromJson(JsonParser.parseString(
+                "{\"name\":\"srv\",\"url\":\"" + url + "\"}").getAsJsonObject())));
+        try {
+            ToolId id = McpBridge.toolId("srv", "echo");
+            ToolCaller plain = ToolCaller.player("p", false);
+
+            assertTrue(TianshuTools.catalog(plain, ToolSide.CLIENT).stream().anyMatch(spec -> spec.id().equals(id)),
+                    "a default-configured server must be visible to a default caller");
+            JsonObject result = TianshuTools.callJson(id, new JsonObject(), plain, ToolSide.CLIENT)
+                    .get(5, TimeUnit.SECONDS);
+            assertTrue(result.get("ok").getAsBoolean(), result.toString());
+        } finally {
+            bridge.close();
+        }
+    }
+
+    @Test
+    void oneMalformedRemoteToolCostsOnlyThatTool() {
+        malformedToolList = true;
+        McpBridge bridge = McpBridge.install(List.of(McpServerSpec.http("srv", url, ToolAutonomy.FULL)));
+        try {
+            assertTrue(bridge.status().get(0).connected(),
+                    "a legal-but-unusable entry must not take the server down: " + bridge.problems());
+            assertEquals(1, bridge.toolCount(), bridge.problems().toString());
+            assertFalse(bridge.problems().isEmpty(), "the skipped entry must still be reported");
+        } finally {
+            bridge.close();
+        }
+    }
+
+    @Test
+    void aRejectedCallKeepsTheConnectionAlive() throws Exception {
+        rejectCallsWith400 = true;
+        McpBridge bridge = McpBridge.install(List.of(McpServerSpec.http("srv", url, ToolAutonomy.FULL)));
+        try {
+            int before = initializations.get();
+            ToolCaller full = ToolCaller.agent("module.test", false, ToolAutonomy.FULL);
+
+            JsonObject result = TianshuTools.callJson(McpBridge.toolId("srv", "echo"), new JsonObject(),
+                    full, ToolSide.CLIENT).get(5, TimeUnit.SECONDS);
+
+            assertFalse(result.get("ok").getAsBoolean(), result.toString());
+            assertTrue(result.get("message").getAsString().contains("not acceptable"), result.toString());
+            Thread.sleep(200);
+            assertEquals(before, initializations.get(),
+                    "HTTP 400 carrying a JSON-RPC error is a refused call, not a dead server");
+            assertTrue(bridge.status().get(0).connected());
+            assertEquals(1, bridge.toolCount());
+        } finally {
+            bridge.close();
+        }
+    }
+
+    @Test
+    void twoLongRemoteNamesThatShareAPrefixKeepDistinctIds() {
+        String prefix = "a".repeat(80);
+
+        ToolId first = McpBridge.toolId("srv", prefix + "-one");
+        ToolId second = McpBridge.toolId("srv", prefix + "-two");
+
+        assertFalse(first.equals(second), "clipping at 64 characters made these the same tool");
+        assertTrue(first.name().length() <= 64, first.name());
+        assertEquals("srv.echo", McpBridge.toolId("srv", "echo").name(),
+                "a name that fits must stay readable and unchanged");
+    }
+
     private void handle(HttpExchange exchange) throws IOException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
@@ -187,6 +262,13 @@ class McpClientTest {
         if ("tools/list".equals(method)) {
             JsonObject result = new JsonObject();
             JsonArray tools = new JsonArray();
+            if (malformedToolList) {
+                JsonObject malformed = new JsonObject();
+                JsonObject nameAsObject = new JsonObject();
+                nameAsObject.addProperty("value", "echo");
+                malformed.add("name", nameAsObject);
+                tools.add(malformed);
+            }
             JsonObject tool = new JsonObject();
             tool.addProperty("name", "echo");
             tool.addProperty("description", "Echoes the text");
@@ -259,6 +341,23 @@ class McpClientTest {
             return;
         }
         if ("tools/call".equals(method)) {
+            if (rejectCallsWith400) {
+                JsonObject error = new JsonObject();
+                error.addProperty("code", -32602);
+                error.addProperty("message", "the argument \"text\" is not acceptable");
+                JsonObject response = new JsonObject();
+                response.addProperty("jsonrpc", "2.0");
+                if (request.has("id")) {
+                    response.add("id", request.get("id"));
+                }
+                response.add("error", error);
+                byte[] bytes = response.toString().getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(400, bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.close();
+                return;
+            }
             JsonObject result = new JsonObject();
             JsonArray content = new JsonArray();
             JsonObject item = new JsonObject();

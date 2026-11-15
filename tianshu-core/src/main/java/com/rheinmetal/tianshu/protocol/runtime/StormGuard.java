@@ -17,6 +17,16 @@ public final class StormGuard {
         this.maxTraceDepth = Math.max(1, maxTraceDepth);
     }
 
+    /**
+     * The depth this guard rejects beyond.
+     *
+     * <p>Public because the caller that measures depth must know where the answer stops mattering — walking a parent
+     * chain further than this only costs time.</p>
+     */
+    public int maxTraceDepth() {
+        return maxTraceDepth;
+    }
+
     public GuardResult check(TianshuEnvelope envelope, int traceDepth, int specificLimitPerSecond) {
         int limit = specificLimitPerSecond > 0 ? specificLimitPerSecond : defaultLimitPerSecond;
         if (traceDepth > maxTraceDepth) {

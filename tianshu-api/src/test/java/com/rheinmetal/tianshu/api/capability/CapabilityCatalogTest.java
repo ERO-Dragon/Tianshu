@@ -13,6 +13,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -107,6 +108,43 @@ class CapabilityCatalogTest {
             unsubscribe.run();
             TianshuTools.unregister(ECHO);
         }
+    }
+
+    @Test
+    void aSnapshotKeepsItsRevisionAndItsRowsTogether() {
+        CapabilityCatalog.Snapshot before = CapabilityCatalog.snapshot();
+        CapabilityId id = CapabilityId.of("test", "snapshot");
+        CapabilityCatalog.register(descriptor(id, CapabilityKind.SKILL, ToolPermission.EVERYONE, ToolSide.CLIENT),
+                textHandler("x"));
+
+        CapabilityCatalog.Snapshot after = CapabilityCatalog.snapshot();
+
+        assertEquals(before.revision() + 1, after.revision());
+        assertFalse(before.descriptors().stream().anyMatch(row -> row.id().equals(id)),
+                "an older snapshot must not change when the table does");
+        assertTrue(after.descriptors().stream().anyMatch(row -> row.id().equals(id)));
+    }
+
+    @Test
+    void aListenerToldAboutAClearCannotStillFindTheEntry() {
+        CapabilityId id = CapabilityId.of("test", "cleared");
+        CapabilityCatalog.register(descriptor(id, CapabilityKind.SKILL, ToolPermission.EVERYONE, ToolSide.CLIENT),
+                textHandler("x"));
+        List<Boolean> stillVisible = new ArrayList<>();
+        Runnable unsubscribe = CapabilityCatalog.subscribe(change -> {
+            if (change.action() == CapabilityChange.Action.REMOVED) {
+                stillVisible.add(CapabilityCatalog.find(change.descriptor().id()).isPresent());
+            }
+        });
+        try {
+            CapabilityCatalog.clear();
+        } finally {
+            unsubscribe.run();
+        }
+
+        assertFalse(stillVisible.isEmpty(), "clear() should have announced the removal");
+        assertEquals(List.of(false), stillVisible.stream().distinct().toList(),
+                "the table must be empty before anyone is told it is");
     }
 
     @Test

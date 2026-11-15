@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.settings.registry;
 
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.api.settings.ModuleSettingsContext;
 
 import java.util.List;
@@ -15,6 +16,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class ModuleSettingsSourceRegistry implements TianshuSettingsRegistrySource {
 
     private final List<TianshuSettingsRegistrySource> sources = new CopyOnWriteArrayList<>();
+    private final LogSink logs;
+
+    public ModuleSettingsSourceRegistry() {
+        this(LogSink.NOOP);
+    }
+
+    /** @param logs where a module's broken contribution is reported; without it the page just disappears */
+    public ModuleSettingsSourceRegistry(LogSink logs) {
+        this.logs = logs == null ? LogSink.NOOP : logs;
+    }
 
     public void add(TianshuSettingsRegistrySource source) {
         if (source != null) {
@@ -36,7 +47,6 @@ public final class ModuleSettingsSourceRegistry implements TianshuSettingsRegist
         if (snapshot.isEmpty()) {
             return;
         }
-        CompositeSettingsRegistrySource.of(snapshot.toArray(new TianshuSettingsRegistrySource[0]))
-                .contribute(registry, context);
+        new CompositeSettingsRegistrySource(snapshot, logs).contribute(registry, context);
     }
 }

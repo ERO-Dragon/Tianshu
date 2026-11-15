@@ -1,8 +1,11 @@
 package com.rheinmetal.tianshu.client.capability.mcp.server;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
+import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
@@ -20,8 +23,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The read-only MCP endpoint: initialize, tool list/call, resource list/read. */
@@ -42,7 +48,7 @@ class McpServerTest {
                     envelope.addProperty("text", "from the server");
                     return CompletableFuture.completedFuture(envelope);
                 });
-        server = McpServer.start(0);
+        server = McpServer.start(0, LogSink.NOOP);
     }
 
     @AfterEach
@@ -92,11 +98,61 @@ class McpServerTest {
         request.addProperty("id", 1);
         request.addProperty("method", method);
         request.add("params", params);
+        return post(request.toString()).getAsJsonObject();
+    }
+
+    @Test
+    void aBodyThatIsNotJsonIsTheOnlyParseError() throws Exception {
+        JsonObject response = post("{ this is not json").getAsJsonObject();
+
+        assertEquals(-32700, errorCode(response));
+        assertFalse(response.has("id"), "there is no id to attach a parse failure to: " + response);
+    }
+
+    @Test
+    void aBadParameterIsReportedWithTheRequestId() throws Exception {
+        JsonObject request = new JsonObject();
+        request.addProperty("jsonrpc", "2.0");
+        request.addProperty("id", 7);
+        JsonObject nameAsObject = new JsonObject();
+        nameAsObject.addProperty("value", "read_capability");
+        request.addProperty("method", "tools/call");
+        JsonObject params = new JsonObject();
+        params.add("name", nameAsObject);
+        request.add("params", params);
+
+        JsonObject response = post(request.toString()).getAsJsonObject();
+
+        assertEquals(-32602, errorCode(response));
+        assertEquals(7, response.get("id").getAsInt());
+    }
+
+    @Test
+    void aFailedCapabilityIsAServerErrorNotAMalformedRequest() {
+        // The branch that used to answer -32700 "malformed JSON" with no id: a capability that failed or timed out.
+        JsonElement id = new JsonPrimitive(42);
+        JsonObject timedOut = McpServer.failureResponse(id,
+                new CompletionException(new TimeoutException("no answer")));
+        assertEquals(-32000, errorCode(timedOut));
+        assertEquals(42, timedOut.get("id").getAsInt());
+        assertTrue(timedOut.getAsJsonObject("error").get("message").getAsString().contains("did not answer"),
+                timedOut.toString());
+
+        JsonObject threw = McpServer.failureResponse(id, new CompletionException(new IllegalStateException("boom")));
+        assertEquals(-32000, errorCode(threw));
+        assertEquals("boom", threw.getAsJsonObject("error").get("message").getAsString());
+    }
+
+    private JsonObject post(String body) throws Exception {
         HttpRequest httpRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + "/mcp"))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(request.toString(), StandardCharsets.UTF_8))
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
         HttpResponse<String> response = http.send(httpRequest, HttpResponse.BodyHandlers.ofString());
         return JsonParser.parseString(response.body()).getAsJsonObject();
+    }
+
+    private static int errorCode(JsonObject response) {
+        return response.getAsJsonObject("error").get("code").getAsInt();
     }
 }

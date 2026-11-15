@@ -205,11 +205,11 @@ class BodySequenceToolTest {
                 ]}
                 """, ToolCaller.player("p", true));
 
-        assertTrue(result.get("ok").getAsBoolean());
-        assertEquals(List.of("move", "mine"), order);
-        JsonObject sequence = result.getAsJsonObject("result");
-        assertEquals(1, sequence.get("failedIndex").getAsInt());
-        assertEquals(2, sequence.getAsJsonArray("steps").size());
+        // A stopped sequence is a failed call. It used to answer ok:true with failedIndex:1 inside the result, so an
+        // orchestration layer that only reads the top-level ok saw "the plan worked" while one step had run.
+        assertFalse(result.get("ok").getAsBoolean(), result.toString());
+        assertTrue(result.get("message").getAsString().contains("stopped at step 1"), result.toString());
+        assertEquals(List.of("move", "mine"), order, "the sequence must still stop where it failed");
     }
 
     @Test

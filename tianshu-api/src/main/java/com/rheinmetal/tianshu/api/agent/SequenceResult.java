@@ -22,6 +22,16 @@ public record SequenceResult(List<StepReport> steps, int failedIndex, String det
         }
     }
 
+    /**
+     * Whether every step ran.
+     *
+     * <p>Named because {@code failedIndex == -1} is easy to overlook at a call site, and overlooking it is how a
+     * sequence that stopped at its first step came to be reported as a successful call.</p>
+     */
+    public boolean completed() {
+        return failedIndex < 0;
+    }
+
     /** One attempted step; {@code ok = false} means this step is the one that stopped the sequence. */
     public record StepReport(String kind, boolean ok, String detail) {
 

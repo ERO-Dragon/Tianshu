@@ -18,12 +18,44 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SettingsSessionTest {
+
+    @Test
+    void aSessionWithoutAPersistStepIsRefused() {
+        // The builder used to accept this silently: save() wrote the values and reported success while nothing ever
+        // reached the module's config file.
+        IllegalStateException refusal = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> new ModuleSettingsSessionBuilder("module").build());
+
+        assertTrue(refusal.getMessage().contains("persist"), refusal.getMessage());
+    }
+
+    @Test
+    void aFailedPersistRollsTheStagedWriteBack() {
+        AtomicReference<String> stored = new AtomicReference<>("before");
+        MutableSettingsValue<String> value = new MutableSettingsValue<>(stored::get, stored::set);
+        ModuleSettingsSession session = new ModuleSettingsSessionBuilder("module")
+                .value(value)
+                .persist(() -> {
+                    throw new IllegalStateException("disk full");
+                })
+                .build();
+        value.set("after");
+
+        IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class, session::save);
+
+        assertEquals("disk full", failure.getMessage());
+        assertEquals("before", stored.get(), "a failed persist must not leave the live value changed");
+        assertTrue(session.dirty(), "the draft stays dirty so the user can retry");
+    }
     @Test
     void saveWritesDraftOnlyAfterValidation() {
         AtomicReference<String> stored = new AtomicReference<>("before");
         MutableSettingsValue<String> value = new MutableSettingsValue<>(stored::get, stored::set, text -> text != null && !text.isBlank());
         ModuleSettingsSession session = new ModuleSettingsSessionBuilder("module")
                 .value(value)
+                .persist(() -> { })
                 .successMessage(UiText.key("saved"))
                 .build();
         SettingsSessionRegistry sessions = new SettingsSessionRegistry();
@@ -45,7 +77,7 @@ class SettingsSessionTest {
         AtomicReference<String> stored = new AtomicReference<>("before");
         MutableSettingsValue<String> value = new MutableSettingsValue<>(stored::get, stored::set, text -> text != null && !text.isBlank());
         SettingsSessionRegistry sessions = new SettingsSessionRegistry();
-        sessions.register(new ModuleSettingsSessionBuilder("module").value(value).build());
+        sessions.register(new ModuleSettingsSessionBuilder("module").value(value).persist(() -> { }).build());
 
         value.set("");
         SettingsSaveResult result = sessions.save("module");
@@ -61,10 +93,10 @@ class SettingsSessionTest {
         SettingsSessionRegistry sessions = new SettingsSessionRegistry();
         MutableSettingsValue<Boolean> firstValue = new MutableSettingsValue<>(() -> false, ignored -> { });
         firstValue.set(true);
-        sessions.register(new ModuleSettingsSessionBuilder("module").value(firstValue).build());
+        sessions.register(new ModuleSettingsSessionBuilder("module").value(firstValue).persist(() -> { }).build());
 
         MutableSettingsValue<Boolean> replacementValue = new MutableSettingsValue<>(() -> false, ignored -> { });
-        sessions.registerOrReplace(new ModuleSettingsSessionBuilder("module").value(replacementValue).build());
+        sessions.registerOrReplace(new ModuleSettingsSessionBuilder("module").value(replacementValue).persist(() -> { }).build());
 
         assertEquals(1, sessions.sessions().size());
         assertFalse(sessions.dirty("module"));
@@ -133,8 +165,8 @@ class SettingsSessionTest {
     @Test
     void registeringSameModuleIdKeepsOneSession() {
         SettingsSessionRegistry sessions = new SettingsSessionRegistry();
-        sessions.register(new ModuleSettingsSessionBuilder("module").build());
-        sessions.register(new ModuleSettingsSessionBuilder("module").build());
+        sessions.register(new ModuleSettingsSessionBuilder("module").persist(() -> { }).build());
+        sessions.register(new ModuleSettingsSessionBuilder("module").persist(() -> { }).build());
 
         assertEquals(1, sessions.sessions().size());
     }

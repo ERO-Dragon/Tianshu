@@ -23,9 +23,10 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Works a machine at a position: put fuel in, put input in, take the result out.
  *
- * <p>A write tool, off by default, for a player or an agent body that declares {@code USE}. The platform decides
- * which machines are understood (for now the furnace family); an unknown block is a refusal with a reason, never a
- * generic "run this block" escape hatch.</p>
+ * <p>A write tool, off by default, for a player or an agent body. It requires {@link BodyCapability#INVENTORY}, not
+ * {@code USE}: every operation moves items into or out of a container, so a body that can only use blocks cannot work
+ * the machine. The platform decides which machines are understood (for now the furnace family); an unknown block is a
+ * refusal with a reason, never a generic "run this block" escape hatch.</p>
  */
 public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args, MachineOpResult> {
 

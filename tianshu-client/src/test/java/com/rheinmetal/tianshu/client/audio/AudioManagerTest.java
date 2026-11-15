@@ -23,6 +23,39 @@ class AudioManagerTest {
     }
 
     @Test
+    void startingAnUtteranceKeepsTheHookTheCallerJustRegistered() {
+        // TS-1: the caller registers the hook and then starts the utterance. `startTtsPlayback` used to begin with
+        // stopTtsPlayback(), which nulls the hook — so a graceful finish never reported completion, the next sentence
+        // never queued and the session stayed in the playing state.
+        AudioManager manager = new AudioManager();
+        AtomicInteger delivered = new AtomicInteger();
+        manager.setOnPlaybackFinished(delivered::incrementAndGet);
+
+        manager.startTtsPlayback("request-1", 24_000);
+        manager.finishTtsPlayback("request-1");
+
+        assertEquals(1, delivered.get(), "one start followed by one graceful finish must report completion once");
+    }
+
+    @Test
+    void aLateChunkOrFinishFromAnOlderUtteranceIsIgnored() {
+        AudioManager manager = new AudioManager();
+        AtomicInteger delivered = new AtomicInteger();
+        manager.setOnPlaybackFinished(delivered::incrementAndGet);
+        manager.startTtsPlayback("request-new", 24_000);
+
+        // The interrupted utterance's tail arrives after its replacement started: it must neither be played nor end
+        // the new utterance.
+        manager.feedTtsAudio("request-old", new byte[] {1, 2, 3, 4});
+        manager.finishTtsPlayback("request-old");
+        manager.stopTtsPlayback("request-old");
+        assertEquals(0, delivered.get(), "an old utterance must not finish the current one");
+
+        manager.finishTtsPlayback("request-new");
+        assertEquals(1, delivered.get());
+    }
+
+    @Test
     void abortedPlaybackNeverReportsCompletion() {
         AudioManager manager = new AudioManager();
         AtomicInteger delivered = new AtomicInteger();

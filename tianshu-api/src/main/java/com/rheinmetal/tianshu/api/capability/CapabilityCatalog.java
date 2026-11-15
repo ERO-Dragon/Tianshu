@@ -10,16 +10,20 @@ import com.rheinmetal.tianshu.api.tool.ToolSide;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.UnaryOperator;
 
 /**
  * The capability table: one registry for tools, skills, resources, prompts and connectors (and whatever kind a
@@ -32,19 +36,88 @@ import java.util.concurrent.TimeoutException;
  *
  * <p>Consumer-facing rules stay here rather than in every AI module: permission, side reachability and timeouts are
  * checked once at invocation.</p>
+ *
+ * <p>State is one immutable table per revision, swapped atomically. A consumer that reads the revision and the rows
+ * must not see them disagree, and the earlier shape — a mutable map beside a separate counter — allowed exactly that:
+ * a describe() call took the counter, another thread registered something, and the document claimed a version older
+ * than its own content.</p>
  */
 public final class CapabilityCatalog {
 
     private static final long DEFAULT_TIMEOUT_MILLIS = 5_000L;
     private static final String PROVIDER_KERNEL = "tianshu";
 
+    /**
+     * A consumer's view of the table: the revision and the rows it belongs to, read as one.
+     *
+     * @param revision    monotonic change counter, taken at the same instant as {@code descriptors}
+     * @param descriptors every row, ordered by id
+     */
+    public record Snapshot(long revision, List<CapabilityDescriptor> descriptors) {
+    }
+
     private record Entry(CapabilityDescriptor descriptor, CapabilityHandler handler) {
     }
 
-    private static final Map<CapabilityId, Entry> ENTRIES = new ConcurrentHashMap<>();
-    private static final java.util.concurrent.atomic.AtomicLong REVISION =
-            new java.util.concurrent.atomic.AtomicLong();
+    /** The stored state: what a consumer sees, plus the handlers it may not. */
+    private static final class Table {
+        private final long revision;
+        private final List<CapabilityDescriptor> descriptors;
+        private final Map<CapabilityId, Entry> entries;
+
+        private Table(long revision, List<CapabilityDescriptor> descriptors, Map<CapabilityId, Entry> entries) {
+            this.revision = revision;
+            this.descriptors = descriptors;
+            this.entries = entries;
+        }
+
+        private static Table empty() {
+            return new Table(0L, List.of(), Map.of());
+        }
+
+        private Table with(Entry added) {
+            Map<CapabilityId, Entry> next = new LinkedHashMap<>(entries);
+            next.put(added.descriptor().id(), added);
+            return new Table(revision + 1, ordered(next), Map.copyOf(next));
+        }
+
+        private Table without(CapabilityId id) {
+            Map<CapabilityId, Entry> next = new LinkedHashMap<>(entries);
+            next.remove(id);
+            return new Table(revision + 1, ordered(next), Map.copyOf(next));
+        }
+
+        private Table cleared() {
+            return new Table(revision + 1, List.of(), Map.of());
+        }
+
+        private static List<CapabilityDescriptor> ordered(Map<CapabilityId, Entry> entries) {
+            List<CapabilityDescriptor> rows = new ArrayList<>(entries.size());
+            for (Entry entry : entries.values()) {
+                rows.add(entry.descriptor());
+            }
+            rows.sort(Comparator.comparing(CapabilityDescriptor::id));
+            return List.copyOf(rows);
+        }
+    }
+
+    private static final AtomicReference<Table> TABLE = new AtomicReference<>(Table.empty());
     private static final List<CapabilityChange.Listener> LISTENERS = new CopyOnWriteArrayList<>();
+
+    /**
+     * Where non-tool handlers run.
+     *
+     * <p>A handler is allowed to be synchronous — {@code McpBridge}, {@code TextCapabilityProvider} and
+     * {@code SkillFileProvider} all do their I/O before returning a future — and the five-second budget could not
+     * bound that, because {@code orTimeout} only governs a future that already exists. Running the invocation here
+     * makes the budget real: the caller gets its future immediately, and a handler stuck on a dead socket costs a
+     * worker instead of the game thread.</p>
+     */
+    private static final ExecutorService HANDLERS = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "tianshu-capability");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private CapabilityCatalog() {
     }
@@ -56,21 +129,27 @@ public final class CapabilityCatalog {
         if (descriptor.kind().isTool()) {
             throw new IllegalArgumentException("tools are registered through TianshuTools, not the capability table");
         }
-        Entry existing = ENTRIES.putIfAbsent(descriptor.id(), new Entry(descriptor, handler));
-        if (existing != null) {
-            throw new IllegalArgumentException("capability " + descriptor.id() + " is already registered");
-        }
-        REVISION.incrementAndGet();
+        Entry entry = new Entry(descriptor, handler);
+        update(table -> {
+            if (table.entries.containsKey(descriptor.id())) {
+                throw new IllegalArgumentException("capability " + descriptor.id() + " is already registered");
+            }
+            return table.with(entry);
+        });
         notifyListeners(CapabilityChange.Action.ADDED, descriptor);
     }
 
     /** Removes a capability; the entry disappears from every consumer's view immediately. */
     public static void unregister(CapabilityId id) {
-        Entry removed = ENTRIES.remove(id);
+        CapabilityDescriptor removed = remove(id);
         if (removed != null) {
-            REVISION.incrementAndGet();
-            notifyListeners(CapabilityChange.Action.REMOVED, removed.descriptor());
+            notifyListeners(CapabilityChange.Action.REMOVED, removed);
         }
+    }
+
+    /** Kernel use: drops a mirrored tool entry. Not part of the consumer contract. */
+    public static void removeTool(CapabilityId id) {
+        unregister(id);
     }
 
     /**
@@ -85,21 +164,22 @@ public final class CapabilityCatalog {
 
     /** Monotonic change counter: consumers can poll it and refresh their view when it moves. */
     public static long revision() {
-        return REVISION.get();
+        return TABLE.get().revision;
+    }
+
+    /** The revision and the rows it belongs to, read as one. */
+    public static Snapshot snapshot() {
+        Table table = TABLE.get();
+        return new Snapshot(table.revision, table.descriptors);
     }
 
     public static Optional<CapabilityDescriptor> find(CapabilityId id) {
-        Entry entry = ENTRIES.get(id);
+        Entry entry = TABLE.get().entries.get(id);
         return entry == null ? Optional.empty() : Optional.of(entry.descriptor());
     }
 
     public static List<CapabilityDescriptor> list() {
-        List<CapabilityDescriptor> descriptors = new ArrayList<>(ENTRIES.size());
-        for (Entry entry : ENTRIES.values()) {
-            descriptors.add(entry.descriptor());
-        }
-        descriptors.sort(Comparator.comparing(CapabilityDescriptor::id));
-        return List.copyOf(descriptors);
+        return TABLE.get().descriptors;
     }
 
     public static List<CapabilityDescriptor> list(CapabilityKind kind) {
@@ -109,34 +189,34 @@ public final class CapabilityCatalog {
     /**
      * Invokes one capability and returns the tool/agent envelope
      * ({@code {"ok":true,...}} / {@code {"ok":false,"code":...}}).
+     *
+     * <p>The handler runs on {@link #HANDLERS}, not on the calling thread: see that field's note on why the timeout
+     * only means something this way.</p>
      */
     public static CompletableFuture<JsonObject> invoke(CapabilityId id, JsonObject args, ToolCaller caller,
                                                        ToolSide side) {
-        try {
-            Entry entry = ENTRIES.get(id);
-            if (entry == null) {
-                return CompletableFuture.completedFuture(error("UNKNOWN_CAPABILITY", "no capability named " + id));
-            }
-            CapabilityDescriptor descriptor = entry.descriptor();
-            if (descriptor.permission() == ToolPermission.OPERATOR && !caller.operator()) {
-                return CompletableFuture.completedFuture(error("NO_PERMISSION", id + " needs an operator"));
-            }
-            if (descriptor.side() == ToolSide.SERVER && side == ToolSide.CLIENT && !TianshuTools.serverAvailable()) {
-                return CompletableFuture.completedFuture(error("UNSUPPORTED_SIDE",
-                        id + " needs the Tianshu server component"));
-            }
-            if (descriptor.kind().isTool()) {
-                return TianshuTools.callJson(ToolId.parse(id.toString()), args, caller, side);
-            }
-            CapabilityHandler handler = entry.handler();
-            JsonObject safeArgs = args == null ? new JsonObject() : args;
-            long timeout = timeoutOf(descriptor);
-            return handler.invoke(new CapabilityContext(caller, side), safeArgs)
-                    .orTimeout(timeout, TimeUnit.MILLISECONDS)
-                    .exceptionallyCompose(failure -> CompletableFuture.completedFuture(failureOf(failure)));
-        } catch (RuntimeException failure) {
-            return CompletableFuture.completedFuture(error("FAILED", String.valueOf(failure)));
+        Entry entry = TABLE.get().entries.get(id);
+        if (entry == null) {
+            return CompletableFuture.completedFuture(error("UNKNOWN_CAPABILITY", "no capability named " + id));
         }
+        CapabilityDescriptor descriptor = entry.descriptor();
+        if (descriptor.permission() == ToolPermission.OPERATOR && !caller.operator()) {
+            return CompletableFuture.completedFuture(error("NO_PERMISSION", id + " needs an operator"));
+        }
+        if (descriptor.side() == ToolSide.SERVER && side == ToolSide.CLIENT && !TianshuTools.serverAvailable()) {
+            return CompletableFuture.completedFuture(error("UNSUPPORTED_SIDE",
+                    id + " needs the Tianshu server component"));
+        }
+        if (descriptor.kind().isTool()) {
+            return TianshuTools.callJson(ToolId.parse(id.toString()), args, caller, side);
+        }
+        CapabilityHandler handler = entry.handler();
+        JsonObject safeArgs = args == null ? new JsonObject() : args;
+        CapabilityContext context = new CapabilityContext(caller, side);
+        return CompletableFuture.supplyAsync(() -> handler.invoke(context, safeArgs), HANDLERS)
+                .thenCompose(invocation -> invocation)
+                .orTimeout(timeoutOf(descriptor), TimeUnit.MILLISECONDS)
+                .exceptionallyCompose(failure -> CompletableFuture.completedFuture(failureOf(failure)));
     }
 
     /** Kernel use: mirrors one tool into the table. Not part of the consumer contract. */
@@ -160,24 +240,25 @@ public final class CapabilityCatalog {
                 attributes
         );
         CapabilityChange.Action[] action = {CapabilityChange.Action.ADDED};
-        // One atomic step: a get-then-put let a capability registered in between be overwritten by a tool row with no
-        // handler, which then routed every invoke for that id into the tool registry under a name it had never owned.
-        ENTRIES.compute(descriptor.id(), (key, existing) -> {
+        // A tool may refresh its own row; what it must not do is take over a row owned by a non-tool capability, whose
+        // handler would be dropped and whose id would start routing into the tool registry. Decided and swapped in one
+        // step — the earlier get-then-put let a capability registered in between be overwritten.
+        update(table -> {
+            Entry existing = table.entries.get(descriptor.id());
             if (existing != null && existing.handler() != null) {
                 throw new IllegalArgumentException(
-                        "capability id " + key + " is already used by a non-tool capability");
+                        "capability id " + descriptor.id() + " is already used by a non-tool capability");
             }
             action[0] = existing == null ? CapabilityChange.Action.ADDED : CapabilityChange.Action.UPDATED;
-            return new Entry(descriptor, null);
+            return table.with(new Entry(descriptor, null));
         });
-        REVISION.incrementAndGet();
         notifyListeners(action[0], descriptor);
     }
 
     /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */
     public static void setToolEnabled(ToolId id, boolean enabled) {
         CapabilityId capabilityId = CapabilityId.parse(id.toString());
-        Entry entry = ENTRIES.get(capabilityId);
+        Entry entry = TABLE.get().entries.get(capabilityId);
         if (entry == null || !entry.descriptor().kind().isTool()) {
             return;
         }
@@ -186,27 +267,48 @@ public final class CapabilityCatalog {
         CapabilityDescriptor updated = new CapabilityDescriptor(entry.descriptor().id(), entry.descriptor().kind(),
                 entry.descriptor().binding(), entry.descriptor().description(), entry.descriptor().side(),
                 entry.descriptor().permission(), entry.descriptor().provider(), attributes);
-        ENTRIES.put(capabilityId, new Entry(updated, null));
-        REVISION.incrementAndGet();
+        update(table -> table.with(new Entry(updated, null)));
         notifyListeners(CapabilityChange.Action.UPDATED, updated);
-    }
-
-    /** Kernel use: drops a mirrored tool entry. Not part of the consumer contract. */
-    public static void removeTool(CapabilityId id) {
-        Entry removed = ENTRIES.remove(id);
-        if (removed != null) {
-            REVISION.incrementAndGet();
-            notifyListeners(CapabilityChange.Action.REMOVED, removed.descriptor());
-        }
     }
 
     /** Tests only. */
     public static void clear() {
-        for (Entry entry : ENTRIES.values()) {
-            notifyListeners(CapabilityChange.Action.REMOVED, entry.descriptor());
+        Table removed;
+        Table empty;
+        do {
+            removed = TABLE.get();
+            empty = removed.cleared();
+        } while (!TABLE.compareAndSet(removed, empty));
+        // The table is empty before anyone is told about it: a listener that consults the registry while handling
+        // REMOVED used to find the very entry it was being told had gone.
+        for (CapabilityDescriptor descriptor : removed.descriptors) {
+            notifyListeners(CapabilityChange.Action.REMOVED, descriptor);
         }
-        ENTRIES.clear();
-        REVISION.incrementAndGet();
+    }
+
+    /** Applies one change atomically; callers notify listeners afterwards. */
+    private static void update(UnaryOperator<Table> change) {
+        Table current;
+        Table next;
+        do {
+            current = TABLE.get();
+            next = change.apply(current);
+        } while (!TABLE.compareAndSet(current, next));
+    }
+
+    /** @return the removed descriptor, or null when nothing was registered under that id */
+    private static CapabilityDescriptor remove(CapabilityId id) {
+        CapabilityDescriptor[] removed = new CapabilityDescriptor[1];
+        update(table -> {
+            Entry entry = table.entries.get(id);
+            if (entry == null) {
+                removed[0] = null;
+                return table;
+            }
+            removed[0] = entry.descriptor();
+            return table.without(id);
+        });
+        return removed[0];
     }
 
     private static void notifyListeners(CapabilityChange.Action action, CapabilityDescriptor descriptor) {

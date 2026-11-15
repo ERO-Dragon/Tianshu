@@ -20,8 +20,10 @@ final class ClientDiagnosticWriter implements AutoCloseable {
     private static final int MAX_ARCHIVES = 5;
     /** Flush on a batch instead of per line; an idle queue also flushes, so the file never lags by more than one burst. */
     private static final int FLUSH_EVERY_LINES = 32;
-    /** Reopen attempts after a transient IO failure before diagnostics give up for the session. */
-    private static final int MAX_OPEN_ATTEMPTS = 3;
+    /** How long the writer waits before trying the file again after an IO failure. */
+    private static final long RETRY_COOLDOWN_MILLIS = 5_000L;
+    /** Failures between two reports, so a long outage does not fill the launcher log with the same sentence. */
+    private static final int REPORT_EVERY_FAILURES = 60;
 
     private final Path logFile;
     private final ArrayBlockingQueue<String> queue;
@@ -77,7 +79,9 @@ final class ClientDiagnosticWriter implements AutoCloseable {
         BufferedWriter writer = null;
         int linesSinceFlush = 0;
         long writtenBytes = 0L;
-        int openAttempts = 0;
+        int writeFailures = 0;
+        long droppedLines = 0L;
+        long retryAfterMillis = 0L;
         while (accepting.get() || !queue.isEmpty()) {
             String line;
             try {
@@ -94,6 +98,12 @@ final class ClientDiagnosticWriter implements AutoCloseable {
                     flushQuietly(writer);
                     linesSinceFlush = 0;
                 }
+                continue;
+            }
+            if (retryAfterMillis > System.currentTimeMillis()) {
+                // Still inside the cooldown: drop this line instead of hammering a file that just failed. The queue
+                // keeps draining, so a broken disk cannot grow it without bound.
+                droppedLines++;
                 continue;
             }
             try {
@@ -119,21 +129,32 @@ final class ClientDiagnosticWriter implements AutoCloseable {
                     writer.flush();
                     linesSinceFlush = 0;
                 }
-                openAttempts = 0;
             } catch (Exception failure) {
-                // One unlucky file lock must not kill the diagnostics for the rest of the session: drop the
-                // handle and try again. After the retries are exhausted, stop accepting and say so once —
-                // loudly enough to be found in the launcher log.
+                // A short file lock or a full disk must not end diagnostics for the session. The writer used to switch
+                // itself off after four failures and print one line to stderr: after that every WARN and ERROR was
+                // dropped silently, including the "events dropped" summary that would have explained the silence.
+                // Now it drops this line, waits out a cooldown and tries again on a later line — and says so, with the
+                // path, the cause and the running count.
                 closeQuietly(writer);
                 writer = null;
                 linesSinceFlush = 0;
-                if (++openAttempts > MAX_OPEN_ATTEMPTS) {
-                    accepting.set(false);
-                    System.err.println("Tianshu: diagnostics log disabled after repeated IO failures: " + logFile);
-                    break;
+                writeFailures++;
+                droppedLines++;
+                retryAfterMillis = System.currentTimeMillis() + RETRY_COOLDOWN_MILLIS;
+                if (writeFailures == 1 || writeFailures % REPORT_EVERY_FAILURES == 0) {
+                    // stderr on purpose: this sink cannot report its own failure through itself, and the diagnostics
+                    // package is deliberately not allowed to depend on a host logger.
+                    System.err.println("Tianshu: diagnostics log unavailable at " + logFile + " after "
+                            + writeFailures + " IO failure(s) of type " + failure.getClass().getSimpleName()
+                            + "; " + droppedLines + " line(s) dropped, retrying in "
+                            + (RETRY_COOLDOWN_MILLIS / 1000L) + "s");
                 }
                 sleepQuietly(250L);
             }
+        }
+        if (droppedLines > 0L) {
+            System.err.println("Tianshu: diagnostics log closed at " + logFile + " with " + droppedLines
+                    + " line(s) dropped across " + writeFailures + " IO failure(s)");
         }
         closeQuietly(writer);
         terminated.countDown();

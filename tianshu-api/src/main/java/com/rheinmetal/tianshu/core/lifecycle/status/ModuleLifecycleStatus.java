@@ -13,10 +13,4 @@ public record ModuleLifecycleStatus(
     public boolean failed() {
         return state == ModuleLifecycleState.FAILED;
     }
-
-    public boolean active() {
-        return state == ModuleLifecycleState.REGISTERED
-                || state == ModuleLifecycleState.PREPARED
-                || state == ModuleLifecycleState.STARTED;
-    }
 }
