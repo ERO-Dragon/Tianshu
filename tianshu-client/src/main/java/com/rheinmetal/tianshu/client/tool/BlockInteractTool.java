@@ -1,6 +1,9 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.agent.AgentBodies;
+import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
@@ -17,7 +20,7 @@ import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Operates a harmless block as the requesting player: buttons, levers, doors, trapdoors and fence gates.
+ * Operates a harmless block as the requesting actor: a player, or an agent body that declares {@code USE}.
  *
  * <p>This is a write tool, so it is off by default and needs an operator. Breaking, placing and igniting are
  * deliberately not part of it; if they are ever offered, they get their own tool with their own switch.</p>
@@ -73,12 +76,17 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractRequest
     @Override
     public CompletableFuture<BlockInteractResult> invoke(ToolContext context, BlockInteractRequest args) {
         ToolCaller caller = context.caller();
-        if (caller.kind() != ToolCaller.Kind.PLAYER) {
+        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "block.interact runs as a player"));
+                    "block.interact runs as a player or an agent body"));
+        }
+        ActorRef actor = ActorRef.of(caller);
+        java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.USE);
+        if (refusal.isPresent()) {
+            return CompletableFuture.failedFuture(refusal.get());
         }
         return TianshuRuntimePorts.find(BlockInteractPort.class)
-                .map(port -> port.interact(caller.id(), args))
+                .map(port -> port.interact(actor, args))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "block interaction is only available on the server")));
     }

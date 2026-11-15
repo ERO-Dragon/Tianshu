@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.client.tool;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.agent.AgentBodies;
+import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
@@ -19,7 +21,7 @@ import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Crafts one named recipe once, as the requesting player.
+ * Crafts one named recipe once, as the requesting player or agent body with an inventory.
  *
  * <p>A write tool: off by default, operator-only, and it only ever crafts the recipe it was given — choosing the
  * recipe is the caller's job, so a wrong assumption becomes a visible refusal instead of a surprise item.</p>
@@ -83,8 +85,13 @@ public final class CraftRecipeTool implements TianshuTool<CraftRequest, CraftRes
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
         }
+        ActorRef actor = ActorRef.of(caller);
+        java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.INVENTORY);
+        if (refusal.isPresent()) {
+            return CompletableFuture.failedFuture(refusal.get());
+        }
         return TianshuRuntimePorts.find(CraftPort.class)
-                .map(port -> port.craft(ActorRef.of(caller), new CraftRequest(args.recipeId().trim()))
+                .map(port -> port.craft(actor, new CraftRequest(args.recipeId().trim()))
                         .thenCompose(result -> result.crafted()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

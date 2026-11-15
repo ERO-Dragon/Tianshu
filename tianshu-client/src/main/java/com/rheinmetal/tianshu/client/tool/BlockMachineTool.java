@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.client.tool;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.agent.AgentBodies;
+import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
@@ -23,8 +25,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Works a machine at a position: put fuel in, put input in, take the result out.
  *
- * <p>A write tool, off by default, player-only. The platform decides which machines are understood (for now the
- * furnace family); an unknown block is a refusal with a reason, never a generic "run this block" escape hatch.</p>
+ * <p>A write tool, off by default, for a player or an agent body that declares {@code USE}. The platform decides
+ * which machines are understood (for now the furnace family); an unknown block is a refusal with a reason, never a
+ * generic "run this block" escape hatch.</p>
  */
 public final class BlockMachineTool implements TianshuTool<MachineOpRequest, MachineOpResult> {
 
@@ -107,8 +110,13 @@ public final class BlockMachineTool implements TianshuTool<MachineOpRequest, Mac
         }
         MachineOpRequest normalised = new MachineOpRequest(args.x(), args.y(), args.z(), operation,
                 operation.equals("take_output") ? -1 : args.playerSlot());
+        ActorRef actor = ActorRef.of(caller);
+        java.util.Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.USE);
+        if (refusal.isPresent()) {
+            return CompletableFuture.failedFuture(refusal.get());
+        }
         return TianshuRuntimePorts.find(BlockMachinePort.class)
-                .map(port -> port.operate(ActorRef.of(caller), normalised)
+                .map(port -> port.operate(actor, normalised)
                         .thenCompose(result -> result.moved() > 0
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

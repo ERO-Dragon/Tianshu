@@ -2,6 +2,8 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.agent.AgentBodies;
+import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferResult;
@@ -36,6 +38,7 @@ class ContainerTransferToolTest {
         TianshuTools.unregister(ContainerTransferTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
+        AgentBodies.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -63,12 +66,23 @@ class ContainerTransferToolTest {
     }
 
     @Test
-    void onlyAPlayerMayTransfer() throws Exception {
+    void anAgentMayNotTransfer() throws Exception {
         TianshuTools.register(new ContainerTransferTool());
         TianshuTools.setEnabled(ContainerTransferTool.ID, true);
         JsonObject denied = envelope(REQUEST, ToolCaller.agent(false));
         assertFalse(denied.get("ok").getAsBoolean());
         assertEquals("NO_PERMISSION", denied.get("code").getAsString());
+    }
+
+    @Test
+    void aBodyWithoutAnInventoryIsRefusedAsUnsupported() throws Exception {
+        TianshuTools.register(new ContainerTransferTool());
+        TianshuTools.setEnabled(ContainerTransferTool.ID, true);
+        TestBodies.register("float", BodyCapability.MOVE, BodyCapability.LOOK);
+
+        JsonObject refused = envelope(REQUEST, ToolCaller.body("float", true));
+        assertFalse(refused.get("ok").getAsBoolean());
+        assertEquals("UNSUPPORTED_ACTOR", refused.get("code").getAsString());
     }
 
     @Test

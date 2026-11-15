@@ -15,6 +15,12 @@ public enum ToolError {
     /** A server-side tool was called where no server component is present. */
     UNSUPPORTED_SIDE,
 
+    /**
+     * The acting agent body does not declare the capability the tool needs. This is a refusal, distinct from
+     * {@link #FAILED}: a floating body with no hands is not broken, it simply cannot mine.
+     */
+    UNSUPPORTED_ACTOR,
+
     /** The capability is not installed on this side: the tool exists but its data source is absent. */
     UNAVAILABLE,
 

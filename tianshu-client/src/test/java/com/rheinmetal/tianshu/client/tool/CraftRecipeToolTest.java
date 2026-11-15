@@ -5,7 +5,9 @@ import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
+import com.rheinmetal.tianshu.api.agent.AgentBodies;
 import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.game.CraftResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -38,6 +40,7 @@ class CraftRecipeToolTest {
         TianshuTools.unregister(CraftRecipeTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
+        AgentBodies.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -79,11 +82,33 @@ class CraftRecipeToolTest {
         });
         TianshuTools.register(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);
+        TestBodies.register("body-1", BodyCapability.INVENTORY);
 
         JsonObject envelope = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.body("body-1", true));
         assertTrue(envelope.get("ok").getAsBoolean());
         assertEquals(ActorRef.Kind.BODY, seen.get().kind());
         assertEquals("body-1", seen.get().id());
+    }
+
+    @Test
+    void aBodyWithoutAnInventoryCannotCraft() throws Exception {
+        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.setEnabled(CraftRecipeTool.ID, true);
+        TestBodies.register("float", BodyCapability.MOVE, BodyCapability.LOOK);
+
+        JsonObject refused = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.body("float", true));
+        assertFalse(refused.get("ok").getAsBoolean());
+        assertEquals("UNSUPPORTED_ACTOR", refused.get("code").getAsString());
+    }
+
+    @Test
+    void anUnknownBodyIsUnavailable() throws Exception {
+        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.setEnabled(CraftRecipeTool.ID, true);
+
+        JsonObject refused = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.body("gone", true));
+        assertFalse(refused.get("ok").getAsBoolean());
+        assertEquals("UNAVAILABLE", refused.get("code").getAsString());
     }
 
     @Test

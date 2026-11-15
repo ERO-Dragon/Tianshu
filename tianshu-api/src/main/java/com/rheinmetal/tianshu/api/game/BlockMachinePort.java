@@ -14,6 +14,11 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface BlockMachinePort {
 
+    /**
+     * @deprecated implement {@link #operate(ActorRef, MachineOpRequest)} instead; this player-only entry point
+     *     stays until every adapter branch has migrated and is removed afterwards.
+     */
+    @Deprecated
     CompletableFuture<MachineOpResult> operate(String playerId, MachineOpRequest request);
 
     /** Actor-aware entry point; a body must override this, a player call falls back to the player method. */

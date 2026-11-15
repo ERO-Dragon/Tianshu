@@ -2,8 +2,12 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.agent.AgentBodies;
+import com.rheinmetal.tianshu.api.agent.BodyCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.BlockInteractResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -36,6 +40,7 @@ class BlockInteractToolTest {
         TianshuTools.unregister(BlockInteractTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
+        AgentBodies.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -61,13 +66,50 @@ class BlockInteractToolTest {
     }
 
     @Test
-    void onlyAPlayerMayOperateABlock() throws Exception {
+    void neitherAnAgentNorAModMayOperateABlock() throws Exception {
         TianshuTools.register(new BlockInteractTool());
         TianshuTools.setEnabled(BlockInteractTool.ID, true);
 
         JsonObject denied = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.agent(false));
         assertFalse(denied.get("ok").getAsBoolean());
         assertEquals("NO_PERMISSION", denied.get("code").getAsString());
+    }
+
+    @Test
+    void aBodyWithUseReachesTheActorAwarePort() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<ActorRef> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractPort() {
+            @Override
+            public CompletableFuture<BlockInteractResult> interact(String playerId, BlockInteractRequest request) {
+                throw new AssertionError("body call must not fall back to the player path");
+            }
+
+            @Override
+            public CompletableFuture<BlockInteractResult> interact(ActorRef actor, BlockInteractRequest request) {
+                seen.set(actor);
+                return CompletableFuture.completedFuture(
+                        new BlockInteractResult("minecraft:oak_door", true, "operated"));
+            }
+        });
+        TianshuTools.register(new BlockInteractTool());
+        TianshuTools.setEnabled(BlockInteractTool.ID, true);
+        TestBodies.register("body-1", BodyCapability.USE);
+
+        JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.body("body-1", true));
+        assertTrue(allowed.get("ok").getAsBoolean());
+        assertEquals("body-1", seen.get().id());
+        assertEquals(ActorRef.Kind.BODY, seen.get().kind());
+    }
+
+    @Test
+    void aBodyWithoutUseIsRefusedAsUnsupported() throws Exception {
+        TianshuTools.register(new BlockInteractTool());
+        TianshuTools.setEnabled(BlockInteractTool.ID, true);
+        TestBodies.register("float", BodyCapability.MOVE, BodyCapability.LOOK);
+
+        JsonObject refused = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.body("float", true));
+        assertFalse(refused.get("ok").getAsBoolean());
+        assertEquals("UNSUPPORTED_ACTOR", refused.get("code").getAsString());
     }
 
     @Test
