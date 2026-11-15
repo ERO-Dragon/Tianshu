@@ -618,13 +618,27 @@ public final class AXTurnOrchestrator implements AXTurnPipeline {
      */
     private static ToolCaller toolCaller(AXTurnExecution execution) {
         String playerId = execution.delivery().playerId();
+        if (!looksLikePlayerId(playerId)) {
+            // The scope model still carries a shared placeholder user, not a player uuid: without an identity there
+            // is no permission to look up, so the turn stays a plain agent turn instead of pretending.
+            return ToolCaller.agent(false);
+        }
         boolean operator = TianshuRuntimePorts.find(PlayerAuthority.class)
                 .map(authority -> authority.operator(playerId))
                 .orElse(false);
-        if (playerId == null || playerId.isBlank()) {
-            return ToolCaller.agent(operator);
-        }
         return ToolCaller.player(playerId, operator);
+    }
+
+    private static boolean looksLikePlayerId(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        try {
+            java.util.UUID.fromString(value.trim());
+            return true;
+        } catch (IllegalArgumentException notAUuid) {
+            return false;
+        }
     }
 
     private static String messageOf(Throwable failure) {
