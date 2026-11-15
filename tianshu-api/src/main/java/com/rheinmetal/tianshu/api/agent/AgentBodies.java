@@ -38,6 +38,15 @@ public final class AgentBodies {
         return Optional.empty();
     }
 
+    /** Every live body every provider knows about; empty when no adapter has installed a body registry. */
+    public static List<AgentBody> list() {
+        List<AgentBody> bodies = new java.util.ArrayList<>();
+        for (AgentBodyProvider provider : PROVIDERS) {
+            bodies.addAll(provider.all());
+        }
+        return List.copyOf(bodies);
+    }
+
     /**
      * Empty when the actor may perform {@code capability}; otherwise the error a caller should surface.
      *

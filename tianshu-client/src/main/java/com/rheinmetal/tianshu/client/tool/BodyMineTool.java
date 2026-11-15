@@ -1,0 +1,98 @@
+package com.rheinmetal.tianshu.client.tool;
+
+import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.agent.ActionOutcome;
+import com.rheinmetal.tianshu.api.agent.ActionResult;
+import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.agent.AgentActionPort;
+import com.rheinmetal.tianshu.api.agent.AgentBodies;
+import com.rheinmetal.tianshu.api.agent.AgentBody;
+import com.rheinmetal.tianshu.api.agent.BlockTarget;
+import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.tool.TianshuTool;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolCategory;
+import com.rheinmetal.tianshu.api.tool.ToolContext;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
+import com.rheinmetal.tianshu.api.tool.ToolId;
+
+import java.lang.reflect.Type;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+
+/** Breaks one block as an agent body. */
+public final class BodyMineTool implements TianshuTool<BodyMineTool.Args, ActionResult> {
+
+    public static final ToolId ID = ToolId.of("tianshu", "body.mine");
+
+    public record Args(String body, int x, int y, int z) {
+    }
+
+    @Override
+    public ToolId id() {
+        return ID;
+    }
+
+    @Override
+    public ToolCategory category() {
+        return ToolCategory.SERVER_WRITE;
+    }
+
+    @Override
+    public String description() {
+        return "Breaks the block at a position as an agent body that can mine.";
+    }
+
+    @Override
+    public Type argsType() {
+        return Args.class;
+    }
+
+    @Override
+    public Type resultType() {
+        return ActionResult.class;
+    }
+
+    @Override
+    public JsonObject argsSchema() {
+        JsonObject properties = new JsonObject();
+        properties.add("body", BodyToolSchemas.text("Agent body id from body.list"));
+        properties.add("x", BodyToolSchemas.integer("Block x"));
+        properties.add("y", BodyToolSchemas.integer("Block y"));
+        properties.add("z", BodyToolSchemas.integer("Block z"));
+        return BodyToolSchemas.object(properties, "body", "x", "y", "z");
+    }
+
+    @Override
+    public CompletableFuture<ActionResult> invoke(ToolContext context, Args args) {
+        ToolCaller caller = context.caller();
+        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
+                    "body.mine runs as a player or a body"));
+        }
+        if (args == null || args.body() == null || args.body().isBlank()) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
+                    "body.mine needs a body id"));
+        }
+        AgentBody body = AgentBodies.resolve(args.body()).orElse(null);
+        if (body == null) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                    "agent body " + args.body() + " is not present"));
+        }
+        ActorRef actor = ActorRef.body(body.id(), caller.operator());
+        Optional<ToolException> refusal = AgentBodies.checkCapability(actor, BodyCapability.MINE);
+        if (refusal.isPresent()) {
+            return CompletableFuture.failedFuture(refusal.get());
+        }
+        BlockTarget target = new BlockTarget(body.position().dimension(), args.x(), args.y(), args.z());
+        return TianshuRuntimePorts.find(AgentActionPort.class)
+                .map(port -> port.mine(actor, target).thenCompose(result ->
+                        result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED
+                                ? CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.detail()))
+                                : CompletableFuture.completedFuture(result)))
+                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                        "agent bodies act only on the server")));
+    }
+}
