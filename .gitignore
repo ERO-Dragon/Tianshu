@@ -71,3 +71,4 @@ libs/pocket-tts-zh-4l-onnx
 libs
 .out
 宣传片/
+/tianshu-adapter/*/run-server/
