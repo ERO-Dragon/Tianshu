@@ -108,7 +108,7 @@ public final class CapabilityCatalog {
     /**
      * Where non-tool handlers run.
      *
-     * <p>A handler is allowed to be synchronous — {@code McpBridge}, {@code TextCapabilityProvider} and
+     * <p>A handler is allowed to be synchronous — {@code TextCapabilityProvider} and
      * {@code SkillFileProvider} all do their I/O before returning a future — and the five-second budget could not
      * bound that, because {@code orTimeout} only governs a future that already exists. Running the invocation here
      * makes the budget real: the caller gets its future immediately, and a handler stuck on a dead socket costs a

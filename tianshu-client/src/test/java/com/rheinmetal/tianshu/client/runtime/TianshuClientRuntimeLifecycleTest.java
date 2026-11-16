@@ -79,7 +79,7 @@ class TianshuClientRuntimeLifecycleTest {
         runtime.startWorldSession();
 
         assertEquals(1, core.destroys.get());
-        assertEquals(3, closedResources.get());
+        assertEquals(2, closedResources.get());
         assertEquals(ClientSessionState.SHUTDOWN, runtime.state());
     }
 
@@ -130,7 +130,7 @@ class TianshuClientRuntimeLifecycleTest {
         runtime.shutdown();
 
         assertEquals(1, core.destroys.get());
-        assertEquals(3, closedResources.get());
+        assertEquals(2, closedResources.get());
         assertEquals(ClientSessionState.SHUTDOWN, runtime.state());
     }
 

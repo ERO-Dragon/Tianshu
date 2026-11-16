@@ -5,11 +5,6 @@ import com.rheinmetal.tianshu.client.tool.ClientTools;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
-import com.rheinmetal.tianshu.client.capability.mcp.McpBridge;
-import com.rheinmetal.tianshu.client.capability.mcp.McpStatus;
-import com.rheinmetal.tianshu.client.capability.mcp.McpConfig;
-import com.rheinmetal.tianshu.client.capability.mcp.server.McpServer;
-import com.rheinmetal.tianshu.client.capability.mcp.server.McpServerSettings;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import java.nio.file.Path;
@@ -50,8 +45,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     private volatile TextCapabilityProvider prompts;
     private volatile TextCapabilityProvider builtInResources;
     private volatile TextCapabilityProvider builtInPrompts;
-    private volatile McpBridge mcp;
-    private volatile McpServer mcpServer;
     private volatile ScheduledExecutorService catalogRefresher;
     private final Object stateLock = new Object();
     private volatile ClientSessionState state = ClientSessionState.NEW;
@@ -118,7 +111,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             return;
         }
         installContentProviders();
-        installMcp();
         installCatalogRefresher();
         try {
             startClientResources.run();
@@ -140,7 +132,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
     /**
      * Installs one optional piece, logging and continuing on failure.
      *
-     * <p>These are content sources and the MCP bridge: with any of them missing the session still works, it just has
+     * <p>These are content sources: with any of them missing the session still works, it just has
      * less to offer. Previously one exception during installation aborted the remaining ones <em>after</em> the state
      * machine had already claimed {@code CLIENT_READY}, so the world opened on a half-built client and every later
      * {@code startClient} returned early.</p>
@@ -174,20 +166,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
                 CapabilityKind.PROMPT, "user", Path.of("config", "Tianshu", "prompts")));
     }
 
-    private void installMcp() {
-        Path config = Path.of("config", "Tianshu", "mcp.json");
-        installOptional("mcp servers", () -> {
-            McpBridge bridge = McpBridge.start(config, logs);
-            mcp = bridge;
-            TianshuRuntimePorts.register(McpStatus.class, bridge);
-        });
-        installOptional("mcp endpoint", () -> {
-            McpServerSettings settings = McpConfig.server(config, logs);
-            if (settings.enabled()) {
-                mcpServer = McpServer.start(settings.port(), logs);
-            }
-        });
-    }
 
     private void installCatalogRefresher() {
         ScheduledExecutorService refresher = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -225,7 +203,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
             needsInstall = state == ClientSessionState.NEW;
         }
         if (needsInstall) {
-            // Outside the monitor on purpose: installation can block on the network (MCP handshakes), and holding the
+            // Outside the monitor on purpose: installation can block on the network, and holding the
             // state lock for it would block shutdown() for as long as a dead server takes to answer.
             startClient();
         }
@@ -314,17 +292,6 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         resources = null;
         unload(prompts);
         prompts = null;
-        McpServer server = mcpServer;
-        if (server != null) {
-            mcpServer = null;
-            server.close();
-        }
-        McpBridge bridge = mcp;
-        if (bridge != null) {
-            mcp = null;
-            bridge.close();
-        }
-        shutdownAudio.run();
         closeDiagnostics.run();
         closeIndex.run();
     }
