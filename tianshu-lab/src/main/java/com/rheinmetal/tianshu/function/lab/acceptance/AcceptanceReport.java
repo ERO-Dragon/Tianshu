@@ -92,12 +92,6 @@ public record AcceptanceReport(String startedAt, List<AcceptanceOutcome> outcome
             new Uncovered("body slot handover",
                     "needs a live body in a loaded world plus a blocked step",
                     "BodyOperationsTest / BodyFollowToolTest"),
-            new Uncovered("MCP client: health and reconnection",
-                    "needs a started MCP peer (a process or an HTTP endpoint) to fail against",
-                    "McpClientTest / McpConfigTest"),
-            new Uncovered("MCP server: exposing capabilities to external agents",
-                    "not part of the ferry contract; the exposure side belongs to the weaving module",
-                    "out of scope for this bench by ownership"),
             new Uncovered("speech: TTS playback, ASR, device switching",
                     "an ear judges these; the bench can only see that a call returned",
                     "the intake / echo modules' own acceptance"));
