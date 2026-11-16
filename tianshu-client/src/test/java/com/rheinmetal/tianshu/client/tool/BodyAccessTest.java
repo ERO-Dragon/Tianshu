@@ -2,14 +2,14 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityProvider;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
@@ -50,7 +50,7 @@ class BodyAccessTest {
         TianshuTools.unregister(BodyMoveTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -65,13 +65,13 @@ class BodyAccessTest {
 
     /** Owner {@code p} only; anyone else is refused by the provider itself. */
     private void installGuardedBody() {
-        AgentBodies.register(new AgentBodyProvider() {
+        EntityActors.register(new EntityProvider() {
             @Override
-            public Optional<AgentBody> resolve(String bodyId) {
+            public Optional<EntityActor> resolve(String bodyId) {
                 if (!"body-1".equals(bodyId)) {
                     return Optional.empty();
                 }
-                return Optional.of(new AgentBody() {
+                return Optional.of(new EntityActor() {
                     @Override
                     public String id() {
                         return "body-1";
@@ -88,8 +88,8 @@ class BodyAccessTest {
                     }
 
                     @Override
-                    public Set<BodyCapability> capabilities() {
-                        return Set.of(BodyCapability.MOVE);
+                    public Set<EntityCapability> capabilities() {
+                        return Set.of(EntityCapability.MOVE);
                     }
                 });
             }
@@ -103,18 +103,18 @@ class BodyAccessTest {
             }
         });
         enable();
-        TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionPort() {
+        TianshuRuntimePorts.register(EntityMotionPort.class, new EntityMotionPort() {
             @Override
-            public CompletableFuture<MoveResult> move(com.rheinmetal.tianshu.api.agent.ActorRef actor,
+            public CompletableFuture<MoveResult> move(com.rheinmetal.tianshu.api.entity.ActorRef actor,
                                                       ActorPosition target,
-                                                      com.rheinmetal.tianshu.api.agent.MoveOptions options) {
+                                                      com.rheinmetal.tianshu.api.entity.MoveOptions options) {
                 motionReached.set(true);
                 return CompletableFuture.completedFuture(
-                        new MoveResult(com.rheinmetal.tianshu.api.agent.ActionOutcome.DONE, target, "moved"));
+                        new MoveResult(com.rheinmetal.tianshu.api.entity.ActionOutcome.DONE, target, "moved"));
             }
 
             @Override
-            public CompletableFuture<ActionResult> look(com.rheinmetal.tianshu.api.agent.ActorRef actor,
+            public CompletableFuture<ActionResult> look(com.rheinmetal.tianshu.api.entity.ActorRef actor,
                                                         ActorPosition target) {
                 throw new AssertionError("access test must not look");
             }

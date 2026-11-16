@@ -2,9 +2,9 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
@@ -40,7 +40,7 @@ class BlockInteractToolTest {
         TianshuTools.unregister(BlockInteractTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -93,7 +93,7 @@ class BlockInteractToolTest {
         });
         TianshuTools.register(new BlockInteractTool());
         TianshuTools.setEnabled(BlockInteractTool.ID, true);
-        TestBodies.register("body-1", BodyCapability.USE);
+        TestBodies.register("body-1", EntityCapability.USE);
 
         JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.body("body-1", true));
         assertTrue(allowed.get("ok").getAsBoolean());
@@ -105,7 +105,7 @@ class BlockInteractToolTest {
     void aBodyWithoutUseIsRefusedAsUnsupported() throws Exception {
         TianshuTools.register(new BlockInteractTool());
         TianshuTools.setEnabled(BlockInteractTool.ID, true);
-        TestBodies.register("float", BodyCapability.MOVE, BodyCapability.LOOK);
+        TestBodies.register("float", EntityCapability.MOVE, EntityCapability.LOOK);
 
         JsonObject refused = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.body("float", true));
         assertFalse(refused.get("ok").getAsBoolean());
@@ -147,7 +147,7 @@ class BlockInteractToolTest {
         });
         TianshuTools.register(new BlockInteractTool());
         TianshuTools.setEnabled(BlockInteractTool.ID, true);
-        TestBodies.register("body-1", BodyCapability.USE);
+        TestBodies.register("body-1", EntityCapability.USE);
 
         JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3,\"body\":\"body-1\"}",
                 ToolCaller.player("p", true));

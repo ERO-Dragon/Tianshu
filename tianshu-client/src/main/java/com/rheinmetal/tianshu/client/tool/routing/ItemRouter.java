@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.client.tool.routing;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.DropResult;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.DropResult;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 
@@ -19,11 +19,11 @@ import java.util.concurrent.CompletableFuture;
  * <p>Pickup keeps a player fallback because collecting drops around the requesting player worked before bodies
  * existed; equipping is body-only and has none.</p>
  */
-public final class ItemRouter implements AgentItemPort {
+public final class ItemRouter implements EntityItemPort {
 
-    private final AgentItemPort players;
+    private final EntityItemPort players;
 
-    public ItemRouter(AgentItemPort players) {
+    public ItemRouter(EntityItemPort players) {
         this.players = players;
     }
 
@@ -32,8 +32,8 @@ public final class ItemRouter implements AgentItemPort {
         if (actor.kind() == ActorRef.Kind.PLAYER) {
             return players.pickup(actor, radius);
         }
-        return AgentBodies.actions(actor.id())
-                .flatMap(AgentBodyActions::items)
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::items)
                 .map(handler -> handler.pickup(actor, radius))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no item handler for this body")));
@@ -41,8 +41,8 @@ public final class ItemRouter implements AgentItemPort {
 
     @Override
     public CompletableFuture<DropResult> drop(ActorRef actor, int slot, int count) {
-        return AgentBodies.actions(actor.id())
-                .flatMap(AgentBodyActions::items)
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::items)
                 .map(handler -> handler.drop(actor, slot, count))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no item handler for this body")));
@@ -50,8 +50,8 @@ public final class ItemRouter implements AgentItemPort {
 
     @Override
     public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
-        return AgentBodies.actions(actor.id())
-                .flatMap(AgentBodyActions::items)
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::items)
                 .map(handler -> handler.equip(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no item handler for this body")));

@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
-import com.rheinmetal.tianshu.api.agent.ScanResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ScanResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -85,7 +85,7 @@ public final class BodyScanTool implements TianshuTool<BodyScanTool.Args, ScanRe
         int radius = args.radius() > 0 ? args.radius() : DEFAULT_RADIUS;
         int limit = args.limit() > 0 ? args.limit() : DEFAULT_LIMIT;
         ActorRef actor = scope.actor();
-        return TianshuRuntimePorts.find(AgentWorldQueryPort.class)
+        return TianshuRuntimePorts.find(EntityQueryPort.class)
                 .map(port -> port.scan(actor, new ScanRequest(radius, limit, blocks, entities)))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "world scanning is only available on the server")));

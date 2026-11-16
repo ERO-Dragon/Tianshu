@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.client.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 
 import java.util.Optional;
 import java.util.Set;
@@ -15,9 +15,9 @@ final class TestBodies {
     }
 
     /** Registers a body that declares exactly {@code capabilities}; the returned runnable unregisters it. */
-    static Runnable register(String id, BodyCapability... capabilities) {
-        Set<BodyCapability> declared = Set.of(capabilities);
-        AgentBody body = new AgentBody() {
+    static Runnable register(String id, EntityCapability... capabilities) {
+        Set<EntityCapability> declared = Set.of(capabilities);
+        EntityActor body = new EntityActor() {
             @Override
             public String id() {
                 return id;
@@ -34,11 +34,11 @@ final class TestBodies {
             }
 
             @Override
-            public Set<BodyCapability> capabilities() {
+            public Set<EntityCapability> capabilities() {
                 return declared;
             }
         };
-        return AgentBodies.register(resolved -> id.equals(resolved)
+        return EntityActors.register(resolved -> id.equals(resolved)
                 ? Optional.of(body)
                 : Optional.empty());
     }

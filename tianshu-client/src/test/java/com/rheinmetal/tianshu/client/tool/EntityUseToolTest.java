@@ -2,12 +2,12 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentEntityUsePort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityUsePort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -42,7 +42,7 @@ class EntityUseToolTest {
         TianshuTools.unregister(EntityUseTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -59,13 +59,13 @@ class EntityUseToolTest {
     void entityUseReachesThePortAsTheBody() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
         AtomicReference<String> target = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentEntityUsePort.class, (actor, entityId) -> {
+        TianshuRuntimePorts.register(EntityUsePort.class, (actor, entityId) -> {
             seen.set(actor);
             target.set(entityId);
             return CompletableFuture.completedFuture(new ActionResult(ActionOutcome.DONE, "fed"));
         });
         enable();
-        TestBodies.register("body-1", BodyCapability.USE);
+        TestBodies.register("body-1", EntityCapability.USE);
 
         JsonObject result = envelope("{\"body\":\"body-1\",\"entity\":\"00000000-0000-0000-0000-000000000001\"}",
                 ToolCaller.player("p", true));
@@ -78,12 +78,12 @@ class EntityUseToolTest {
     @Test
     void aBodyWithoutUseIsRefusedBeforeThePortIsTouched() throws Exception {
         AtomicBoolean reached = new AtomicBoolean();
-        TianshuRuntimePorts.register(AgentEntityUsePort.class, (actor, entityId) -> {
+        TianshuRuntimePorts.register(EntityUsePort.class, (actor, entityId) -> {
             reached.set(true);
             return CompletableFuture.completedFuture(new ActionResult(ActionOutcome.DONE, "fed"));
         });
         enable();
-        TestBodies.register("float", BodyCapability.MOVE);
+        TestBodies.register("float", EntityCapability.MOVE);
 
         JsonObject refused = envelope("{\"body\":\"float\",\"entity\":\"00000000-0000-0000-0000-000000000001\"}",
                 ToolCaller.player("p", true));
@@ -96,7 +96,7 @@ class EntityUseToolTest {
     @Test
     void aMissingEntityIsInvalid() throws Exception {
         enable();
-        TestBodies.register("body-1", BodyCapability.USE);
+        TestBodies.register("body-1", EntityCapability.USE);
 
         JsonObject refused = envelope("{\"body\":\"body-1\"}", ToolCaller.player("p", true));
 

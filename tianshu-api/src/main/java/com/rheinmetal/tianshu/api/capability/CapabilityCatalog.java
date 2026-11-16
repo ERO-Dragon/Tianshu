@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.capability;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -224,7 +225,7 @@ public final class CapabilityCatalog {
         Objects.requireNonNull(tool, "tool");
         JsonObject attributes = new JsonObject();
         if (tool.argsSchema() != null) {
-            attributes.add("argsSchema", tool.argsSchema().deepCopy());
+            attributes.add("argsSchema", strictSchema(tool.argsSchema()));
         }
         attributes.addProperty("category", tool.category().name().toLowerCase(java.util.Locale.ROOT));
         attributes.addProperty("enabled", tool.policy().enabledByDefault());
@@ -253,6 +254,27 @@ public final class CapabilityCatalog {
             return table.with(new Entry(descriptor, null));
         });
         notifyListeners(action[0], descriptor);
+    }
+
+    /**
+     * The schema a consumer sees, with the strictness the validator applies made explicit.
+     *
+     * <p>{@link com.rheinmetal.tianshu.api.tool.ToolArgumentValidator} refuses undeclared fields unless a schema opts
+     * out with {@code additionalProperties: true}. Publishing the same rule here keeps the document a model reads and
+     * the check the call really performs from telling two different stories — the mismatch that let an undeclared
+     * argument pass silently for as long as nobody looked.</p>
+     */
+    private static JsonObject strictSchema(JsonObject schema) {
+        JsonObject copy = schema.deepCopy();
+        if (!copy.has("properties") || copy.has("additionalProperties")) {
+            return copy;
+        }
+        JsonElement type = copy.get("type");
+        if (type != null && type.isJsonPrimitive() && !"object".equals(type.getAsString())) {
+            return copy;
+        }
+        copy.addProperty("additionalProperties", false);
+        return copy;
     }
 
     /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */

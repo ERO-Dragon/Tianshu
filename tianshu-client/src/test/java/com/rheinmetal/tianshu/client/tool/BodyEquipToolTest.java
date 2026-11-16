@@ -2,15 +2,15 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
-import com.rheinmetal.tianshu.api.agent.DropResult;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
+import com.rheinmetal.tianshu.api.entity.DropResult;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -47,7 +47,7 @@ class BodyEquipToolTest {
         TianshuTools.unregister(BodyEquipTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -73,7 +73,7 @@ class BodyEquipToolTest {
     @Test
     void aBodyWithoutAnInventoryIsRefusedBeforeThePortIsTouched() throws Exception {
         AtomicBoolean reached = new AtomicBoolean();
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 throw new AssertionError("equip test must not pick up");
@@ -87,11 +87,11 @@ class BodyEquipToolTest {
             @Override
             public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 reached.set(true);
-                return CompletableFuture.completedFuture(new EquipResult(BodySlot.MAIN_HAND, -1, "", 0));
+                return CompletableFuture.completedFuture(new EquipResult(EntitySlot.MAIN_HAND, -1, "", 0));
             }
         });
         enable();
-        TestBodies.register("float", BodyCapability.MOVE);
+        TestBodies.register("float", EntityCapability.MOVE);
 
         JsonObject refused = envelope("{\"body\":\"float\",\"slot\":0}", ToolCaller.player("p", true));
 
@@ -104,7 +104,7 @@ class BodyEquipToolTest {
     void equippingReachesThePortWithTheSlot() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
         AtomicInteger slotSeen = new AtomicInteger(-2);
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 throw new AssertionError("equip test must not pick up");
@@ -119,11 +119,11 @@ class BodyEquipToolTest {
             public CompletableFuture<EquipResult> equip(ActorRef actor, EquipRequest request) {
                 seen.set(actor);
                 slotSeen.set(request.inventorySlot());
-                return CompletableFuture.completedFuture(new EquipResult(BodySlot.MAIN_HAND, request.inventorySlot(), "minecraft:iron_sword", 1));
+                return CompletableFuture.completedFuture(new EquipResult(EntitySlot.MAIN_HAND, request.inventorySlot(), "minecraft:iron_sword", 1));
             }
         });
         enable();
-        TestBodies.register("body-1", BodyCapability.INVENTORY);
+        TestBodies.register("body-1", EntityCapability.INVENTORY);
 
         JsonObject result = envelope("{\"body\":\"body-1\",\"slot\":3}", ToolCaller.player("p", true));
 
@@ -147,14 +147,14 @@ class BodyEquipToolTest {
     /**
      * Every name the schema advertises has to be a name the parser accepts.
      *
-     * <p>Both sides read {@link BodySlot#wireNameList()}, which is the point: the previous version advertised
+     * <p>Both sides read {@link EntitySlot#wireNameList()}, which is the point: the previous version advertised
      * {@code main}/{@code offhand} and parsed {@code MAIN}/{@code OFFHAND}, so a model following the description
      * was refused every time and had nothing to correct itself with.</p>
      */
     @Test
     void everySlotNameTheSchemaAdvertisesIsAccepted() throws Exception {
-        AtomicReference<BodySlot> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        AtomicReference<EntitySlot> seen = new AtomicReference<>();
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 throw new AssertionError("equip test must not pick up");
@@ -173,12 +173,12 @@ class BodyEquipToolTest {
             }
         });
         enable();
-        TestBodies.register("body-1", BodyCapability.INVENTORY);
+        TestBodies.register("body-1", EntityCapability.INVENTORY);
 
         String description = new BodyEquipTool().argsSchema().getAsJsonObject("properties")
                 .getAsJsonObject("target").get("description").getAsString();
 
-        for (BodySlot slot : BodySlot.values()) {
+        for (EntitySlot slot : EntitySlot.values()) {
             assertTrue(description.contains(slot.wireName()),
                     "the schema must advertise " + slot.wireName() + ": " + description);
             seen.set(null);

@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.DropResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.DropResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -36,7 +36,7 @@ public final class BodyDropTool implements TianshuTool<BodyDropTool.Args, DropRe
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -78,14 +78,14 @@ public final class BodyDropTool implements TianshuTool<BodyDropTool.Args, DropRe
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "slot must be 0..35"));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         ActorRef actor = scope.actor();
         int slot = args.slot();
         int count = Math.max(0, args.count());
-        return TianshuRuntimePorts.find(AgentItemPort.class)
+        return TianshuRuntimePorts.find(EntityItemPort.class)
                 .map(port -> port.drop(actor, slot, count))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "dropping is only available on the server")));

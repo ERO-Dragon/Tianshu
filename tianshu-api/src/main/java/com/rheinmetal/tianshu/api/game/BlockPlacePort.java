@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.api.game;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 
 import java.util.concurrent.CompletableFuture;
 

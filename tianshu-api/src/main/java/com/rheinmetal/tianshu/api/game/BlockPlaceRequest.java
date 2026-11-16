@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.api.game;
 
-import com.rheinmetal.tianshu.api.agent.BlockFace;
+import com.rheinmetal.tianshu.api.entity.BlockFace;
 
 import java.util.Objects;
 

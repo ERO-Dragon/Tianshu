@@ -2,26 +2,26 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentActionPort;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.BlockTarget;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.EntityTarget;
-import com.rheinmetal.tianshu.api.agent.DropResult;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActionPort;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityProvider;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EntityTarget;
+import com.rheinmetal.tianshu.api.entity.DropResult;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
@@ -59,7 +59,7 @@ class BodySequenceToolTest {
     void clean() {
         TianshuTools.unregister(BodySequenceTool.ID);
         ClientTools.unregisterForTests();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
         BodyOperations.release("body-1");
     }
 
@@ -74,13 +74,13 @@ class BodySequenceToolTest {
     }
 
     private void installBody() {
-        AgentBodies.register(new AgentBodyProvider() {
+        EntityActors.register(new EntityProvider() {
             @Override
-            public Optional<AgentBody> resolve(String bodyId) {
+            public Optional<EntityActor> resolve(String bodyId) {
                 if (!"body-1".equals(bodyId)) {
                     return Optional.empty();
                 }
-                return Optional.of(new AgentBody() {
+                return Optional.of(new EntityActor() {
                     @Override
                     public String id() {
                         return "body-1";
@@ -97,25 +97,25 @@ class BodySequenceToolTest {
                     }
 
                     @Override
-                    public Set<BodyCapability> capabilities() {
-                        return Set.of(BodyCapability.MOVE, BodyCapability.MINE, BodyCapability.INVENTORY);
+                    public Set<EntityCapability> capabilities() {
+                        return Set.of(EntityCapability.MOVE, EntityCapability.MINE, EntityCapability.INVENTORY);
                     }
                 });
             }
 
             @Override
-            public Optional<AgentBodyActions> actions(String bodyId) {
+            public Optional<EntityActions> actions(String bodyId) {
                 return "body-1".equals(bodyId) ? Optional.of(handlers()) : Optional.empty();
             }
         });
         enable();
     }
 
-    private AgentBodyActions handlers() {
-        return new AgentBodyActions() {
+    private EntityActions handlers() {
+        return new EntityActions() {
             @Override
-            public Optional<AgentMotionPort> motion() {
-                return Optional.of(new AgentMotionPort() {
+            public Optional<EntityMotionPort> motion() {
+                return Optional.of(new EntityMotionPort() {
                     @Override
                     public CompletableFuture<MoveResult> move(ActorRef actor, ActorPosition target,
                                                              MoveOptions options) {
@@ -131,8 +131,8 @@ class BodySequenceToolTest {
             }
 
             @Override
-            public Optional<AgentActionPort> action() {
-                return Optional.of(new AgentActionPort() {
+            public Optional<EntityActionPort> action() {
+                return Optional.of(new EntityActionPort() {
                     @Override
                     public CompletableFuture<ActionResult> mine(ActorRef actor, BlockTarget target) {
                         order.add("mine");
@@ -149,8 +149,8 @@ class BodySequenceToolTest {
             }
 
             @Override
-            public Optional<AgentItemPort> items() {
-                return Optional.of(new AgentItemPort() {
+            public Optional<EntityItemPort> items() {
+                return Optional.of(new EntityItemPort() {
                     @Override
                     public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                         order.add("pickup");

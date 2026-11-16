@@ -2,10 +2,10 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.ScanResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.ScanResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -41,7 +41,7 @@ class BodyScanToolTest {
         TianshuTools.unregister(BodyScanTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -56,9 +56,9 @@ class BodyScanToolTest {
     @Test
     void aScanReachesThePortAsTheNamedBody() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentWorldQueryPort.class, new AgentWorldQueryPort() {
+        TianshuRuntimePorts.register(EntityQueryPort.class, new EntityQueryPort() {
             @Override
-            public CompletableFuture<ScanResult> scan(ActorRef actor, com.rheinmetal.tianshu.api.agent.ScanRequest request) {
+            public CompletableFuture<ScanResult> scan(ActorRef actor, com.rheinmetal.tianshu.api.entity.ScanRequest request) {
                 seen.set(actor);
                 return CompletableFuture.completedFuture(new ScanResult(List.of(), List.of()));
             }
@@ -82,9 +82,9 @@ class BodyScanToolTest {
     @Test
     void aPlayerWithoutABodyScansAroundThePlayer() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentWorldQueryPort.class, new AgentWorldQueryPort() {
+        TianshuRuntimePorts.register(EntityQueryPort.class, new EntityQueryPort() {
             @Override
-            public CompletableFuture<ScanResult> scan(ActorRef actor, com.rheinmetal.tianshu.api.agent.ScanRequest request) {
+            public CompletableFuture<ScanResult> scan(ActorRef actor, com.rheinmetal.tianshu.api.entity.ScanRequest request) {
                 seen.set(actor);
                 return CompletableFuture.completedFuture(new ScanResult(List.of(), List.of()));
             }

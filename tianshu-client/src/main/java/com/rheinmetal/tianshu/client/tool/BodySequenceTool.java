@@ -3,21 +3,21 @@ package com.rheinmetal.tianshu.client.tool;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.BlockFace;
-import com.rheinmetal.tianshu.api.agent.BlockTarget;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.ItemUseTarget;
-import com.rheinmetal.tianshu.api.agent.MoveMode;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.SequenceResult;
-import com.rheinmetal.tianshu.api.agent.SequenceStep;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.BlockFace;
+import com.rheinmetal.tianshu.api.entity.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.ItemUseTarget;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.SequenceResult;
+import com.rheinmetal.tianshu.api.entity.SequenceStep;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -62,7 +62,7 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -177,7 +177,7 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
     }
 
     private static String dimensionOf(ActorRef actor) {
-        return AgentBodies.resolve(actor.id()).map(body -> body.position().dimension()).orElse("");
+        return EntityActors.resolve(actor.id()).map(body -> body.position().dimension()).orElse("");
     }
 
     private List<SequenceStep> parse(String dimension, JsonArray rawSteps) {
@@ -204,7 +204,7 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
                 case "item_use" -> new SequenceStep.ItemUse(itemUse(dimension, step), integer(step, "holdTicks", 0));
                 case "pickup" -> new SequenceStep.Pickup(integer(step, "radius", 3));
                 case "equip" -> new SequenceStep.Equip(new EquipRequest(integer(step, "slot", -1),
-                        bodySlot(step)));
+                        EntitySlot(step)));
                 default -> throw new ToolException(ToolError.INVALID_ARGS,
                         "step " + index + " has an unknown kind: " + kind);
             });
@@ -260,48 +260,48 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
     }
 
     private static Optional<ToolException> capabilityRefusal(ActorRef actor, SequenceStep step) {
-        Optional<ToolException> refusal = AgentBodies.checkCapability(actor, capability(step));
+        Optional<ToolException> refusal = EntityActors.checkCapability(actor, capability(step));
         if (refusal.isPresent()) {
             return refusal;
         }
         if (step instanceof SequenceStep.ItemUse) {
-            return AgentBodies.checkCapability(actor, BodyCapability.INVENTORY);
+            return EntityActors.checkCapability(actor, EntityCapability.INVENTORY);
         }
         return Optional.empty();
     }
 
-    private static BodyCapability capability(SequenceStep step) {
+    private static EntityCapability capability(SequenceStep step) {
         if (step instanceof SequenceStep.Move) {
-            return BodyCapability.MOVE;
+            return EntityCapability.MOVE;
         }
         if (step instanceof SequenceStep.Look) {
-            return BodyCapability.LOOK;
+            return EntityCapability.LOOK;
         }
         if (step instanceof SequenceStep.Mine) {
-            return BodyCapability.MINE;
+            return EntityCapability.MINE;
         }
         if (step instanceof SequenceStep.Place) {
-            return BodyCapability.PLACE;
+            return EntityCapability.PLACE;
         }
         if (step instanceof SequenceStep.Interact) {
-            return BodyCapability.USE;
+            return EntityCapability.USE;
         }
         if (step instanceof SequenceStep.ItemUse) {
-            return BodyCapability.USE;
+            return EntityCapability.USE;
         }
         if (step instanceof SequenceStep.Pickup) {
-            return BodyCapability.INVENTORY;
+            return EntityCapability.INVENTORY;
         }
-        return BodyCapability.INVENTORY;
+        return EntityCapability.INVENTORY;
     }
 
     private CompletableFuture<StepOutcome> dispatch(ActorRef actor, SequenceStep step) {
-        Optional<AgentBodyActions> actions = AgentBodies.actions(actor.id());
+        Optional<EntityActions> actions = EntityActors.actions(actor.id());
         if (actions.isEmpty()) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                     "this body has no action handlers"));
         }
-        AgentBodyActions handlers = actions.get();
+        EntityActions handlers = actions.get();
         if (step instanceof SequenceStep.Move move) {
             return handlers.motion()
                     .map(handler -> handler.move(actor, move.target(), new MoveOptions(move.mode(), 0.5D))
@@ -410,12 +410,12 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
         }
     }
 
-    private static BodySlot bodySlot(JsonObject step) {
-        String raw = step.has("target") ? text(step, "target") : BodySlot.MAIN_HAND.wireName();
-        BodySlot slot = BodySlot.fromWireName(raw);
+    private static EntitySlot EntitySlot(JsonObject step) {
+        String raw = step.has("target") ? text(step, "target") : EntitySlot.MAIN_HAND.wireName();
+        EntitySlot slot = EntitySlot.fromWireName(raw);
         if (slot == null) {
             throw new ToolException(ToolError.INVALID_ARGS,
-                    "unknown equip target: " + raw + "; expected " + BodySlot.wireNameList());
+                    "unknown equip target: " + raw + "; expected " + EntitySlot.wireNameList());
         }
         return slot;
     }

@@ -450,9 +450,13 @@ public final class TianshuTools {
         CompletableFuture<R> future;
         try {
             future = typed.invoke(context, (A) args);
+        } catch (ToolException rejected) {
+            // A tool may refuse before any future exists — argument and range checks run synchronously. Its code has to
+            // survive that boundary: flattening it into FAILED told a model "the tool broke" when it had said
+            // "the arguments are wrong", which is the one distinction it can act on.
+            return CompletableFuture.failedFuture(rejected);
         } catch (RuntimeException thrown) {
-            return CompletableFuture.failedFuture(
-                    new ToolException(ToolError.FAILED, "tool " + tool.id() + " threw: " + thrown, thrown));
+            return CompletableFuture.failedFuture(translate(thrown, tool.id()));
         }
         if (future == null) {
             return CompletableFuture.failedFuture(

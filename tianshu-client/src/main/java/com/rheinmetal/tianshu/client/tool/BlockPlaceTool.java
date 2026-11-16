@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.BlockFace;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.BlockFace;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
@@ -93,7 +93,7 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "unknown block face: " + args.face()));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.PLACE);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.PLACE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }

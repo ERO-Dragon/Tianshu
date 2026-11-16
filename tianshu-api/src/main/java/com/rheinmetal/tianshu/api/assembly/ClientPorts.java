@@ -4,7 +4,6 @@ import com.rheinmetal.tianshu.api.client.host.hud.HudHost;
 import com.rheinmetal.tianshu.api.config.ModuleConfigStores;
 import com.rheinmetal.tianshu.client.api.settings.layer.SettingsLayerHost;
 import com.rheinmetal.tianshu.client.host.ClientAudioDeviceCatalog;
-import com.rheinmetal.tianshu.api.server.ClientServerActionPort;
 import com.rheinmetal.tianshu.client.host.ClientFilePicker;
 import com.rheinmetal.tianshu.client.host.ClientPresentationPort;
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
@@ -41,7 +40,6 @@ public record ClientPorts(
         ClientGameContextPort gameContext,
         BooleanSupplier debugEnabled,
         DiagnosticChatCatalogue diagnosticChat,
-        ClientPresentationPort presentation,
-        ClientServerActionPort serverActions
+        ClientPresentationPort presentation
 ) {
 }

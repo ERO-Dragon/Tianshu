@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.client.tool.routing;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
-import com.rheinmetal.tianshu.api.agent.ScanResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ScanResult;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
@@ -13,11 +13,11 @@ import com.rheinmetal.tianshu.api.tool.ToolException;
 import java.util.concurrent.CompletableFuture;
 
 /** Routes scanning and inventory reads; a player keeps the local fallback it had before bodies existed. */
-public final class QueryRouter implements AgentWorldQueryPort {
+public final class QueryRouter implements EntityQueryPort {
 
-    private final AgentWorldQueryPort players;
+    private final EntityQueryPort players;
 
-    public QueryRouter(AgentWorldQueryPort players) {
+    public QueryRouter(EntityQueryPort players) {
         this.players = players;
     }
 
@@ -26,8 +26,8 @@ public final class QueryRouter implements AgentWorldQueryPort {
         if (actor.kind() == ActorRef.Kind.PLAYER) {
             return players.scan(actor, request);
         }
-        return AgentBodies.actions(actor.id())
-                .flatMap(AgentBodyActions::query)
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::query)
                 .map(handler -> handler.scan(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no query handler for this body")));
@@ -38,8 +38,8 @@ public final class QueryRouter implements AgentWorldQueryPort {
         if (actor.kind() == ActorRef.Kind.PLAYER) {
             return players.inventory(actor);
         }
-        return AgentBodies.actions(actor.id())
-                .flatMap(AgentBodyActions::query)
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::query)
                 .map(handler -> handler.inventory(actor))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no query handler for this body")));

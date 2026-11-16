@@ -1,12 +1,12 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -38,7 +38,7 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -61,8 +61,8 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
         JsonObject properties = new JsonObject();
         properties.add("body", BodyToolSchemas.body());
         properties.add("slot", BodyToolSchemas.integer("Main inventory slot 0..35, or -1 to clear the target"));
-        properties.add("target", BodyToolSchemas.text(BodySlot.wireNameList()
-                + "; defaults to " + BodySlot.MAIN_HAND.wireName()));
+        properties.add("target", BodyToolSchemas.text(EntitySlot.wireNameList()
+                + "; defaults to " + EntitySlot.MAIN_HAND.wireName()));
         return BodyToolSchemas.object(properties, "slot");
     }
 
@@ -81,21 +81,21 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "slot must be -1 or 0..35"));
         }
-        // The schema advertises BodySlot.wireNameList(); parsing reads the same source, so the two cannot drift.
-        BodySlot target = args.target() == null || args.target().isBlank()
-                ? BodySlot.MAIN_HAND
-                : BodySlot.fromWireName(args.target());
+        // The schema advertises EntitySlot.wireNameList(); parsing reads the same source, so the two cannot drift.
+        EntitySlot target = args.target() == null || args.target().isBlank()
+                ? EntitySlot.MAIN_HAND
+                : EntitySlot.fromWireName(args.target());
         if (target == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "target must be " + BodySlot.wireNameList()));
+                    "target must be " + EntitySlot.wireNameList()));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         ActorRef actor = scope.actor();
         EquipRequest request = new EquipRequest(args.slot(), target);
-        return TianshuRuntimePorts.find(AgentItemPort.class)
+        return TianshuRuntimePorts.find(EntityItemPort.class)
                 .map(port -> port.equip(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "equipping is only available on the server")));

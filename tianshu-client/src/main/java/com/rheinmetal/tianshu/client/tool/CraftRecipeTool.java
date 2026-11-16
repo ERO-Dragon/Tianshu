@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
@@ -88,7 +88,7 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
         }
-        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
+        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }

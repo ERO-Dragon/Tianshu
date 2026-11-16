@@ -2,9 +2,9 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceResult;
@@ -41,7 +41,7 @@ class BlockPlaceToolTest {
         TianshuTools.unregister(BlockPlaceTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -63,7 +63,7 @@ class BlockPlaceToolTest {
                     new BlockPlaceResult("minecraft:stone", 0, 0, 0, true, "placed"));
         });
         enable();
-        TestBodies.register("float", BodyCapability.MOVE, BodyCapability.LOOK);
+        TestBodies.register("float", EntityCapability.MOVE, EntityCapability.LOOK);
 
         JsonObject refused = envelope("{\"item\":\"minecraft:stone\",\"x\":0,\"y\":64,\"z\":0}",
                 ToolCaller.body("float", true));
@@ -82,7 +82,7 @@ class BlockPlaceToolTest {
                     new BlockPlaceResult("minecraft:stone", 1, 64, 2, true, "placed"));
         });
         enable();
-        TestBodies.register("body-1", BodyCapability.PLACE);
+        TestBodies.register("body-1", EntityCapability.PLACE);
 
         JsonObject result = envelope("{\"item\":\"minecraft:stone\",\"x\":1,\"y\":64,\"z\":2}",
                 ToolCaller.body("body-1", true));
@@ -101,7 +101,7 @@ class BlockPlaceToolTest {
                     new BlockPlaceResult("minecraft:stone", 0, 0, 0, true, "placed"));
         });
         enable();
-        TestBodies.register("body-1", BodyCapability.PLACE);
+        TestBodies.register("body-1", EntityCapability.PLACE);
 
         JsonObject result = envelope(
                 "{\"body\":\"body-1\",\"item\":\"minecraft:stone\",\"x\":0,\"y\":64,\"z\":0}",

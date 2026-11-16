@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.client.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
@@ -18,7 +18,7 @@ import java.util.function.Supplier;
  *
  * <p>This is the single place that turns a {@link ToolCaller} plus an optional body id into an
  * {@link ActorRef}, so tools do not each re-implement the same three branches. Capability refusal stays in
- * {@link AgentBodies#checkCapability} and is exposed here only so a tool can check before touching a port.</p>
+ * {@link EntityActors#checkCapability} and is exposed here only so a tool can check before touching a port.</p>
  *
  * <p>An AI module can drive a body (that is a product decision, recorded as DEC-2): its call is judged with the same
  * tool permissions a player call would get — {@code ToolPermission} does not look at the caller kind — and the body it
@@ -53,7 +53,7 @@ final class ActorScope {
         }
         if (bodyId != null && !bodyId.isBlank()) {
             String trimmed = bodyId.trim();
-            Optional<ToolException> denied = AgentBodies.checkAccess(caller, trimmed);
+            Optional<ToolException> denied = EntityActors.checkAccess(caller, trimmed);
             if (denied.isPresent()) {
                 return new ActorScope(null, denied.get());
             }
@@ -78,8 +78,8 @@ final class ActorScope {
     }
 
     /** Empty when this actor may perform the capability; a body that does not declare it is refused here. */
-    Optional<ToolException> capabilityRefusal(BodyCapability capability) {
-        return AgentBodies.checkCapability(actor(), capability);
+    Optional<ToolException> capabilityRefusal(EntityCapability capability) {
+        return EntityActors.checkCapability(actor(), capability);
     }
 
     /**

@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Works a machine at a position: put fuel in, put input in, take the result out.
  *
- * <p>A write tool, off by default, for a player or an agent body. It requires {@link BodyCapability#INVENTORY}, not
+ * <p>A write tool, off by default, for a player or an agent body. It requires {@link EntityCapability#INVENTORY}, not
  * {@code USE}: every operation moves items into or out of a container, so a body that can only use blocks cannot work
  * the machine. The platform decides which machines are understood (for now the furnace family); an unknown block is a
  * refusal with a reason, never a generic "run this block" escape hatch.</p>
@@ -115,7 +115,7 @@ public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args
         }
         MachineOpRequest normalised = new MachineOpRequest(args.x(), args.y(), args.z(), operation,
                 operation.equals("take_output") ? -1 : slot);
-        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
+        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }

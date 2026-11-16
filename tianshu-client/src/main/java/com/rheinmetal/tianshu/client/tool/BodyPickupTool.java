@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -36,7 +36,7 @@ public final class BodyPickupTool implements TianshuTool<BodyPickupTool.Args, Pi
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -69,13 +69,13 @@ public final class BodyPickupTool implements TianshuTool<BodyPickupTool.Args, Pi
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         int radius = args == null || args.radius() <= 0 ? DEFAULT_RADIUS : args.radius();
         ActorRef actor = scope.actor();
-        return TianshuRuntimePorts.find(AgentItemPort.class)
+        return TianshuRuntimePorts.find(EntityItemPort.class)
                 .map(port -> port.pickup(actor, radius))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "pickup is only available on the server")));

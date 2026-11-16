@@ -1,20 +1,20 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.EntityHit;
-import com.rheinmetal.tianshu.api.agent.FollowResult;
-import com.rheinmetal.tianshu.api.agent.MoveMode;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EntityHit;
+import com.rheinmetal.tianshu.api.entity.FollowResult;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -57,7 +57,7 @@ public final class BodyFollowTool implements TianshuTool<BodyFollowTool.Args, Fo
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -92,7 +92,7 @@ public final class BodyFollowTool implements TianshuTool<BodyFollowTool.Args, Fo
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.MOVE);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.MOVE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
@@ -133,13 +133,13 @@ public final class BodyFollowTool implements TianshuTool<BodyFollowTool.Args, Fo
                     finish(ActionOutcome.REJECTED, lastDistance[0], "the call was cancelled");
                     return;
                 }
-                AgentBody body = AgentBodies.resolve(actor.id()).orElse(null);
+                EntityActor body = EntityActors.resolve(actor.id()).orElse(null);
                 if (body == null) {
                     finish(ActionOutcome.REJECTED, lastDistance[0], "the agent body is not present");
                     return;
                 }
-                Optional<AgentWorldQueryPort> query = handler(actor, AgentBodyActions::query);
-                Optional<AgentMotionPort> motion = handler(actor, AgentBodyActions::motion);
+                Optional<EntityQueryPort> query = handler(actor, EntityActions::query);
+                Optional<EntityMotionPort> motion = handler(actor, EntityActions::motion);
                 if (query.isEmpty() || motion.isEmpty()) {
                     finish(ActionOutcome.REJECTED, lastDistance[0],
                             "this body cannot follow: it is missing a query or motion handler");
@@ -217,7 +217,7 @@ public final class BodyFollowTool implements TianshuTool<BodyFollowTool.Args, Fo
         return dx * dx + dy * dy + dz * dz;
     }
 
-    private static <T> Optional<T> handler(ActorRef actor, Function<AgentBodyActions, Optional<T>> pick) {
-        return AgentBodies.actions(actor.id()).flatMap(pick);
+    private static <T> Optional<T> handler(ActorRef actor, Function<EntityActions, Optional<T>> pick) {
+        return EntityActors.actions(actor.id()).flatMap(pick);
     }
 }

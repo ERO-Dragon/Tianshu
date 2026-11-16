@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -36,7 +36,7 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -76,17 +76,17 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "body.look needs a body id unless the caller is a body"));
         }
-        AgentBody body = AgentBodies.resolve(scope.actor().id()).orElse(null);
+        EntityActor body = EntityActors.resolve(scope.actor().id()).orElse(null);
         if (body == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                     "agent body " + scope.actor().id() + " is not present"));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.LOOK);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.LOOK);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         ActorPosition target = BodyTargets.position(body.position().dimension(), args.x(), args.y(), args.z());
-        return TianshuRuntimePorts.find(AgentMotionPort.class)
+        return TianshuRuntimePorts.find(EntityMotionPort.class)
                 .map(port -> port.look(scope.actor(), target).thenCompose(result ->
                         result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED
                                 ? CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.detail()))

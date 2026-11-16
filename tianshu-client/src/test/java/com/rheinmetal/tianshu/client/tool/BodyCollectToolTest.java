@@ -2,31 +2,31 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentActionPort;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
-import com.rheinmetal.tianshu.api.agent.DropResult;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.BlockHit;
-import com.rheinmetal.tianshu.api.agent.BlockTarget;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
-import com.rheinmetal.tianshu.api.agent.PickedItem;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
-import com.rheinmetal.tianshu.api.agent.ScanResult;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActionPort;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityProvider;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
+import com.rheinmetal.tianshu.api.entity.DropResult;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.BlockHit;
+import com.rheinmetal.tianshu.api.entity.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
+import com.rheinmetal.tianshu.api.entity.PickedItem;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ScanResult;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -68,7 +68,7 @@ class BodyCollectToolTest {
     void clean() {
         TianshuTools.unregister(BodyCollectTool.ID);
         ClientTools.unregisterForTests();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -82,13 +82,13 @@ class BodyCollectToolTest {
     }
 
     private void installWorld() {
-        AgentBodies.register(new AgentBodyProvider() {
+        EntityActors.register(new EntityProvider() {
             @Override
-            public Optional<AgentBody> resolve(String bodyId) {
+            public Optional<EntityActor> resolve(String bodyId) {
                 if (!"body-1".equals(bodyId)) {
                     return Optional.empty();
                 }
-                return Optional.of(new AgentBody() {
+                return Optional.of(new EntityActor() {
                     @Override
                     public String id() {
                         return "body-1";
@@ -105,24 +105,24 @@ class BodyCollectToolTest {
                     }
 
                     @Override
-                    public Set<BodyCapability> capabilities() {
-                        return Set.of(BodyCapability.MOVE, BodyCapability.MINE, BodyCapability.INVENTORY);
+                    public Set<EntityCapability> capabilities() {
+                        return Set.of(EntityCapability.MOVE, EntityCapability.MINE, EntityCapability.INVENTORY);
                     }
                 });
             }
 
             @Override
-            public Optional<AgentBodyActions> actions(String bodyId) {
+            public Optional<EntityActions> actions(String bodyId) {
                 return "body-1".equals(bodyId) ? Optional.of(handlers()) : Optional.empty();
             }
         });
     }
 
-    private AgentBodyActions handlers() {
-        return new AgentBodyActions() {
+    private EntityActions handlers() {
+        return new EntityActions() {
             @Override
-            public Optional<AgentWorldQueryPort> query() {
-                return Optional.of(new AgentWorldQueryPort() {
+            public Optional<EntityQueryPort> query() {
+                return Optional.of(new EntityQueryPort() {
                     @Override
                     public CompletableFuture<ScanResult> scan(ActorRef actor, ScanRequest request) {
                         return CompletableFuture.completedFuture(new ScanResult(
@@ -138,8 +138,8 @@ class BodyCollectToolTest {
             }
 
             @Override
-            public Optional<AgentMotionPort> motion() {
-                return Optional.of(new AgentMotionPort() {
+            public Optional<EntityMotionPort> motion() {
+                return Optional.of(new EntityMotionPort() {
                     @Override
                     public CompletableFuture<MoveResult> move(ActorRef actor, ActorPosition target,
                                                              MoveOptions options) {
@@ -155,8 +155,8 @@ class BodyCollectToolTest {
             }
 
             @Override
-            public Optional<AgentActionPort> action() {
-                return Optional.of(new AgentActionPort() {
+            public Optional<EntityActionPort> action() {
+                return Optional.of(new EntityActionPort() {
                     @Override
                     public CompletableFuture<ActionResult> mine(ActorRef actor, BlockTarget target) {
                         mines.incrementAndGet();
@@ -165,15 +165,15 @@ class BodyCollectToolTest {
 
                     @Override
                     public CompletableFuture<ActionResult> attack(ActorRef actor,
-                                                                  com.rheinmetal.tianshu.api.agent.EntityTarget target) {
+                                                                  com.rheinmetal.tianshu.api.entity.EntityTarget target) {
                         throw new AssertionError("collect must not attack");
                     }
                 });
             }
 
             @Override
-            public Optional<AgentItemPort> items() {
-                return Optional.of(new AgentItemPort() {
+            public Optional<EntityItemPort> items() {
+                return Optional.of(new EntityItemPort() {
                     @Override
                     public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                         pickups.incrementAndGet();
@@ -236,7 +236,7 @@ class BodyCollectToolTest {
 
     @Test
     void aBodyWithoutMiningIsRefused() throws Exception {
-        AgentBodies.register(id -> "float".equals(id) ? Optional.of(new AgentBody() {
+        EntityActors.register(id -> "float".equals(id) ? Optional.of(new EntityActor() {
             @Override
             public String id() {
                 return "float";
@@ -253,8 +253,8 @@ class BodyCollectToolTest {
             }
 
             @Override
-            public Set<BodyCapability> capabilities() {
-                return Set.of(BodyCapability.MOVE);
+            public Set<EntityCapability> capabilities() {
+                return Set.of(EntityCapability.MOVE);
             }
         }) : Optional.empty());
         enable();

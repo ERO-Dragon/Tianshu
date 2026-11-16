@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.client.tool.routing;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
 import com.rheinmetal.tianshu.api.game.MachineOpResult;
@@ -31,8 +31,8 @@ public final class MachineRouter implements BlockMachinePort {
         if (actor.kind() == ActorRef.Kind.PLAYER) {
             return players.operate(actor.id(), request);
         }
-        return AgentBodies.actions(actor.id())
-                .flatMap(AgentBodyActions::machine)
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::machine)
                 .map(handler -> handler.operate(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no machine handler for this body")));

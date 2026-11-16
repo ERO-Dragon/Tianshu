@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentItemUsePort;
-import com.rheinmetal.tianshu.api.agent.BlockFace;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.ItemUseTarget;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityItemUsePort;
+import com.rheinmetal.tianshu.api.entity.BlockFace;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.ItemUseTarget;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -103,7 +103,7 @@ public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionRe
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "holdTicks is at most " + MAX_HOLD_TICKS));
         }
-        for (BodyCapability capability : java.util.List.of(BodyCapability.USE, BodyCapability.INVENTORY)) {
+        for (EntityCapability capability : java.util.List.of(EntityCapability.USE, EntityCapability.INVENTORY)) {
             Optional<ToolException> refusal = scope.capabilityRefusal(capability);
             if (refusal.isPresent()) {
                 return CompletableFuture.failedFuture(refusal.get());
@@ -122,7 +122,7 @@ public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionRe
                             "unknown face: " + args.face()));
                 }
             }
-            String dimension = AgentBodies.resolve(scope.actor().id())
+            String dimension = EntityActors.resolve(scope.actor().id())
                     .map(body -> body.position().dimension())
                     .orElse("");
             target = new ItemUseTarget.Block(BodyTargets.block(dimension, args.x(), args.y(), args.z()), face);
@@ -130,7 +130,7 @@ public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionRe
         ItemUseTarget use = target;
         ActorRef actor = scope.actor();
         return ActorScope.guarded(actor, context,
-                () -> TianshuRuntimePorts.find(AgentItemUsePort.class)
+                () -> TianshuRuntimePorts.find(EntityItemUsePort.class)
                         .map(port -> port.use(actor, use, args == null || args.holdTicks() == null
                                 ? 0 : Math.max(0, args.holdTicks())))
                         .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,

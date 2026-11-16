@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.MachineOpResult;
@@ -38,7 +38,7 @@ class BlockMachineToolTest {
         TianshuTools.unregister(BlockMachineTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -75,7 +75,7 @@ class BlockMachineToolTest {
     void aBodyWithoutAnInventoryIsRefusedAsUnsupported() throws Exception {
         TianshuTools.register(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
-        TestBodies.register("float", BodyCapability.MOVE, BodyCapability.LOOK);
+        TestBodies.register("float", EntityCapability.MOVE, EntityCapability.LOOK);
 
         JsonObject refused = envelope(FUEL, ToolCaller.body("float", true));
         assertEquals("UNSUPPORTED_ACTOR", refused.get("code").getAsString());

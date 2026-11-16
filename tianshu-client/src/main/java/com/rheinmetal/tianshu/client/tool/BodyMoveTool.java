@@ -2,15 +2,15 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.MoveMode;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -40,7 +40,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -88,12 +88,12 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "body.move needs a body id unless the caller is a body"));
         }
-        AgentBody body = AgentBodies.resolve(scope.actor().id()).orElse(null);
+        EntityActor body = EntityActors.resolve(scope.actor().id()).orElse(null);
         if (body == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                     "agent body " + scope.actor().id() + " is not present"));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.MOVE);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.MOVE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
@@ -108,7 +108,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
         }
         ActorPosition target = BodyTargets.position(body.position().dimension(), args.x(), args.y(), args.z());
         return ActorScope.guarded(scope.actor(), context,
-                () -> TianshuRuntimePorts.find(AgentMotionPort.class)
+                () -> TianshuRuntimePorts.find(EntityMotionPort.class)
                         .map(port -> port.move(scope.actor(), target,
                                         new MoveOptions(mode, MoveOptions.DEFAULT.arriveRadius()))
                                 .thenCompose(result -> result.outcome() == ActionOutcome.REJECTED

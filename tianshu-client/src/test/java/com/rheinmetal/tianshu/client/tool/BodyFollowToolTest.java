@@ -2,21 +2,21 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.EntityHit;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
-import com.rheinmetal.tianshu.api.agent.ScanResult;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityProvider;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EntityHit;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ScanResult;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
@@ -56,7 +56,7 @@ class BodyFollowToolTest {
     void clean() {
         TianshuTools.unregister(BodyFollowTool.ID);
         ClientTools.unregisterForTests();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
         TianshuRuntimePorts.clear();
     }
 
@@ -71,13 +71,13 @@ class BodyFollowToolTest {
     }
 
     private void installBody(double targetX) {
-        AgentBodies.register(new AgentBodyProvider() {
+        EntityActors.register(new EntityProvider() {
             @Override
-            public Optional<AgentBody> resolve(String bodyId) {
+            public Optional<EntityActor> resolve(String bodyId) {
                 if (!"body-1".equals(bodyId)) {
                     return Optional.empty();
                 }
-                return Optional.of(new AgentBody() {
+                return Optional.of(new EntityActor() {
                     @Override
                     public String id() {
                         return "body-1";
@@ -94,24 +94,24 @@ class BodyFollowToolTest {
                     }
 
                     @Override
-                    public Set<BodyCapability> capabilities() {
-                        return Set.of(BodyCapability.MOVE);
+                    public Set<EntityCapability> capabilities() {
+                        return Set.of(EntityCapability.MOVE);
                     }
                 });
             }
 
             @Override
-            public Optional<AgentBodyActions> actions(String bodyId) {
+            public Optional<EntityActions> actions(String bodyId) {
                 return "body-1".equals(bodyId) ? Optional.of(handlers(targetX)) : Optional.empty();
             }
         });
     }
 
-    private AgentBodyActions handlers(double targetX) {
-        return new AgentBodyActions() {
+    private EntityActions handlers(double targetX) {
+        return new EntityActions() {
             @Override
-            public Optional<AgentWorldQueryPort> query() {
-                return Optional.of(new AgentWorldQueryPort() {
+            public Optional<EntityQueryPort> query() {
+                return Optional.of(new EntityQueryPort() {
                     @Override
                     public CompletableFuture<ScanResult> scan(ActorRef actor, ScanRequest request) {
                         return CompletableFuture.completedFuture(new ScanResult(List.of(),
@@ -127,8 +127,8 @@ class BodyFollowToolTest {
             }
 
             @Override
-            public Optional<AgentMotionPort> motion() {
-                return Optional.of(new AgentMotionPort() {
+            public Optional<EntityMotionPort> motion() {
+                return Optional.of(new EntityMotionPort() {
                     @Override
                     public CompletableFuture<MoveResult> move(ActorRef actor, ActorPosition target,
                                                              MoveOptions options) {
@@ -137,7 +137,7 @@ class BodyFollowToolTest {
                     }
 
                     @Override
-                    public CompletableFuture<com.rheinmetal.tianshu.api.agent.ActionResult> look(
+                    public CompletableFuture<com.rheinmetal.tianshu.api.entity.ActionResult> look(
                             ActorRef actor, ActorPosition target) {
                         throw new AssertionError("follow must not look");
                     }
@@ -205,7 +205,7 @@ class BodyFollowToolTest {
 
     @Test
     void aMissingTargetEndsTheFollow() throws Exception {
-        AgentBodies.register(id -> "body-1".equals(id) ? Optional.of(new AgentBody() {
+        EntityActors.register(id -> "body-1".equals(id) ? Optional.of(new EntityActor() {
             @Override
             public String id() {
                 return "body-1";
@@ -222,8 +222,8 @@ class BodyFollowToolTest {
             }
 
             @Override
-            public Set<BodyCapability> capabilities() {
-                return Set.of(BodyCapability.MOVE);
+            public Set<EntityCapability> capabilities() {
+                return Set.of(EntityCapability.MOVE);
             }
         }) : Optional.empty());
         TianshuRuntimePorts.register(ServerTickPort.class, task -> {

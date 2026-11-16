@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
@@ -83,7 +83,7 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.USE);
+        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.USE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }

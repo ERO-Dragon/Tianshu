@@ -2,16 +2,16 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
-import com.rheinmetal.tianshu.api.agent.DropResult;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
-import com.rheinmetal.tianshu.api.agent.PickedItem;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
+import com.rheinmetal.tianshu.api.entity.DropResult;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.PickedItem;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -47,7 +47,7 @@ class BodyPickupToolTest {
         TianshuTools.unregister(BodyPickupTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -63,7 +63,7 @@ class BodyPickupToolTest {
     @Test
     void aBodyWithoutAnInventoryIsRefusedBeforeThePortIsTouched() throws Exception {
         AtomicBoolean reached = new AtomicBoolean();
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 reached.set(true);
@@ -81,7 +81,7 @@ class BodyPickupToolTest {
             }
         });
         enable();
-        TestBodies.register("float", BodyCapability.MOVE);
+        TestBodies.register("float", EntityCapability.MOVE);
 
         JsonObject refused = envelope("{\"body\":\"float\"}", ToolCaller.player("p", true));
 
@@ -93,7 +93,7 @@ class BodyPickupToolTest {
     @Test
     void aPickupReachesThePortAsTheNamedBody() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 seen.set(actor);
@@ -112,7 +112,7 @@ class BodyPickupToolTest {
             }
         });
         enable();
-        TestBodies.register("body-1", BodyCapability.INVENTORY);
+        TestBodies.register("body-1", EntityCapability.INVENTORY);
 
         JsonObject result = envelope("{\"body\":\"body-1\"}", ToolCaller.player("p", true));
 
@@ -126,7 +126,7 @@ class BodyPickupToolTest {
     @Test
     void aPlayerWithoutABodyPicksUpAroundThePlayer() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 seen.set(actor);

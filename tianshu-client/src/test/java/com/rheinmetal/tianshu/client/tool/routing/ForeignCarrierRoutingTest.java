@@ -2,21 +2,21 @@ package com.rheinmetal.tianshu.client.tool.routing;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.BlockHit;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
-import com.rheinmetal.tianshu.api.agent.ScanResult;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityProvider;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.BlockHit;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ScanResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -54,13 +54,13 @@ class ForeignCarrierRoutingTest {
     void setUp() {
         TianshuTools.clearRateLimits();
         ClientTools.register();
-        AgentBodies.register(new AgentBodyProvider() {
+        EntityActors.register(new EntityProvider() {
             @Override
-            public Optional<AgentBody> resolve(String bodyId) {
+            public Optional<EntityActor> resolve(String bodyId) {
                 if (!"foreign-1".equals(bodyId)) {
                     return Optional.empty();
                 }
-                return Optional.of(new AgentBody() {
+                return Optional.of(new EntityActor() {
                     @Override
                     public String id() {
                         return "foreign-1";
@@ -77,18 +77,18 @@ class ForeignCarrierRoutingTest {
                     }
 
                     @Override
-                    public Set<BodyCapability> capabilities() {
-                        return Set.of(BodyCapability.MOVE);
+                    public Set<EntityCapability> capabilities() {
+                        return Set.of(EntityCapability.MOVE);
                     }
                 });
             }
 
             @Override
-            public Optional<AgentBodyActions> actions(String bodyId) {
+            public Optional<EntityActions> actions(String bodyId) {
                 return "foreign-1".equals(bodyId) ? Optional.of(handlers()) : Optional.empty();
             }
         });
-        TianshuRuntimePorts.register(AgentWorldQueryPort.class, new QueryRouter(new AgentWorldQueryPort() {
+        TianshuRuntimePorts.register(EntityQueryPort.class, new QueryRouter(new EntityQueryPort() {
             @Override
             public CompletableFuture<ScanResult> scan(ActorRef actor, ScanRequest request) {
                 throw new AssertionError("player fallback must not be used for a body");
@@ -99,7 +99,7 @@ class ForeignCarrierRoutingTest {
                 throw new AssertionError("player fallback must not be used for a body");
             }
         }));
-        TianshuRuntimePorts.register(AgentMotionPort.class, new MotionRouter());
+        TianshuRuntimePorts.register(EntityMotionPort.class, new MotionRouter());
         TianshuTools.register(new BodyScanTool());
         TianshuTools.register(new BodyMoveTool());
         TianshuTools.setEnabled(BodyMoveTool.ID, true);
@@ -111,15 +111,15 @@ class ForeignCarrierRoutingTest {
         TianshuTools.unregister(BodyMoveTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
         BodyOperations.release("foreign-1");
     }
 
-    private AgentBodyActions handlers() {
-        return new AgentBodyActions() {
+    private EntityActions handlers() {
+        return new EntityActions() {
             @Override
-            public Optional<AgentWorldQueryPort> query() {
-                return Optional.of(new AgentWorldQueryPort() {
+            public Optional<EntityQueryPort> query() {
+                return Optional.of(new EntityQueryPort() {
                     @Override
                     public CompletableFuture<ScanResult> scan(ActorRef actor, ScanRequest request) {
                         scanned.set(true);
@@ -136,8 +136,8 @@ class ForeignCarrierRoutingTest {
             }
 
             @Override
-            public Optional<AgentMotionPort> motion() {
-                return Optional.of(new AgentMotionPort() {
+            public Optional<EntityMotionPort> motion() {
+                return Optional.of(new EntityMotionPort() {
                     @Override
                     public CompletableFuture<MoveResult> move(ActorRef actor, ActorPosition target,
                                                              MoveOptions options) {
@@ -146,7 +146,7 @@ class ForeignCarrierRoutingTest {
                     }
 
                     @Override
-                    public CompletableFuture<com.rheinmetal.tianshu.api.agent.ActionResult> look(
+                    public CompletableFuture<com.rheinmetal.tianshu.api.entity.ActionResult> look(
                             ActorRef actor, ActorPosition target) {
                         throw new AssertionError("routing test must not look");
                     }

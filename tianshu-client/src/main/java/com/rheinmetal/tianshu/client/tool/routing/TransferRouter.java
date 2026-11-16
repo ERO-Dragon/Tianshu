@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.client.tool.routing;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferRequest;
 import com.rheinmetal.tianshu.api.game.ContainerTransferResult;
@@ -32,8 +32,8 @@ public final class TransferRouter implements ContainerTransferPort {
         if (actor.kind() == ActorRef.Kind.PLAYER) {
             return players.transfer(actor.id(), request);
         }
-        return AgentBodies.actions(actor.id())
-                .flatMap(AgentBodyActions::transfer)
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::transfer)
                 .map(handler -> handler.transfer(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no transfer handler for this body")));

@@ -26,6 +26,11 @@ public final class ClientTools {
         TianshuTools.register(new TagQueryTool());
         TianshuTools.register(new InventoryInspectTool());
         TianshuTools.register(new CapabilityReadTool());
+        // Speaking is a local act; the server actions are declarations the server owns the implementations for.
+        TianshuTools.register(new SayTool());
+        for (var actionTool : ServerActionTools.tools()) {
+            ServerToolDeclarations.declare(actionTool);
+        }
         // Server-side tools are declared here but appear only after the server's catalog names them.
         ServerToolDeclarations.declare(new RecipeQueryTool());
         ServerToolDeclarations.declare(new LootQueryTool());
@@ -56,6 +61,8 @@ public final class ClientTools {
         TianshuTools.unregister(TagQueryTool.ID);
         TianshuTools.unregister(InventoryInspectTool.ID);
         TianshuTools.unregister(CapabilityReadTool.ID);
+        ServerActionTools.ids().forEach(TianshuTools::unregister);
+        TianshuTools.unregister(SayTool.ID);
         ServerToolDeclarations.clearForTests();
         REGISTERED.set(false);
     }

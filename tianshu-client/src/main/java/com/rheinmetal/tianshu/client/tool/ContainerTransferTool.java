@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferRequest;
@@ -103,7 +103,7 @@ public final class ContainerTransferTool implements
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "container.transfer needs non-negative slots and a count between 1 and 64"));
         }
-        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.INVENTORY);
+        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }

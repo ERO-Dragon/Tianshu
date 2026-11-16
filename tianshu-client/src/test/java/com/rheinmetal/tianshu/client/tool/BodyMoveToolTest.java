@@ -2,15 +2,15 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -44,7 +44,7 @@ class BodyMoveToolTest {
         TianshuTools.unregister(BodyMoveTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -55,7 +55,7 @@ class BodyMoveToolTest {
     @Test
     void aMoveReachesThePortAsABodyActor() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
-        TianshuRuntimePorts.register(AgentMotionPort.class, new AgentMotionPort() {
+        TianshuRuntimePorts.register(EntityMotionPort.class, new EntityMotionPort() {
             @Override
             public CompletableFuture<MoveResult> move(ActorRef actor, ActorPosition target, MoveOptions options) {
                 seen.set(actor);
@@ -69,7 +69,7 @@ class BodyMoveToolTest {
         });
         TianshuTools.register(new BodyMoveTool());
         TianshuTools.setEnabled(BodyMoveTool.ID, true);
-        TestBodies.register("body-1", BodyCapability.MOVE);
+        TestBodies.register("body-1", EntityCapability.MOVE);
 
         JsonObject envelope = envelope("{\"body\":\"body-1\",\"x\":10,\"y\":64,\"z\":-3}",
                 ToolCaller.player("p", true));
@@ -82,7 +82,7 @@ class BodyMoveToolTest {
     void aBodyWithoutMoveIsRefusedAsUnsupported() throws Exception {
         TianshuTools.register(new BodyMoveTool());
         TianshuTools.setEnabled(BodyMoveTool.ID, true);
-        TestBodies.register("still", BodyCapability.LOOK);
+        TestBodies.register("still", EntityCapability.LOOK);
 
         JsonObject refused = envelope("{\"body\":\"still\",\"x\":0,\"y\":64,\"z\":0}",
                 ToolCaller.player("p", true));

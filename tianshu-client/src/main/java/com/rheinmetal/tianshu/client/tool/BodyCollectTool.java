@@ -1,23 +1,23 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentActionPort;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.BlockHit;
-import com.rheinmetal.tianshu.api.agent.BlockTarget;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.CollectResult;
-import com.rheinmetal.tianshu.api.agent.MoveMode;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActionPort;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.BlockHit;
+import com.rheinmetal.tianshu.api.entity.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.CollectResult;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
@@ -60,7 +60,7 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
@@ -96,8 +96,8 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        for (BodyCapability capability : List.of(BodyCapability.MOVE, BodyCapability.MINE,
-                BodyCapability.INVENTORY)) {
+        for (EntityCapability capability : List.of(EntityCapability.MOVE, EntityCapability.MINE,
+                EntityCapability.INVENTORY)) {
             Optional<ToolException> refusal = scope.capabilityRefusal(capability);
             if (refusal.isPresent()) {
                 return CompletableFuture.failedFuture(refusal.get());
@@ -143,15 +143,15 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
             return CompletableFuture.completedFuture(new CollectResult(collected, wanted - collected,
                     "the collect budget was exhausted"));
         }
-        AgentBody body = AgentBodies.resolve(actor.id()).orElse(null);
+        EntityActor body = EntityActors.resolve(actor.id()).orElse(null);
         if (body == null) {
             return CompletableFuture.completedFuture(
                     new CollectResult(collected, wanted - collected, "the agent body is not present"));
         }
-        Optional<AgentWorldQueryPort> query = handler(actor, AgentBodyActions::query);
-        Optional<AgentMotionPort> motion = handler(actor, AgentBodyActions::motion);
-        Optional<AgentActionPort> action = handler(actor, AgentBodyActions::action);
-        Optional<AgentItemPort> items = handler(actor, AgentBodyActions::items);
+        Optional<EntityQueryPort> query = handler(actor, EntityActions::query);
+        Optional<EntityMotionPort> motion = handler(actor, EntityActions::motion);
+        Optional<EntityActionPort> action = handler(actor, EntityActions::action);
+        Optional<EntityItemPort> items = handler(actor, EntityActions::items);
         if (query.isEmpty() || motion.isEmpty() || action.isEmpty()) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                     "this body cannot collect: it is missing a query, motion or action handler"));
@@ -220,7 +220,7 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
         return best;
     }
 
-    private static <T> Optional<T> handler(ActorRef actor, Function<AgentBodyActions, Optional<T>> pick) {
-        return AgentBodies.actions(actor.id()).flatMap(pick);
+    private static <T> Optional<T> handler(ActorRef actor, Function<EntityActions, Optional<T>> pick) {
+        return EntityActors.actions(actor.id()).flatMap(pick);
     }
 }

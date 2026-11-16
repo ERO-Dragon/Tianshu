@@ -2,14 +2,14 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.DropResult;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.DropResult;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -45,7 +45,7 @@ class BodyDropToolTest {
         TianshuTools.unregister(BodyDropTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
-        AgentBodies.clearForTests();
+        EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
@@ -63,7 +63,7 @@ class BodyDropToolTest {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
         AtomicInteger slotSeen = new AtomicInteger(-1);
         AtomicInteger countSeen = new AtomicInteger(-1);
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 throw new AssertionError("drop test must not pick up");
@@ -83,7 +83,7 @@ class BodyDropToolTest {
             }
         });
         enable();
-        TestBodies.register("body-1", BodyCapability.INVENTORY);
+        TestBodies.register("body-1", EntityCapability.INVENTORY);
 
         JsonObject result = envelope("{\"body\":\"body-1\",\"slot\":2,\"count\":3}",
                 ToolCaller.player("p", true));
@@ -97,7 +97,7 @@ class BodyDropToolTest {
     @Test
     void aBodyWithoutAnInventoryIsRefusedBeforeThePortIsTouched() throws Exception {
         AtomicInteger reached = new AtomicInteger();
-        TianshuRuntimePorts.register(AgentItemPort.class, new AgentItemPort() {
+        TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
             public CompletableFuture<PickupResult> pickup(ActorRef actor, int radius) {
                 throw new AssertionError("drop test must not pick up");
@@ -115,7 +115,7 @@ class BodyDropToolTest {
             }
         });
         enable();
-        TestBodies.register("float", BodyCapability.MOVE);
+        TestBodies.register("float", EntityCapability.MOVE);
 
         JsonObject refused = envelope("{\"body\":\"float\",\"slot\":0}", ToolCaller.player("p", true));
 
@@ -127,7 +127,7 @@ class BodyDropToolTest {
     @Test
     void aSlotOutOfRangeIsInvalid() throws Exception {
         enable();
-        TestBodies.register("body-1", BodyCapability.INVENTORY);
+        TestBodies.register("body-1", EntityCapability.INVENTORY);
 
         JsonObject refused = envelope("{\"body\":\"body-1\",\"slot\":99}", ToolCaller.player("p", true));
 

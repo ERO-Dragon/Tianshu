@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentEntityUsePort;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityUsePort;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -74,13 +74,13 @@ public final class EntityUseTool implements TianshuTool<EntityUseTool.Args, Acti
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "entity.use needs an entity id"));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(BodyCapability.USE);
+        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.USE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         ActorRef actor = scope.actor();
         String entityId = args.entity().trim();
-        return TianshuRuntimePorts.find(AgentEntityUsePort.class)
+        return TianshuRuntimePorts.find(EntityUsePort.class)
                 .map(port -> port.useOn(actor, entityId))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "entity interaction is only available on the server")));

@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodies;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
@@ -72,10 +72,10 @@ public final class BodyListTool implements TianshuTool<JsonObject, BodyListTool.
                     "body.list runs for a player, an agent or a body"));
         }
         List<Row> rows = new ArrayList<>();
-        for (AgentBody body : AgentBodies.list()) {
+        for (EntityActor body : EntityActors.list()) {
             rows.add(new Row(body.id(), body.operator(), body.position().dimension(),
                     body.position().x(), body.position().y(), body.position().z(),
-                    body.capabilities().stream().map(BodyCapability::name).sorted().toList()));
+                    body.capabilities().stream().map(EntityCapability::name).sorted().toList()));
         }
         return CompletableFuture.completedFuture(new Result(List.copyOf(rows)));
     }

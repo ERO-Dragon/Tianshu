@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -64,7 +64,7 @@ public final class BodyInventoryTool implements TianshuTool<BodyInventoryTool.Ar
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
         ActorRef actor = scope.actor();
-        return TianshuRuntimePorts.find(AgentWorldQueryPort.class)
+        return TianshuRuntimePorts.find(EntityQueryPort.class)
                 .map(port -> port.inventory(actor))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "inventory reading is only available on the server")));

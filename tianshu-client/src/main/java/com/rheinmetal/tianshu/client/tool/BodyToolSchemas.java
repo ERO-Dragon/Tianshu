@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.agent.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.BlockTarget;
 
 /** Json-schema fragments shared by the body tools, so five schemas do not drift apart. */
 final class BodyToolSchemas {

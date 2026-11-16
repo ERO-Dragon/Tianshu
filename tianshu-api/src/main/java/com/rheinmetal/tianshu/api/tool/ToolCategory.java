@@ -15,7 +15,16 @@ public enum ToolCategory {
     SERVER_READ,
 
     /** A world change, executed by the server component. Disabled by default. */
-    SERVER_WRITE;
+    SERVER_WRITE,
+
+    /**
+     * A body's own action: the entity moves, mines or places on its own behalf.
+     *
+     * <p>Disabled by default like any world change, but no operator is required: who may command the body is decided
+     * by ownership, not by the caller's permission. When the body is player-like, the server's own permission system
+     * bounds it further, because that entity is a player.</p>
+     */
+    BODY_WRITE;
 
     public boolean isServerSide() {
         return this != LOCAL;

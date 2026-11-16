@@ -80,9 +80,15 @@ public final class ToolArgumentValidator {
                     check(properties.getAsJsonObject(key), value.get(key), path + "." + key, depth + 1, errors);
                 }
             }
-            if (schema.has("additionalProperties") && schema.get("additionalProperties").isJsonPrimitive()
+            // Strict by default: an argument object that does not say how it treats undeclared fields is treated as
+            // refusing them. A model that mis-spells a field used to have it silently dropped, which looks exactly
+            // like the tool ignoring a correct instruction — the hardest kind of failure to read from a transcript.
+            // A tool that really wants open arguments declares `additionalProperties: true`.
+            boolean acceptsExtras = schema.has("additionalProperties")
+                    && schema.get("additionalProperties").isJsonPrimitive()
                     && schema.get("additionalProperties").getAsJsonPrimitive().isBoolean()
-                    && !schema.get("additionalProperties").getAsBoolean()) {
+                    && schema.get("additionalProperties").getAsBoolean();
+            if (!acceptsExtras) {
                 for (String key : value.keySet()) {
                     if (!properties.has(key)) {
                         errors.add(path + "." + key + " is not allowed");
