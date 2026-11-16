@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentEntityUsePort;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityUsePort;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import net.minecraft.server.MinecraftServer;
@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>Covers feeding, taming, leashing and trading, which are all the same vanilla entry point. Riding is not
  * included: a passenger body needs its own control path, which this port does not model.</p>
  */
-public final class AgentEntityUseSource implements AgentEntityUsePort {
+public final class AgentEntityUseSource implements EntityUsePort {
 
     private static final double REACH_SQUARED = 36.0;
 
@@ -70,7 +70,7 @@ public final class AgentEntityUseSource implements AgentEntityUsePort {
             return ActionResult.rejected("the target is out of reach");
         }
         int slot = bodies.activeSlot(body.id().toString());
-        ActionContext context = ActionContext.hand(server, actor, bodies, actionPlayers, slot).orElse(null);
+        ActionContext context = ActionContext.hand(server, actor, bodies, slot).orElse(null);
         if (context == null) {
             return ActionResult.rejected("the agent body is not present");
         }

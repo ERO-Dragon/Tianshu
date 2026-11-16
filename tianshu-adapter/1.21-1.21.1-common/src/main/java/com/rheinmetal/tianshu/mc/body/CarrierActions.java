@@ -1,12 +1,12 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.AgentActionPort;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentEntityUsePort;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.AgentItemUsePort;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
+import com.rheinmetal.tianshu.api.entity.EntityActionPort;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityUsePort;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityItemUsePort;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
@@ -31,19 +31,19 @@ import java.util.Optional;
  * <p>Each handler is created once per server registry and reused; handlers themselves are stateless beyond the
  * registry they read. A third-party carrier may return only the handlers it can perform.</p>
  */
-public final class CarrierActions implements AgentBodyActions {
+public final class CarrierActions implements EntityActions {
 
-    private final AgentMotionPort motion;
-    private final AgentActionPort action;
-    private final AgentItemPort items;
-    private final AgentWorldQueryPort query;
+    private final EntityMotionPort motion;
+    private final EntityActionPort action;
+    private final EntityItemPort items;
+    private final EntityQueryPort query;
     private final BlockPlacePort placement;
     private final BlockInteractPort interaction;
     private final CraftPort craft;
     private final ContainerTransferPort transfer;
     private final BlockMachinePort machine;
-    private final AgentItemUsePort itemUse;
-    private final AgentEntityUsePort entityUse;
+    private final EntityItemUsePort itemUse;
+    private final EntityUsePort entityUse;
 
     public CarrierActions(MinecraftServer server, BodyRegistry bodies, ActionPlayerFactory actionPlayers) {
         this.motion = new AgentMotionSource(server, bodies);
@@ -60,22 +60,22 @@ public final class CarrierActions implements AgentBodyActions {
     }
 
     @Override
-    public Optional<AgentMotionPort> motion() {
+    public Optional<EntityMotionPort> motion() {
         return Optional.of(motion);
     }
 
     @Override
-    public Optional<AgentActionPort> action() {
+    public Optional<EntityActionPort> action() {
         return Optional.of(action);
     }
 
     @Override
-    public Optional<AgentItemPort> items() {
+    public Optional<EntityItemPort> items() {
         return Optional.of(items);
     }
 
     @Override
-    public Optional<AgentWorldQueryPort> query() {
+    public Optional<EntityQueryPort> query() {
         return Optional.of(query);
     }
 
@@ -105,12 +105,12 @@ public final class CarrierActions implements AgentBodyActions {
     }
 
     @Override
-    public Optional<AgentItemUsePort> itemUse() {
+    public Optional<EntityItemUsePort> itemUse() {
         return Optional.of(itemUse);
     }
 
     @Override
-    public Optional<AgentEntityUsePort> entityUse() {
+    public Optional<EntityUsePort> entityUse() {
         return Optional.of(entityUse);
     }
 }

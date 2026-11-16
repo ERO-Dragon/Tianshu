@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -74,8 +74,7 @@ public final class ActionContext implements AutoCloseable {
         }
     }
 
-    public static Optional<ActionContext> open(MinecraftServer server, ActorRef actor, BodyRegistry bodies,
-                                               ActionPlayerFactory factory) {
+    public static Optional<ActionContext> open(MinecraftServer server, ActorRef actor, BodyRegistry bodies) {
         if (actor.kind() == ActorRef.Kind.PLAYER) {
             ServerPlayer player = player(server, actor.id());
             if (player == null) {
@@ -87,16 +86,19 @@ public final class ActionContext implements AutoCloseable {
         if (body == null || body.inventory() == null) {
             return Optional.empty();
         }
-        Player facade = factory.create(body.level(), body.position(),
-                body.entity().getYRot(), body.entity().getXRot());
-        Inventory working = facade.getInventory();
+        Player acting = body.identity().player(body);
+        if (!body.identity().borrowed()) {
+            // A player-backed body acts through its own player: its inventory *is* the body's, so nothing is copied.
+            return Optional.of(new ActionContext(acting, null, acting.getInventory(), false, -1, false));
+        }
+        Inventory working = acting.getInventory();
         for (int slot = 0; slot < INVENTORY_SLOTS; slot++) {
             working.setItem(slot, net.minecraft.world.item.ItemStack.EMPTY);
         }
         for (int slot = 0; slot < MAIN_SLOTS; slot++) {
             working.setItem(slot, body.inventory().getItem(slot).copy());
         }
-        return Optional.of(new ActionContext(facade, body.inventory(), working, true, -1, false));
+        return Optional.of(new ActionContext(acting, body.inventory(), working, true, -1, false));
     }
 
     /**
@@ -104,7 +106,7 @@ public final class ActionContext implements AutoCloseable {
      * and wears it down, so copying the whole inventory would let it mine with an item the body never equipped.
      */
     public static Optional<ActionContext> hand(MinecraftServer server, ActorRef actor, BodyRegistry bodies,
-                                               ActionPlayerFactory factory, int bodySlot) {
+                                               int EntitySlot) {
         if (actor.kind() != ActorRef.Kind.BODY) {
             return Optional.empty();
         }
@@ -112,17 +114,21 @@ public final class ActionContext implements AutoCloseable {
         if (body == null || body.inventory() == null) {
             return Optional.empty();
         }
-        Player facade = factory.create(body.level(), body.position(),
-                body.entity().getYRot(), body.entity().getXRot());
-        Inventory working = facade.getInventory();
+        Player acting = body.identity().player(body);
+        if (!body.identity().borrowed()) {
+            // The body's own player mines with the slot the body has active — that is what a player would do.
+            acting.getInventory().selected = Math.max(0, EntitySlot);
+            return Optional.of(new ActionContext(acting, null, acting.getInventory(), false, EntitySlot, false));
+        }
+        Inventory working = acting.getInventory();
         for (int slot = 0; slot < INVENTORY_SLOTS; slot++) {
             working.setItem(slot, net.minecraft.world.item.ItemStack.EMPTY);
         }
-        if (bodySlot >= 0) {
-            working.setItem(0, body.inventory().getItem(bodySlot).copy());
+        if (EntitySlot >= 0) {
+            working.setItem(0, body.inventory().getItem(EntitySlot).copy());
         }
         working.selected = 0;
-        return Optional.of(new ActionContext(facade, body.inventory(), working, true, bodySlot, true));
+        return Optional.of(new ActionContext(acting, body.inventory(), working, true, EntitySlot, true));
     }
 
     private static ServerPlayer player(MinecraftServer server, String playerId) {

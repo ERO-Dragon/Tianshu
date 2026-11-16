@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.game.BlockPlaceResult;
@@ -84,7 +84,7 @@ public final class BlockPlaceSource implements BlockPlacePort {
         BlockState beforeHere = holder.level().getBlockState(pos);
         BlockState beforeThere = holder.level().getBlockState(relative);
 
-        ActionContext context = ActionContext.open(server, actor, bodies, actionPlayers).orElse(null);
+        ActionContext context = ActionContext.open(server, actor, bodies).orElse(null);
         if (context == null) {
             return failure(actor.kind() == ActorRef.Kind.BODY
                     ? "the agent body is not present"

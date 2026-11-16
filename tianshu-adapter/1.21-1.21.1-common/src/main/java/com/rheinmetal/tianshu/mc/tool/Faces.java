@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.agent.BlockFace;
+import com.rheinmetal.tianshu.api.entity.BlockFace;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;

@@ -1,12 +1,12 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.AgentBody;
-import com.rheinmetal.tianshu.api.agent.AgentBodyActions;
-import com.rheinmetal.tianshu.api.agent.AgentBodyProvider;
-import com.rheinmetal.tianshu.api.agent.BodyAccess;
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityProvider;
+import com.rheinmetal.tianshu.api.entity.EntityAccess;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
@@ -36,27 +36,29 @@ import java.util.UUID;
 
 /**
  * The server-side agent bodies of this adapter. The registry owns the carriers and their inventories; the platform
- * only sees {@link AgentBody} snapshots through {@link #resolve(String)}.
+ * only sees {@link EntityActor} snapshots through {@link #resolve(String)}.
  *
  * <p>Bodies and their inventories are saved by {@link BodyPersistence}; without a running server they are memory
  * state only. A removed entity makes its body disappear rather than turning into a still body.</p>
  */
-public final class BodyRegistry implements AgentBodyProvider {
+public final class BodyRegistry implements EntityProvider {
 
     private static final int INVENTORY_SIZE = 36;
 
     private final Map<UUID, BodyState> bodies = new LinkedHashMap<>();
     private final Map<UUID, Integer> activeSlots = new LinkedHashMap<>();
-    private final Map<UUID, BodyAccess> accessPolicies = new LinkedHashMap<>();
+    private final Map<UUID, EntityAccess> accessPolicies = new LinkedHashMap<>();
     private final Map<UUID, Set<UUID>> trusted = new LinkedHashMap<>();
-    private final Map<UUID, EnumMap<BodySlot, ItemStack>> equipment = new LinkedHashMap<>();
+    private final Map<UUID, EnumMap<EntitySlot, ItemStack>> equipment = new LinkedHashMap<>();
     private final MinecraftServer server;
     private final ActionPlayerFactory actionPlayers;
-    private AgentBodyActions actions;
+    private final PlayerBodyFactory playerBodies;
+    private EntityActions actions;
 
-    public BodyRegistry(MinecraftServer server, ActionPlayerFactory actionPlayers) {
+    public BodyRegistry(MinecraftServer server, ActionPlayerFactory actionPlayers, PlayerBodyFactory playerBodies) {
         this.server = server;
         this.actionPlayers = actionPlayers;
+        this.playerBodies = playerBodies;
     }
 
     /** The body's active main slot, or -1 when nothing is equipped. */
@@ -83,21 +85,21 @@ public final class BodyRegistry implements AgentBodyProvider {
     }
 
     /** The access policy of a body; a live body defaults to owner-only. */
-    public BodyAccess access(String bodyId) {
+    public EntityAccess access(String bodyId) {
         UUID id = parse(bodyId);
         if (id == null) {
-            return BodyAccess.OWNER;
+            return EntityAccess.OWNER;
         }
-        return accessPolicies.getOrDefault(id, BodyAccess.OWNER);
+        return accessPolicies.getOrDefault(id, EntityAccess.OWNER);
     }
 
     /** Sets the policy; owner is the default, so it is stored as "no entry". Returns false for an unknown body. */
-    public boolean setAccess(String bodyId, BodyAccess access) {
+    public boolean setAccess(String bodyId, EntityAccess access) {
         UUID id = parse(bodyId);
         if (id == null || !bodies.containsKey(id) || access == null) {
             return false;
         }
-        if (access == BodyAccess.OWNER) {
+        if (access == EntityAccess.OWNER) {
             accessPolicies.remove(id);
         } else {
             accessPolicies.put(id, access);
@@ -156,11 +158,11 @@ public final class BodyRegistry implements AgentBodyProvider {
         if (callerId != null && callerId.equals(bodies.get(id).owner())) {
             return Optional.empty();
         }
-        BodyAccess policy = accessPolicies.getOrDefault(id, BodyAccess.OWNER);
-        if (policy == BodyAccess.OPEN) {
+        EntityAccess policy = accessPolicies.getOrDefault(id, EntityAccess.OWNER);
+        if (policy == EntityAccess.OPEN) {
             return Optional.empty();
         }
-        if (policy == BodyAccess.TRUSTED && callerId != null
+        if (policy == EntityAccess.TRUSTED && callerId != null
                 && trusted.getOrDefault(id, Set.of()).contains(callerId)) {
             return Optional.empty();
         }
@@ -169,30 +171,52 @@ public final class BodyRegistry implements AgentBodyProvider {
     }
 
     /** Spawns a carrier for {@code owner} at the owner's position and returns the new body. */
-    public AgentBody spawn(ServerPlayer owner, BodyKind kind) {
+    public EntityActor spawn(ServerPlayer owner, BodyKind kind) {
+        return spawn(owner, kind, false);
+    }
+
+    /**
+     * Spawns a body, optionally player-backed.
+     *
+     * <p>The identity is decided here, once: a player-backed body acts through its own long-lived player, an ordinary
+     * body borrows a facade per call. Nothing downstream branches on it.</p>
+     */
+    public EntityActor spawn(ServerPlayer owner, BodyKind kind, boolean playerIdentity) {
         ServerLevel level = owner.serverLevel();
-        Entity entity = switch (kind) {
-            case MARKER -> new Marker(EntityType.MARKER, level);
-            case STAND -> {
-                ArmorStand stand = new ArmorStand(EntityType.ARMOR_STAND, level);
-                stand.setNoGravity(true);
-                stand.setSilent(true);
-                yield stand;
+        Entity entity;
+        BodyIdentity identity;
+        if (playerIdentity) {
+            ServerPlayer player = playerBodies == null ? null : playerBodies.create(level, owner.getUUID());
+            if (player == null) {
+                throw new IllegalStateException("this adapter cannot create player-backed bodies");
             }
-            case WALKER -> {
-                WalkerBody walker = BodyCarriers.walker().create(level);
-                if (walker == null) {
-                    throw new IllegalStateException("cannot create a walker body");
+            entity = player;
+            identity = BodyIdentity.playerBacked(player);
+        } else {
+            entity = switch (kind) {
+                case MARKER -> new Marker(EntityType.MARKER, level);
+                case STAND -> {
+                    ArmorStand stand = new ArmorStand(EntityType.ARMOR_STAND, level);
+                    stand.setNoGravity(true);
+                    stand.setSilent(true);
+                    yield stand;
                 }
-                yield walker;
-            }
-        };
+                case WALKER -> {
+                    WalkerBody walker = BodyCarriers.walker().create(level);
+                    if (walker == null) {
+                        throw new IllegalStateException("cannot create a walker body");
+                    }
+                    yield walker;
+                }
+            };
+            identity = BodyIdentity.borrowed(actionPlayers);
+        }
         Vec3 at = owner.position();
         entity.moveTo(at.x, at.y, at.z, owner.getYRot(), owner.getXRot());
         level.addFreshEntity(entity);
         Container inventory = kind == BodyKind.MARKER ? null : new SimpleContainer(INVENTORY_SIZE);
         BodyState state = new BodyState(entity.getUUID(), kind, inventory, owner.getUUID(),
-                owner.hasPermissions(2), entity);
+                owner.hasPermissions(2), entity, identity);
         bodies.put(state.id(), state);
         return view(state);
     }
@@ -213,8 +237,8 @@ public final class BodyRegistry implements AgentBodyProvider {
     }
 
     @Override
-    public List<AgentBody> all() {
-        List<AgentBody> views = new ArrayList<>();
+    public List<EntityActor> all() {
+        List<EntityActor> views = new ArrayList<>();
         for (BodyState state : bodies.values()) {
             if (!state.entity().isRemoved()) {
                 views.add(view(state));
@@ -238,23 +262,23 @@ public final class BodyRegistry implements AgentBodyProvider {
     }
 
     /** The item equipped on one body slot; empty when nothing is equipped there. */
-    public ItemStack equipment(String bodyId, BodySlot slot) {
+    public ItemStack equipment(String bodyId, EntitySlot slot) {
         UUID id = parse(bodyId);
         if (id == null || slot == null) {
             return ItemStack.EMPTY;
         }
-        EnumMap<BodySlot, ItemStack> slots = equipment.get(id);
+        EnumMap<EntitySlot, ItemStack> slots = equipment.get(id);
         return slots == null ? ItemStack.EMPTY : slots.getOrDefault(slot, ItemStack.EMPTY);
     }
 
     /** Replaces one equipment slot; an empty stack clears it. */
-    public void setEquipment(String bodyId, BodySlot slot, ItemStack stack) {
+    public void setEquipment(String bodyId, EntitySlot slot, ItemStack stack) {
         UUID id = parse(bodyId);
         if (id == null || slot == null || !bodies.containsKey(id)) {
             return;
         }
         if (stack == null || stack.isEmpty()) {
-            EnumMap<BodySlot, ItemStack> slots = equipment.get(id);
+            EnumMap<EntitySlot, ItemStack> slots = equipment.get(id);
             if (slots != null) {
                 slots.remove(slot);
                 if (slots.isEmpty()) {
@@ -263,7 +287,7 @@ public final class BodyRegistry implements AgentBodyProvider {
             }
             return;
         }
-        equipment.computeIfAbsent(id, ignored -> new EnumMap<>(BodySlot.class)).put(slot, stack.copy());
+        equipment.computeIfAbsent(id, ignored -> new EnumMap<>(EntitySlot.class)).put(slot, stack.copy());
     }
 
     /** Pushes every equipment slot onto the carrier entity, so vanilla armour and offhand rules apply. */
@@ -271,12 +295,12 @@ public final class BodyRegistry implements AgentBodyProvider {
         if (!(state.entity() instanceof LivingEntity living)) {
             return;
         }
-        for (BodySlot slot : BodySlot.values()) {
+        for (EntitySlot slot : EntitySlot.values()) {
             living.setItemSlot(mcSlot(slot), equipment(state.id().toString(), slot));
         }
     }
 
-    private static EquipmentSlot mcSlot(BodySlot slot) {
+    private static EquipmentSlot mcSlot(EntitySlot slot) {
         return switch (slot) {
             case MAIN_HAND -> EquipmentSlot.MAINHAND;
             case OFF_HAND -> EquipmentSlot.OFFHAND;
@@ -364,7 +388,7 @@ public final class BodyRegistry implements AgentBodyProvider {
             state.inventory().setChanged();
         }
         if (equipment.containsKey(state.id())) {
-            for (BodySlot slot : BodySlot.values()) {
+            for (EntitySlot slot : EntitySlot.values()) {
                 ItemStack stack = equipment.get(state.id()).get(slot);
                 if (stack != null && !stack.isEmpty()) {
                     stacks.add(stack.copy());
@@ -380,12 +404,12 @@ public final class BodyRegistry implements AgentBodyProvider {
     }
 
     @Override
-    public Optional<AgentBody> resolve(String bodyId) {
+    public Optional<EntityActor> resolve(String bodyId) {
         return state(bodyId).map(BodyRegistry::view);
     }
 
     @Override
-    public Optional<AgentBodyActions> actions(String bodyId) {
+    public Optional<EntityActions> actions(String bodyId) {
         if (state(bodyId).isEmpty()) {
             return Optional.empty();
         }
@@ -419,8 +443,8 @@ public final class BodyRegistry implements AgentBodyProvider {
         }
     }
 
-    private static AgentBody view(BodyState state) {
-        return new AgentBody() {
+    private static EntityActor view(BodyState state) {
+        return new EntityActor() {
             @Override
             public String id() {
                 return state.id().toString();
@@ -432,20 +456,36 @@ public final class BodyRegistry implements AgentBodyProvider {
             }
 
             @Override
+            public boolean playerLike() {
+                return state.identity().playerLike();
+            }
+
+            @Override
             public ActorPosition position() {
                 Vec3 at = state.position();
                 return new ActorPosition(state.level().dimension().location().toString(), at.x, at.y, at.z);
             }
 
             @Override
-            public Set<BodyCapability> capabilities() {
+            public Set<EntityCapability> capabilities() {
                 return state.kind().capabilities();
             }
         };
     }
 
+    /**
+     * A body restored from disk.
+     *
+     * <p>Restored bodies come back with the ordinary, borrowed identity: a player-backed identity lives only as long as
+     * its player, and a saved body has none. Persistence therefore stores shapes and inventories, not identities.</p>
+     */
+    public BodyState restored(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity) {
+        return new BodyState(id, kind, inventory, owner, operator, entity, BodyIdentity.borrowed(actionPlayers));
+    }
+
     /** A carrier plus the state the ports act on; the entity is live, so position and level are read through it. */
-    public record BodyState(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity) {
+    public record BodyState(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity,
+                            BodyIdentity identity) {
 
         public ServerLevel level() {
             return (ServerLevel) entity.level();

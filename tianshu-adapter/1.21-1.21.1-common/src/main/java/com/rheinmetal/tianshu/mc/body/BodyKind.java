@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.BodyCapability;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 
 import java.util.Locale;
 import java.util.Optional;
@@ -17,23 +17,23 @@ import java.util.Set;
 public enum BodyKind {
 
     /** A vanilla marker: invisible, no health, no collision, no inventory and no hands. */
-    MARKER(Set.of(BodyCapability.MOVE, BodyCapability.LOOK)),
+    MARKER(Set.of(EntityCapability.MOVE, EntityCapability.LOOK)),
 
     /** A gravity-free armour stand: it carries a 36-slot inventory and can use, place, strike and break. */
-    STAND(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.USE, BodyCapability.PLACE,
-            BodyCapability.MINE, BodyCapability.ATTACK, BodyCapability.INVENTORY)),
+    STAND(Set.of(EntityCapability.MOVE, EntityCapability.LOOK, EntityCapability.USE, EntityCapability.PLACE,
+            EntityCapability.MINE, EntityCapability.ATTACK, EntityCapability.INVENTORY)),
 
     /** A pathfinder mob: same inventory and actions as the stand, but it can actually walk once navigation is wired. */
-    WALKER(Set.of(BodyCapability.MOVE, BodyCapability.LOOK, BodyCapability.USE, BodyCapability.PLACE,
-            BodyCapability.MINE, BodyCapability.ATTACK, BodyCapability.INVENTORY));
+    WALKER(Set.of(EntityCapability.MOVE, EntityCapability.LOOK, EntityCapability.USE, EntityCapability.PLACE,
+            EntityCapability.MINE, EntityCapability.ATTACK, EntityCapability.INVENTORY));
 
-    private final Set<BodyCapability> capabilities;
+    private final Set<EntityCapability> capabilities;
 
-    BodyKind(Set<BodyCapability> capabilities) {
+    BodyKind(Set<EntityCapability> capabilities) {
         this.capabilities = capabilities;
     }
 
-    public Set<BodyCapability> capabilities() {
+    public Set<EntityCapability> capabilities() {
         return capabilities;
     }
 

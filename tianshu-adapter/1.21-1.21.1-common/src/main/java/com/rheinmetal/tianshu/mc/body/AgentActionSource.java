@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentActionPort;
-import com.rheinmetal.tianshu.api.agent.BlockTarget;
-import com.rheinmetal.tianshu.api.agent.EntityTarget;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActionPort;
+import com.rheinmetal.tianshu.api.entity.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.EntityTarget;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import net.minecraft.core.BlockPos;
@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * changes, the body moves out of reach, or the mine times out. Striking stays single-hit; an equipped item adds its
  * attack damage and wears one point per successful strike.</p>
  */
-public final class AgentActionSource implements AgentActionPort {
+public final class AgentActionSource implements EntityActionPort {
 
     private static final double REACH_SQUARED = 36.0;
     private static final float BASE_ATTACK_DAMAGE = 1.0F;
@@ -97,8 +97,8 @@ public final class AgentActionSource implements AgentActionPort {
         }
         ResourceLocation id = BuiltInRegistries.BLOCK.getKey(initial.getBlock());
         String blockId = id == null ? "" : id.toString();
-        int bodySlot = bodies.activeSlot(body.id().toString());
-        ActionContext context = ActionContext.hand(server, actor, bodies, actionPlayers, bodySlot).orElse(null);
+        int EntitySlot = bodies.activeSlot(body.id().toString());
+        ActionContext context = ActionContext.hand(server, actor, bodies, EntitySlot).orElse(null);
         if (context == null) {
             result.complete(ActionResult.rejected("the agent body is not present"));
             return;

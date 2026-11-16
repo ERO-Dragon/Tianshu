@@ -153,6 +153,15 @@ public final class FabricClientBootstrap {
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
                 TianshuRuntimePorts.register(TagQueryPort.class, new TagQuerySource());
             TianshuRuntimePorts.register(InventoryQueryPort.class, new InventoryQuerySource());
+            // Speaking is what any player may do: a client act, so it needs no server switch or whitelist entry.
+            TianshuRuntimePorts.register(com.rheinmetal.tianshu.client.host.ClientChatPort.class, text -> {
+                net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+                if (minecraft == null || minecraft.getConnection() == null) {
+                    return false;
+                }
+                minecraft.getConnection().sendChat(text);
+                return true;
+            });
 
             audioManager = new AudioManager(diagnosticRouter, diagnosticRouter);
             session.own(audioManager::shutdown);
@@ -163,9 +172,6 @@ public final class FabricClientBootstrap {
             UiHost clientUiHost = new UiHost(() -> settingsModule);
             NativeModelLoadQueue loadQueue = new NativeModelLoadQueue();
             moduleSettingsSources = new ModuleSettingsSourceRegistry(diagnosticRouter);
-            // The action channel belongs to the entry point (the network registration needs it before any world
-            // connects); the port only exposes it to modules.
-            com.rheinmetal.tianshu.mc.host.ServerActionClient actions = TianshuFabric.actionClient();
             ClientPorts clientPorts = new ClientPorts(
                     clientScheduler,
                     clientUiHost,
@@ -179,8 +185,7 @@ public final class FabricClientBootstrap {
                     gameContextPort,
                     config::isDebugEnabled,
                     chatCatalogue,
-                    new LocalPresentation(),
-                    actions
+                    new LocalPresentation()
             );
             coreManager = new TianshuCoreManager(environment, audioManager, clientPorts,
                     context -> new ClientTianshuModuleAssembler(
@@ -231,7 +236,6 @@ public final class FabricClientBootstrap {
                     () -> textInputKey,
                     keyBindings,
                     clientUiHost,
-                    actions,
                     () -> TianshuFabric.PROTOCOL_VERSION,
                     diagnosticRouter
             );

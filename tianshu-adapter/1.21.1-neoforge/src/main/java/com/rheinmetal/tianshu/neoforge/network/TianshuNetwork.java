@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.neoforge.network;
 
 import com.rheinmetal.tianshu.mc.event.WorldEventHooks;
-import com.rheinmetal.tianshu.mc.host.ServerActionClient;
+
 import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
-import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
-import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
-import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
+
+
+
 import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
@@ -35,7 +35,7 @@ public final class TianshuNetwork {
         return PROTOCOL_VERSION;
     }
 
-    public static void register(RegisterPayloadHandlersEvent event, ServerActionClient actions,
+    public static void register(RegisterPayloadHandlersEvent event,
                                 ToolCallClient tools) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
         // One enqueue keeps a batch atomic with respect to other client work: consumers see the facts in the
@@ -47,12 +47,6 @@ public final class TianshuNetwork {
             }
             context.enqueueWork(() -> events.forEach(WorldEventHooks::publish));
         });
-        registrar.playToClient(ServerActionResultPacket.TYPE, ServerActionResultPacket.STREAM_CODEC,
-                (packet, context) -> actions.receiveResult(packet, context::enqueueWork));
-        registrar.playToClient(ServerActionCatalogPacket.TYPE, ServerActionCatalogPacket.STREAM_CODEC,
-                (packet, context) -> actions.receiveCatalog(packet, context::enqueueWork));
-        registrar.playToServer(ServerActionRequestPacket.TYPE, ServerActionRequestPacket.STREAM_CODEC,
-                com.rheinmetal.tianshu.neoforge.server.ServerActionHandler::handle);
         registrar.playToClient(ToolCallResultPacket.TYPE, ToolCallResultPacket.STREAM_CODEC,
                 (packet, context) -> context.enqueueWork(() -> tools.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         registrar.playToClient(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC,

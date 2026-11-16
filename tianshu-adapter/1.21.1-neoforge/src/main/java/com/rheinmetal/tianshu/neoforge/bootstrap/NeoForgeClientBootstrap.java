@@ -35,7 +35,7 @@ import com.rheinmetal.tianshu.mc.host.ClientLanguageSnapshot;
 import com.rheinmetal.tianshu.mc.host.SwingFilePicker;
 import com.rheinmetal.tianshu.mc.host.LocalPresentation;
 import com.rheinmetal.tianshu.mc.host.MainThreadScheduler;
-import com.rheinmetal.tianshu.mc.host.ServerActionClient;
+
 import com.rheinmetal.tianshu.mc.host.GameTextProvider;
 import com.rheinmetal.tianshu.mc.host.UiHost;
 import com.rheinmetal.tianshu.mc.host.GameEnvironment;
@@ -116,7 +116,7 @@ public final class NeoForgeClientBootstrap {
     private final ClientLanguageSnapshot languageSnapshot = new ClientLanguageSnapshot();
     private final Path gameDirectory;
     private final ClientConfig config;
-    private final ServerActionClient serverActions;
+
     private KeyMapping voiceKey;
     private KeyMapping textInputKey;
     private final DeclaredKeyBindings keyBindings = new DeclaredKeyBindings();
@@ -135,12 +135,12 @@ public final class NeoForgeClientBootstrap {
     private ClientSession clientSession;
     private boolean shutdownHookRegistered;
 
-    public NeoForgeClientBootstrap(ServerActionClient serverActions) {
-        this(FMLPaths.GAMEDIR.get(), serverActions);
+    public NeoForgeClientBootstrap() {
+        this(FMLPaths.GAMEDIR.get());
     }
 
-    NeoForgeClientBootstrap(Path gameDirectory, ServerActionClient serverActions) {
-        this.serverActions = Objects.requireNonNull(serverActions, "serverActions");
+    NeoForgeClientBootstrap(Path gameDirectory) {
+
         this.gameDirectory = Objects.requireNonNull(gameDirectory, "gameDirectory").toAbsolutePath().normalize();
         this.config = new ClientConfig(gameDirectory);
     }
@@ -196,6 +196,15 @@ public final class NeoForgeClientBootstrap {
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
                 TianshuRuntimePorts.register(TagQueryPort.class, new TagQuerySource());
             TianshuRuntimePorts.register(InventoryQueryPort.class, new InventoryQuerySource());
+            // Speaking is what any player may do: a client act, so it needs no server switch or whitelist entry.
+            TianshuRuntimePorts.register(com.rheinmetal.tianshu.client.host.ClientChatPort.class, text -> {
+                net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+                if (minecraft == null || minecraft.getConnection() == null) {
+                    return false;
+                }
+                minecraft.getConnection().sendChat(text);
+                return true;
+            });
 
             audioManager = new AudioManager(diagnosticRouter, diagnosticRouter);
             ClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
@@ -221,8 +230,7 @@ public final class NeoForgeClientBootstrap {
                     gameContextPort,
                     config::isDebugEnabled,
                     chatCatalogue,
-                    new LocalPresentation(),
-                    serverActions
+                    new LocalPresentation()
             );
             coreManager = new TianshuCoreManager(environment, audioManager, clientPorts,
                     context -> new ClientTianshuModuleAssembler(
@@ -284,7 +292,6 @@ public final class NeoForgeClientBootstrap {
                     () -> textInputKey,
                     keyBindings,
                     clientUiHost,
-                    serverActions,
                     TianshuNetwork::protocolVersion,
                     diagnosticRouter
             ));

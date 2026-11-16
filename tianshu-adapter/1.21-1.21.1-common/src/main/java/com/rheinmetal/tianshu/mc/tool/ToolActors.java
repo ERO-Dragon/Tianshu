@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import net.minecraft.server.MinecraftServer;

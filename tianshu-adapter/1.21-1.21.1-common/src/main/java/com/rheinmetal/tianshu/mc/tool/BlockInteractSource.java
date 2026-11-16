@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.BlockInteractResult;
@@ -102,7 +102,7 @@ public final class BlockInteractSource implements BlockInteractPort {
         BlockState state = level.getBlockState(pos);
         Direction face = Faces.of(null, body.position(), pos);
         BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos).relative(face, 0.5D), face, pos, false);
-        ActionContext context = ActionContext.open(server, actor, bodies, actionPlayers).orElse(null);
+        ActionContext context = ActionContext.open(server, actor, bodies).orElse(null);
         if (context == null) {
             return new BlockInteractResult("", false, "the agent body is not present");
         }

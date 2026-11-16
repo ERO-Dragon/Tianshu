@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentWorldQueryPort;
-import com.rheinmetal.tianshu.api.agent.BlockHit;
-import com.rheinmetal.tianshu.api.agent.EntityHit;
-import com.rheinmetal.tianshu.api.agent.ScanRequest;
-import com.rheinmetal.tianshu.api.agent.ScanResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
+import com.rheinmetal.tianshu.api.entity.BlockHit;
+import com.rheinmetal.tianshu.api.entity.EntityHit;
+import com.rheinmetal.tianshu.api.entity.ScanRequest;
+import com.rheinmetal.tianshu.api.entity.ScanResult;
 import com.rheinmetal.tianshu.api.game.InventoryEntry;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
 import com.rheinmetal.tianshu.api.tool.ToolError;
@@ -36,7 +36,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>Reads only. The radius and the result count are clamped so a scan can never turn into a full-chunk walk, and
  * only loaded positions are read: an unloaded area is absent from the result rather than generated on demand.</p>
  */
-public final class BodyQuerySource implements AgentWorldQueryPort {
+public final class BodyQuerySource implements EntityQueryPort {
 
     private static final int MAX_RADIUS = 16;
     private static final int MAX_LIMIT = 256;

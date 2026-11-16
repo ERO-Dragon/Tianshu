@@ -28,7 +28,8 @@ public final class FabricServerActionConfig {
 
     /** The whitelist, in the order the catalog announces it. */
     private static final List<String> ACTIONS = List.of(
-            "give_item", "teleport", "set_time", "set_weather", "spawn_entity", "broadcast");
+            "give_item", "teleport", "set_time", "set_weather", "spawn_entity", "broadcast",
+            "gamemode", "effect", "xp", "setblock", "kill", "enchant", "difficulty", "gamerule");
 
     private static final Map<String, Boolean> SWITCHES = new LinkedHashMap<>();
 
@@ -78,17 +79,6 @@ public final class FabricServerActionConfig {
 
     public static boolean enabled(String action) {
         return Boolean.TRUE.equals(SWITCHES.get(action));
-    }
-
-    /** The enabled actions, as the catalog packet carries them. */
-    public static List<String> enabledActions() {
-        List<String> enabled = new ArrayList<>(ACTIONS.size());
-        for (String action : ACTIONS) {
-            if (enabled(action)) {
-                enabled.add(action);
-            }
-        }
-        return enabled;
     }
 
     private static void writeDefaults(Path file, Properties values) {

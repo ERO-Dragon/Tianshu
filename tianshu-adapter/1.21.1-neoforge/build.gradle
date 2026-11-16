@@ -109,6 +109,18 @@ neoForge {
             if (quickPlayWorld != null && !quickPlayWorld.isBlank()) {
                 programArguments.addAll '--quickPlaySingleplayer', quickPlayWorld
             }
+            // Optional unattended acceptance run: the lab bench runs once after the registry settles and
+            // writes its report under the run directory. Pass -PtianshuLabAcceptance=1.
+            def labAcceptance = providers.gradleProperty('tianshuLabAcceptance').getOrNull()
+            if (labAcceptance != null && !labAcceptance.isBlank()) {
+                systemProperty 'tianshu.lab.acceptance', labAcceptance
+            }
+            // Optional: join a server instead of a save. Pass -PquickPlayServer=host:port; the acceptance run needs
+            // an operator player, and a dedicated server is where cheat-grade actions really belong.
+            def quickPlayServer = providers.gradleProperty('quickPlayServer').getOrNull()
+            if (quickPlayServer != null && !quickPlayServer.isBlank()) {
+                programArguments.addAll '--quickPlayMultiplayer', quickPlayServer
+            }
         }
 
         server {

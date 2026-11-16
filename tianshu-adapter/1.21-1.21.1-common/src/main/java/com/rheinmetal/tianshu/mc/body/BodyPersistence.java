@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.BodyAccess;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
+import com.rheinmetal.tianshu.api.entity.EntityAccess;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -76,7 +76,7 @@ public final class BodyPersistence {
             }
             tag.put("trusted", trusted);
             ListTag equipment = new ListTag();
-            for (BodySlot slot : BodySlot.values()) {
+            for (EntitySlot slot : EntitySlot.values()) {
                 ItemStack stack = bodies.equipment(state.id().toString(), slot);
                 if (stack.isEmpty()) {
                     continue;
@@ -158,13 +158,13 @@ public final class BodyPersistence {
             Optional<ItemStack> stack = ItemStack.parse(server.registryAccess(), item.get("item"));
             stack.ifPresent(value -> inventory.setItem(slot, value));
         }
-        bodies.restore(new BodyRegistry.BodyState(id, kind.get(), inventory, tag.getUUID("owner"),
+        bodies.restore(bodies.restored(id, kind.get(), inventory, tag.getUUID("owner"),
                 tag.getBoolean("operator"), entity), tag.getInt("activeSlot"));
         ListTag equipment = tag.getList("equipment", Tag.TAG_COMPOUND);
         for (int index = 0; index < equipment.size(); index++) {
             CompoundTag item = equipment.getCompound(index);
-            BodySlot slot = null;
-            for (BodySlot candidate : BodySlot.values()) {
+            EntitySlot slot = null;
+            for (EntitySlot candidate : EntitySlot.values()) {
                 if (candidate.name().equals(item.getString("slot"))) {
                     slot = candidate;
                 }
@@ -181,7 +181,7 @@ public final class BodyPersistence {
         if (restored != null) {
             bodies.applyEquipment(restored);
         }
-        BodyAccess access = parseAccess(tag.getString("access"));
+        EntityAccess access = parseAccess(tag.getString("access"));
         bodies.setAccess(id.toString(), access);
         ListTag trusted = tag.getList("trusted", Tag.TAG_STRING);
         for (int index = 0; index < trusted.size(); index++) {
@@ -194,13 +194,13 @@ public final class BodyPersistence {
         return true;
     }
 
-    private static BodyAccess parseAccess(String name) {
-        for (BodyAccess access : BodyAccess.values()) {
+    private static EntityAccess parseAccess(String name) {
+        for (EntityAccess access : EntityAccess.values()) {
             if (access.name().equalsIgnoreCase(name)) {
                 return access;
             }
         }
-        return BodyAccess.OWNER;
+        return EntityAccess.OWNER;
     }
 
     private static Entity find(MinecraftServer server, UUID id) {

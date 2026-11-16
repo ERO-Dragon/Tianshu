@@ -13,7 +13,7 @@ import com.rheinmetal.tianshu.neoforge.config.ClientConfig;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeBossEventWatch;
 import com.rheinmetal.tianshu.neoforge.event.NeoForgeClientFactWatch;
 import com.rheinmetal.tianshu.mc.host.ClientPlayerIdentity;
-import com.rheinmetal.tianshu.mc.host.ServerActionClient;
+
 import com.rheinmetal.tianshu.neoforge.network.TianshuNetwork;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.client.tool.ToolCallClient;
@@ -70,7 +70,54 @@ public final class TianshuNeoForge {
      */
     private final GameFactCollector serverCollector;
 
+    /**
+     * Reads every installed mod's {@code META-INF/tianshu/body_types.json} into the platform's declaration list.
+     *
+     * <p>This is the registration window's only chance: entity types cannot be added afterwards, and a module is not
+     * required to write loader code — a file in its jar is enough. A missing file is normal (the module declares no
+     * types); a malformed one is reported rather than dropped, because a silently ignored declaration means the type
+     * never exists and the symptom appears much later as "the body did not spawn".</p>
+     */
+    private static void collectDeclaredBodyTypes() {
+        System.Logger logger = System.getLogger("tianshu.adapter");
+        for (net.neoforged.neoforgespi.language.IModInfo info : net.neoforged.fml.ModList.get().getMods()) {
+            try {
+                java.nio.file.Path path = info.getOwningFile().getFile()
+                        .findResource(com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations.RESOURCE_PATH);
+                if (path == null || !java.nio.file.Files.isRegularFile(path)) {
+                    continue;
+                }
+                String json = java.nio.file.Files.readString(path, java.nio.charset.StandardCharsets.UTF_8);
+                for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
+                        : com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations.parse(info.getModId(), json)) {
+                    com.rheinmetal.tianshu.api.entity.EntityTypes.declare(spec);
+                }
+            } catch (RuntimeException | java.io.IOException failure) {
+                logger.log(System.Logger.Level.WARNING,
+                        "body_types.json of " + info.getModId() + " was not usable: " + failure);
+            }
+        }
+    }
+
     public TianshuNeoForge(IEventBus modEventBus, ModContainer modContainer) {
+        collectDeclaredBodyTypes();
+        // Declared entity types must exist before the loader's registration pass; draining here is the last moment at
+        // which the adapter still owns that window.
+        for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
+                : com.rheinmetal.tianshu.api.entity.EntityTypes.drainForRegistration()) {
+            if ("walker".equals(spec.name())) {
+                continue;
+            }
+            ENTITY_TYPES.register(spec.name(), () -> {
+                var builder = EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
+                        .sized(spec.width(), spec.height())
+                        .clientTrackingRange(10);
+                if (spec.fireImmune()) {
+                    builder.fireImmune();
+                }
+                return builder.build(spec.name());
+            });
+        }
         ENTITY_TYPES.register(modEventBus);
         modEventBus.addListener((EntityAttributeCreationEvent event) -> {
             event.put(WALKER.get(), WalkerBody.createAttributes().build());
@@ -82,10 +129,10 @@ public final class TianshuNeoForge {
                 modId -> modId != null && !modId.isBlank() && ModList.get().isLoaded(modId));
         // The one network channel is registered on both sides: whoever hosts the server component still has to know
         // how a fact is shaped, and a client has to know how to receive it.
-        // The brain: one action client per process. The network registration delivers answers to it and the
-        // client bootstrap reads its snapshots, so no static has to describe this object.
-        ServerActionClient serverActions = new ServerActionClient(
-                net.neoforged.neoforge.network.PacketDistributor::sendToServer);
+        // The tool channel's client half; the action channel is gone - actions are server tools now.
+
+
+
         // The tool channel's client half. It is registered once; "available" turns on only after the server's
         // catalog arrives, so a server without the component never advertises server tools.
         ToolCallClient toolCalls = new ToolCallClient((requestId, toolId, argsJson) ->
@@ -93,8 +140,14 @@ public final class TianshuNeoForge {
                         new ToolCallRequestPacket(requestId, toolId, argsJson)));
         TianshuRuntimePorts.register(ToolTransport.class, toolCalls);
         modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
-                TianshuNetwork.register(registerPayloads, serverActions, toolCalls));
+                TianshuNetwork.register(registerPayloads, toolCalls));
         // Server-side action switches: independent of the client config, off by default, reloaded with the server.
+        // A reloaded switch must change what the catalogue advertises, or the client keeps offering a dead tool.
+        modEventBus.addListener((net.neoforged.fml.event.config.ModConfigEvent.Reloading event) ->
+                com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(action -> {
+                    var value = com.rheinmetal.tianshu.neoforge.config.ServerActionConfig.switchFor(action);
+                    return value != null && value.get();
+                }));
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER,
                 com.rheinmetal.tianshu.neoforge.config.ServerActionConfig.SPEC);
         // The collector is registered on both distributions: in single player the integrated server lives in this
@@ -102,8 +155,6 @@ public final class TianshuNeoForge {
         // act on {@code ServerPlayer}, so on a client connected to a remote server they simply never fire.
         serverCollector = new GameFactCollector();
         serverCollector.register(NeoForge.EVENT_BUS);
-        // The action channel announces its enabled set on join; the client side builds its toolbar from that.
-        com.rheinmetal.tianshu.neoforge.server.ServerActionHandler.register(NeoForge.EVENT_BUS);
         com.rheinmetal.tianshu.neoforge.server.ServerToolHandler.register(NeoForge.EVENT_BUS);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             NeoForge.EVENT_BUS.addListener(
@@ -111,7 +162,7 @@ public final class TianshuNeoForge {
                             toolCalls.onDisconnect());
             modEventBus.addListener((net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) ->
                     event.registerEntityRenderer(WALKER.get(), BodyWalkerRenderer::new));
-            clientBootstrap = new NeoForgeClientBootstrap(serverActions);
+            clientBootstrap = new NeoForgeClientBootstrap();
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.
             TianshuRuntimePorts.register(ClientKeyBindings.class, new VanillaKeyBindings());

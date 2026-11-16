@@ -56,7 +56,6 @@ public final class ClientEvents {
     private final Supplier<KeyMapping> textInputKeySupplier;
     private final DeclaredKeyBindings keyBindings;
     private final UiHost uiHost;
-    private final ServerActionStatus serverActions;
     private final Supplier<String> protocolVersion;
     private final VoiceInputController voiceInputController = new VoiceInputController();
     private boolean sessionSummaryLogged;
@@ -71,7 +70,6 @@ public final class ClientEvents {
             Supplier<KeyMapping> textInputKeySupplier,
             DeclaredKeyBindings keyBindings,
             UiHost uiHost,
-            ServerActionStatus serverActions,
             Supplier<String> protocolVersion,
             LogSink logSink
     ) {
@@ -84,7 +82,6 @@ public final class ClientEvents {
         this.textInputKeySupplier = Objects.requireNonNull(textInputKeySupplier, "textInputKeySupplier");
         this.keyBindings = Objects.requireNonNull(keyBindings, "keyBindings");
         this.uiHost = Objects.requireNonNull(uiHost, "uiHost");
-        this.serverActions = Objects.requireNonNull(serverActions, "serverActions");
         this.protocolVersion = Objects.requireNonNull(protocolVersion, "protocolVersion");
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
     }
@@ -107,7 +104,6 @@ public final class ClientEvents {
         worldIdentityCapture.clear();
         hudHost.resetLayers();
         WorldEventHooks.resetWorldSession();
-        serverActions.reset();
         // The gate is global state written by a module; leaving it latched would swallow the next session's keys.
         // Only the gate is cleared here: the signal buses belong to the modules that subscribed to them.
         RuntimeGates.clear();
@@ -169,10 +165,7 @@ public final class ClientEvents {
             }
             modules.append(module.moduleId());
         }
-        logSink.info("platform.session.summary modules=[" + modules + "] actions="
-                + serverActions.enabledActionsSnapshot()
-                + " catalogKnown=" + serverActions.catalogReceivedSnapshot()
-                + " protocol=" + protocolVersion.get());
+        logSink.info("platform.session.summary modules=[" + modules + "] protocol=" + protocolVersion.get());
     }
 
     /**

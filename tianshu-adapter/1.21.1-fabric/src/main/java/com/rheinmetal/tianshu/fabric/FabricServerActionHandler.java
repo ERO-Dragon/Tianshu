@@ -1,9 +1,6 @@
 package com.rheinmetal.tianshu.fabric;
 
 import com.rheinmetal.tianshu.api.server.ServerActionResult;
-import com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket;
-import com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket;
-import com.rheinmetal.tianshu.mc.network.ServerActionResultPacket;
 
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -39,58 +36,13 @@ public final class FabricServerActionHandler {
     private static final long BROADCAST_COOLDOWN_MILLIS = 2_000L;
     private static final int MAX_BROADCAST_LENGTH = 256;
 
-    private static final Map<String, ServerActionResult> RESULTS = Collections.synchronizedMap(
-            new LinkedHashMap<>(256, 0.75F, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, ServerActionResult> eldest) {
-                    return size() > 512;
-                }
-            });
     private static final Map<UUID, Long> LAST_BROADCAST = new ConcurrentHashMap<>();
 
     private FabricServerActionHandler() {
     }
 
-    /**
-     * Registers the request receiver and the catalog announcement.
-     *
-     * <p>Both run on every distribution: in single player the integrated server is a server, and the same path has
-     * to work there.</p>
-     */
-    public static void register() {
-        ServerPlayNetworking.registerGlobalReceiver(ServerActionRequestPacket.TYPE, (packet, context) ->
-                context.server().execute(() -> respond(context.player(), packet)));
-        // The server announces its action catalog when a player joins, so the client never has to guess.
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            ServerPlayer player = handler.getPlayer();
-            ServerPlayNetworking.send(player, new ServerActionCatalogPacket(FabricServerActionConfig.enabledActions()));
-        });
-    }
-
-    private static void respond(ServerPlayer player, ServerActionRequestPacket packet) {
-        if (player == null) {
-            return;
-        }
-        ServerActionResult result = run(player, packet);
-        if (player.connection == null || !ServerPlayNetworking.canSend(player, ServerActionResultPacket.TYPE)) {
-            return;
-        }
-        ServerPlayNetworking.send(player, new ServerActionResultPacket(
-                packet.requestId(), result.status(), result.message()));
-    }
-
-    private static ServerActionResult run(ServerPlayer player, ServerActionRequestPacket packet) {
-        String key = player.getUUID() + "|" + packet.requestId();
-        ServerActionResult done = RESULTS.get(key);
-        if (done != null) {
-            return done;
-        }
-        ServerActionResult result = execute(player, packet.kind(), packet.params());
-        RESULTS.put(key, result);
-        return result;
-    }
-
-    private static ServerActionResult execute(ServerPlayer player, String kind, Map<String, String> params) {
+    /** Runs one whitelisted action for a player; the action execution port calls this. */
+    public static ServerActionResult execute(ServerPlayer player, String kind, Map<String, String> params) {
         if (!FabricServerActionConfig.enabled(kind)) {
             return ServerActionResult.of(ServerActionResult.Status.DISABLED, "action is disabled on this server");
         }
@@ -104,6 +56,14 @@ public final class FabricServerActionHandler {
             case "set_weather" -> setWeather(player, params);
             case "spawn_entity" -> spawnEntity(player, params);
             case "broadcast" -> broadcast(player, params);
+            case "gamemode" -> setGameMode(player, params);
+            case "effect" -> applyEffect(player, params);
+            case "xp" -> giveExperience(player, params);
+            case "setblock" -> setBlock(player, params);
+            case "kill" -> killEntity(player, params);
+            case "enchant" -> enchantMainHand(player, params);
+            case "difficulty" -> setDifficulty(player, params);
+            case "gamerule" -> setGameRule(player, params);
             default -> ServerActionResult.of(ServerActionResult.Status.INVALID, "unknown action: " + kind);
         };
     }
@@ -213,6 +173,147 @@ public final class FabricServerActionHandler {
         }
         server.getPlayerList().broadcastSystemMessage(Component.literal(text), false);
         return ServerActionResult.ok("broadcast sent");
+    }
+
+    private static ServerActionResult setGameMode(ServerPlayer player, Map<String, String> params) {
+        String value = params.getOrDefault("value", "").trim().toLowerCase(java.util.Locale.ROOT);
+        net.minecraft.world.level.GameType mode = switch (value) {
+            case "survival" -> net.minecraft.world.level.GameType.SURVIVAL;
+            case "creative" -> net.minecraft.world.level.GameType.CREATIVE;
+            case "adventure" -> net.minecraft.world.level.GameType.ADVENTURE;
+            case "spectator" -> net.minecraft.world.level.GameType.SPECTATOR;
+            default -> null;
+        };
+        if (mode == null) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID,
+                    "gamemode must be survival, creative, adventure or spectator");
+        }
+        player.setGameMode(mode);
+        return ServerActionResult.ok("gamemode is now " + value);
+    }
+
+    private static ServerActionResult applyEffect(ServerPlayer player, Map<String, String> params) {
+        String id = params.getOrDefault("effect", "").trim();
+        if ("clear".equalsIgnoreCase(id)) {
+            player.removeAllEffects();
+            return ServerActionResult.ok("effects cleared");
+        }
+        net.minecraft.resources.ResourceLocation key = net.minecraft.resources.ResourceLocation.tryParse(id);
+        if (key == null) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "malformed effect id: " + id);
+        }
+        java.util.Optional<net.minecraft.core.Holder.Reference<net.minecraft.world.effect.MobEffect>> holder =
+                net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.getHolder(key);
+        if (holder.isEmpty()) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "unknown effect: " + id);
+        }
+        int seconds = parseCount(params.getOrDefault("seconds", "30"), 1, 600);
+        int amplifier = parseCount(params.getOrDefault("amplifier", "0"), 0, 9);
+        player.addEffect(new net.minecraft.world.effect.MobEffectInstance(holder.get(), seconds * 20, amplifier));
+        return ServerActionResult.ok("effect " + id + " for " + seconds + "s");
+    }
+
+    private static ServerActionResult giveExperience(ServerPlayer player, Map<String, String> params) {
+        int levels = parseCount(params.getOrDefault("levels", "0"), -100, 1000);
+        player.giveExperienceLevels(levels);
+        return ServerActionResult.ok("experience changed by " + levels + " level(s)");
+    }
+
+    private static ServerActionResult setBlock(ServerPlayer player, Map<String, String> params) {
+        int x = parseCount(params.getOrDefault("x", "0"), -30_000_000, 30_000_000);
+        int y = parseCount(params.getOrDefault("y", "0"), -2_048, 2_048);
+        int z = parseCount(params.getOrDefault("z", "0"), -30_000_000, 30_000_000);
+        net.minecraft.resources.ResourceLocation key =
+                net.minecraft.resources.ResourceLocation.tryParse(params.getOrDefault("block", "").trim());
+        var block = key == null ? java.util.Optional.<net.minecraft.world.level.block.Block>empty()
+                : net.minecraft.core.registries.BuiltInRegistries.BLOCK.getOptional(key);
+        if (block.isEmpty()) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "unknown block id");
+        }
+        net.minecraft.server.level.ServerLevel level = player.serverLevel();
+        if (!level.isLoaded(new net.minecraft.core.BlockPos(x, y, z))) {
+            return ServerActionResult.of(ServerActionResult.Status.FAILED, "that chunk is not loaded");
+        }
+        level.setBlock(new net.minecraft.core.BlockPos(x, y, z), block.get().defaultBlockState(), 3);
+        return ServerActionResult.ok("placed " + key + " at " + x + " " + y + " " + z);
+    }
+
+    private static ServerActionResult killEntity(ServerPlayer player, Map<String, String> params) {
+        UUID id;
+        try {
+            id = UUID.fromString(params.getOrDefault("id", "").trim());
+        } catch (IllegalArgumentException malformed) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "malformed entity id");
+        }
+        net.minecraft.world.entity.Entity entity = player.serverLevel().getEntity(id);
+        if (entity == null) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "no such entity in this level");
+        }
+        if (entity == player) {
+            return ServerActionResult.of(ServerActionResult.Status.DENIED, "refusing to kill the requesting player");
+        }
+        entity.kill();
+        return ServerActionResult.ok("removed " + id);
+    }
+
+    private static ServerActionResult enchantMainHand(ServerPlayer player, Map<String, String> params) {
+        net.minecraft.resources.ResourceLocation key =
+                net.minecraft.resources.ResourceLocation.tryParse(params.getOrDefault("enchantment", "").trim());
+        if (key == null || player.getServer() == null) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "unknown enchantment");
+        }
+        var holder = player.getServer().registryAccess()
+                .registryOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT).getHolder(key);
+        if (holder.isEmpty()) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "unknown enchantment");
+        }
+        int level = parseCount(params.getOrDefault("level", "1"), 1, 255);
+        net.minecraft.world.item.ItemStack stack = player.getMainHandItem();
+        if (stack.isEmpty()) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID, "the main hand is empty");
+        }
+        stack.enchant(holder.get(), level);
+        player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, stack);
+        return ServerActionResult.ok("enchanted the main hand with " + key + " " + level);
+    }
+
+    private static ServerActionResult setDifficulty(ServerPlayer player, Map<String, String> params) {
+        String value = params.getOrDefault("value", "").trim().toLowerCase(java.util.Locale.ROOT);
+        net.minecraft.world.Difficulty difficulty = switch (value) {
+            case "peaceful" -> net.minecraft.world.Difficulty.PEACEFUL;
+            case "easy" -> net.minecraft.world.Difficulty.EASY;
+            case "normal" -> net.minecraft.world.Difficulty.NORMAL;
+            case "hard" -> net.minecraft.world.Difficulty.HARD;
+            default -> null;
+        };
+        if (difficulty == null || player.getServer() == null) {
+            return ServerActionResult.of(ServerActionResult.Status.INVALID,
+                    "difficulty must be peaceful, easy, normal or hard");
+        }
+        player.getServer().setDifficulty(difficulty, true);
+        return ServerActionResult.ok("difficulty is now " + value);
+    }
+
+    private static ServerActionResult setGameRule(ServerPlayer player, Map<String, String> params) {
+        String rule = params.getOrDefault("rule", "").trim();
+        boolean value = Boolean.parseBoolean(params.getOrDefault("value", "false"));
+        if (player.getServer() == null) {
+            return ServerActionResult.of(ServerActionResult.Status.FAILED, "server is not available");
+        }
+        var rules = player.getServer().getGameRules();
+        var server = player.getServer();
+        switch (rule) {
+            case "doDaylightCycle" -> rules.getRule(net.minecraft.world.level.GameRules.RULE_DAYLIGHT).set(value, server);
+            case "doMobSpawning" -> rules.getRule(net.minecraft.world.level.GameRules.RULE_DOMOBSPAWNING).set(value, server);
+            case "keepInventory" -> rules.getRule(net.minecraft.world.level.GameRules.RULE_KEEPINVENTORY).set(value, server);
+            case "mobGriefing" -> rules.getRule(net.minecraft.world.level.GameRules.RULE_MOBGRIEFING).set(value, server);
+            case "naturalRegeneration" -> rules.getRule(net.minecraft.world.level.GameRules.RULE_NATURAL_REGENERATION).set(value, server);
+            case "doImmediateRespawn" -> rules.getRule(net.minecraft.world.level.GameRules.RULE_DO_IMMEDIATE_RESPAWN).set(value, server);
+            default -> {
+                return ServerActionResult.of(ServerActionResult.Status.INVALID, "game rule is not on the whitelist: " + rule);
+            }
+        }
+        return ServerActionResult.ok(rule + " is now " + value);
     }
 
     private static int parseCount(String raw, int minimum, int maximum) {

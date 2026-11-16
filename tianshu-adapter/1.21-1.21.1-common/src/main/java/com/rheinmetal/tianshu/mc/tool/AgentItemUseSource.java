@@ -1,12 +1,12 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentItemUsePort;
-import com.rheinmetal.tianshu.api.agent.BlockFace;
-import com.rheinmetal.tianshu.api.agent.BlockTarget;
-import com.rheinmetal.tianshu.api.agent.ItemUseTarget;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityItemUsePort;
+import com.rheinmetal.tianshu.api.entity.BlockFace;
+import com.rheinmetal.tianshu.api.entity.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.ItemUseTarget;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.mc.body.ActionContext;
@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * tick, then finishes the item at the end of its duration or releases it at the requested hold. A shield has no
  * finish or release effect, so a held session on it reports {@code NO_EFFECT} rather than pretending.</p>
  */
-public final class AgentItemUseSource implements AgentItemUsePort {
+public final class AgentItemUseSource implements EntityItemUsePort {
 
     private static final double REACH_SQUARED = 36.0;
     private static final int BOW_LIKE_DURATION = 72_000;
@@ -93,7 +93,7 @@ public final class AgentItemUseSource implements AgentItemUsePort {
                 return;
             }
         }
-        ActionContext context = ActionContext.hand(server, actor, bodies, actionPlayers, slot).orElse(null);
+        ActionContext context = ActionContext.hand(server, actor, bodies, slot).orElse(null);
         if (context == null) {
             result.complete(ActionResult.rejected("the agent body is not present"));
             return;

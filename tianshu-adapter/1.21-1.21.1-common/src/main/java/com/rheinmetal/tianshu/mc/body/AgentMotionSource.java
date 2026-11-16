@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.agent.ActionOutcome;
-import com.rheinmetal.tianshu.api.agent.ActionResult;
-import com.rheinmetal.tianshu.api.agent.ActorPosition;
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentMotionPort;
-import com.rheinmetal.tianshu.api.agent.MoveMode;
-import com.rheinmetal.tianshu.api.agent.MoveOptions;
-import com.rheinmetal.tianshu.api.agent.MoveResult;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActionResult;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * arrives, when the path ends short, or when the walk times out — never with a "started" that pretends to be
  * "arrived".</p>
  */
-public final class AgentMotionSource implements AgentMotionPort {
+public final class AgentMotionSource implements EntityMotionPort {
 
     private static final int WALK_TIMEOUT_TICKS = 600;
     /** Same threshold Promaid uses for "she has not moved for 40 ticks": stuck, not slowly progressing. */

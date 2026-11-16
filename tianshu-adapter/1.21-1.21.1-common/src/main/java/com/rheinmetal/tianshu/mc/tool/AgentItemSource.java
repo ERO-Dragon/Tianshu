@@ -1,13 +1,13 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.agent.ActorRef;
-import com.rheinmetal.tianshu.api.agent.AgentItemPort;
-import com.rheinmetal.tianshu.api.agent.BodySlot;
-import com.rheinmetal.tianshu.api.agent.DropResult;
-import com.rheinmetal.tianshu.api.agent.EquipRequest;
-import com.rheinmetal.tianshu.api.agent.EquipResult;
-import com.rheinmetal.tianshu.api.agent.PickedItem;
-import com.rheinmetal.tianshu.api.agent.PickupResult;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
+import com.rheinmetal.tianshu.api.entity.DropResult;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.PickedItem;
+import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
@@ -31,7 +31,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>It stops at the first stack that does not fit rather than shuffling items around, and reports exactly what it
  * took; partial collection is a normal result, an empty result means nothing was in reach.</p>
  */
-public final class AgentItemSource implements AgentItemPort {
+public final class AgentItemSource implements EntityItemPort {
 
     private static final int MAX_RADIUS = 8;
     private static final int MAIN_SLOTS = 36;
@@ -68,21 +68,21 @@ public final class AgentItemSource implements AgentItemPort {
             throw new ToolException(ToolError.UNAVAILABLE, "that agent body has no inventory");
         }
         int slot = request.inventorySlot();
-        BodySlot target = request.target();
+        EntitySlot target = request.target();
         if (slot < -1 || slot >= MAIN_SLOTS) {
             throw new ToolException(ToolError.INVALID_ARGS, "slot must be -1 or 0..35");
         }
-        if (target == BodySlot.MAIN_HAND) {
+        if (target == EntitySlot.MAIN_HAND) {
             if (!bodies.setActiveSlot(actor.id(), slot)) {
                 throw new ToolException(ToolError.UNAVAILABLE, "the agent body is not present");
             }
             if (slot < 0) {
                 bodies.applyEquipment(state);
-                return new EquipResult(BodySlot.MAIN_HAND, -1, "", 0);
+                return new EquipResult(EntitySlot.MAIN_HAND, -1, "", 0);
             }
             ItemStack stack = inventory.getItem(slot);
             bodies.applyEquipment(state);
-            return new EquipResult(BodySlot.MAIN_HAND, slot, itemId(stack), stack.getCount());
+            return new EquipResult(EntitySlot.MAIN_HAND, slot, itemId(stack), stack.getCount());
         }
         if (slot < 0) {
             ItemStack current = bodies.equipment(actor.id(), target);

@@ -5,7 +5,6 @@ import com.rheinmetal.tianshu.mc.body.BodyCarriers;
 import com.rheinmetal.tianshu.mc.body.WalkerBody;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.mc.host.ServerActionClient;
 import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.client.tool.ToolCallClient;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
@@ -53,24 +52,64 @@ public final class TianshuFabric implements ModInitializer {
                     .clientTrackingRange(10)
                     .build("tianshu_walker"));
 
-    /** The action channel client: one per process, shared by the network registration and the event layer. */
-    private static ServerActionClient actionClient;
-
-    /** The tool channel client: same lifetime as the action client, and only on the client distribution. */
+    /** The tool channel client: only on the client distribution. */
     private static ToolCallClient toolClient;
-
-    public static ServerActionClient actionClient() {
-        return actionClient;
-    }
 
     public static ToolCallClient toolClient() {
         return toolClient;
+    }
+
+    /**
+     * Registers the body types every installed mod declares in {@code META-INF/tianshu/body_types.json}.
+     *
+     * <p>A module needs no loader code for this: a file in its jar is the whole contract. A missing file is normal; a
+     * malformed one is reported, because a silently ignored declaration means the type never exists and the symptom
+     * appears much later as "the body did not spawn".</p>
+     */
+    private static void registerDeclaredBodyTypes() {
+        System.Logger logger = System.getLogger("tianshu.adapter");
+        for (net.fabricmc.loader.api.ModContainer container : FabricLoader.getInstance().getAllMods()) {
+            try {
+                java.util.Optional<java.nio.file.Path> declared =
+                        container.findPath(com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations.RESOURCE_PATH);
+                if (declared.isEmpty() || !java.nio.file.Files.isRegularFile(declared.get())) {
+                    continue;
+                }
+                String json = java.nio.file.Files.readString(declared.get(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
+                        : com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations
+                        .parse(container.getMetadata().getId(), json)) {
+                    com.rheinmetal.tianshu.api.entity.EntityTypes.declare(spec);
+                }
+            } catch (RuntimeException | java.io.IOException failure) {
+                logger.log(System.Logger.Level.WARNING,
+                        "body_types.json of " + container.getMetadata().getId()
+                                + " was not usable: " + failure);
+            }
+        }
+        for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
+                : com.rheinmetal.tianshu.api.entity.EntityTypes.drainForRegistration()) {
+            if ("walker".equals(spec.name())) {
+                continue;
+            }
+            EntityType.Builder<WalkerBody> builder = EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
+                    .sized(spec.width(), spec.height())
+                    .clientTrackingRange(10);
+            if (spec.fireImmune()) {
+                builder.fireImmune();
+            }
+            EntityType<WalkerBody> type = Registry.register(BuiltInRegistries.ENTITY_TYPE, spec.id(),
+                    builder.build(spec.name()));
+            FabricDefaultAttributeRegistry.register(type, WalkerBody.createAttributes());
+        }
     }
 
     @Override
     public void onInitialize() {
         FabricDefaultAttributeRegistry.register(WALKER, WalkerBody.createAttributes());
         BodyCarriers.installWalker(WALKER);
+        registerDeclaredBodyTypes();
         // Modules are platform-free: the only sane answer to "is it there?" has to come from here.
         TianshuRuntimePorts.register(InstalledMods.class,
                 modId -> modId != null && !modId.isBlank() && FabricLoader.getInstance().isModLoaded(modId));
@@ -80,7 +119,6 @@ public final class TianshuFabric implements ModInitializer {
         // A dedicated server has no client classes to touch: everything that names one lives in the client branch.
         if (net.fabricmc.loader.api.FabricLoader.getInstance().getEnvironmentType()
                 == net.fabricmc.api.EnvType.CLIENT) {
-            actionClient = new ServerActionClient(ClientPlayNetworking::send);
             toolClient = new ToolCallClient((requestId, toolId, argsJson) -> ClientPlayNetworking.send(
                 new ToolCallRequestPacket(requestId, toolId, argsJson)));
             TianshuRuntimePorts.register(ToolTransport.class, toolClient);
@@ -91,7 +129,6 @@ public final class TianshuFabric implements ModInitializer {
         new FabricGameFactCollector().register();
         // The action channel's server half: off by default, one switch per action, operator-only, idempotent.
         FabricServerActionConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
-        FabricServerActionHandler.register();
         FabricServerToolHandler.register();
     }
 
@@ -105,12 +142,6 @@ public final class TianshuFabric implements ModInitializer {
      */
     private static void registerPayloads() {
         PayloadTypeRegistry.playS2C().register(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(com.rheinmetal.tianshu.mc.network.ServerActionResultPacket.TYPE,
-                com.rheinmetal.tianshu.mc.network.ServerActionResultPacket.STREAM_CODEC);
-        PayloadTypeRegistry.playS2C().register(com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket.TYPE,
-                com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket.STREAM_CODEC);
-        PayloadTypeRegistry.playC2S().register(com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket.TYPE,
-                com.rheinmetal.tianshu.mc.network.ServerActionRequestPacket.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(ToolCallResultPacket.TYPE, ToolCallResultPacket.STREAM_CODEC);
         PayloadTypeRegistry.playS2C().register(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC);
         PayloadTypeRegistry.playC2S().register(ToolCallRequestPacket.TYPE, ToolCallRequestPacket.STREAM_CODEC);
@@ -125,12 +156,6 @@ public final class TianshuFabric implements ModInitializer {
             }
             context.client().execute(() -> events.forEach(com.rheinmetal.tianshu.mc.event.WorldEventHooks::publish));
         });
-        ClientPlayNetworking.registerGlobalReceiver(
-                com.rheinmetal.tianshu.mc.network.ServerActionResultPacket.TYPE,
-                (packet, context) -> actionClient.receiveResult(packet, context.client()::execute));
-        ClientPlayNetworking.registerGlobalReceiver(
-                com.rheinmetal.tianshu.mc.network.ServerActionCatalogPacket.TYPE,
-                (packet, context) -> actionClient.receiveCatalog(packet, context.client()::execute));
         ClientPlayNetworking.registerGlobalReceiver(ToolCallResultPacket.TYPE,
                 (packet, context) -> context.client().execute(() -> toolClient.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         ClientPlayNetworking.registerGlobalReceiver(ToolCatalogPacket.TYPE,

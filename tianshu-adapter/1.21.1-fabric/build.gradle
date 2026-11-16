@@ -146,3 +146,28 @@ tasks.register('prepareDevMods', Copy) {
     into layout.projectDirectory.dir('run/mods')
 }
 tasks.named('runClient') { dependsOn tasks.named('prepareDevMods') }
+
+// Unattended verification. The dedicated server keeps its own run directory (Fabric's processedMods cache is
+// exclusive), and the dev client joins with a fixed name so the server's offline profile matches ops.json.
+loom {
+    runs {
+        server {
+            runDir 'run-server'
+        }
+        client {
+            programArgs '--username', 'Dev'
+            def quickPlayWorld = providers.gradleProperty('quickPlayWorld').getOrNull()
+            if (quickPlayWorld != null && !quickPlayWorld.isBlank()) {
+                programArgs '--quickPlaySingleplayer', quickPlayWorld
+            }
+            def quickPlayServer = providers.gradleProperty('quickPlayServer').getOrNull()
+            if (quickPlayServer != null && !quickPlayServer.isBlank()) {
+                programArgs '--quickPlayMultiplayer', quickPlayServer
+            }
+            def labAcceptance = providers.gradleProperty('tianshuLabAcceptance').getOrNull()
+            if (labAcceptance != null && !labAcceptance.isBlank()) {
+                property 'tianshu.lab.acceptance', labAcceptance
+            }
+        }
+    }
+}
