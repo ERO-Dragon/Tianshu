@@ -1,6 +1,10 @@
 package com.rheinmetal.tianshu.function.lab;
 
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
+import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
+import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.host.ClientPresentationPort;
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
@@ -30,7 +34,16 @@ import java.util.Objects;
 public final class LabModule implements TianshuManagedModule, LabModuleControl {
     public static final String MODULE_ID = LabProtocolAdapter.MODULE_ID;
 
+    /** How long an unattended run waits for the tool registry before reporting what it has. */
+    private static final long AUTO_RUN_REGISTRY_WAIT_MILLIS = 30_000L;
+    /** How long an auto-run asked for the world waits for a world and a player before reporting what it has. */
+    private static final long AUTO_RUN_WORLD_WAIT_MILLIS = 180_000L;
+
     private final LabProtocolAdapter adapter;
+    /** The runtime this module was assembled with; the acceptance bench borrows it for execution cases. */
+    private final com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess runtime;
+    /** Read-only view of the game; the acceptance bench borrows it for the world-context cases. */
+    private final com.rheinmetal.tianshu.client.host.game.ClientGameContextPort gameContext;
     private final ClientPresentationPort presentation;
     private final ClientScheduler scheduler;
     private final ClientTextProvider texts;
@@ -46,10 +59,14 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     private volatile String heldItemId = "minecraft:diamond";
     private volatile String wakeWords = LabParticipants.DEFAULT_WAKE_WORDS;
     private volatile String registeredParticipants = "";
+    /** Filled from the module runtime context at start; the unattended acceptance run reports through it. */
+    private volatile DiagnosticSink diagnostics = DiagnosticSink.NOOP;
     /** How long a winner keeps the turn; the page can switch it, and all three participants share it. */
     private volatile DialogueHoldTier holdTier = DialogueHoldTier.TEN_SECONDS;
 
     public LabModule(ModuleRuntimeAccess runtime, ClientPorts ports) {
+        this.runtime = runtime;
+        this.gameContext = ports == null ? null : ports.gameContext();
         this.adapter = new LabProtocolAdapter(Objects.requireNonNull(runtime, "runtime"));
         this.presentation = ports == null ? null : ports.presentation();
         this.scheduler = ports == null ? null : ports.scheduler();
@@ -77,8 +94,77 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
 
     @Override
     public void start(ModuleRuntimeContext context) {
+        if (context != null) {
+            this.diagnostics = context.diagnostics();
+        }
+        com.rheinmetal.tianshu.function.lab.acceptance.AcceptanceEnvironment.install(runtime, gameContext);
         if (debugEnabled) {
             registerParticipants();
+        }
+        autoRunAcceptanceIfRequested();
+    }
+
+    /**
+     * Runs the acceptance bench once, unattended, when the launcher asked for it.
+     *
+     * <p>Triggered by the {@code tianshu.lab.acceptance} system property, which the development run sets from
+     * {@code -PtianshuLabAcceptance=1}. Two things make this honest rather than convenient: the bench waits for the
+     * tool registry to fill in (a run against an empty table would compare two empty views and call it a pass), and
+     * it reports whatever it finds — a boot that never registers anything produces a failing run, not a silent
+     * no-op.</p>
+     *
+     * <p>Its evidence is the JSON report beside the run <em>and</em> the {@code acceptance.run} diagnostics event,
+     * both taken from the same run: the sink comes from the module runtime context, so an unattended run lands in
+     * {@code tianshu-diagnostics.log} exactly like the page's button does.</p>
+     */
+    private void autoRunAcceptanceIfRequested() {
+        String requested = System.getProperty("tianshu.lab.acceptance");
+        if (requested == null || requested.isBlank()) {
+            return;
+        }
+        boolean needsWorld = "world".equalsIgnoreCase(requested.trim());
+        Thread worker = new Thread(() -> {
+            long deadline = System.currentTimeMillis() + AUTO_RUN_REGISTRY_WAIT_MILLIS;
+            while (System.currentTimeMillis() < deadline && isRegistryEmpty()) {
+                try {
+                    Thread.sleep(200L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            if (needsWorld) {
+                long worldDeadline = System.currentTimeMillis() + AUTO_RUN_WORLD_WAIT_MILLIS;
+                while (System.currentTimeMillis() < worldDeadline && !inWorld()) {
+                    try {
+                        Thread.sleep(250L);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+            new LabAcceptance(diagnostics).run();
+        }, "tianshu-lab-acceptance-auto");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private static boolean isRegistryEmpty() {
+        try {
+            return TianshuTools.catalog(ToolCaller.player("lab", true), ToolSide.CLIENT).isEmpty();
+        } catch (RuntimeException notReady) {
+            return true;
+        }
+    }
+
+    /** Whether a world is loaded and a player is in it; the world-context cases need both. */
+    private boolean inWorld() {
+        try {
+            String player = gameContext == null ? null : gameContext.playerId();
+            return player != null && !player.isBlank();
+        } catch (RuntimeException notReady) {
+            return false;
         }
     }
 

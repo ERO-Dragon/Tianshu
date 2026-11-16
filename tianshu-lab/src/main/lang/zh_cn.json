@@ -34,5 +34,7 @@
   "tianshu.gui.lab.action.run_tool": "执行工具",
   "tianshu.gui.lab.row.tool": "工具结果",
   "tianshu.gui.lab.action.capabilities": "能力自检",
-  "tianshu.gui.lab.row.capabilities": "能力自检结果"
+  "tianshu.gui.lab.row.capabilities": "能力自检结果",
+  "tianshu.gui.lab.action.acceptance": "运行平台验收",
+  "tianshu.gui.lab.row.acceptance": "验收结果"
 }\n

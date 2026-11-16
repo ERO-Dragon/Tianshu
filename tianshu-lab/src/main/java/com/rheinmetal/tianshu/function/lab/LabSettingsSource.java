@@ -27,11 +27,13 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
     private final LabModuleControl module;
     private final LabToolConsole tools;
     private final LabCapabilityCheck capabilities;
+    private final LabAcceptance acceptance;
 
     public LabSettingsSource(LabModuleControl module, DiagnosticSink diagnostics) {
         this.module = module;
         this.tools = new LabToolConsole(diagnostics);
         this.capabilities = new LabCapabilityCheck(diagnostics);
+        this.acceptance = new LabAcceptance(diagnostics);
     }
 
     @Override
@@ -75,6 +77,12 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                                     Thread worker = new Thread(capabilities::run, "tianshu-lab-check");
                                     worker.setDaemon(true);
                                     worker.start();
+                                }, () -> true)
+                        .button("lab.acceptance", lab("action.acceptance"), SettingsButtonStyle.PRIMARY,
+                                () -> {
+                                    Thread worker = new Thread(acceptance::run, "tianshu-lab-acceptance");
+                                    worker.setDaemon(true);
+                                    worker.start();
                                 }, () -> true))
                 .status("lab.status", lab("section.status"), module::debugEnabled, module::debugEnabled, status -> status
                         .row("lab.status.participants", lab("row.participants"), () -> {
@@ -99,6 +107,10 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                         })
                         .row("lab.status.capabilities", lab("row.capabilities"), () -> {
                             String text = capabilities.report();
+                            return text.isBlank() ? common("dash") : UiText.literal(text);
+                        })
+                        .row("lab.status.acceptance", lab("row.acceptance"), () -> {
+                            String text = acceptance.report();
                             return text.isBlank() ? common("dash") : UiText.literal(text);
                         }));
     }

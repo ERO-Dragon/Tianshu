@@ -34,5 +34,7 @@
   "tianshu.gui.lab.action.run_tool": "Run tool",
   "tianshu.gui.lab.row.tool": "Tool result",
   "tianshu.gui.lab.action.capabilities": "Capability self-check",
-  "tianshu.gui.lab.row.capabilities": "Capability check"
+  "tianshu.gui.lab.row.capabilities": "Capability check",
+  "tianshu.gui.lab.action.acceptance": "Run platform acceptance",
+  "tianshu.gui.lab.row.acceptance": "Acceptance result"
 }\n

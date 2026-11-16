@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "tianshu_lab",
+  "version": "${mod_version}",
+  "name": "Tianshu Lab",
+  "description": "Development test bench: acceptance runs and module probes. Not a shipped feature.",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.rheinmetal.tianshu.function.lab.LabFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21.1",
+    "java": ">=21",
+    "tianshu": "*"
+  }
+}
