@@ -192,6 +192,10 @@ public final class NeoForgeClientBootstrap {
             this.hudHost = hudHost;
             // The game context port. A feature reads it; the platform only captures.
             var gameContextPort = new LiveGameContext(languageSnapshot, diagnosticRouter);
+            // Registered as a runtime port: a feature module reads the game through it, and it must be findable
+            // without being wired into every tool by hand.
+            TianshuRuntimePorts.register(com.rheinmetal.tianshu.client.host.game.ClientGameContextPort.class,
+                    gameContextPort);
             WorldIdentityCapture worldIdentityCapture = new WorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
                 TianshuRuntimePorts.register(TagQueryPort.class, new TagQuerySource());

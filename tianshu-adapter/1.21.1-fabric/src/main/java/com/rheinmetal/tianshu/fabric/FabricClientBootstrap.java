@@ -149,6 +149,8 @@ public final class FabricClientBootstrap {
             });
             this.hudHost = hudHost;
             LiveGameContext gameContextPort = new LiveGameContext(languageSnapshot, diagnosticRouter);
+            TianshuRuntimePorts.register(com.rheinmetal.tianshu.client.host.game.ClientGameContextPort.class,
+                    gameContextPort);
             WorldIdentityCapture worldIdentityCapture = new WorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
                 TianshuRuntimePorts.register(TagQueryPort.class, new TagQuerySource());
