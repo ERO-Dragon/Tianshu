@@ -35,6 +35,8 @@ public final class AgentItemSource implements EntityItemPort {
 
     private static final int MAX_RADIUS = 8;
     private static final int MAIN_SLOTS = 36;
+    /** How close a receiver has to be for a body to hand something over. */
+    private static final double REACH = 4.0D;
 
     private final MinecraftServer server;
     private final BodyRegistry bodies;
@@ -148,10 +150,73 @@ public final class AgentItemSource implements EntityItemPort {
         ItemStack out = stack.copyWithCount(dropped);
         stack.shrink(dropped);
         inventory.setChanged();
-        net.minecraft.server.level.ServerLevel level = state.level();
-        level.addFreshEntity(new ItemEntity(level, state.position().x, state.position().y + 0.5D,
-                state.position().z, out));
+        spawnDrop(state.level(), state.position(), out);
         return new DropResult(itemId(stack), dropped);
+    }
+
+    @Override
+    public CompletableFuture<DropResult> handTo(ActorRef actor, int slot, int count, String target) {
+        CompletableFuture<DropResult> result = new CompletableFuture<>();
+        server.execute(() -> {
+            try {
+                result.complete(handToNow(actor, slot, count, target));
+            } catch (ToolException failure) {
+                result.completeExceptionally(failure);
+            }
+        });
+        return result;
+    }
+
+    private DropResult handToNow(ActorRef actor, int slot, int count, String target) {
+        BodyRegistry.BodyState state = bodies.state(actor.id()).orElseThrow(() -> new ToolException(
+                ToolError.UNAVAILABLE, "the agent body is not present"));
+        Container inventory = state.inventory();
+        if (inventory == null) {
+            throw new ToolException(ToolError.UNAVAILABLE, "that agent body has no inventory");
+        }
+        if (slot < 0 || slot >= MAIN_SLOTS) {
+            throw new ToolException(ToolError.INVALID_ARGS, "slot must be 0..35");
+        }
+        ItemStack stack = inventory.getItem(slot);
+        if (stack.isEmpty()) {
+            throw new ToolException(ToolError.INVALID_ARGS, "that inventory slot is empty");
+        }
+        net.minecraft.world.entity.Entity receiver = receiver(state, target);
+        int dropped = count <= 0 ? stack.getCount() : Math.min(count, stack.getCount());
+        ItemStack out = stack.copyWithCount(dropped);
+        stack.shrink(dropped);
+        inventory.setChanged();
+        spawnDrop(state.level(), receiver.position(), out);
+        return new DropResult(itemId(stack), dropped);
+    }
+
+    /** The player or entity a hand-over is aimed at, refused when absent or out of the body's reach. */
+    private net.minecraft.world.entity.Entity receiver(BodyRegistry.BodyState state, String target) {
+        String wanted = target == null ? "" : target.trim();
+        if (wanted.isEmpty()) {
+            throw new ToolException(ToolError.INVALID_ARGS, "handTo needs a player name or an entity id");
+        }
+        net.minecraft.world.entity.Entity found = server.getPlayerList().getPlayerByName(wanted);
+        if (found == null) {
+            try {
+                found = state.level().getEntity(java.util.UUID.fromString(wanted));
+            } catch (IllegalArgumentException notAUuid) {
+                found = null;
+            }
+        }
+        if (found == null) {
+            throw new ToolException(ToolError.INVALID_ARGS, "no player or entity named " + wanted + " in this level");
+        }
+        if (state.position().distanceTo(found.position()) > REACH) {
+            throw new ToolException(ToolError.INVALID_ARGS,
+                    "that receiver is out of reach; a body hands things over at arm's length");
+        }
+        return found;
+    }
+
+    private static void spawnDrop(net.minecraft.server.level.ServerLevel level, net.minecraft.world.phys.Vec3 at,
+                                  ItemStack stack) {
+        level.addFreshEntity(new ItemEntity(level, at.x, at.y + 0.5D, at.z, stack));
     }
 
     @Override
