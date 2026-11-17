@@ -121,6 +121,9 @@ public final class LabAcceptanceCases {
         cases.add(anActionReachesTheServerAndComesBackExecuted());
         cases.add(anActionIsRefusedByTheServerSwitchWhenItsOff());
         cases.add(anActionWithBadArgumentsIsRefusedByTheServerSideValidation());
+        cases.add(theOpenContainerComesBackAsAValue());
+        cases.add(handingItemsOverNeedsAReceiver());
+        cases.add(aPlacementLineNeedsAKnownDirection());
         cases.add(registeringMovesTheRevisionAndNotifies());
         cases.add(sessionComposesDiscoveryCallAndRead());
         cases.add(sessionDescribesItsContract());
@@ -1824,6 +1827,105 @@ public final class LabAcceptanceCases {
     private static JsonObject call(ToolId tool, JsonObject args, ToolCaller caller) throws Exception {
         return TianshuTools.callJson(tool, args, caller, ToolSide.CLIENT)
                 .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Reading the open container is a local read: it must answer with a value whether or not a container is open.
+     *
+     * <p>Without this the model has no way to learn the slot indexes {@code container.transfer} takes, which is the
+     * whole reason the tool exists.</p>
+     */
+    private static AcceptanceCase theOpenContainerComesBackAsAValue() {
+        final String id = "ACC-CNR-1";
+        final String title = "the open container comes back as a value, container or not";
+        return AcceptanceCase.of(id, title, () -> {
+            JsonObject envelope = call(ToolId.of("tianshu", "container.inspect"), new JsonObject(),
+                    ToolCaller.player(localPlayerId() == null ? "lab" : localPlayerId(), true));
+            String code = codeOf(envelope);
+            JsonElement result = envelope.get("result");
+            if (result == null || !result.isJsonObject()) {
+                return AcceptanceOutcome.fail(id, title, "no result object: " + code + " " + shortEnvelope(envelope));
+            }
+            JsonObject view = result.getAsJsonObject();
+            if (!view.has("open") || !view.get("open").isJsonPrimitive()) {
+                return AcceptanceOutcome.fail(id, title, "open is not a value: " + shortEnvelope(envelope));
+            }
+            if (!view.has("entries") || !view.get("entries").isJsonArray()) {
+                return AcceptanceOutcome.fail(id, title, "entries is not a list: " + shortEnvelope(envelope));
+            }
+            return AcceptanceOutcome.pass(id, title,
+                    "open=" + view.get("open").getAsBoolean() + " entries=" + view.getAsJsonArray("entries").size());
+        });
+    }
+
+    /** Handing something over is aimed at someone; a call with no receiver is malformed before any world is touched. */
+    private static AcceptanceCase handingItemsOverNeedsAReceiver() {
+        final String id = "ACC-GIV-1";
+        final String title = "a hand-over without a receiver is refused as INVALID_ARGS";
+        return AcceptanceCase.of(id, title, () -> {
+            AcceptanceBodies bodies = new AcceptanceBodies(localPlayerId());
+            Runnable unregister = EntityActors.register(bodies);
+            try {
+                JsonObject args = new JsonObject();
+                args.addProperty("body", AcceptanceBodies.BODY_ID);
+                args.addProperty("slot", 0);
+                args.addProperty("count", 1);
+                JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.give"), args,
+                        ToolCaller.body(AcceptanceBodies.BODY_ID, true));
+                String code = codeOf(envelope);
+                if ("INVALID_ARGS".equals(code)) {
+                    return AcceptanceOutcome.pass(id, title,
+                            "the missing receiver is refused before anything moves");
+                }
+                if ("DISABLED".equals(code)) {
+                    return AcceptanceOutcome.skip(id, title, "the server has the body actions switch off");
+                }
+                if ("NO_PERMISSION".equals(code)) {
+                    return AcceptanceOutcome.skip(id, title, "the local player is not an operator in this world");
+                }
+                return AcceptanceOutcome.fail(id, title, "expected INVALID_ARGS, got " + code + " "
+                        + shortEnvelope(envelope));
+            } finally {
+                unregister.run();
+            }
+        });
+    }
+
+    /** A line of blocks grows in one of six directions; an unknown name is refused before any block is placed. */
+    private static AcceptanceCase aPlacementLineNeedsAKnownDirection() {
+        final String id = "ACC-PLC-1";
+        final String title = "a placement line refuses an unknown direction as INVALID_ARGS";
+        return AcceptanceCase.of(id, title, () -> {
+            AcceptanceBodies bodies = new AcceptanceBodies(localPlayerId());
+            Runnable unregister = EntityActors.register(bodies);
+            try {
+                JsonObject args = new JsonObject();
+                args.addProperty("body", AcceptanceBodies.BODY_ID);
+                args.addProperty("item", "minecraft:stone");
+                args.addProperty("x", 0);
+                args.addProperty("y", 64);
+                args.addProperty("z", 0);
+                args.addProperty("direction", "sideways");
+                args.addProperty("count", 3);
+                JsonObject envelope = callEnabled(ToolId.of("tianshu", "block.place.line"), args,
+                        ToolCaller.body(AcceptanceBodies.BODY_ID, true));
+                String code = codeOf(envelope);
+                if ("INVALID_ARGS".equals(code)) {
+                    return AcceptanceOutcome.pass(id, title,
+                            "the unknown direction is refused before any block is placed");
+                }
+                if ("DISABLED".equals(code)) {
+                    return AcceptanceOutcome.skip(id, title, "the server has the block place switch off");
+                }
+                if ("NO_PERMISSION".equals(code)) {
+                    return AcceptanceOutcome.skip(id, title, "the local player is not an operator in this world");
+                }
+                return AcceptanceOutcome.fail(id, title, "expected INVALID_ARGS, got " + code + " "
+                        + shortEnvelope(envelope));
+            } finally {
+                unregister.run();
+            }
+        });
     }
 
     private static String codeOf(JsonObject envelope) {

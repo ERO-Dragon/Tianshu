@@ -54,6 +54,7 @@ public record AcceptanceReport(String startedAt, List<AcceptanceOutcome> outcome
             new Covered("body tools", List.of("ACC-BDY-1", "ACC-BDY-2", "ACC-BDY-3", "ACC-BDY-4", "ACC-BDY-5", "ACC-BDY-6", "ACC-ENT-1")),
             new Covered("module execution lane", List.of("ACC-PRT-1")),
             new Covered("server actions (cheat tier)", List.of("ACC-ACT-1", "ACC-ACT-2", "ACC-ACT-3")),
+            new Covered("container reading, hand-overs and placement lines", List.of("ACC-CNR-1", "ACC-GIV-1", "ACC-PLC-1")),
             new Covered("model download verification", List.of("ACC-MDL-1", "ACC-MDL-2")),
             new Covered("game context (needs a world)", List.of("ACC-GAME-1", "ACC-GAME-2")),
             new Covered("diagnostics", List.of("ACC-DIAG-1", "ACC-DIAG-2", "ACC-DIAG-3", "ACC-DIAG-4")));
