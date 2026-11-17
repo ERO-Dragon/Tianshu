@@ -56,4 +56,13 @@ public final class ItemRouter implements EntityItemPort {
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "no item handler for this body")));
     }
+
+    @Override
+    public CompletableFuture<DropResult> handTo(ActorRef actor, int slot, int count, String target) {
+        return EntityActors.actions(actor.id())
+                .flatMap(EntityActions::items)
+                .map(handler -> handler.handTo(actor, slot, count, target))
+                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
+                        "no item handler for this body")));
+    }
 }

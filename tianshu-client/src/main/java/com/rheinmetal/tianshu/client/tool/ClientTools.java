@@ -25,6 +25,7 @@ public final class ClientTools {
         }
         TianshuTools.register(new TagQueryTool());
         TianshuTools.register(new InventoryInspectTool());
+        TianshuTools.register(new ContainerInspectTool());
         TianshuTools.register(new CapabilityReadTool());
         // Speaking is a local act; the server actions are declarations the server owns the implementations for.
         TianshuTools.register(new SayTool());
@@ -39,6 +40,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new ContainerTransferTool());
         ServerToolDeclarations.declare(new BlockMachineTool());
         ServerToolDeclarations.declare(new BlockPlaceTool());
+        ServerToolDeclarations.declare(new BlockPlaceLineTool());
         ServerToolDeclarations.declare(new BodyListTool());
         ServerToolDeclarations.declare(new BodyMoveTool());
         ServerToolDeclarations.declare(new BodyLookTool());
@@ -49,6 +51,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyPickupTool());
         ServerToolDeclarations.declare(new BodyEquipTool());
         ServerToolDeclarations.declare(new BodyDropTool());
+        ServerToolDeclarations.declare(new BodyGiveTool());
         ServerToolDeclarations.declare(new EntityUseTool());
         ServerToolDeclarations.declare(new BodyCollectTool());
         ServerToolDeclarations.declare(new BodyFollowTool());
@@ -60,6 +63,7 @@ public final class ClientTools {
     public static void unregisterForTests() {
         TianshuTools.unregister(TagQueryTool.ID);
         TianshuTools.unregister(InventoryInspectTool.ID);
+        TianshuTools.unregister(ContainerInspectTool.ID);
         TianshuTools.unregister(CapabilityReadTool.ID);
         ServerActionTools.ids().forEach(TianshuTools::unregister);
         TianshuTools.unregister(SayTool.ID);
