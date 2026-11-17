@@ -25,6 +25,18 @@ final class BodyToolSchemas {
         return text("Agent body id; the caller runtime fills it in when omitted");
     }
 
+    /**
+     * A dimension the caller expects the body to be in.
+     *
+     * <p>Optional, and never a way to travel: naming another dimension than the body's own is refused, with both
+     * dimensions in the message. It exists so a caller that is confused about where the body is gets told, instead of
+     * acting on the wrong world with coordinates that happen to be in range.</p>
+     */
+    static JsonObject dimension() {
+        return text("Dimension the caller expects the body to be in, e.g. minecraft:the_nether. Optional; naming one "
+                + "that differs from the body's own is refused");
+    }
+
     static JsonObject integer(String description) {
         JsonObject property = new JsonObject();
         property.addProperty("type", "integer");

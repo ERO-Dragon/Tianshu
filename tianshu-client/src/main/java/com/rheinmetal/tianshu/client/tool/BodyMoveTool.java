@@ -30,7 +30,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
 
     public static final ToolId ID = ToolId.of("tianshu", "body.move");
 
-    public record Args(String body, int x, int y, int z, String mode) {
+    public record Args(String body, int x, int y, int z, String mode, String dimension) {
     }
 
     @Override
@@ -73,6 +73,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
         JsonObject mode = BodyToolSchemas.text("Movement mode; defaults to any");
         mode.add("enum", modes);
         properties.add("mode", mode);
+        properties.add("dimension", BodyToolSchemas.dimension());
         return BodyToolSchemas.object(properties, "x", "y", "z");
     }
 
@@ -106,7 +107,7 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "unknown movement mode: " + args.mode()));
         }
-        ActorPosition target = BodyTargets.position(body.position().dimension(), args.x(), args.y(), args.z());
+        ActorPosition target = BodyTargets.position(BodyTargets.dimension(args.dimension(), body.position().dimension()), args.x(), args.y(), args.z());
         return ActorScope.guarded(scope.actor(), context,
                 () -> TianshuRuntimePorts.find(EntityMotionPort.class)
                         .map(port -> port.move(scope.actor(), target,

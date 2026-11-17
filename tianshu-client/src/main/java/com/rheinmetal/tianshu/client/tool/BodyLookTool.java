@@ -26,7 +26,7 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
 
     public static final ToolId ID = ToolId.of("tianshu", "body.look");
 
-    public record Args(String body, int x, int y, int z) {
+    public record Args(String body, int x, int y, int z, String dimension) {
     }
 
     @Override
@@ -61,6 +61,7 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
         properties.add("x", BodyToolSchemas.coordinate("Target x"));
         properties.add("y", BodyToolSchemas.coordinate("Target y"));
         properties.add("z", BodyToolSchemas.coordinate("Target z"));
+        properties.add("dimension", BodyToolSchemas.dimension());
         return BodyToolSchemas.object(properties, "x", "y", "z");
     }
 
@@ -85,7 +86,7 @@ public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, Action
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
-        ActorPosition target = BodyTargets.position(body.position().dimension(), args.x(), args.y(), args.z());
+        ActorPosition target = BodyTargets.position(BodyTargets.dimension(args.dimension(), body.position().dimension()), args.x(), args.y(), args.z());
         return TianshuRuntimePorts.find(EntityMotionPort.class)
                 .map(port -> port.look(scope.actor(), target).thenCompose(result ->
                         result.outcome() == ActionOutcome.REJECTED || result.outcome() == ActionOutcome.FAILED

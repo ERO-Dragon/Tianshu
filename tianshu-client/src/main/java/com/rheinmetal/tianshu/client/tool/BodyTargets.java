@@ -18,6 +18,27 @@ final class BodyTargets {
     private BodyTargets() {
     }
 
+    /**
+     * The dimension a tool acts in: the body's own, unless the caller named one.
+     *
+     * <p>A name is checked, never obeyed. Bodies do not cross dimensions, so a request that names another one is
+     * refused with both dimensions in the message — that is the whole point of accepting the parameter. Without it a
+     * caller that believed it was in the nether would silently act on the overworld; the coordinates are in range
+     * either way, so nothing else can catch that.</p>
+     */
+    static String dimension(String requested, String current) {
+        if (requested == null || requested.isBlank()) {
+            return current;
+        }
+        String named = requested.trim();
+        if (named.equals(current)) {
+            return current;
+        }
+        throw new ToolException(ToolError.INVALID_ARGS,
+                "the body is in " + current + "; a request that names " + named
+                        + " is refused, because bodies do not cross dimensions");
+    }
+
     static BlockTarget block(String dimension, int x, int y, int z) {
         try {
             return new BlockTarget(dimension, x, y, z);
