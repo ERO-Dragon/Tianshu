@@ -26,6 +26,11 @@ public final class ClientTools {
         TianshuTools.register(new TagQueryTool());
         TianshuTools.register(new InventoryInspectTool());
         TianshuTools.register(new ContainerInspectTool());
+        // Client preferences are local and non-cheat: they change this player's own screen and ears, on by default.
+        TianshuTools.register(new AudioListTool());
+        TianshuTools.register(new AudioSetTool());
+        TianshuTools.register(new PackListTool());
+        TianshuTools.register(new PackSetTool());
         TianshuTools.register(new CapabilityReadTool());
         // Speaking is a local act; the server actions are declarations the server owns the implementations for.
         TianshuTools.register(new SayTool());
@@ -64,6 +69,10 @@ public final class ClientTools {
         TianshuTools.unregister(TagQueryTool.ID);
         TianshuTools.unregister(InventoryInspectTool.ID);
         TianshuTools.unregister(ContainerInspectTool.ID);
+        TianshuTools.unregister(AudioListTool.ID);
+        TianshuTools.unregister(AudioSetTool.ID);
+        TianshuTools.unregister(PackListTool.ID);
+        TianshuTools.unregister(PackSetTool.ID);
         TianshuTools.unregister(CapabilityReadTool.ID);
         ServerActionTools.ids().forEach(TianshuTools::unregister);
         TianshuTools.unregister(SayTool.ID);
