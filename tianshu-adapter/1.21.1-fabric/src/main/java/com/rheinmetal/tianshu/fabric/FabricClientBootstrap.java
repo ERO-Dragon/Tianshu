@@ -156,6 +156,8 @@ public final class FabricClientBootstrap {
                     clientSettings);
             TianshuRuntimePorts.register(com.rheinmetal.tianshu.client.host.settings.ClientPackSettingsPort.class,
                     clientSettings);
+            // One gate for every outbound request any module makes; see ExternalAccessConfig for the file it reads.
+            com.rheinmetal.tianshu.mc.host.ExternalAccessConfig.register(gameDirectory);
             WorldIdentityCapture worldIdentityCapture = new WorldIdentityCapture(gameDirectory);
             TianshuRuntimePorts.register(WorldFactsSource.class, worldIdentityCapture::current);
                 TianshuRuntimePorts.register(TagQueryPort.class, new TagQuerySource());
