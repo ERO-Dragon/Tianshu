@@ -95,9 +95,9 @@
 | **G44** | 代理边界 | 预算闭集（步数 / 时长 / 每专席调用次数）；报告强制字段 `outcome / facts / blocked / needsDecision`；意图词匹配退化为"模型没选或选了未知专席时"的兜底 |
 | **G45** | 专席 = 技能（skill） | 统一术语：代码 `DubheSkill`，文档逐步用"技能"。技能**自描述**：id / 名称 / 功能说明 / 输入 schema / **可见性**（internal 或 external）/ **自主权限**（external 必填）/ 预算 / 报告契约。代理读目录、按需调用；意图词表因此不再是必需 |
 | **G46** | 不设产品级"每次任务调几个" | 上限全部是实现参数与循环护栏：25 步 / 120 秒 / 连续 3 步无进展即止 / 单次技能超时由技能自声明 / 每次任务技能调用上限默认 8（配置可改）（G29） |
-| **G47** | 对外 = 技能的一个字段 | `visibility = external` 的技能注册到舟楫能力目录，其它模块可调用；同时必须声明自主权限（只读/保守/完全），否则绕过 G24。`internal` 技能不进任何对外目录。`research` 的 external 注册等检索模块到位再做 |### 3.1 分层与依赖
+| **G47** | 对外 = 技能的一个字段 | `visibility = external` 的技能注册为舟楫的 **`CapabilityKind.SKILL`** 能力：`CapabilityDescriptor`（描述/提供者）+ `CapabilityBinding` + `CapabilityHandler.invoke` + `CapabilityExposure`（文本目录/function 定义/MCP 列表/提示词块）。已带 `ToolAutonomy`，对外暴露天然受权限约束。`internal` 技能不进任何目录。`research` 的 external 注册等检索模块到位再做 |
 
-```text
+| **G48** | 长任务不靠硬时间一刀切 | 三层：**软预算**（0.6/0.8 处向循环注入收尾提示）→ **可暂停**（票据终态 `PAUSED`，报告带 checkpoint：已有事实 + 下一步，`needsDecision=continue`）→ **可恢复**（玩家说继续，simple 开新票据 `resumes=<旧taskId>`，默认最多续 2 次）→ **硬上限**兜底（如 5 分钟 / 40 步，终态 `EXPIRED`）。暂停报告是回应玩家本次委派，不新增主动插话（G20 不破） |```text
 simple（角色层）
   DubheTurnOrchestrator · 提示词装配 · 输出/语音 · 在办事项视图
         │  唯一出口：委托（意图，不含专席名）
@@ -595,7 +595,7 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 2. **专席即工具**：专席描述符 → 工具规格（名称、功能说明、输入 schema）+ 执行器；专席目录只进**代理的**提示词（G41）。先只注册 `fallback`；`research` 因依赖网络检索而搁置。
 3. **代理的循环**：选专席 → 看报告 → 不满意可换一个或重试（预算闭集，G44）；确定性意图匹配退化为"没选/选了未知"时的兜底。
 4. **办事报告** `{outcome, facts, blocked, needsDecision, elapsed, refs}`（§3.4），字段强制校验；材料和原文不进报告（A2）。
-5. simple 派单走内部调用路径；`RESEARCH` 作为它的只读子集在 P8 对外暴露（P8 不重造路径）。
+5. **暂停与恢复**（G48）：软预算提示 → `PAUSED` 终态 + checkpoint → 玩家说"继续"时以 `resumes` 开新票据；硬上限只作兜底。\n6. simple 派单走内部调用路径；`RESEARCH` 作为它的只读子集在 P8 以外用 `CapabilityKind.SKILL` 暴露（P8 不重造路径）。
 
 - **验收**：委托可多步；票据恰好一条终态；加一个探针专席只改配置即可被代理看到；代理把"无结果"与"失败"分别写进 `blocked` 与 `outcome`。
 ### P5 事件层
@@ -754,7 +754,7 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 | 14 | P4 | 代理读技能目录并调用（复用 complex 循环与工具轮次；先只注册 `fallback`） | ⬜ |
 | 15 | P4 | 委派入口改造：`<delegate>` → 代理；票据、投递与终态不变 | ⬜ |
 | 16 | P4 | 办事报告契约：`outcome / facts / blocked / needsDecision` 强制校验 | ⬜ |
-| 17 | P4 | 重试与换技能（受循环护栏约束，无产品级次数） | ⬜ |
+| 17 | P4 | 重试与换技能 + **暂停/恢复**（`PAUSED` 终态、checkpoint、`resumes` 指针、续命上限） | ⬜ |
 | 18 | P4 | 门禁：simple 工具集恒为 `{delegate}`；`internal` 技能不得出现在对外目录 | ⬜ |
 | 19 | P5 | 五档 `DubheEventClass`（新增 FOLD） | ⬜ |
 | 20 | P5 | 九格 → 五处置固定映射（去偏移） | ⬜ |
