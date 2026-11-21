@@ -1,9 +1,5 @@
 package com.rheinmetal.tianshu.dubhe.dialogue.turn;
 
-import com.rheinmetal.tianshu.api.assembly.LocalPlayerIdentity;
-import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextCollector;
 import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextSnapshot;
@@ -60,7 +56,6 @@ import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
 import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmClient;
 import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRequestHandler;
-import com.rheinmetal.tianshu.dubhe.agent.tool.DubheToolRoundHandler;
 import com.rheinmetal.tianshu.dubhe.shared.failure.DubheFailureCause;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
@@ -479,15 +474,9 @@ public final class DubheTurnOrchestrator implements DubheTurnPipeline {
         // for the envelope happens on the submitter's long-running thread, never on the caller's lane.
         DubheStepSignal<LLMPromptResultPayload> step = new DubheStepSignal<>();
         PendingTurn pending = new PendingTurn(execution, deliveryEnvelope, delivery, scope, outputTurn, step, historyMark);
-        // A3: the main dialogue is tool-free until the Tianshu phase. The policy is the source of truth; when a
-        // later phase flips toolsAllowed, the round handler comes back without touching this method again.
-        DubheToolRoundHandler toolRound = DubheRunPolicy.simple().toolsAllowed()
-                ? DubheToolRoundHandler.prepare(llmPayload, pending,
-                        (payload, handler) -> submitAgentRequest(execution, deliveryEnvelope, payload, handler),
-                        pending::discardHeldStream, toolCaller(execution))
-                : null;
-        LLMPromptRequestPayload firstPayload = toolRound == null ? llmPayload : toolRound.firstPayload(llmPayload);
-        DubheLlmRequestHandler firstHandler = toolRound == null ? pending : toolRound;
+        // A3: the main dialogue owns no tools. Delegation is the only way it leaves this method.
+        LLMPromptRequestPayload firstPayload = llmPayload;
+        DubheLlmRequestHandler firstHandler = pending;
         // Clear first so a stale id from a previous turn can never be cancelled (§12.2).
         execution.llmRequestId("");
         try {
@@ -602,52 +591,14 @@ public final class DubheTurnOrchestrator implements DubheTurnPipeline {
         }
         if (termination == DubheRunTermination.ABORT_TIMEOUT) {
             return DubheTurnCancellation.expired(
-                    "AX run " + outcome.expiry().name() + " after " + outcome.elapsedMillis() + "ms");
+                    "dubhe run " + outcome.expiry().name() + " after " + outcome.elapsedMillis() + "ms");
         }
         Throwable failure = outcome.failure();
         if (failure != null) {
             // Keeps the original throwable's own text instead of inventing one (§12.5).
             return new DubheTurnCancellation(messageOf(failure), DialogueReleaseReason.OWNER_FAILED);
         }
-        return new DubheTurnCancellation("AX run terminated: " + termination.name(), DialogueReleaseReason.OWNER_FAILED);
-    }
-
-    /**
-     * The identity this turn's tool calls run as: the initiating player when the turn names one, otherwise the
-     * agent. Operator permission comes from the game side; without a server it is false, which keeps write tools
-     * off rather than guessing.
-     */
-    private static ToolCaller toolCaller(DubheTurnExecution execution) {
-        String playerId = execution.delivery().playerId();
-        if (!looksLikePlayerId(playerId)) {
-            // The scope model still carries a shared placeholder user, so fall back to the local player the client
-            // knows. Without one (menu, dedicated server) the turn stays a plain agent turn.
-            playerId = TianshuRuntimePorts.find(LocalPlayerIdentity.class)
-                    .flatMap(LocalPlayerIdentity::playerId)
-                    .orElse(null);
-        }
-        if (playerId == null) {
-            return ToolCaller.agent(false);
-        }
-        String owner = playerId;
-        boolean operator = TianshuRuntimePorts.find(PlayerAuthority.class)
-                .map(authority -> authority.operator(owner))
-                .orElseGet(() -> TianshuRuntimePorts.find(LocalPlayerIdentity.class)
-                        .map(LocalPlayerIdentity::operator)
-                        .orElse(false));
-        return ToolCaller.player(owner, operator);
-    }
-
-    private static boolean looksLikePlayerId(String value) {
-        if (value == null || value.isBlank()) {
-            return false;
-        }
-        try {
-            java.util.UUID.fromString(value.trim());
-            return true;
-        } catch (IllegalArgumentException notAUuid) {
-            return false;
-        }
+        return new DubheTurnCancellation("dubhe run terminated: " + termination.name(), DialogueReleaseReason.OWNER_FAILED);
     }
 
     private static String messageOf(Throwable failure) {

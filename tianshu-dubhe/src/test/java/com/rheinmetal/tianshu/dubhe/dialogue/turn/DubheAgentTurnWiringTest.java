@@ -20,12 +20,6 @@ import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
 import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextCollector;
 import com.rheinmetal.tianshu.dubhe.agent.context.DubheMemoryWindowPolicy;
-import com.rheinmetal.tianshu.api.tool.TianshuTool;
-import com.rheinmetal.tianshu.api.tool.TianshuTools;
-import com.rheinmetal.tianshu.api.tool.ToolCategory;
-import com.rheinmetal.tianshu.api.tool.ToolContext;
-import com.rheinmetal.tianshu.api.tool.ToolId;
-import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmClient;
 import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmPromptRequestBuilder;
 import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheChatOutputSink;
@@ -142,51 +136,6 @@ class DubheAgentTurnWiringTest {
         assertEquals(expected, actual, "the loop must not change a single field of the prompt request");
     }
 
-    @Test
-    @org.junit.jupiter.api.Disabled("A3: main dialogue has no tools until the Tianshu phase; the tool turn is covered by DubheToolRoundHandlerTest")
-    void aToolCallIsExecutedAndOnlyTheFinalAnswerIsSpoken() {
-        ToolId echo = ToolId.of("test", "echo");
-        TianshuTools.register(new WiringEchoTool(echo));
-        try {
-            TestRuntime runtime = new TestRuntime(false);
-            runtime.registerLlmSink();
-            DubheProtocolAdapter adapter = new DubheProtocolAdapter(runtime);
-            DubheLlmClient llmClient = new DubheLlmClient(adapter);
-            DubheScope scope = writableScope();
-            DubheRecentDialogueSystem recent = emptyRecent();
-            PointOfDeliverySink sink = new PointOfDeliverySink();
-            DubheTurnOrchestrator orchestrator = orchestrator(
-                    adapter, llmClient, recent, scope, sink, (taskId, task) -> RUNS.execute(task));
-
-            DubheDialogueInput delivery = delivery();
-            orchestrator.startTurn(deliveryEnvelope(delivery), delivery);
-            await(() -> runtime.llmRequest.get() != null, 5_000L, "the first CHAT request");
-
-            TianshuEnvelope first = runtime.llmRequest.get();
-            String firstRequestId = ((LLMPromptRequestPayload) first.payload()).requestId();
-            llmClient.handleResult(first.envelopeId(), LLMPromptResultPayload.completed(firstRequestId,
-                    "{\"tool\":\"test:echo\",\"args\":{\"text\":\"hi\"}}"));
-
-            await(() -> runtime.llmRequest.get() != first, 5_000L, "the follow-up request carrying the tool result");
-            TianshuEnvelope second = runtime.llmRequest.get();
-            LLMPromptRequestPayload followUp = (LLMPromptRequestPayload) second.payload();
-            assertTrue(followUp.messages().stream()
-                            .anyMatch(message -> message.content().contains("tool result for test:echo")),
-                    "the tool result must be in the conversation");
-            assertTrue(sink.delivered.isEmpty(), "the call itself must not be spoken");
-
-            llmClient.handleResult(second.envelopeId(),
-                    LLMPromptResultPayload.completed(followUp.requestId(), "你好，我在。"));
-
-            await(() -> sink.completed.get() == 1, 5_000L, "the final answer");
-            assertTrue(sink.delivered.stream().anyMatch(text -> text.contains("你好")),
-                    "the final answer reaches the player");
-            assertTrue(sink.delivered.stream().noneMatch(text -> text.contains("test:echo")),
-                    "the tool call is never spoken");
-        } finally {
-            TianshuTools.unregister(echo);
-        }
-    }
 
     @Test
     void completedTurnCompletesTheAssistantOnceAndReleasesOnce() {
@@ -533,45 +482,6 @@ class DubheAgentTurnWiringTest {
     }
 
     /** Counts the deliveries the player would see; a second one would show up here. */
-    private static final class WiringEchoTool implements TianshuTool<JsonObject, JsonObject> {
-        private final ToolId id;
-
-        private WiringEchoTool(ToolId id) {
-            this.id = id;
-        }
-
-        @Override
-        public ToolId id() {
-            return id;
-        }
-
-        @Override
-        public ToolCategory category() {
-            return ToolCategory.LOCAL;
-        }
-
-        @Override
-        public String description() {
-            return "Echo; a test double.";
-        }
-
-        @Override
-        public java.lang.reflect.Type argsType() {
-            return JsonObject.class;
-        }
-
-        @Override
-        public java.lang.reflect.Type resultType() {
-            return JsonObject.class;
-        }
-
-        @Override
-        public CompletableFuture<JsonObject> invoke(ToolContext context, JsonObject args) {
-            JsonObject result = new JsonObject();
-            result.add("args", args);
-            return CompletableFuture.completedFuture(result);
-        }
-    }
 
     private static final class PointOfDeliverySink implements DubheChatOutputSink {
         private final AtomicInteger completed = new AtomicInteger();

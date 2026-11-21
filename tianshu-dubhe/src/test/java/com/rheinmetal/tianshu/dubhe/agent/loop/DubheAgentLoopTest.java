@@ -25,8 +25,7 @@ class DubheAgentLoopTest {
             calls.incrementAndGet();
             assertEquals(0, context.stepIndex(), "主对话第一步就是唯一一步");
             assertEquals(DubheRunPolicy.SIMPLE_TIMEOUT_MILLIS, context.remainingMillis());
-            assertFalse(context.policy().toolsAllowed(), "主对话不带 tools[]（设计 §4.2）");
-            assertEquals(CancellationScope.SELF_ONLY, context.policy().cancellationScope());
+                assertEquals(CancellationScope.SELF_ONLY, context.policy().cancellationScope());
             return new DubheStepOutcome.Finished<String>("暮色森林从要塞旁的传送门进");
         }, DubheRunCancellation.none());
 
@@ -139,7 +138,6 @@ class DubheAgentLoopTest {
         assertEquals(DubheRunPolicy.SIMPLE_ID, simple.id());
         assertEquals(3, simple.maxSteps());
         assertEquals(DubheRunPolicy.SIMPLE_TIMEOUT_MILLIS, simple.timeoutMillis());
-        assertFalse(simple.toolsAllowed());
         assertFalse(simple.noProgressDetection());
         assertEquals(CancellationScope.SELF_ONLY, simple.cancellationScope());
 
@@ -147,7 +145,6 @@ class DubheAgentLoopTest {
         assertEquals(DubheRunPolicy.COMPLEX_ID, complex.id());
         assertEquals(25, complex.maxSteps());
         assertEquals(120_000L, complex.timeoutMillis());
-        assertTrue(complex.toolsAllowed());
         assertTrue(complex.noProgressDetection());
         assertEquals(CancellationScope.CHILDREN, complex.cancellationScope());
     }

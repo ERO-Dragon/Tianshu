@@ -18,14 +18,12 @@ import com.rheinmetal.tianshu.protocol.CancellationScope;
  * @param id                  策略标识，落埋点用（不参与任何判定）
  * @param maxSteps            步数安全阀；1 步 = 1 次模型请求（设计 §3.1）
  * @param timeoutMillis       整轮挂钟上限
- * @param toolsAllowed        该策略下是否允许带 {@code tools[]}（主对话恒为否，设计 §4.2）
  * @param noProgressDetection 是否启用"连续相同一步即中止"（只有 Complex 启用，设计 §3.4）
  */
 public record DubheRunPolicy(
         String id,
         int maxSteps,
         long timeoutMillis,
-        boolean toolsAllowed,
         boolean noProgressDetection,
         CancellationScope cancellationScope
 ) {
@@ -65,7 +63,7 @@ public record DubheRunPolicy(
     }
 
     /**
-     * 主对话与压缩用的预设：3 步 / 10 秒、不带工具、无无进展检测。
+     * 主对话与压缩用的预设：3 步 / 30 秒、无无进展检测。
      *
      * <p>这是运行期公共原语，不是 AX 专属：任何模块只要需要"一次带结构化输出的模型调用加一个
      * 安全阀"，都用它（设计 §3.6）。</p>
@@ -76,13 +74,12 @@ public record DubheRunPolicy(
                 SIMPLE_MAX_STEPS,
                 SIMPLE_TIMEOUT_MILLIS,
                 false,
-                false,
                 CancellationScope.SELF_ONLY
         );
     }
 
     /**
-     * 异步委派用的预设：25 步 / 120 秒、检索类工具、连续 3 步相同调用即中止。
+     * 异步委派用的预设：25 步 / 120 秒、连续 3 步相同调用即中止。
      *
      * <p>只通过异步委派触发，因此它派生的子请求归它统一取消。</p>
      */
@@ -91,7 +88,6 @@ public record DubheRunPolicy(
                 COMPLEX_ID,
                 COMPLEX_MAX_STEPS,
                 COMPLEX_TIMEOUT_MILLIS,
-                true,
                 true,
                 CancellationScope.CHILDREN
         );
