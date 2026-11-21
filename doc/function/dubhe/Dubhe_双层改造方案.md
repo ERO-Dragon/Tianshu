@@ -96,8 +96,13 @@
 | **G45** | 专席 = 技能（skill） | 统一术语：代码 `DubheSkill`，文档逐步用"技能"。技能**自描述**：id / 名称 / 功能说明 / 输入 schema / **可见性**（internal 或 external）/ **自主权限**（external 必填）/ 预算 / 报告契约。代理读目录、按需调用；意图词表因此不再是必需 |
 | **G46** | 不设产品级"每次任务调几个" | 上限全部是实现参数与循环护栏：25 步 / 120 秒 / 连续 3 步无进展即止 / 单次技能超时由技能自声明 / 每次任务技能调用上限默认 8（配置可改）（G29） |
 | **G47** | 对外 = 技能的一个字段 | `visibility = external` 的技能注册为舟楫的 **`CapabilityKind.SKILL`** 能力：`CapabilityDescriptor`（描述/提供者）+ `CapabilityBinding` + `CapabilityHandler.invoke` + `CapabilityExposure`（文本目录/function 定义/MCP 列表/提示词块）。已带 `ToolAutonomy`，对外暴露天然受权限约束。`internal` 技能不进任何目录。`research` 的 external 注册等检索模块到位再做 |
+| **G48** | 长任务不靠硬时间一刀切 | 三层：**软预算**（0.6/0.8 处向循环注入收尾提示）→ **可暂停**（票据终态 `PAUSED`，报告带 checkpoint：已有事实 + 下一步，`needsDecision=continue`）→ **可恢复**（玩家说继续，simple 开新票据 `resumes=<旧taskId>`，默认最多续 2 次）→ **硬上限**兜底（如 5 分钟 / 40 步，终态 `EXPIRED`）。暂停报告是回应玩家本次委派，不新增主动插话（G20 不破） |
 
-| **G48** | 长任务不靠硬时间一刀切 | 三层：**软预算**（0.6/0.8 处向循环注入收尾提示）→ **可暂停**（票据终态 `PAUSED`，报告带 checkpoint：已有事实 + 下一步，`needsDecision=continue`）→ **可恢复**（玩家说继续，simple 开新票据 `resumes=<旧taskId>`，默认最多续 2 次）→ **硬上限**兜底（如 5 分钟 / 40 步，终态 `EXPIRED`）。暂停报告是回应玩家本次委派，不新增主动插话（G20 不破） |```text
+## 3. 目标结构
+
+### 3.1 分层与包
+
+```text
 simple（角色层）
   DubheTurnOrchestrator · 提示词装配 · 输出/语音 · 在办事项视图
         │  唯一出口：委托（意图，不含专席名）
