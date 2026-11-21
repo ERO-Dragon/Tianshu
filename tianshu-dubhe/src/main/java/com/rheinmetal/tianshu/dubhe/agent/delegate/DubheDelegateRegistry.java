@@ -7,6 +7,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -127,6 +128,26 @@ public final class DubheDelegateRegistry {
     public synchronized int retainedCount(String sessionId) {
         List<DubheDelegateTicket> sessionTickets = ticketsBySession.get(sessionId == null ? "" : sessionId);
         return sessionTickets == null ? 0 : sessionTickets.size();
+    }
+
+    /**
+     * 该作用域内尚未终结的 ticket，按创建时间升序。
+     *
+     * <p>提示词里的在办事项只读这里：它回答"我答应过什么、还在办"，不携带任何结论或材料（A2）。
+     * 作用域而不是会话作为键，是因为一轮装配拿得到 {@code DubheScope}，拿不到传输层会话 id。</p>
+     */
+    public synchronized List<DubheDelegateTicket> inFlight(DubheScope scope) {
+        DubheScope target = scope == null ? DubheScope.unknown() : scope;
+        List<DubheDelegateTicket> open = new ArrayList<>();
+        for (List<DubheDelegateTicket> sessionTickets : ticketsBySession.values()) {
+            for (DubheDelegateTicket ticket : sessionTickets) {
+                if (!ticket.isTerminal() && target.equals(ticket.scope())) {
+                    open.add(ticket);
+                }
+            }
+        }
+        open.sort(Comparator.comparingLong(DubheDelegateTicket::createdAtMillis));
+        return List.copyOf(open);
     }
 
     /** 会话结束丢弃（§5.3 丢弃语义 / §6.2 会话结束丢弃队列）。 */

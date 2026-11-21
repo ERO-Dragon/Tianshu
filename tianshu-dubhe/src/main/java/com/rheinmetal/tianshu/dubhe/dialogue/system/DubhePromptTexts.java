@@ -20,6 +20,9 @@ public record DubhePromptTexts(
 
     public static final String SECTION_SYSTEM_PROMPT = "section.system_prompt";
     public static final String SECTION_GAME_CONTEXT = "section.game_context";
+    public static final String SECTION_PENDING_WORK = "section.pending_work";
+    public static final String PENDING_WORK_LINE = "pending_work.line";
+    public static final String PENDING_WORK_MORE = "pending_work.more";
     public static final String GAME_CONTEXT_CURRENT_SITUATION_INTRO = "game_context.current_situation_intro";
     public static final String GAME_CONTEXT_RELEVANT_KNOWLEDGE_INTRO = "game_context.relevant_knowledge_intro";
     public static final String GAME_CONTEXT_FACT_LINE = "game_context.fact_line";

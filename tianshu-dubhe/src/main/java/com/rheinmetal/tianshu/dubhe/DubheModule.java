@@ -23,7 +23,10 @@ import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheChatOutputSink;
 import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputProcessor;
 import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputSettings;
 import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository;
+import com.rheinmetal.tianshu.dubhe.dialogue.gamecontext.DubheGameContextKnowledgePlanner;
 import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptOrchestrator;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePendingWorkPromptContributor;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptContributor;
 import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheAccessController;
 import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheDialogueGateway;
 import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheSessionController;
@@ -90,6 +93,8 @@ import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public final class DubheModule implements TianshuManagedModule {
@@ -356,11 +361,18 @@ public final class DubheModule implements TianshuManagedModule {
         DubheMemoryRetriever memoryRetriever = new DubheMemoryRetriever(memorySystem, ragClient);
         DubheContextCollector contextCollector = new DubheContextCollector(memorySystem, recentDialogueSystem);
         DubhePromptResourceRepository promptRepository = new DubhePromptResourceRepository(storageLayout, jsonStore);
+        // One registry serves both the prompt (in-flight list) and the delegate service (tickets), so "还在办"
+        // and "已办结" can never disagree. It is created before the orchestrator because the prompt needs it.
+        DubheDelegateRegistry delegateRegistry = new DubheDelegateRegistry();
+        DubheGameContextKnowledgePlanner knowledgePlanner = new DubheSharedKnowledgePlanner(ragClient);
+        List<DubhePromptContributor> promptContributors = new ArrayList<>(
+                DubhePromptOrchestrator.defaultContributors(knowledgePlanner));
+        promptContributors.add(new DubhePendingWorkPromptContributor(delegateRegistry));
         DubhePromptOrchestrator promptOrchestrator = new DubhePromptOrchestrator(
                 promptRepository,
                 promptLanguageProvider,
-                new DubheSharedKnowledgePlanner(ragClient),
-                null
+                knowledgePlanner,
+                promptContributors
         );
         // Fallback context budget for the very first turn (and for a failed budget lookup). The prompt
         // side of every resolved turn uses DubheRuntimeLlmBudget.contextBudget() instead, which is derived
@@ -377,7 +389,7 @@ public final class DubheModule implements TianshuManagedModule {
                 speechSink);
         delegateService = new DubheDelegateService(
                 llmClient::submitDetached,
-                new DubheDelegateRegistry(),
+                delegateRegistry,
                 new DubheDelegatePromptRepository(promptLanguageProvider),
                 null,
                 new DubheDelegateEventLedger(),

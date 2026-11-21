@@ -4,6 +4,15 @@
     "section.system_prompt": {
       "zh_cn": "<system_prompt>\n{{content}}\n</system_prompt>"
     },
+    "section.pending_work": {
+      "zh_cn": "<pending_work>\n{{content}}\n</pending_work>"
+    },
+    "pending_work.line": {
+      "zh_cn": "- {{query}}（已等 {{seconds}} 秒）"
+    },
+    "pending_work.more": {
+      "zh_cn": "……另有 {{count}} 件在办"
+    },
     "section.game_context": {
       "zh_cn": "<game_context>\n{{content}}\n</game_context>"
     },

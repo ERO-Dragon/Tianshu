@@ -9,6 +9,7 @@
     "game_context",
     "player_memory",
     "recent_dialogue",
+    "pending_work",
     "current_input"
   ]
 }
