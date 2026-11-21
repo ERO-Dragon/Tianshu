@@ -31,8 +31,9 @@
 
 ### 之后按阶段
 
-- [ ] **P2 入口层**：`dialogue` / `agent` / `shared` / `protocol` 包成形；四条架构门禁 + "专席目录不进 system" 断言先立。
-- [ ] **P3 simple 调度（角色层）**：工具集恒为 `{delegate}`；`pending_work` 尾部块；承诺-兑现人设；触发源收敛；办事失败词表。
+- [x] **P2 入口层（完成）**：包骨架 `dialogue` / `agent` / `shared` 落位（main + test 镜像搬迁）；`protocol` 与 `settings` 留顶层；记忆包暂留原位。门禁：执行层不碰 `DubheChatOutput`/`DubheSpeechSink`、`general_dubhe.*.json` 的 system 文本不点专席名。段标签改名 `<dubhe_system>` → `<system_prompt>`。
+- [ ] **P3 simple 调度（角色层）**
+- [ ] **测试隔离债**：`IaModuleProtocolFlowTest` 在并行/顺序变化下偶发失败（单跑与重跑均通过），根因是跨用例静态注册残留；后续把每个用例改成自洽注册。：工具集恒为 `{delegate}`；`pending_work` 尾部块；承诺-兑现人设；触发源收敛；办事失败词表。
 - [ ] **P4 complex 架构（执行层）**：专席注册表（开放集）、规则路由、执行循环、办事报告；simple 走内部派单路径。
 - [ ] **P5 事件层**：矩阵五档查表（G14）、三态改名（G15）、每行 `states`；A 组 9 条接线；H1 / H2 断言。
 - [ ] **P6 记忆**：`memory` 专席、压缩归属、播报过期、称呼延迟生效。
