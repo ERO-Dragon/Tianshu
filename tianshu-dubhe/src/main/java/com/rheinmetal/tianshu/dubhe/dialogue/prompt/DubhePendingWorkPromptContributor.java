@@ -23,6 +23,8 @@ public final class DubhePendingWorkPromptContributor implements DubhePromptContr
 
     private static final int MAX_LINES = 3;
     private static final int MAX_QUERY_CHARS = 48;
+    /** Literal run shared with the pending question that counts as "still talking about it". */
+    private static final int MIN_SHARED_RUN = 3;
 
     private final DubheDelegateRegistry registry;
     private final LongSupplier nowMillis;
@@ -47,7 +49,7 @@ public final class DubhePendingWorkPromptContributor implements DubhePromptContr
     @Override
     public void contribute(DubhePromptBuildContext context, DubhePromptAssemblyBuilder builder) {
         List<DubheDelegateTicket> open = registry.inFlight(context.context().scope());
-        if (open.isEmpty()) {
+        if (open.isEmpty() || !asksAboutWork(context, open)) {
             return;
         }
         long now = nowMillis.getAsLong();
@@ -72,6 +74,51 @@ public final class DubhePendingWorkPromptContributor implements DubhePromptContr
         if (!section.isBlank()) {
             builder.addTailSection(section);
         }
+    }
+
+    /**
+     * Whether this turn is about the open work rather than something else.
+     *
+     * <p>The block is a routed tail, not a resident one: injecting it on every turn would spend budget and tell
+     * the character things the player did not ask about. Two deterministic signals qualify a turn — a progress
+     * question ("查到了吗"), or enough literal overlap with the pending question that the player is clearly
+     * continuing it. No model call is involved.</p>
+     */
+    private boolean asksAboutWork(DubhePromptBuildContext context, List<DubheDelegateTicket> open) {
+        String input = context.request().userText();
+        if (input == null || input.isBlank()) {
+            return false;
+        }
+        String keywords = context.texts().render(DubhePromptTexts.PENDING_WORK_PROGRESS_KEYWORDS, Map.of());
+        for (String keyword : keywords.split(",")) {
+            String trimmed = keyword.strip();
+            if (!trimmed.isEmpty() && input.contains(trimmed)) {
+                return true;
+            }
+        }
+        for (DubheDelegateTicket ticket : open) {
+            if (longestSharedRun(ticket.query(), input) >= MIN_SHARED_RUN) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Length of the longest substring both sides share; enough to tell "还在说同一件事" without a tokenizer. */
+    private static int longestSharedRun(String left, String right) {
+        if (left == null || right == null || left.isEmpty() || right.isEmpty()) {
+            return 0;
+        }
+        int best = 0;
+        for (int start = 0; start < left.length(); start++) {
+            for (int end = left.length(); end > start + best; end--) {
+                if (right.contains(left.substring(start, end))) {
+                    best = end - start;
+                    break;
+                }
+            }
+        }
+        return best;
     }
 
     private static String shorten(String query) {

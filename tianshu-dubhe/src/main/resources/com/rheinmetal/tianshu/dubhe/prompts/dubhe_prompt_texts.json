@@ -13,6 +13,9 @@
     "pending_work.more": {
       "zh_cn": "……另有 {{count}} 件在办"
     },
+    "pending_work.progress_keywords": {
+      "zh_cn": "还在查,查到了,查到没,查得怎样,查好了,好了吗,办好了,办完没,在办,进展,等多久"
+    },
     "section.game_context": {
       "zh_cn": "<game_context>\n{{content}}\n</game_context>"
     },

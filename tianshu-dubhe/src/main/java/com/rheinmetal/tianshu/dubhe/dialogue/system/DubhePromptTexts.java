@@ -23,6 +23,8 @@ public record DubhePromptTexts(
     public static final String SECTION_PENDING_WORK = "section.pending_work";
     public static final String PENDING_WORK_LINE = "pending_work.line";
     public static final String PENDING_WORK_MORE = "pending_work.more";
+    /** Comma-separated phrasings that mean "what about the thing you were checking". */
+    public static final String PENDING_WORK_PROGRESS_KEYWORDS = "pending_work.progress_keywords";
     public static final String GAME_CONTEXT_CURRENT_SITUATION_INTRO = "game_context.current_situation_intro";
     public static final String GAME_CONTEXT_RELEVANT_KNOWLEDGE_INTRO = "game_context.relevant_knowledge_intro";
     public static final String GAME_CONTEXT_FACT_LINE = "game_context.fact_line";

@@ -25,7 +25,7 @@ class DubhePendingWorkPromptContributorTest {
         registry.open(SCOPE, "session-1", "暮色森林怎么进", 1_000L);
         registry.open(SCOPE, "session-1", "下界合金怎么造", 2_000L);
 
-        String section = contribute(registry, 7_000L);
+        String section = contribute(registry, 7_000L, "查到了吗");
 
         assertTrue(section.contains("<pending_work>"), section);
         assertTrue(section.contains("暮色森林怎么进（已等 6 秒）"), section);
@@ -34,7 +34,7 @@ class DubhePendingWorkPromptContributorTest {
 
     @Test
     void contributesNothingWhenNoDelegationIsOpen() {
-        String section = contribute(new DubheDelegateRegistry(), 7_000L);
+        String section = contribute(new DubheDelegateRegistry(), 7_000L, "查到了吗");
 
         assertFalse(section.contains("<pending_work>"), section);
     }
@@ -46,17 +46,37 @@ class DubhePendingWorkPromptContributorTest {
             registry.open(SCOPE, "session-1", "问题" + index, 1_000L + index);
         }
 
-        String section = contribute(registry, 9_000L);
+        String section = contribute(registry, 9_000L, "还在查吗");
 
         assertTrue(section.contains("另有 2 件在办"), section);
         assertFalse(section.contains("问题3"), section);
     }
 
-    private static String contribute(DubheDelegateRegistry registry, long nowMillis) {
+    @Test
+    void staysSilentWhenTheInputIsAboutSomethingElse() {
+        DubheDelegateRegistry registry = new DubheDelegateRegistry();
+        registry.open(SCOPE, "session-1", "暮色森林怎么进", 1_000L);
+
+        String section = contribute(registry, 7_000L, "帮我看看背包");
+
+        assertFalse(section.contains("<pending_work>"), section);
+    }
+
+    @Test
+    void aContinuationOfThePendingQuestionAlsoQualifies() {
+        DubheDelegateRegistry registry = new DubheDelegateRegistry();
+        registry.open(SCOPE, "session-1", "暮色森林怎么进", 1_000L);
+
+        String section = contribute(registry, 7_000L, "暮色森林那个查得怎么样了");
+
+        assertTrue(section.contains("<pending_work>"), section);
+    }
+
+    private static String contribute(DubheDelegateRegistry registry, long nowMillis, String userText) {
         DubhePendingWorkPromptContributor contributor =
                 new DubhePendingWorkPromptContributor(registry, () -> nowMillis);
         DubhePromptBuildContext context = new DubhePromptBuildContext(
-                new DubheRequest("DUBHE.request", "在吗", ""),
+                new DubheRequest("DUBHE.request", userText, ""),
                 new DubheContextSnapshot(SCOPE, null, null, List.of(), ""),
                 null,
                 DubhePromptLanguage.ZH_CN,
