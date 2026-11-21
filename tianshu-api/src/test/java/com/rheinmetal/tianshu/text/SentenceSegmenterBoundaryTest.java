@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class SentenceSegmenterBoundaryTest {
     @Test
-    void auxiliumDoesNotDependOnTtsTextUtilities() throws Exception {
+    void dubheDoesNotDependOnTtsTextUtilities() throws Exception {
         Path source = WorkspacePaths.require("tianshu-dubhe/src/main/java/com/rheinmetal/tianshu/dubhe/core/output/DubheSentenceBuffer.java");
 
         String content = Files.readString(source, StandardCharsets.UTF_8);

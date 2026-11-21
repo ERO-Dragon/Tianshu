@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DialogueContractBoundaryTest {
     private static final List<String> CONSUMER_MODULES = List.of(
-            "function/auxilium",
+            "function/dubhe",
             "function/ir",
             "function/weaving"
     );

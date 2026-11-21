@@ -103,7 +103,7 @@ final class ClientDiagnosticRouterTest {
         Path root = Files.createTempDirectory("tianshu-diagnostics-chat");
         java.util.List<ClientDiagnosticMessage> messages = new java.util.ArrayList<>();
         ClientDiagnosticRouter router = new ClientDiagnosticRouter(root, ignored -> true, () -> true, 16, 8L * 1024L * 1024L, 5, messages::add, catalogue());
-        router.publish(DiagnosticEvent.now("module.ax", "LLM_SUBMITTED", DiagnosticSeverity.INFO,
+        router.publish(DiagnosticEvent.now("module.dubhe", "LLM_SUBMITTED", DiagnosticSeverity.INFO,
                 DiagnosticPrivacy.RAW_CONTENT, Map.of("text", "raw-content")));
         router.close();
 

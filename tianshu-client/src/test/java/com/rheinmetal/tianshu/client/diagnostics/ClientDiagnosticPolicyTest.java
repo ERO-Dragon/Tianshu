@@ -18,7 +18,7 @@ final class ClientDiagnosticPolicyTest {
     private static final List<String> KNOWN_MODULES = List.of(
             "module.asr",
             "module.ia",
-            "module.ax",
+            "module.dubhe",
             "module.llm",
             "module.tts"
     );

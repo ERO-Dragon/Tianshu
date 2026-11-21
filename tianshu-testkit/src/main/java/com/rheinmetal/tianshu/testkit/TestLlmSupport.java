@@ -130,7 +130,7 @@ public final class TestLlmSupport {
 
         @Override
         public Path storageRoot() {
-            return root.resolve("ax").resolve("cache");
+            return root.resolve("dubhe").resolve("cache");
         }
 
         @Override
