@@ -17,7 +17,7 @@ public final class DubheSharedKnowledgePlanner implements DubheGameContextKnowle
     private static final List<String> DIRECT_STATIC_TAGS = List.of("main", "addon");
     private static final List<String> DYNAMIC_STATIC_TAGS = List.of("main", "addon");
     private static final float DEFAULT_THRESHOLD = 0.7F;
-    private static final String DYNAMIC_INLINE_UID = "module.ax.dynamic_facts.inline";
+    private static final String DYNAMIC_INLINE_UID = "module.dubhe.dynamic_facts.inline";
 
     private final DubheLlmRagClient ragClient;
     private final long timeoutMillis;

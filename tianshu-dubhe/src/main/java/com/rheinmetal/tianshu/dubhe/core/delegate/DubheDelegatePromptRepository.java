@@ -12,7 +12,7 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 委派任务的提示词目录（{@code ax_agent_tasks.json}）。
+ * 委派任务的提示词目录（{@code dubhe_agent_tasks.json}）。
  *
  * <p>与记忆维护任务同一个模式：文案全在资源里，代码里不出现规则文本，也不出现语言片段。</p>
  *
@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
  */
 public final class DubheDelegatePromptRepository {
 
-    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/ax_agent_tasks.json";
+    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/dubhe_agent_tasks.json";
 
     /** Complex run 的 system：检索任务规则 + 结论 JSON schema（§5.6 的三条约束写在提示词里）。 */
     public static final String DELEGATE_SYSTEM = "agent.delegate.system";

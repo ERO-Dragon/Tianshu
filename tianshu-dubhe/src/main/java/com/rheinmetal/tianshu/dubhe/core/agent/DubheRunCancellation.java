@@ -7,7 +7,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
- * 运行期取消探针，对应《AX_Agent运行时设计.md》§3.1（每步之前重判）与 §3.3（取消是独立终态）。
+ * 运行期取消探针，对应《Dubhe_Agent运行时设计.md》§3.1（每步之前重判）与 §3.3（取消是独立终态）。
  *
  * <p>取消原因沿用协议层的 {@link DubheTurnCancellation}（内含 {@code DialogueReleaseReason}），
  * 不另造一套取消词汇：上层拿到终态后直接用这个原因释放会话。</p>

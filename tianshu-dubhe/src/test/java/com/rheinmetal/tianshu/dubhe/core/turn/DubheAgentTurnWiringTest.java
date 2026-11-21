@@ -398,7 +398,7 @@ class DubheAgentTurnWiringTest {
         TestRuntime runtime = new TestRuntime(false);
         DubheProtocolAdapter adapter = new DubheProtocolAdapter(runtime);
 
-        adapter.submitDelegateRun("ax.delegate.test-1", () -> {
+        adapter.submitDelegateRun("dubhe.delegate.test-1", () -> {
         });
 
         ProtocolTaskSpec spec = runtime.lastSpec.get();

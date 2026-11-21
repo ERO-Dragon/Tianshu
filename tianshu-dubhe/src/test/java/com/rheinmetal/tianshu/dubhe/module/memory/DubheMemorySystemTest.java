@@ -90,7 +90,7 @@ class DubheMemorySystemTest {
         assertTrue(Files.isRegularFile(layout.eventsFile(scope)));
         assertTrue(Files.isRegularFile(layout.eventVectorsFile(scope, "bge-small:v1")));
         assertTrue(Files.isRegularFile(layout.worldManifestFile(scope)));
-        assertTrue(layout.stmBlocksFile(scope).startsWith(tempDir.resolve("module").resolve("ax").resolve("cache")));
+        assertTrue(layout.stmBlocksFile(scope).startsWith(tempDir.resolve("module").resolve("dubhe").resolve("cache")));
         assertEquals(1, memorySystem.stmBlocks().loadAll(scope).size());
         assertEquals(1, memorySystem.events().loadAll(scope).size());
         assertEquals(1, memorySystem.vectors().load(scope, "bge-small:v1").size());
@@ -179,7 +179,7 @@ class DubheMemorySystemTest {
         DubheMemoryStorageCompatibilityReport report = memorySystem.checkStorageCompatibility(scope);
 
         assertFalse(report.compatible());
-        assertTrue(report.errorCodes().contains("AX_MEMORY_LAYOUT_VERSION_FUTURE"));
+        assertTrue(report.errorCodes().contains("DUBHE_MEMORY_LAYOUT_VERSION_FUTURE"));
     }
 
     @Test
@@ -196,7 +196,7 @@ class DubheMemorySystemTest {
         DubheMemoryStorageCompatibilityReport report = memorySystem.checkStorageCompatibility(scope);
 
         assertFalse(report.compatible());
-        assertTrue(report.errorCodes().contains("AX_MEMORY_SCHEMA_FUTURE_memoryEvent"));
+        assertTrue(report.errorCodes().contains("DUBHE_MEMORY_SCHEMA_FUTURE_memoryEvent"));
     }
 
     @Test

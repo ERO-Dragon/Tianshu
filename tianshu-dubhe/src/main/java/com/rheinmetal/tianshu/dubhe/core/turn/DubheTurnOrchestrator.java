@@ -73,7 +73,7 @@ public final class DubheTurnOrchestrator implements DubheTurnPipeline {
      *
      * <p>标签契约下不再有"违约"，因此这里是退化路径的唯一观测点：只登记轮次身份，不登记模型正文（隐私）。</p>
      */
-    public static final String DIAGNOSTIC_EMPTY_ANSWER = "AX_ASSISTANT_ANSWER_EMPTY";
+    public static final String DIAGNOSTIC_EMPTY_ANSWER = "DUBHE_ASSISTANT_ANSWER_EMPTY";
 
     private final DubheScopeProvider scopeProvider;
     private final DubheDialogueInputMapper dialogueInputMapper;
@@ -1096,7 +1096,7 @@ public final class DubheTurnOrchestrator implements DubheTurnPipeline {
                 return false;
             }
             try {
-                execution.latencyTracker().mark(DubheTurnLatencyStage.AX_FIRST_SENTENCE);
+                execution.latencyTracker().mark(DubheTurnLatencyStage.DUBHE_FIRST_SENTENCE);
                 outputTurn.append(text);
                 execution.appendDisplayedText(text);
                 outputStarted = true;

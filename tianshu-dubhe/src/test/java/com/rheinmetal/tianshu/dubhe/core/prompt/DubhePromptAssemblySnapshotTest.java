@@ -70,7 +70,7 @@ class DubhePromptAssemblySnapshotTest {
                 null,
                 DubhePromptLanguageProvider.fixed(DubhePromptLanguage.ZH_CN),
                 (request, snapshot, contextBudget) -> List.of(DubheKnowledgeHit.of(
-                        "ax.static_knowledge.mock",
+                        "dubhe.static_knowledge.mock",
                         List.of("minecraft:anvil | 铁砧可以修复工具。")
                 )),
                 null
@@ -98,8 +98,8 @@ class DubhePromptAssemblySnapshotTest {
                 "the chat wrapper is retired");
 
         String joined = messages.stream().map(LLMPromptRequestPayload.MessageItemPayload::content).collect(java.util.stream.Collectors.joining("\n\n"));
-        // system 段内顺序：ax_system → game_context → player_memory（recent_dialogue 已展开为对话流）
-        assertOrdered(joined, "<ax_system>", "<memory_summary>", "<game_context>", "<player_memory>", "当前输入：这个怎么修？");
+        // system 段内顺序：dubhe_system → game_context → player_memory（recent_dialogue 已展开为对话流）
+        assertOrdered(joined, "<dubhe_system>", "<memory_summary>", "<game_context>", "<player_memory>", "当前输入：这个怎么修？");
         assertTrue(joined.contains("一到三句"));
         assertTrue(joined.contains("玩家准星指向 minecraft:anvil"));
         assertTrue(joined.contains("minecraft:anvil | 铁砧可以修复工具。"));
@@ -119,7 +119,7 @@ class DubhePromptAssemblySnapshotTest {
         DubheStorageLayout layout = new DubheStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
         Files.createDirectories(layout.promptsRoot());
         Files.writeString(
-                layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
+                layout.promptsRoot().resolve("general_dubhe.zh_cn.default.json"),
                 """
                 {
                   "schemaVersion": 4,
@@ -128,7 +128,7 @@ class DubhePromptAssemblySnapshotTest {
                   },
                   "sectionOrder": [
                     "game_context",
-                    "ax_system",
+                    "dubhe_system",
                     "player_memory",
                     "current_input"
                   ]
@@ -159,7 +159,7 @@ class DubhePromptAssemblySnapshotTest {
         // 装配位置不再由 sectionOrder 决定：system 恒定在最前，动态段恒定落在当前输入之前。
         java.util.List<LLMPromptRequestPayload.MessageItemPayload> ordered = payload.messages();
         assertEquals("system", ordered.get(0).role());
-        assertTrue(ordered.get(0).content().contains("<ax_system>"));
+        assertTrue(ordered.get(0).content().contains("<dubhe_system>"));
         assertEquals("本轮唯一输入-排序测试", ordered.get(ordered.size() - 1).content());
         assertTrue(
                 ordered.get(ordered.size() - 2).content().contains("<game_context>"),

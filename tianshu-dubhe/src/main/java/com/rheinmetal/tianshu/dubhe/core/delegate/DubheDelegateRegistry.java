@@ -42,7 +42,7 @@ public final class DubheDelegateRegistry {
      */
     public static final int MAX_RETAINED_TICKETS_PER_SESSION = 16;
 
-    private static final String TASK_ID_PREFIX = "ax.delegate.";
+    private static final String TASK_ID_PREFIX = "dubhe.delegate.";
     private static final String TASK_ID_SEPARATOR = "-";
     private static final int TASK_ID_KEY_CHARS = 10;
 

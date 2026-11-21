@@ -47,7 +47,7 @@ public final class DubheDelegateService {
     /** 结论要的是"抄结论"不是"创作"，因此低温度（与压缩任务同为确定性输出）。 */
     public static final float DELEGATE_TEMPERATURE = 0.2F;
 
-    private static final String REQUEST_ID_PREFIX = "ax.delegate.";
+    private static final String REQUEST_ID_PREFIX = "dubhe.delegate.";
     private static final String REASON_RESULT_FAILED = "delegate.result_failed";
     private static final String REASON_NO_REPAIR = "delegate.no_repair_defined";
 
@@ -104,7 +104,7 @@ public final class DubheDelegateService {
         DubheDelegateRegistry.Reservation reservation = registry.open(scope, sessionId, query, nowMillis.get());
         DubheDelegateTicket ticket = reservation.ticket();
         if (!reservation.created()) {
-            logSink.info("ax.delegate.replay_hit session=" + ticket.sessionId() + " task=" + ticket.taskId()
+            logSink.info("dubhe.delegate.replay_hit session=" + ticket.sessionId() + " task=" + ticket.taskId()
                     + " windowMs=" + registry.replayWindowMillis());
             republish(ticket);
             return ticket;
@@ -117,7 +117,7 @@ public final class DubheDelegateService {
             runSubmitter.submit(ticket.taskId(), () -> runComplex(ticket));
         } catch (RuntimeException rejected) {
             // 车道拒绝/队列满：立即终态 FAILED(rejected)，仍按投递路径投一句（§5.2 步骤 ④）。
-            logSink.warn("ax.delegate.rejected task=" + ticket.taskId() + " reason=" + messageOf(rejected));
+            logSink.warn("dubhe.delegate.rejected task=" + ticket.taskId() + " reason=" + messageOf(rejected));
             deliver(ticket, new DubheRunOutcome<>(
                     DubheRunTermination.FAILED, 0, 0L, null, null, rejected, DubheRunExpiry.NONE));
         }
@@ -204,7 +204,7 @@ public final class DubheDelegateService {
         if (!registered) {
             return;
         }
-        logSink.info("ax.delegate.terminal task=" + ticket.taskId()
+        logSink.info("dubhe.delegate.terminal task=" + ticket.taskId()
                 + " kind=" + kind.code()
                 + " status=" + outcome.termination().name()
                 + " appended=" + appended);
@@ -227,7 +227,7 @@ public final class DubheDelegateService {
     /** ③ 回执句柄（§6.2 "我查一下"），立即返回路径上唯一该出声的东西。 */
     private void publishAck(DubheDelegateTicket ticket) {
         deliverySink.publish(DubheDelegateDelivery.ack(ticket.taskId()));
-        logSink.info("ax.delegate.ack task=" + ticket.taskId()
+        logSink.info("dubhe.delegate.ack task=" + ticket.taskId()
                 + " key=" + DubheDelegateOutcomeKind.ACK_SPEECH_KEY);
     }
 

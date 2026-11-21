@@ -53,16 +53,16 @@ class LlmUsageWiringTest {
         LlmUsageLedger ledger = new LlmUsageLedger();
         LlmProtocolAdapter adapter = adapter(ledger, new LlmPromptCacheUsage(CACHE_HIT_TOKENS, CACHE_MISS_TOKENS));
 
-        adapter.handleLLMRequest(envelope("module.ax", "req-1", false), new RecordingContext());
+        adapter.handleLLMRequest(envelope("module.dubhe", "req-1", false), new RecordingContext());
 
         assertTrue(await(() -> ledger.snapshot().total().requests() == 1L));
         LlmUsageSnapshot snapshot = ledger.snapshot();
-        assertEquals(1L, snapshot.module("module.ax").requests());
-        assertEquals(PROMPT_TOKENS, snapshot.module("module.ax").inputTokens());
-        assertEquals(CACHE_HIT_TOKENS, snapshot.module("module.ax").cacheHitInputTokens());
-        assertEquals(CACHE_MISS_TOKENS, snapshot.module("module.ax").cacheMissInputTokens());
-        assertEquals(COMPLETION_TOKENS, snapshot.module("module.ax").outputTokens());
-        assertEquals(1L, snapshot.module("module.ax").cacheReportedRequests());
+        assertEquals(1L, snapshot.module("module.dubhe").requests());
+        assertEquals(PROMPT_TOKENS, snapshot.module("module.dubhe").inputTokens());
+        assertEquals(CACHE_HIT_TOKENS, snapshot.module("module.dubhe").cacheHitInputTokens());
+        assertEquals(CACHE_MISS_TOKENS, snapshot.module("module.dubhe").cacheMissInputTokens());
+        assertEquals(COMPLETION_TOKENS, snapshot.module("module.dubhe").outputTokens());
+        assertEquals(1L, snapshot.module("module.dubhe").cacheReportedRequests());
     }
 
     @Test
@@ -70,11 +70,11 @@ class LlmUsageWiringTest {
         LlmUsageLedger ledger = new LlmUsageLedger();
         LlmProtocolAdapter adapter = adapter(ledger, new LlmPromptCacheUsage(CACHE_HIT_TOKENS, CACHE_MISS_TOKENS));
 
-        adapter.handleLLMRequest(envelope("module.ax", "req-stream", true), new RecordingContext());
+        adapter.handleLLMRequest(envelope("module.dubhe", "req-stream", true), new RecordingContext());
 
         assertTrue(await(() -> ledger.snapshot().total().requests() == 1L));
         assertEquals(1L, ledger.snapshot().total().requests());
-        assertEquals(CACHE_HIT_TOKENS, ledger.snapshot().module("module.ax").cacheHitInputTokens());
+        assertEquals(CACHE_HIT_TOKENS, ledger.snapshot().module("module.dubhe").cacheHitInputTokens());
     }
 
     @Test
@@ -82,12 +82,12 @@ class LlmUsageWiringTest {
         LlmUsageLedger ledger = new LlmUsageLedger();
         LlmProtocolAdapter adapter = adapter(ledger, new LlmPromptCacheUsage(CACHE_HIT_TOKENS, CACHE_MISS_TOKENS));
 
-        adapter.handleLLMRequest(envelope("module.ax", "req-ax", false), new RecordingContext());
+        adapter.handleLLMRequest(envelope("module.dubhe", "req-ax", false), new RecordingContext());
         adapter.handleLLMRequest(envelope("module.tts", "req-tts", false), new RecordingContext());
 
         assertTrue(await(() -> ledger.snapshot().total().requests() == 2L));
         LlmUsageSnapshot snapshot = ledger.snapshot();
-        assertEquals(1L, snapshot.module("module.ax").requests());
+        assertEquals(1L, snapshot.module("module.dubhe").requests());
         assertEquals(1L, snapshot.module("module.tts").requests());
         assertEquals(0L, snapshot.module("module.never-called").requests());
     }
@@ -97,16 +97,16 @@ class LlmUsageWiringTest {
         LlmUsageLedger ledger = new LlmUsageLedger();
         LlmProtocolAdapter adapter = adapter(ledger, LlmPromptCacheUsage.unknown());
 
-        adapter.handleLLMRequest(envelope("module.ax", "req-unknown", false), new RecordingContext());
+        adapter.handleLLMRequest(envelope("module.dubhe", "req-unknown", false), new RecordingContext());
 
         assertTrue(await(() -> ledger.snapshot().total().requests() == 1L));
         LlmUsageSnapshot snapshot = ledger.snapshot();
-        assertEquals(PROMPT_TOKENS, snapshot.module("module.ax").inputTokens());
-        assertEquals(0L, snapshot.module("module.ax").cacheHitInputTokens());
-        assertEquals(0L, snapshot.module("module.ax").cacheMissInputTokens(),
+        assertEquals(PROMPT_TOKENS, snapshot.module("module.dubhe").inputTokens());
+        assertEquals(0L, snapshot.module("module.dubhe").cacheHitInputTokens());
+        assertEquals(0L, snapshot.module("module.dubhe").cacheMissInputTokens(),
                 "an unreported split must not be recorded as a measured 0% hit rate");
-        assertEquals(0L, snapshot.module("module.ax").cacheReportedRequests());
-        assertEquals(-1D, snapshot.module("module.ax").hitRatio());
+        assertEquals(0L, snapshot.module("module.dubhe").cacheReportedRequests());
+        assertEquals(-1D, snapshot.module("module.dubhe").hitRatio());
 
         // A silent provider is still priced as a full miss: 10 prompt tokens at 2.00 CNY/M plus
         // 4 output tokens at 8.00 CNY/M.
@@ -121,12 +121,12 @@ class LlmUsageWiringTest {
     @Test
     void moduleServiceExposesTheLedgerAsAReadOnlySnapshotPricedFromConfiguration() {
         LlmUsageLedger ledger = new LlmUsageLedger();
-        ledger.record("module.ax", 1_000_000L, 1_000_000L, 0L, 1_000_000L, true);
+        ledger.record("module.dubhe", 1_000_000L, 1_000_000L, 0L, 1_000_000L, true);
         LlmModuleService moduleService = new LlmModuleService(new TestLlmSupport.FakeConfig(tempDir), ledger);
 
         LlmUsageSnapshot snapshot = moduleService.usageSnapshot();
 
-        assertEquals(1L, snapshot.module("module.ax").requests());
+        assertEquals(1L, snapshot.module("module.dubhe").requests());
         assertEquals(1_000_000L, snapshot.total().inputTokens());
         assertThrows(UnsupportedOperationException.class, () -> snapshot.byModule().clear());
         assertTrue(moduleService.usagePricing().configured(), "default prices must produce a configured pricing");

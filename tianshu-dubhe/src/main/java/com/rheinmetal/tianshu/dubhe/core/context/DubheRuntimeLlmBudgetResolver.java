@@ -62,7 +62,7 @@ public final class DubheRuntimeLlmBudgetResolver {
 
     private static String normalizeRequestId(String requestId) {
         if (requestId == null || requestId.isBlank()) {
-            return "ax.llm.budget.status";
+            return "dubhe.llm.budget.status";
         }
         return requestId + ".llm_budget";
     }

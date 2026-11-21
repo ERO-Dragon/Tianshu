@@ -42,7 +42,7 @@ class TtsRuntimeControlTest {
                     () -> { }, failures::add).accepted());
             assertTrue(engine.awaitStarted());
 
-            TtsControlResult result = runtime.stopSource(TtsRequestSource.of("module.ax"), "source stop");
+            TtsControlResult result = runtime.stopSource(TtsRequestSource.of("module.dubhe"), "source stop");
 
             assertEquals(1, result.affectedSessions(), "STOP_SOURCE must cover pure synthesis, not only playback");
             assertTrue(failures.stream().anyMatch(failure -> failure.code() == TtsFailureCode.CANCELLED),
@@ -378,11 +378,11 @@ class TtsRuntimeControlTest {
     }
 
     private static TtsRequest request(String requestId, String text) {
-        return new TtsRequest(requestId, requestId, requestId, requestId, text, TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
+        return new TtsRequest(requestId, requestId, requestId, requestId, text, TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
     }
 
     private static TtsSpeechSessionKey streamKey(String streamId) {
-        return TtsSpeechSessionKey.of("module.ax", 0L, 0, streamId);
+        return TtsSpeechSessionKey.of("module.dubhe", 0L, 0, streamId);
     }
 
     private static boolean awaitState(List<TtsSession> statuses, String requestId, TtsSessionState state) throws InterruptedException {

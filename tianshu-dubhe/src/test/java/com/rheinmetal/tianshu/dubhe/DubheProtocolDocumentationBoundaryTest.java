@@ -16,7 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheProtocolDocumentationBoundaryTest {
-    private static final Path PROTOCOL_GUIDE = WorkspacePaths.doc("function/auxilium/AX_协议中心使用文档.md");
+    private static final Path PROTOCOL_GUIDE = WorkspacePaths.doc("function/dubhe/Dubhe_协议中心使用文档.md");
 
     @Test
     void protocolGuideCoversEveryStableAxProtocolSymbol() throws Exception {
@@ -32,9 +32,9 @@ class DubheProtocolDocumentationBoundaryTest {
                 "DialogueDeliveryPayload",
                 "DialogueContextInputPayload",
                 "DubheWorldEventPayload",
-                "AX.DIALOGUE_INPUT",
-                "AX.CONTEXT_INPUT",
-                "AX.EVENT_INPUT",
+                "DUBHE.DIALOGUE_INPUT",
+                "DUBHE.CONTEXT_INPUT",
+                "DUBHE.EVENT_INPUT",
                 "DIALOGUE.PARTICIPANT_REGISTER",
                 "DIALOGUE.PARTICIPANT_UNREGISTER",
                 "DIALOGUE.SESSION_CONTROL",

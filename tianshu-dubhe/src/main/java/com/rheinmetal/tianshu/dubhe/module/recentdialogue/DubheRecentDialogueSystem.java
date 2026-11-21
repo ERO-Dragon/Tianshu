@@ -280,7 +280,7 @@ public final class DubheRecentDialogueSystem {
 
     private String requestId(DubheScope scope, DubheRawTurn turn) {
         String worldId = scope == null || scope.worldId() == null || scope.worldId().isBlank() ? turn.worldId() : scope.worldId();
-        return "ax.recent_dialogue.token." + worldId + "." + turn.id();
+        return "dubhe.recent_dialogue.token." + worldId + "." + turn.id();
     }
 
     private String tokenizerRole(DubheRawTurn turn) {

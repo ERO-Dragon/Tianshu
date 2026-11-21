@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "kind": "ax.reply_texts",
+  "kind": "dubhe.reply_texts",
   "texts": {
     "reply.empty_answer": {
       "zh_cn": "我没太听明白，能再说一次吗？",

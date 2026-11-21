@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "texts": {
-    "section.ax_system": {
-      "zh_cn": "<ax_system>\n{{content}}\n</ax_system>"
+    "section.dubhe_system": {
+      "zh_cn": "<dubhe_system>\n{{content}}\n</dubhe_system>"
     },
     "section.game_context": {
       "zh_cn": "<game_context>\n{{content}}\n</game_context>"

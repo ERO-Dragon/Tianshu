@@ -341,7 +341,7 @@ public final class DubheMemorySystem {
     public DubheMemoryStorageCompatibilityReport checkStorageCompatibility(DubheScope scope) {
         if (compatibilityChecker == null) {
             return new DubheMemoryStorageCompatibilityReport(false, false, List.of(
-                    DubheMemoryStorageCompatibilityReport.Issue.error("AX_MEMORY_COMPATIBILITY_CHECKER_MISSING", "storage compatibility checker is not available")
+                    DubheMemoryStorageCompatibilityReport.Issue.error("DUBHE_MEMORY_COMPATIBILITY_CHECKER_MISSING", "storage compatibility checker is not available")
             ));
         }
         return compatibilityChecker.check(scope);

@@ -85,7 +85,7 @@ class DubheDialogueInputMapperTest {
         DubheRequest request = mapper.map(delivery(Map.of()));
 
         assertEquals("repaired player text", request.userText());
-        assertEquals("AX.session.turn", request.requestKey());
+        assertEquals("DUBHE.session.turn", request.requestKey());
         assertEquals(DubheInputSource.FORWARDED, request.source());
         // Only the names of the available facts belong here: the values are rendered as prose in the
         // game-context section, and dumping them again as key=value would duplicate them in a format the

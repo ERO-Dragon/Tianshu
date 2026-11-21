@@ -96,9 +96,9 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("running", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("running", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("queued", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("queued", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("urgent-queued", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.QUEUE, Priority.HIGH), null, null);
 
         assertFalse(awaitOptionalState(statuses, "running", TtsSessionState.CANCELLED, 150));
@@ -118,9 +118,9 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses, playbackStates);
         prepareRuntime(runtime);
 
-        runtime.submit(request("speak-1", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-1", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("speak-2", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-2", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("interrupt", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SENTENCE_AND_PLAY, Priority.HIGH), null, null);
         TtsSession interrupted = awaitSession(statuses, "speak-1", TtsSessionState.CANCELLED);
 
@@ -201,9 +201,9 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("speak-1", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-1", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("speak-2", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
+        runtime.submit(request("speak-2", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("other-queued", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.QUEUE, Priority.LOW), null, null);
         runtime.submit(request("session-replacement", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.CANCEL_SESSION_AND_PLAY, Priority.HIGH), null, null);
 
@@ -224,9 +224,9 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("running", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        runtime.submit(request("running", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitStarted());
-        runtime.submit(request("queued", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        runtime.submit(request("queued", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         runtime.submit(request("inserted", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.INSERT_AFTER_SESSION, Priority.LOW), null, null);
 
         engine.release();
@@ -244,7 +244,7 @@ class TtsRuntimePolicyTest {
         TtsRuntime runtime = runtime(engine, audioBridge, statuses);
         prepareRuntime(runtime);
 
-        runtime.submit(request("running", TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
+        runtime.submit(request("running", TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL), null, null);
         assertTrue(engine.awaitFirstChunk("running"));
         TtsOperationResult result = runtime.submit(request("insert-after-sentence", TtsRequestSource.SYSTEM, TtsPlaybackPolicy.INSERT_AFTER_SENTENCE, Priority.HIGH), null, null);
 
@@ -279,7 +279,7 @@ class TtsRuntimePolicyTest {
     }
 
     private static TtsRequest request(String requestId, TtsPlaybackPolicy policy, Priority priority) {
-        return request(requestId, TtsRequestSource.of("module.ax"), policy, priority);
+        return request(requestId, TtsRequestSource.of("module.dubhe"), policy, priority);
     }
 
     private static TtsRequest request(String requestId, TtsRequestSource source, TtsPlaybackPolicy policy, Priority priority) {

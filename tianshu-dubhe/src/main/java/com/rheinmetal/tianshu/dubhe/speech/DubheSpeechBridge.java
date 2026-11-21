@@ -24,8 +24,8 @@ import java.util.List;
  */
 public final class DubheSpeechBridge implements DubheDelegateDeliverySink, DubheEventSpeechSink {
 
-    private static final String SKIPPED = "ax.speech.skipped";
-    private static final String FAILED = "ax.speech.failed";
+    private static final String SKIPPED = "dubhe.speech.skipped";
+    private static final String FAILED = "dubhe.speech.failed";
 
     private final DubheSpeechOutlet outlet;
     private final LogSink logs;

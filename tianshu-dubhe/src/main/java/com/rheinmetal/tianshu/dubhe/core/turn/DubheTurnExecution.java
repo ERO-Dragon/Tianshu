@@ -51,7 +51,7 @@ final class DubheTurnExecution {
     }
 
     String activityId() {
-        return "ax.chat." + delivery.sessionId() + "." + delivery.turnId();
+        return "dubhe.chat." + delivery.sessionId() + "." + delivery.turnId();
     }
 
     PresenceActivityType swapPresenceActivity(PresenceActivityType next) {

@@ -95,7 +95,7 @@ tasks.register('runClient', Exec) {
     description = 'Launch the dev client with every module (Intake, Echo, Weaving, Dubhe, Presence, Lab).'
     def adapterName = providers.gradleProperty('adapter').orElse('1.21.1-neoforge').get()
     def featureList = providers.gradleProperty('mods')
-            .orElse('intake,echo,weaving,auxilium,presence,lab').get()
+            .orElse('intake,echo,weaving,dubhe,presence,lab').get()
     def gradleArgs = [":tianshu-adapter:${adapterName}:runClient", "-PfeatureMods=${featureList}", '--console=plain']
     if (providers.gradleProperty('offline').orElse('false').get().toBoolean()) {
         gradleArgs += '--offline'

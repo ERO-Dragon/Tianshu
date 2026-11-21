@@ -6,7 +6,7 @@ public record DubhePromptResourceKey(
         String variant
 ) {
     public DubhePromptResourceKey {
-        task = task == null ? DubhePromptTask.GENERAL_AX : task;
+        task = task == null ? DubhePromptTask.GENERAL_DUBHE : task;
         language = language == null ? DubhePromptLanguage.EN_US : language;
         variant = variant == null || variant.isBlank() ? "default" : variant.trim();
     }

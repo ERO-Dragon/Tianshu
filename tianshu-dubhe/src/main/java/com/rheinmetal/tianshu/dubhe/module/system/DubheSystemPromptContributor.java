@@ -15,7 +15,7 @@ import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptSectionRenderer;
  * magnitude. The context tier therefore scales the surrounding sections only, never this text.
  */
 public final class DubheSystemPromptContributor implements DubhePromptContributor {
-    public static final String SECTION_ID = "ax_system";
+    public static final String SECTION_ID = "dubhe_system";
 
     @Override
     public String sectionId() {
@@ -37,6 +37,6 @@ public final class DubheSystemPromptContributor implements DubhePromptContributo
     }
 
     private String renderSystemSection(DubhePromptBuildContext context, String content) {
-        return DubhePromptSectionRenderer.renderContent(context, DubhePromptTexts.SECTION_AX_SYSTEM, content == null ? "" : content);
+        return DubhePromptSectionRenderer.renderContent(context, DubhePromptTexts.SECTION_DUBHE_SYSTEM, content == null ? "" : content);
     }
 }

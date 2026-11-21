@@ -17,7 +17,7 @@ import com.rheinmetal.tianshu.echo.contract.TtsVoiceOptions;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleProtocolAccess;
 
 /**
- * The only place auxilium touches the speech module's payload classes.
+ * The only place dubhe touches the speech module's payload classes.
  *
  * <p>The speech module is an optional integration here, so this class is only instantiated when it is
  * installed ({@link DubheSpeechSinks}). Every reference to a Tts* payload in this module belongs here; the

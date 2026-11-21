@@ -26,10 +26,10 @@ import java.util.Optional;
 public final class DubhePresenceEventMapper {
 
     /** Language key of one "count + name" fragment inside a batch line. */
-    private static final String BATCH_ENTRY_KEY = "tianshu.ax.event.batch.entry";
+    private static final String BATCH_ENTRY_KEY = "tianshu.dubhe.event.batch.entry";
 
     /** Fragment template used when an occurrence happened exactly once: a count of one is noise. */
-    private static final String BATCH_ENTRY_PLAIN_KEY = "tianshu.ax.event.batch.entry.plain";
+    private static final String BATCH_ENTRY_PLAIN_KEY = "tianshu.dubhe.event.batch.entry.plain";
 
     /** Presence event type to the kind it becomes and the values the sentence may take, first non-blank wins. */
     private static final Map<String, Rule> RULES = Map.ofEntries(
@@ -109,13 +109,13 @@ public final class DubhePresenceEventMapper {
     /** The suffix a shortened batch ends with, chosen by what the kind talks about. */
     private static String moreKeyFor(String kind) {
         return switch (kind) {
-            case "tianshu:advancement" -> "tianshu.ax.event.batch.more.achievement";
+            case "tianshu:advancement" -> "tianshu.dubhe.event.batch.more.achievement";
             case "tianshu:item_crafted", "tianshu:pickup", "tianshu:trade", "tianshu:fishing_catch" ->
-                    "tianshu.ax.event.batch.more.item";
-            case "tianshu:block_break", "tianshu:block_place" -> "tianshu.ax.event.batch.more.block";
+                    "tianshu.dubhe.event.batch.more.item";
+            case "tianshu:block_break", "tianshu:block_place" -> "tianshu.dubhe.event.batch.more.block";
             case "tianshu:mob_killed", "tianshu:tamed", "tianshu:mount", "tianshu:dismount", "tianshu:boss_engage" ->
-                    "tianshu.ax.event.batch.more.entity";
-            default -> "tianshu.ax.event.batch.more.other";
+                    "tianshu.dubhe.event.batch.more.entity";
+            default -> "tianshu.dubhe.event.batch.more.other";
         };
     }
 

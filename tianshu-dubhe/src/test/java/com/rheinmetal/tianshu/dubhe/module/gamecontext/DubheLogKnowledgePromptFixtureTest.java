@@ -71,7 +71,7 @@ class DubheLogKnowledgePromptFixtureTest {
                 ),
                 "IA 上下文：玩家正在进行 AX 一期假数据 RAG 测试。"
         );
-        DubheRequest request = new DubheRequest("ax.fixture.log_rag", "刚才资源重载之后，日志里显示哪个 AX 相关缓存被加载？", "");
+        DubheRequest request = new DubheRequest("dubhe.fixture.log_rag", "刚才资源重载之后，日志里显示哪个 AX 相关缓存被加载？", "");
         DubheContextBudget budget = DubheContextBudget.DEFAULT;
         DubheLlmPromptRequestBuilder builder = new DubheLlmPromptRequestBuilder(new DubhePromptOrchestrator(
                 null,
@@ -84,7 +84,7 @@ class DubheLogKnowledgePromptFixtureTest {
         List<LLMPromptRequestPayload.MessageItemPayload> messages = payload.messages();
         String joined = renderMessages(messages);
 
-        assertOrdered(joined, "<ax_system>", "<game_context>", "<player_memory>", request.userText());
+        assertOrdered(joined, "<dubhe_system>", "<game_context>", "<player_memory>", request.userText());
         assertTrue(joined.contains("<game_context>"));
         assertTrue(joined.contains("以下信息与玩家当前所处的情况相关"));
         assertTrue(joined.contains("以下是与玩家当前问题相关的游戏知识"));
@@ -146,7 +146,7 @@ class DubheLogKnowledgePromptFixtureTest {
 
     private static void writeSnapshotReport(DubheRequest request, List<String> sourceLines, List<LLMPromptRequestPayload.MessageItemPayload> messages) throws Exception {
         Path commonRoot = commonRoot();
-        Path report = commonRoot.resolve("build/reports/ax/log-rag-prompt-snapshot.md");
+        Path report = commonRoot.resolve("build/reports/dubhe/log-rag-prompt-snapshot.md");
         Files.createDirectories(report.getParent());
         String markdown = "# AX fake log RAG prompt snapshot\n\n"
                 + "## Request\n\n"
@@ -220,7 +220,7 @@ class DubheLogKnowledgePromptFixtureTest {
                     .filter(line -> matches(line, terms))
                     .limit(4)
                     .toList();
-            return matches.isEmpty() ? List.of() : List.of(DubheKnowledgeHit.of("ax.fake_log_knowledge", matches));
+            return matches.isEmpty() ? List.of() : List.of(DubheKnowledgeHit.of("dubhe.fake_log_knowledge", matches));
         }
 
         private boolean matches(String line, Set<String> terms) {

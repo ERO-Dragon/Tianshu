@@ -714,7 +714,7 @@ public final class TtsModule implements TianshuManagedModule {
             return;
         }
         adapter.publishRequestStatus(status);
-        if ("module.ax".equals(status.sourceId()) || status.requestId().isBlank()) {
+        if ("module.dubhe".equals(status.sourceId()) || status.requestId().isBlank()) {
             return;
         }
         if (status.status() == com.rheinmetal.tianshu.echo.contract.TtsRequestStatus.QUEUED
@@ -726,7 +726,7 @@ public final class TtsModule implements TianshuManagedModule {
     }
 
     private void beginRequestActivity(String sourceId, String requestId) {
-        if ("module.ax".equals(sourceId) || requestId == null || requestId.isBlank()) {
+        if ("module.dubhe".equals(sourceId) || requestId == null || requestId.isBlank()) {
             return;
         }
         String normalizedRequestId = requestId.trim();

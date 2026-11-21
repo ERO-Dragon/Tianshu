@@ -41,7 +41,7 @@ public final class DubheMemoryStorageManifestStore {
         Path path = layout.worldManifestFile(scope);
         JsonObject manifest = jsonStore.readObject(path).map(JsonObject::deepCopy).orElseGet(JsonObject::new);
         boolean changed = false;
-        changed |= addString(manifest, "kind", "ax.world_memory");
+        changed |= addString(manifest, "kind", "dubhe.world_memory");
         changed |= addInt(manifest, "manifestSchemaVersion", MANIFEST_SCHEMA_VERSION);
         changed |= addInt(manifest, "layoutVersion", LAYOUT_VERSION);
         changed |= addLong(manifest, "createdAtMillis", System.currentTimeMillis());

@@ -41,4 +41,4 @@
 
 本模组以 GNU 宽通用公共许可证第 3 版（LGPL-3.0）开源（© 2026 Ero-Dragon）。
 
-更多：[运行架构](../../Tianshu/doc/function/auxilium/AX_运行架构.md) · [上下文编排](../../Tianshu/doc/function/auxilium/AX_上下文编排.md) · [记忆策略](../../Tianshu/doc/function/auxilium/AX_记忆策略.md) · [事件系统](../../Tianshu/doc/function/auxilium/AX_事件系统.md)
+更多：[运行架构](../../Tianshu/doc/function/dubhe/Dubhe_运行架构.md) · [上下文编排](../../Tianshu/doc/function/dubhe/Dubhe_上下文编排.md) · [记忆策略](../../Tianshu/doc/function/dubhe/Dubhe_记忆策略.md) · [事件系统](../../Tianshu/doc/function/dubhe/Dubhe_事件系统.md)

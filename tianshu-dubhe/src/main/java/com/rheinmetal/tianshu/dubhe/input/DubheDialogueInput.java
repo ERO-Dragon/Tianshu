@@ -79,7 +79,7 @@ public record DubheDialogueInput(
      */
     public static DubheDialogueInput typed(String playerId, String text, long expireAtMillis) {
         String owner = clean(playerId);
-        String session = "ax.text." + (owner.isBlank() ? "local" : owner);
+        String session = "dubhe.text." + (owner.isBlank() ? "local" : owner);
         String turn = "text-" + TYPED_TURNS.incrementAndGet();
         return new DubheDialogueInput(owner, session, turn, text, null, null, List.of(), Map.of(), List.of(), expireAtMillis);
     }

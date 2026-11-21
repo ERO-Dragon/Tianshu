@@ -6,6 +6,6 @@ public enum DubheTurnLatencyStage {
     PROMPT_READY,
     LLM_SUBMITTED,
     LLM_FIRST_TOKEN,
-    AX_FIRST_SENTENCE,
+    DUBHE_FIRST_SENTENCE,
     TTS_SUBMITTED
 }

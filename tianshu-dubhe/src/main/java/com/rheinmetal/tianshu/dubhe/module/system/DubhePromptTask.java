@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.dubhe.module.system;
 
 public enum DubhePromptTask {
-    GENERAL_AX,
+    GENERAL_DUBHE,
     TARGET_PLANNING,
     MEMORY_CONSOLIDATION,
     MEMORY_SHORT_TERM_COMPRESSION,

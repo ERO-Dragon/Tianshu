@@ -32,9 +32,9 @@ class DubheDelegateDeliveryRulesTest {
     @Test
     void speechKeysFollowTheResourceKeyDiscipline() {
         assertNull(DubheDelegateOutcomeKind.OK.speechKey(), "结论播报读正文本身，不用兜底句");
-        assertEquals("ax.runtime.delegate.failed", DubheDelegateOutcomeKind.FAILED.speechKey());
-        assertEquals("ax.runtime.delegate.timeout", DubheDelegateOutcomeKind.TIMEOUT.speechKey());
-        assertEquals("ax.runtime.delegate.cancelled", DubheDelegateOutcomeKind.CANCELLED.speechKey());
-        assertEquals("ax.runtime.delegate.ack", DubheDelegateOutcomeKind.ACK_SPEECH_KEY);
+        assertEquals("dubhe.runtime.delegate.failed", DubheDelegateOutcomeKind.FAILED.speechKey());
+        assertEquals("dubhe.runtime.delegate.timeout", DubheDelegateOutcomeKind.TIMEOUT.speechKey());
+        assertEquals("dubhe.runtime.delegate.cancelled", DubheDelegateOutcomeKind.CANCELLED.speechKey());
+        assertEquals("dubhe.runtime.delegate.ack", DubheDelegateOutcomeKind.ACK_SPEECH_KEY);
     }
 }

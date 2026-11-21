@@ -78,7 +78,7 @@ class TtsSessionManagerTest {
                 requestId,
                 requestId,
                 "hello",
-                TtsRequestSource.of("module.ax"),
+                TtsRequestSource.of("module.dubhe"),
                 TtsPlaybackPolicy.QUEUE,
                 Priority.NORMAL,
                 TtsVoiceProfile.defaults()

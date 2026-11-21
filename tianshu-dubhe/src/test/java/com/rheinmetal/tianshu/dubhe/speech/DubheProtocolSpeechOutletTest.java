@@ -47,10 +47,10 @@ class DubheProtocolSpeechOutletTest {
     void keyedLineIsResolvedThroughTheLanguageTable() {
         RecordingVoice voice = new RecordingVoice();
         DubheProtocolSpeechOutlet outlet = outlet(voice, TTS_ON,
-                Map.of("ax.runtime.delegate.ack", "Let me look that up."));
+                Map.of("dubhe.runtime.delegate.ack", "Let me look that up."));
 
         outlet.speak(DubheSpeechLine.keyed(
-                DubheSpeechSource.DELEGATE, DubheSpeechPriority.NORMAL, "ax.runtime.delegate.ack", List.of()));
+                DubheSpeechSource.DELEGATE, DubheSpeechPriority.NORMAL, "dubhe.runtime.delegate.ack", List.of()));
 
         assertEquals(List.of("Let me look that up."), voice.spoken);
         assertEquals(DubheSpeechUtterance.Placement.AFTER_SESSION, voice.placements.get(0));
@@ -63,7 +63,7 @@ class DubheProtocolSpeechOutletTest {
         DubheProtocolSpeechOutlet outlet = outlet(voice, TTS_ON, Map.of());
 
         outlet.speak(DubheSpeechLine.keyed(
-                DubheSpeechSource.DELEGATE, DubheSpeechPriority.HIGH, "ax.runtime.delegate.unknown", List.of()));
+                DubheSpeechSource.DELEGATE, DubheSpeechPriority.HIGH, "dubhe.runtime.delegate.unknown", List.of()));
 
         assertTrue(voice.spoken.isEmpty(), "an unresolved key must never be spoken as text");
     }
@@ -72,10 +72,10 @@ class DubheProtocolSpeechOutletTest {
     void disabledVoiceChannelDoesNotThrow() {
         RecordingVoice voice = new RecordingVoice();
         DubheProtocolSpeechOutlet outlet = outlet(voice, TTS_OFF,
-                Map.of("ax.runtime.delegate.ack", "Let me look that up."));
+                Map.of("dubhe.runtime.delegate.ack", "Let me look that up."));
 
         outlet.speak(DubheSpeechLine.keyed(
-                DubheSpeechSource.DELEGATE, DubheSpeechPriority.NORMAL, "ax.runtime.delegate.ack", List.of()));
+                DubheSpeechSource.DELEGATE, DubheSpeechPriority.NORMAL, "dubhe.runtime.delegate.ack", List.of()));
         outlet.speak(DubheSpeechLine.literal(DubheSpeechSource.EVENT, DubheSpeechPriority.HIGH, "You died"));
 
         assertTrue(voice.spoken.isEmpty(), "voice switched off is a diagnostic, not a delivery");

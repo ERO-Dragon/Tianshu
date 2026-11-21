@@ -108,7 +108,7 @@ class DubheEventLayerBoundaryTest {
             }
         }
         String resource = Files.readString(
-                Path.of("src/main/resources/com/rheinmetal/tianshu/dubhe/event/ax_event_tiers.json"),
+                Path.of("src/main/resources/com/rheinmetal/tianshu/dubhe/event/dubhe_event_tiers.json"),
                 StandardCharsets.UTF_8);
         table.append(resource);
         for (String retired : RETIRED_TIER_IDS) {

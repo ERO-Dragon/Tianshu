@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.dubhe.core.agent;
 import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
 
 /**
- * 一次 run 的收尾结果，对应《AX_Agent运行时设计.md》§3.3 与 §12.5。
+ * 一次 run 的收尾结果，对应《Dubhe_Agent运行时设计.md》§3.3 与 §12.5。
  *
  * <p>非 {@link DubheRunTermination#COMPLETED} 的终态一律 {@code result == null}：循环不会凭空造一个
  * 结果出来。这就是设计 §4.1 的降级语义在运行期原语里的落点——调用方看到空结果必须换成资源键

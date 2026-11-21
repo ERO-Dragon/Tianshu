@@ -114,8 +114,8 @@ class IaModuleLifecycleTest {
         IaModule ia = registeredModule(services);
         ia.prepare(new ModuleRuntimeContext(runtime, services, null, new ModuleRuntimeState()));
         RecordingHandler delivery = new RecordingHandler();
-        runtime.registerModule(module("module.ax", new CapabilityDescriptor(
-                "AX.DIALOGUE_INPUT",
+        runtime.registerModule(module("module.dubhe", new CapabilityDescriptor(
+                "DUBHE.DIALOGUE_INPUT",
                 PayloadType.of("DIALOGUE_DELIVERY"),
                 DialogueDeliveryPayload.class,
                 BrokerType.BOUNDED_QUEUE,
@@ -125,12 +125,12 @@ class IaModuleLifecycleTest {
         )), delivery);
         services.require(IaModuleService.class).registerParticipant(new DialogueParticipantDescriptor(
                 "ax",
-                "module.ax",
+                "module.dubhe",
                 "AX",
                 0,
                 DialogueClaimProfile.DEFAULT_OWNER,
                 com.rheinmetal.tianshu.protocol.dialogue.model.DialogueTriggerGroup.EMPTY,
-                "AX.DIALOGUE_INPUT",
+                "DUBHE.DIALOGUE_INPUT",
                 DialogueTurnProcessingPolicy.DEFAULT
         ));
 

@@ -22,9 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 标签契约的两处资源落点必须同时存在，否则整条闭环会在真实部署里退化：
  *
  * <ul>
- *   <li>模型侧：S（{@code general_ax.*.default.json} 的 {@code systemPrompts.system}）必须讲清标签怎么用，
+ *   <li>模型侧：S（{@code general_dubhe.*.default.json} 的 {@code systemPrompts.system}）必须讲清标签怎么用，
  *       否则模型永远不会挂标签；</li>
- *   <li>玩家侧：{@code ax_reply_texts.json} 必须有空答句兜底句，否则退化路径没有可播报的正文。</li>
+ *   <li>玩家侧：{@code dubhe_reply_texts.json} 必须有空答句兜底句，否则退化路径没有可播报的正文。</li>
  * </ul>
  *
  * <p>两者都是资源，因此它们的"存在性"只能靠断言资源来守——任何一边被误删，代码仍能编译、测试仍会绿到
@@ -37,7 +37,7 @@ class DubheReplyContractResourcesTest {
     @Test
     void systemPromptStatesTheDelegateTagInBothLanguages() {
         for (String language : new String[]{"zh_cn"}) {
-            String system = systemPrompt(PROMPT_DIR + "general_ax." + language + ".default.json");
+            String system = systemPrompt(PROMPT_DIR + "general_dubhe." + language + ".default.json");
             assertTrue(system.contains(DubheReplyContract.TAG_OPEN), language + " 的 S 缺少开标签");
             assertTrue(system.contains(DubheReplyContract.TAG_CLOSE), language + " 的 S 缺少闭标签");
             assertTrue(system.contains("delegate"), language + " 的 S 没有提到委派标签");
@@ -47,7 +47,7 @@ class DubheReplyContractResourcesTest {
     @Test
     void systemPromptNoLongerAsksForTheJsonContract() {
         for (String language : new String[]{"zh_cn"}) {
-            String system = systemPrompt(PROMPT_DIR + "general_ax." + language + ".default.json");
+            String system = systemPrompt(PROMPT_DIR + "general_dubhe." + language + ".default.json");
             assertFalse(system.contains("\"action\""), language + " 的 S 仍在要求 JSON 契约");
             assertFalse(system.contains("{\"action\""), language + " 的 S 仍带 JSON 示例");
             assertFalse(system.contains("\"query\""), language + " 的 S 仍带 query 字段");
@@ -62,7 +62,7 @@ class DubheReplyContractResourcesTest {
      */
     @Test
     void systemPromptCarriesTheDelegateExamplesAndBothLanguagesMatch() {
-        String zh = systemPrompt(PROMPT_DIR + "general_ax.zh_cn.default.json");
+        String zh = systemPrompt(PROMPT_DIR + "general_dubhe.zh_cn.default.json");
         // 提示词已收敛为单一文件（游戏内按玩家语言回答），不再有独立英文资源。
         String en = zh;
 

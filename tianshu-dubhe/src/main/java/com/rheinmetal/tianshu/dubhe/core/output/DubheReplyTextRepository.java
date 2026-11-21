@@ -12,17 +12,17 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 玩家能听到的兜底文案（{@code ax_reply_texts.json}）。
+ * 玩家能听到的兜底文案（{@code dubhe_reply_texts.json}）。
  *
  * <p>为什么需要独立的一层：AX 的输出层必须把<b>字面句子</b>交给 TTS，而 common 层拿不到 Minecraft 的语言表。
- * 因此与 {@code ax_agent_tasks.json} 同一个模式——文案留在资源里、按 {@link DubhePromptLanguage} 取，Java 里
+ * 因此与 {@code dubhe_agent_tasks.json} 同一个模式——文案留在资源里、按 {@link DubhePromptLanguage} 取，Java 里
  * 不出现任何自然语言句子。</p>
  *
  * <p>这里只收录"模型没给出可用答句时该说什么"这一类句子；正常答句的正文永远来自模型，不经过本类。</p>
  */
 public final class DubheReplyTextRepository {
 
-    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/ax_reply_texts.json";
+    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/dubhe_reply_texts.json";
 
     /**
      * 空答句（模型这一轮没有任何可念的正文）时的唯一兜底句。

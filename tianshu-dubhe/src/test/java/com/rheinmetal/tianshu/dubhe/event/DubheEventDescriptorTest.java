@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheEventDescriptorTest {
-    private static final DubheEventText LINE = DubheEventText.of("tianshu.ax.event.line.mymod.ritual");
+    private static final DubheEventText LINE = DubheEventText.of("tianshu.dubhe.event.line.mymod.ritual");
 
     @Test
     void kindMustBeNamespaced() {

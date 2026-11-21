@@ -154,7 +154,7 @@ class DubheMemoryMaintenanceServiceTest {
                     activities.stream().map(PresenceActivityPayload::action).toList());
             assertEquals(List.of(PresenceActivityType.PROCESSING_TASK, PresenceActivityType.PROCESSING_TASK),
                     activities.stream().map(PresenceActivityPayload::activityType).toList());
-            assertEquals("ax.memory.maintenance.world", activities.get(0).activityId());
+            assertEquals("dubhe.memory.maintenance.world", activities.get(0).activityId());
             assertEquals(activities.get(0).activityId(), activities.get(1).activityId(), "开合必须挂在同一个活动上");
         } finally {
             runtime.close();

@@ -53,8 +53,8 @@ class TtsPresenceActivityTest {
             );
 
             module.publishRequestStatus(status("external-1", "module.external", TtsRequestStatus.QUEUED));
-            module.publishRequestStatus(status("ax-1", "module.ax", TtsRequestStatus.QUEUED));
-            module.publishRequestStatus(status("ax-1", "module.ax", TtsRequestStatus.COMPLETED));
+            module.publishRequestStatus(status("ax-1", "module.dubhe", TtsRequestStatus.QUEUED));
+            module.publishRequestStatus(status("ax-1", "module.dubhe", TtsRequestStatus.COMPLETED));
             module.publishRequestStatus(status("external-1", "module.external", TtsRequestStatus.COMPLETED));
 
             awaitAction(activities, "tts.request.external-1", PresenceActivityAction.STARTED);

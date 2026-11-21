@@ -32,9 +32,9 @@ class DubheSystemPromptContributorTest {
                 DubheContextSnapshot.empty(),
                 DubheContextBudget.DEFAULT,
                 DubhePromptLanguage.EN_US,
-                new DubhePromptProfile(DubhePromptTask.GENERAL_AX, DubhePromptLanguage.EN_US, SYSTEM_PROMPT, List.of("ax_system")),
+                new DubhePromptProfile(DubhePromptTask.GENERAL_DUBHE, DubhePromptLanguage.EN_US, SYSTEM_PROMPT, List.of("dubhe_system")),
                 new DubhePromptTexts(DubhePromptLanguage.EN_US, Map.of(
-                        DubhePromptTexts.SECTION_AX_SYSTEM, "<ax_system>\n{{content}}\n</ax_system>"
+                        DubhePromptTexts.SECTION_DUBHE_SYSTEM, "<dubhe_system>\n{{content}}\n</dubhe_system>"
                 ))
         );
     }

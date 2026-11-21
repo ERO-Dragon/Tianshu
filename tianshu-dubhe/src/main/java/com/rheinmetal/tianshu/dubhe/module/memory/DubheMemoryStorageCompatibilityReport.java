@@ -14,7 +14,7 @@ public record DubheMemoryStorageCompatibilityReport(
 
     public static DubheMemoryStorageCompatibilityReport missingManifest() {
         return new DubheMemoryStorageCompatibilityReport(false, true, List.of(
-                Issue.warning("AX_MEMORY_MANIFEST_MISSING", "manifest will be created before durable memory writes")
+                Issue.warning("DUBHE_MEMORY_MANIFEST_MISSING", "manifest will be created before durable memory writes")
         ));
     }
 
@@ -37,7 +37,7 @@ public record DubheMemoryStorageCompatibilityReport(
     public record Issue(Severity severity, String code, String detail) {
         public Issue {
             severity = severity == null ? Severity.WARNING : severity;
-            code = code == null || code.isBlank() ? "AX_MEMORY_STORAGE_COMPATIBILITY" : code.trim();
+            code = code == null || code.isBlank() ? "DUBHE_MEMORY_STORAGE_COMPATIBILITY" : code.trim();
             detail = detail == null ? "" : detail.trim();
         }
 

@@ -65,46 +65,46 @@ public final class DubheSettingsRegistrySource implements TianshuSettingsRegistr
      * 玩家要往下滚很久才能看见失败；分成两栏，右栏切一下就到现在最该看的那一半。</p>
      */
     private void buildPanel(ModuleSettingsPanel panel, DubheSettingsSession session) {
-        panel.enable("ax.enabled", ax("enabled"), session.enabled)
-                .columns("ax.body", 0.62, 0.38, columns -> columns
+        panel.enable("dubhe.enabled", ax("enabled"), session.enabled)
+                .columns("dubhe.body", 0.62, 0.38, columns -> columns
                         .column(0, left -> buildSettingsColumn(left, session))
                         .column(1, this::buildSideColumn));
     }
 
     private void buildSettingsColumn(ModuleSettingsPanel panel, DubheSettingsSession session) {
-        panel.options("ax.identity", ax("section.identity"), session.enabled::get, options -> options
-                        .text("ax.identity.wake_word", ax("option.wake_word"), session.wakeWord, session.enabled::get))
-                .toggles("ax.reply", ax("section.reply"), session.enabled::get, toggles -> toggles
-                        .toggle("ax.reply.speech", ax("option.reply_speech"), session.replySpeechEnabled, session.enabled::get))
-                .toggles("ax.behavior", ax("section.behavior"), session.enabled::get, toggles -> toggles
-                        .toggle("ax.behavior.thinking", ax("option.chat_thinking"), session.chatThinkingEnabled, session.enabled::get)
-                        .toggle("ax.behavior.interrupt", ax("option.allow_interruption"), session.allowInterruption, session.enabled::get))
-                .toggles("ax.input", ax("section.input"), session.enabled::get, toggles -> toggles
-                        .toggle("ax.input.text", ax("option.text_input"), session.textInputEnabled, session.enabled::get))
-                .actions("ax.input.key", ax("section.input_key"), session.enabled::get, actions -> actions
-                        .button("ax.input.rebind", ax("action.rebind"), () -> rebind(KEY_TEXT_INPUT_KEY), session.enabled::get));
+        panel.options("dubhe.identity", ax("section.identity"), session.enabled::get, options -> options
+                        .text("dubhe.identity.wake_word", ax("option.wake_word"), session.wakeWord, session.enabled::get))
+                .toggles("dubhe.reply", ax("section.reply"), session.enabled::get, toggles -> toggles
+                        .toggle("dubhe.reply.speech", ax("option.reply_speech"), session.replySpeechEnabled, session.enabled::get))
+                .toggles("dubhe.behavior", ax("section.behavior"), session.enabled::get, toggles -> toggles
+                        .toggle("dubhe.behavior.thinking", ax("option.chat_thinking"), session.chatThinkingEnabled, session.enabled::get)
+                        .toggle("dubhe.behavior.interrupt", ax("option.allow_interruption"), session.allowInterruption, session.enabled::get))
+                .toggles("dubhe.input", ax("section.input"), session.enabled::get, toggles -> toggles
+                        .toggle("dubhe.input.text", ax("option.text_input"), session.textInputEnabled, session.enabled::get))
+                .actions("dubhe.input.key", ax("section.input_key"), session.enabled::get, actions -> actions
+                        .button("dubhe.input.rebind", ax("action.rebind"), () -> rebind(KEY_TEXT_INPUT_KEY), session.enabled::get));
     }
 
     /** 右栏：日志，或者切过去看待办（单次记忆维护重试）。 */
     private void buildSideColumn(ModuleSettingsPanel panel) {
-        panel.status("ax.side.state", ax("section.side"), status -> status
-                        .row("ax.side.current", ax("row.side_current"), () -> ax(showLog ? "side.log" : "side.retry")))
-                .actions("ax.side.switch", ax("section.side_switch"), actions -> actions
-                        .button("ax.side.show_log", ax("action.show_log"), () -> switchSide(true))
-                        .button("ax.side.show_retry", ax("action.show_retry"), () -> switchSide(false)));
+        panel.status("dubhe.side.state", ax("section.side"), status -> status
+                        .row("dubhe.side.current", ax("row.side_current"), () -> ax(showLog ? "side.log" : "side.retry")))
+                .actions("dubhe.side.switch", ax("section.side_switch"), actions -> actions
+                        .button("dubhe.side.show_log", ax("action.show_log"), () -> switchSide(true))
+                        .button("dubhe.side.show_retry", ax("action.show_retry"), () -> switchSide(false)));
         if (showLog) {
-            panel.<DubheActivityLog.Entry>list("ax.log", ax("section.log"), list -> list
+            panel.<DubheActivityLog.Entry>list("dubhe.log", ax("section.log"), list -> list
                     .items(this::logEntries)
                     .card(this::logCard)
                     .emptyText(ax("log.empty")));
             return;
         }
-        panel.<DubheRetryEntry>list("ax.retry", ax("section.retry"), list -> list
+        panel.<DubheRetryEntry>list("dubhe.retry", ax("section.retry"), list -> list
                 .items(this::retryEntries)
                 .card(this::retryCard)
                 .itemActions((entry, actions) -> actions
-                        .button("ax.retry.retry", ax("action.retry"), item -> retryPending(), this::canRetry)
-                        .button("ax.retry.dismiss", ax("action.dismiss"), item -> dismissPending()))
+                        .button("dubhe.retry.retry", ax("action.retry"), item -> retryPending(), this::canRetry)
+                        .button("dubhe.retry.dismiss", ax("action.dismiss"), item -> dismissPending()))
                 .emptyText(ax("retry.empty")));
     }
 
@@ -126,7 +126,7 @@ public final class DubheSettingsRegistrySource implements TianshuSettingsRegistr
         if (!entry.detail().isBlank()) {
             details.add(ax("log.detail", UiText.literal(entry.detail())));
         }
-        return new SettingsListCard(UiText.key("tianshu.gui.ax.log." + entry.code()), UiText.literal(""), details, List.of());
+        return new SettingsListCard(UiText.key("tianshu.gui.dubhe.log." + entry.code()), UiText.literal(""), details, List.of());
     }
 
     private List<DubheRetryEntry> retryEntries() {
@@ -201,7 +201,7 @@ public final class DubheSettingsRegistrySource implements TianshuSettingsRegistr
     }
 
     private static UiText ax(String key, Object... args) {
-        return UiText.key("tianshu.gui.ax." + key, args);
+        return UiText.key("tianshu.gui.dubhe." + key, args);
     }
 
     private static final class DubheSettingsSession implements com.rheinmetal.tianshu.client.settings.session.ModuleSettingsSession {

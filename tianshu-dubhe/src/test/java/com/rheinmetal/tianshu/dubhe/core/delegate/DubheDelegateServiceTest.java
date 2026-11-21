@@ -58,7 +58,7 @@ class DubheDelegateServiceTest {
         assertEquals(DubheDelegateService.DELEGATE_TEMPERATURE, request.sampling().temperature(),
                 "Complex 请求自带采样温度（§3.2）");
         assertEquals(DubheDelegateConclusionParser.MAX_CONCLUSION_TOKENS, request.maxTokens());
-        assertTrue(request.requestId().startsWith("ax.delegate."));
+        assertTrue(request.requestId().startsWith("dubhe.delegate."));
         assertEquals(ticket.taskId(), fixture.taskOf(request.requestId()));
 
         fixture.answer("{\"conclusion\":\"铁砧可以修复工具。\"}");
@@ -109,7 +109,7 @@ class DubheDelegateServiceTest {
         assertEquals("delegate_failed", fixture.appends.get(0).text(), "正文为空的终态回落 kind 代码，历史不留空行");
 
         DubheDelegateDelivery last = fixture.lastDelivery();
-        assertEquals("ax.runtime.delegate.failed", last.utteranceKey());
+        assertEquals("dubhe.runtime.delegate.failed", last.utteranceKey());
         assertTrue(last.text().isEmpty());
     }
 
@@ -166,7 +166,7 @@ class DubheDelegateServiceTest {
         assertEquals(DubheRunTermination.FAILED, ticket.termination());
         assertEquals(1, fixture.ledger.size(), "车道拒绝也要写终态（§5.2 步骤 ④ / §5.3）");
         assertEquals(DubheDelegateOutcomeKind.FAILED, fixture.ledger.find(ticket.taskId()).kind());
-        assertEquals("ax.runtime.delegate.failed", fixture.lastDelivery().utteranceKey());
+        assertEquals("dubhe.runtime.delegate.failed", fixture.lastDelivery().utteranceKey());
     }
 
     // ---------------------------------------------------------------- fixture
@@ -267,7 +267,7 @@ class DubheDelegateServiceTest {
         }
 
         private String taskOf(String requestId) {
-            return requestId.substring("ax.delegate.".length());
+            return requestId.substring("dubhe.delegate.".length());
         }
     }
 

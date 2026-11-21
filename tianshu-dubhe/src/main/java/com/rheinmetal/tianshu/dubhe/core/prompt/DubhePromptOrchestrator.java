@@ -111,9 +111,9 @@ public final class DubhePromptOrchestrator {
 
     private DubhePromptProfile loadProfile(DubhePromptLanguage language) {
         if (resourceRepository == null) {
-            return DubhePromptProfile.defaultFor(DubhePromptTask.GENERAL_AX, language);
+            return DubhePromptProfile.defaultFor(DubhePromptTask.GENERAL_DUBHE, language);
         }
-        return resourceRepository.loadProfile(DubhePromptTask.GENERAL_AX, language, DubhePromptRequest.general(language).variant());
+        return resourceRepository.loadProfile(DubhePromptTask.GENERAL_DUBHE, language, DubhePromptRequest.general(language).variant());
     }
 
     private DubhePromptTexts loadTexts(DubhePromptLanguage language) {

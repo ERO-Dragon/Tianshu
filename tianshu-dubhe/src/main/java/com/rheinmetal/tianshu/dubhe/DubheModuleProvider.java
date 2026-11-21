@@ -45,11 +45,11 @@ public final class DubheModuleProvider implements TianshuModuleProvider {
         ClientPorts ports = context.clientPorts();
         // The wording of this module's progress lines belongs here; the host only looks the codes up.
         ports.diagnosticChat().register("DIALOGUE_DELIVERY", DiagnosticChatNotice.single(
-                "tianshu.chat.progress.ax.input", "normalizedText", "repairedText", "input"));
+                "tianshu.chat.progress.dubhe.input", "normalizedText", "repairedText", "input"));
         // The assistant owns its name, so it also owns what the typed-dialogue bar says.
         ports.uiHost().setTextInputLabels(
-                UiText.key("tianshu.gui.ax.text_input.title"),
-                UiText.key("tianshu.gui.ax.text_input.hint"));
+                UiText.key("tianshu.gui.dubhe.text_input.title"),
+                UiText.key("tianshu.gui.dubhe.text_input.hint"));
         DubheConfig config = new DubheConfig(
                 ports.configStores().forModule(DubheModule.MODULE_ID),
                 ports.configStores().moduleDirectory());

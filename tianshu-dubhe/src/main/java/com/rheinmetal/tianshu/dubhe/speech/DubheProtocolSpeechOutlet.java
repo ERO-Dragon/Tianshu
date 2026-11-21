@@ -20,9 +20,9 @@ import com.rheinmetal.tianshu.protocol.Priority;
  */
 public final class DubheProtocolSpeechOutlet implements DubheSpeechOutlet {
 
-    private static final String DISABLED = "ax.speech.disabled";
-    private static final String UNRESOLVED = "ax.speech.unresolved";
-    private static final String FAILED = "ax.speech.failed";
+    private static final String DISABLED = "dubhe.speech.disabled";
+    private static final String UNRESOLVED = "dubhe.speech.unresolved";
+    private static final String FAILED = "dubhe.speech.failed";
 
     private final DubheSpeechSink sink;
     private final DubheGameEventTextProvider texts;

@@ -72,15 +72,15 @@ class TtsProtocolSessionBoundaryTest {
         prepare(runtime);
 
         TtsSpeechSessionKey active = TtsSpeechSessionKey.of("module.a", 1L, 1, "active");
-        TtsSpeechSessionKey stream = TtsSpeechSessionKey.of("module.ax", 2L, 1, "stream");
+        TtsSpeechSessionKey stream = TtsSpeechSessionKey.of("module.dubhe", 2L, 1, "stream");
         assertTrue(runtime.submitSpeech(active, TtsTextInputMode.DOCUMENT, true,
                 request("active", "A.", "module.a", TtsPlaybackPlacement.QUEUE_AFTER_SESSION)).accepted());
         assertTrue(engine.firstStarted.await(2L, TimeUnit.SECONDS));
 
         assertTrue(runtime.submitSpeech(stream, TtsTextInputMode.SENTENCE_STREAM, false,
-                request("stream", "B1.", "module.ax", TtsPlaybackPlacement.QUEUE_AFTER_SESSION)).accepted());
+                request("stream", "B1.", "module.dubhe", TtsPlaybackPlacement.QUEUE_AFTER_SESSION)).accepted());
         assertTrue(runtime.submitSpeech(stream, TtsTextInputMode.SENTENCE_STREAM, true,
-                request("stream", "B2.", "module.ax", TtsPlaybackPlacement.CANCEL_SESSION_AND_PLAY)).accepted());
+                request("stream", "B2.", "module.dubhe", TtsPlaybackPlacement.CANCEL_SESSION_AND_PLAY)).accepted());
 
         engine.releaseFirst.countDown();
         assertTrue(engine.awaitInvocations(3));
@@ -96,15 +96,15 @@ class TtsProtocolSessionBoundaryTest {
         List<TtsRequestStatusPayload> statuses = Collections.synchronizedList(new ArrayList<>());
         TtsRuntime runtime = runtime(engine, statuses);
         prepare(runtime);
-        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.ax", 21L, 7, "trace");
+        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.dubhe", 21L, 7, "trace");
 
         TtsOperationResult result = runtime.submitSpeech(key, TtsTextInputMode.DOCUMENT, true,
-                request("ax-turn", "Hello.", "module.ax", TtsPlaybackPlacement.QUEUE_AFTER_SESSION));
+                request("ax-turn", "Hello.", "module.dubhe", TtsPlaybackPlacement.QUEUE_AFTER_SESSION));
 
         assertTrue(result.accepted());
         assertTrue(engine.firstStarted.await(2L, TimeUnit.SECONDS));
         assertTrue(statuses.stream().anyMatch(status -> status.requestId().equals("ax-turn")
-                && status.sourceId().equals("module.ax")
+                && status.sourceId().equals("module.dubhe")
                 && status.sessionId() == 21L
                 && status.turnId() == 7
                 && status.status() == TtsRequestStatus.PLAYING));

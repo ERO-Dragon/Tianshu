@@ -51,14 +51,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class DubheProtocolAdapter extends AbstractProtocolAdapter {
     public static final String MODULE_ID = DubheModule.MODULE_ID;
     public static final String SOURCE_ID = DubheModule.MODULE_ID;
-    public static final String DIALOGUE_INPUT_CAPABILITY = DubheCapabilities.AX_DIALOGUE_INPUT;
-    public static final String CONTEXT_INPUT_CAPABILITY = DubheCapabilities.AX_CONTEXT_INPUT;
+    public static final String DIALOGUE_INPUT_CAPABILITY = DubheCapabilities.DUBHE_DIALOGUE_INPUT;
+    public static final String CONTEXT_INPUT_CAPABILITY = DubheCapabilities.DUBHE_CONTEXT_INPUT;
     /** 事件型入口：外部模块投递一句自己渲染好的世界事件，外加三档之一。 */
-    public static final String EVENT_INPUT_CAPABILITY = DubheCapabilities.AX_EVENT_INPUT;
+    public static final String EVENT_INPUT_CAPABILITY = DubheCapabilities.DUBHE_EVENT_INPUT;
     private static final long CHAT_ACTIVITY_TTL_MILLIS = 180_000L;
     private static final long MAINTENANCE_ACTIVITY_TTL_MILLIS = 900_000L;
     /** 准备中的活动 id；与织言的 {@code llm.model.load} 并列而不是共用，两者可以同时为真。 */
-    private static final String LOADING_ACTIVITY_ID = "ax.module.load";
+    private static final String LOADING_ACTIVITY_ID = "dubhe.module.load";
     /** 准备窗口的兜底寿命：正常路径由 ready 收起，这个 TTL 只防"进程在准备途中没了"。 */
     private static final long LOADING_ACTIVITY_TTL_MILLIS = 300_000L;
     private final AtomicBoolean loadingPublished = new AtomicBoolean(false);
@@ -124,7 +124,7 @@ public final class DubheProtocolAdapter extends AbstractProtocolAdapter {
     public void registerEventInputCapability(EnvelopeHandler handler) {
         registerCapability(
                 EVENT_INPUT_CAPABILITY,
-                PayloadType.of("AX_WORLD_EVENT"),
+                PayloadType.of("DUBHE_WORLD_EVENT"),
                 DubheWorldEventPayload.class,
                 BrokerType.BOUNDED_QUEUE,
                 EnumSet.of(PacketType.COMMAND),

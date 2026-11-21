@@ -80,7 +80,7 @@ public final class DubheLlmRagClient {
             }
             query.cancelTimeout("AX RAG query cancelled");
             adapter.unregisterLlmCacheManageResponses(entry.getKey());
-            adapter.cancelLlmCacheManage(query.envelope(), "AX_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
+            adapter.cancelLlmCacheManage(query.envelope(), "DUBHE_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
             query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX RAG query cancelled"));
             return true;
         });
@@ -95,7 +95,7 @@ public final class DubheLlmRagClient {
             }
             query.cancelTimeout("AX RAG query expired");
             adapter.unregisterLlmCacheManageResponses(entry.getKey());
-            adapter.cancelLlmCacheManage(query.envelope(), "AX_RAG_QUERY_TIMEOUT", "AX LLM RAG query timed out");
+            adapter.cancelLlmCacheManage(query.envelope(), "DUBHE_RAG_QUERY_TIMEOUT", "AX LLM RAG query timed out");
             query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX LLM RAG query timed out"));
             return true;
         });
@@ -106,7 +106,7 @@ public final class DubheLlmRagClient {
             adapter.unregisterLlmCacheManageResponses(requestEnvelopeId);
             if (query != null) {
                 query.cancelTimeout("AX RAG client stopped");
-                adapter.cancelLlmCacheManage(query.envelope(), "AX_MODULE_STOPPED", "AX RAG client stopped");
+                adapter.cancelLlmCacheManage(query.envelope(), "DUBHE_MODULE_STOPPED", "AX RAG client stopped");
                 query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX RAG client stopped"));
             }
         });
@@ -137,7 +137,7 @@ public final class DubheLlmRagClient {
             return;
         }
         query.timeoutHandle = adapter.scheduleTimeout(
-                "ax.rag.timeout." + requestEnvelopeId,
+                "dubhe.rag.timeout." + requestEnvelopeId,
                 () -> timeout(requestEnvelopeId),
                 Duration.ofMillis(timeoutMillis)
         );
@@ -150,7 +150,7 @@ public final class DubheLlmRagClient {
         }
         query.cancelTimeout("AX RAG timeout fired");
         adapter.unregisterLlmCacheManageResponses(requestEnvelopeId);
-        adapter.cancelLlmCacheManage(query.envelope(), "AX_RAG_QUERY_TIMEOUT", "AX LLM RAG query timed out");
+        adapter.cancelLlmCacheManage(query.envelope(), "DUBHE_RAG_QUERY_TIMEOUT", "AX LLM RAG query timed out");
         query.future().complete(LLMCacheManageResultPayload.failed(query.uid(), "AX LLM RAG query timed out"));
     }
 

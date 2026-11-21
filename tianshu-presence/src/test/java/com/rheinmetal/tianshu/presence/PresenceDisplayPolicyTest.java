@@ -55,7 +55,7 @@ class PresenceDisplayPolicyTest {
         var display = policy.hudDisplay(new PresenceActivitySnapshot(
                 PresencePrimaryState.THINKING,
                 true,
-                "module.ax",
+                "module.dubhe",
                 1_000L
         ));
 

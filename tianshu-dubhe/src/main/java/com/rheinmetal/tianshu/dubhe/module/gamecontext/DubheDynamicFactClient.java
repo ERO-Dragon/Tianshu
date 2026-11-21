@@ -41,7 +41,7 @@ public final class DubheDynamicFactClient {
             return "";
         }
         PresenceContextQueryPayload payload = new PresenceContextQueryPayload(
-                request == null ? "AX.dynamic_facts" : request.requestKey() + ".dynamic_facts",
+                request == null ? "DUBHE.dynamic_facts" : request.requestKey() + ".dynamic_facts",
                 delivery.sessionId(),
                 delivery.turnId(),
                 delivery.playerId(),
@@ -75,7 +75,7 @@ public final class DubheDynamicFactClient {
         }
         query.cancelTimeout("AX dynamic fact query cancelled");
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
-        adapter.cancelPresenceContextQuery(query.envelope(), "AX_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
+        adapter.cancelPresenceContextQuery(query.envelope(), "DUBHE_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
         query.completion().complete(List.of());
     }
 
@@ -88,7 +88,7 @@ public final class DubheDynamicFactClient {
             }
             query.cancelTimeout("AX dynamic fact query expired");
             adapter.unregisterPresenceContextResponses(entry.getKey());
-            adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
+            adapter.cancelPresenceContextQuery(query.envelope(), "DUBHE_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
             query.completion().complete(List.of());
             return true;
         });
@@ -99,7 +99,7 @@ public final class DubheDynamicFactClient {
             adapter.unregisterPresenceContextResponses(requestEnvelopeId);
             if (query != null) {
                 query.cancelTimeout("AX dynamic fact client stopped");
-                adapter.cancelPresenceContextQuery(query.envelope(), "AX_MODULE_STOPPED", "AX dynamic fact client stopped");
+                adapter.cancelPresenceContextQuery(query.envelope(), "DUBHE_MODULE_STOPPED", "AX dynamic fact client stopped");
                 query.completion().complete(List.of());
             }
         });
@@ -138,7 +138,7 @@ public final class DubheDynamicFactClient {
             return;
         }
         query.timeoutHandle = adapter.scheduleTimeout(
-                "ax.dynamic-facts.timeout." + requestEnvelopeId,
+                "dubhe.dynamic-facts.timeout." + requestEnvelopeId,
                 () -> timeout(requestEnvelopeId),
                 Duration.ofMillis(timeoutMillis)
         );
@@ -151,7 +151,7 @@ public final class DubheDynamicFactClient {
         }
         query.cancelTimeout("AX dynamic fact timeout fired");
         adapter.unregisterPresenceContextResponses(requestEnvelopeId);
-        adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
+        adapter.cancelPresenceContextQuery(query.envelope(), "DUBHE_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
         query.completion().complete(List.of());
     }
 

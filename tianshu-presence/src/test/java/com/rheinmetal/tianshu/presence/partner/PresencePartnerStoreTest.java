@@ -41,7 +41,7 @@ class PresencePartnerStoreTest {
     @Test
     void aDefaultOwnerWithoutAnIconIsExpressedByTheMainIcon() {
         PresencePartnerStore store = new PresencePartnerStore();
-        store.accept(partner("module.ax", "tianshu.AX", "", true, 0L, 0L));
+        store.accept(partner("module.dubhe", "tianshu.AX", "", true, 0L, 0L));
 
         PresencePartnerSnapshot snapshot = store.at(1_000L);
         assertTrue(snapshot.present());

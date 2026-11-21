@@ -21,9 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * into the runtime file; the AX event vocabulary lives in this module's own shard.</p>
  */
 class DubheGameEventLanguageSymmetryTest {
-    private static final String LINE = "tianshu.ax.event.line.";
-    private static final String DETAIL = "tianshu.ax.event.detail.";
-    private static final String AGGREGATE = "tianshu.ax.event.aggregate.";
+    private static final String LINE = "tianshu.dubhe.event.line.";
+    private static final String DETAIL = "tianshu.dubhe.event.detail.";
+    private static final String AGGREGATE = "tianshu.dubhe.event.aggregate.";
 
     /** Kinds this module currently renders a single sentence for: the world events it maps into the event layer. */
     private static final List<String> PRODUCED_KINDS = List.of(
@@ -67,7 +67,7 @@ class DubheGameEventLanguageSymmetryTest {
     @Test
     void theOldLanguageKeyHandleLeavesNoSpeechKeysBehind() throws Exception {
         for (String key : keys("en_us.json")) {
-            assertFalse(key.startsWith("tianshu.ax.event.speech."),
+            assertFalse(key.startsWith("tianshu.dubhe.event.speech."),
                     "the event layer no longer holds language keys, so speech keys are stale: " + key);
         }
     }

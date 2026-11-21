@@ -13,7 +13,7 @@ class TtsSpeechSessionCoordinatorTest {
     @Test
     void existingSessionIsNotAdmittedAgain() {
         TtsSpeechSessionCoordinator coordinator = new TtsSpeechSessionCoordinator();
-        TtsSpeechSessionKey key = key("module.ax", 1L);
+        TtsSpeechSessionKey key = key("module.dubhe", 1L);
 
         assertEquals(TtsSpeechSessionCoordinator.AdmissionState.ACCEPTED,
                 coordinator.admit(key, TtsPlaybackPlacement.QUEUE_AFTER_SESSION).state());

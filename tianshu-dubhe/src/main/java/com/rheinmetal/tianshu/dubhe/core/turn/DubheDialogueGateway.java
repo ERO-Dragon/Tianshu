@@ -39,7 +39,7 @@ public final class DubheDialogueGateway {
             return;
         }
         if (!accessController.canAcceptDelivery(envelope, input)) {
-            fail(context, envelope, "AX_DELIVERY_REJECTED", "AX dialogue delivery is not authorized", null);
+            fail(context, envelope, "DUBHE_DELIVERY_REJECTED", "AX dialogue delivery is not authorized", null);
             return;
         }
         try {
@@ -54,7 +54,7 @@ public final class DubheDialogueGateway {
             if (statusPublisher != null) {
                 statusPublisher.failed("gateway.turn_start_failed");
             }
-            fail(context, envelope, "AX_TURN_START_FAILED", safeMessage(e), e);
+            fail(context, envelope, "DUBHE_TURN_START_FAILED", safeMessage(e), e);
         }
     }
 

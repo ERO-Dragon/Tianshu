@@ -46,9 +46,9 @@ import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
  */
 public final class DubheLlmClient {
     /** 重投诊断码：一次失败换来的一次推迟。 */
-    private static final String RETRY_DIAGNOSTIC = "ax.llm.retry";
+    private static final String RETRY_DIAGNOSTIC = "dubhe.llm.retry";
     /** 上一遍失败、下一遍却连信封都没能建出来：这是 AX 自己的失败，不是平台的。 */
-    private static final String RETRY_FAILED_CODE = "AX_LLM_RETRY_FAILED";
+    private static final String RETRY_FAILED_CODE = "DUBHE_LLM_RETRY_FAILED";
     private static final String UNKNOWN_REASON = "unknown";
 
     private final DubheProtocolAdapter adapter;
@@ -391,9 +391,9 @@ public final class DubheLlmClient {
 
     private static String cancellationReasonCode(DubheTurnCancellation cancellation) {
         if (cancellation == null || cancellation.releaseReason() == null) {
-            return "AX_LLM_REQUEST_CANCELLED";
+            return "DUBHE_LLM_REQUEST_CANCELLED";
         }
-        return "AX_" + cancellation.releaseReason().name();
+        return "DUBHE_" + cancellation.releaseReason().name();
     }
 
     private static LLMPromptRequestPayload requestPayload(TianshuEnvelope envelope) {

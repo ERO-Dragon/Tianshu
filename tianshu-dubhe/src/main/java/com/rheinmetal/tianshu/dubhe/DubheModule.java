@@ -93,7 +93,7 @@ import com.rheinmetal.tianshu.protocol.status.ModuleStatuses;
 import java.util.Map;
 
 public final class DubheModule implements TianshuManagedModule {
-    public static final String MODULE_ID = "module.ax";
+    public static final String MODULE_ID = "module.dubhe";
 
     private final IGameEnvironment env;
     private final DubheStorageConfiguration storageConfiguration;
@@ -133,7 +133,7 @@ public final class DubheModule implements TianshuManagedModule {
      *
      * <p>它只说"天枢没起来"，不指路：指路的话（检查密钥/模型）只对织言成立，对天枢是误导。</p>
      */
-    private static final String STARTUP_FAILED_KEY = "tianshu.runtime.module.ax.startup_failed";
+    private static final String STARTUP_FAILED_KEY = "tianshu.runtime.module.dubhe.startup_failed";
 
     private DubheTurnOrchestrator turnOrchestrator;
     private InputSignals.Subscription textInputSubscription;
@@ -433,7 +433,7 @@ public final class DubheModule implements TianshuManagedModule {
         if (delivery == null) {
             return;
         }
-        env.logs().info("ax.delegate.speech_pending task=" + delivery.taskId()
+        env.logs().info("dubhe.delegate.speech_pending task=" + delivery.taskId()
                 + (delivery.utteranceKey() == null ? "" : " key=" + delivery.utteranceKey())
                 + (delivery.isAck() ? " ack=true" : " kind=" + delivery.kind().code()));
         DubheDelegateDeliverySink sink = delegateSpeech;
@@ -730,7 +730,7 @@ public final class DubheModule implements TianshuManagedModule {
             throws Exception {
         DubheDialogueGateway currentGateway = dialogueGateway;
         if (currentGateway == null) {
-            context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX runtime is not prepared", null);
+            context.fail(envelope.envelopeId(), "DUBHE_NOT_READY", "AX runtime is not prepared", null);
             return;
         }
         env.diagnostics().publish(DiagnosticEvent.now(
@@ -792,7 +792,7 @@ public final class DubheModule implements TianshuManagedModule {
         DubheScope scope = currentWritableScope();
         if (scope == null) {
             // 没有可写作用域时不能"接受但不写"：静默成功会让投递方以为话语已经进了历史。
-            context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX context input has no writable scope", null);
+            context.fail(envelope.envelopeId(), "DUBHE_NOT_READY", "AX context input has no writable scope", null);
             return;
         }
         if (!payload.messageText().isBlank()) {
@@ -820,7 +820,7 @@ public final class DubheModule implements TianshuManagedModule {
         }
         DubheGameEventService service = gameEventService;
         if (service == null || service.closed()) {
-            context.fail(envelope.envelopeId(), "AX_NOT_READY", "AX event layer is not running", null);
+            context.fail(envelope.envelopeId(), "DUBHE_NOT_READY", "AX event layer is not running", null);
             return;
         }
         if (payload.behavior() == null || payload.behavior() == DubheEventClass.DROP) {

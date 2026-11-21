@@ -9,7 +9,7 @@ public record DubheRequest(String requestKey, String userText, String deliverySn
     }
 
     public DubheRequest {
-        requestKey = requestKey == null || requestKey.isBlank() ? "AX.request" : requestKey.trim();
+        requestKey = requestKey == null || requestKey.isBlank() ? "DUBHE.request" : requestKey.trim();
         userText = userText == null ? "" : userText.trim();
         deliverySnapshot = deliverySnapshot == null ? "" : deliverySnapshot.trim();
         source = source == null ? DubheInputSource.UNKNOWN : source;
@@ -17,7 +17,7 @@ public record DubheRequest(String requestKey, String userText, String deliverySn
 
     public static DubheRequest fromNormalizedInput(DubheNormalizedInput input) {
         if (input == null) {
-            return new DubheRequest("AX.request", "", "");
+            return new DubheRequest("DUBHE.request", "", "");
         }
         return new DubheRequest(input.requestKey(), input.userText(), input.deliverySnapshot(), input.source());
     }

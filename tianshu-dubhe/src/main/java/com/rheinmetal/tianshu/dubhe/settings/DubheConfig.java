@@ -41,7 +41,7 @@ public final class DubheConfig implements DubheAssistantSettings, DubheSettingsA
         this.storageRoot = Objects.requireNonNull(moduleDirectory, "moduleDirectory")
                 .toAbsolutePath()
                 .normalize()
-                .resolve("ax")
+                .resolve("dubhe")
                 .resolve("cache");
     }
 

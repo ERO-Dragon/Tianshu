@@ -44,7 +44,7 @@ class PresenceActivityTrackerTest {
         assertEquals(PresencePrimaryState.LISTENING, tracker.snapshot().primaryState(),
                 "a live speech turn outranks an ambient load");
 
-        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
+        tracker.accept("module.dubhe", started("dubhe.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
 
         assertEquals(PresencePrimaryState.LISTENING, tracker.snapshot().primaryState(),
                 "the speech turn owns the slot until the arbiter resolves it");
@@ -87,7 +87,7 @@ class PresenceActivityTrackerTest {
         tracker.startWorldSession();
 
         tracker.accept("module.llm", started("llm.model.load", PresenceActivityType.LOADING, now.get(), 30_000L));
-        tracker.accept("module.ax", started("ax.memory.maintenance", PresenceActivityType.PROCESSING_TASK, now.get(), 30_000L));
+        tracker.accept("module.dubhe", started("dubhe.memory.maintenance", PresenceActivityType.PROCESSING_TASK, now.get(), 30_000L));
 
         PresenceActivitySnapshot loading = tracker.snapshot();
         assertEquals(PresencePrimaryState.LOADING, loading.primaryState());
@@ -107,15 +107,15 @@ class PresenceActivityTrackerTest {
         tracker.startWorldSession();
 
         tracker.accept("module.llm", started("llm.model.load", PresenceActivityType.LOADING, now.get(), 30_000L));
-        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
-        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.RESPONDING, now.get(), 30_000L));
+        tracker.accept("module.dubhe", started("dubhe.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
+        tracker.accept("module.dubhe", started("dubhe.chat.1", PresenceActivityType.RESPONDING, now.get(), 30_000L));
 
         assertEquals(PresencePrimaryState.RESPONDING, tracker.snapshot().primaryState());
 
-        tracker.accept("module.ax", ended("ax.chat.1", PresenceActivityType.RESPONDING, now.get()));
+        tracker.accept("module.dubhe", ended("dubhe.chat.1", PresenceActivityType.RESPONDING, now.get()));
         assertEquals(PresencePrimaryState.THINKING, tracker.snapshot().primaryState());
 
-        tracker.accept("module.ax", ended("ax.chat.1", PresenceActivityType.THINKING, now.get()));
+        tracker.accept("module.dubhe", ended("dubhe.chat.1", PresenceActivityType.THINKING, now.get()));
         assertEquals(PresencePrimaryState.LOADING, tracker.snapshot().primaryState());
     }
 
@@ -125,13 +125,13 @@ class PresenceActivityTrackerTest {
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
 
-        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
+        tracker.accept("module.dubhe", started("dubhe.chat.1", PresenceActivityType.THINKING, now.get(), 30_000L));
         tracker.accept("module.weaving", started("llm.runtime.error", PresenceActivityType.ERROR, now.get(), 12_000L));
 
         assertEquals(PresencePrimaryState.THINKING, tracker.snapshot().primaryState(),
                 "a failure from another module never hides the turn the player is in");
 
-        tracker.accept("module.ax", ended("ax.chat.1", PresenceActivityType.THINKING, now.get()));
+        tracker.accept("module.dubhe", ended("dubhe.chat.1", PresenceActivityType.THINKING, now.get()));
 
         assertEquals(PresencePrimaryState.ERROR, tracker.snapshot().primaryState(),
                 "once the turn ends, the failure is what the player has to see");
@@ -171,9 +171,9 @@ class PresenceActivityTrackerTest {
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
 
-        tracker.accept("module.ax", started("task.a", PresenceActivityType.PROCESSING_TASK, now.get(), 500L));
-        tracker.accept("module.ax", started("task.b", PresenceActivityType.PROCESSING_TASK, now.get(), 2_000L));
-        tracker.accept("module.ax", ended("task.a", PresenceActivityType.PROCESSING_TASK, now.get()));
+        tracker.accept("module.dubhe", started("task.a", PresenceActivityType.PROCESSING_TASK, now.get(), 500L));
+        tracker.accept("module.dubhe", started("task.b", PresenceActivityType.PROCESSING_TASK, now.get(), 2_000L));
+        tracker.accept("module.dubhe", ended("task.a", PresenceActivityType.PROCESSING_TASK, now.get()));
 
         assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState());
         assertTrue(tracker.snapshot().backgroundTask());
@@ -189,12 +189,12 @@ class PresenceActivityTrackerTest {
         AtomicLong now = new AtomicLong(10_000L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
-        tracker.accept("module.ax", started("old.task", PresenceActivityType.PROCESSING_TASK, now.get(), 30_000L));
+        tracker.accept("module.dubhe", started("old.task", PresenceActivityType.PROCESSING_TASK, now.get(), 30_000L));
 
         tracker.stopWorldSession();
         now.set(20_000L);
         tracker.startWorldSession();
-        tracker.accept("module.ax", started("late.old.task", PresenceActivityType.PROCESSING_TASK, 15_000L, 30_000L));
+        tracker.accept("module.dubhe", started("late.old.task", PresenceActivityType.PROCESSING_TASK, 15_000L, 30_000L));
 
         assertEquals(PresencePrimaryState.IDLE, tracker.snapshot().primaryState());
         assertFalse(tracker.snapshot().backgroundTask());
@@ -205,7 +205,7 @@ class PresenceActivityTrackerTest {
         AtomicLong now = new AtomicLong(30_000L);
         PresenceActivityTracker tracker = new PresenceActivityTracker(now::get);
         tracker.startWorldSession();
-        tracker.accept("module.ax", started("ax.chat.1", PresenceActivityType.THINKING, now.get(), 5_000L));
+        tracker.accept("module.dubhe", started("dubhe.chat.1", PresenceActivityType.THINKING, now.get(), 5_000L));
 
         PresenceActivitySnapshot first = tracker.snapshot();
         now.set(31_000L);

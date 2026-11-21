@@ -40,7 +40,7 @@ public final class DubheOutputProcessor {
     /**
      * 模型这一轮没有任何可念的正文（只输出空白或只输出委派标签）时，唯一允许说出口的那句话。
      *
-     * <p>措辞在 {@code ax_reply_texts.json}（zh_cn / en_us），这里只解析资源键——输出层是最后一道"什么
+     * <p>措辞在 {@code dubhe_reply_texts.json}（zh_cn / en_us），这里只解析资源键——输出层是最后一道"什么
      * 会变成玩家听到的声音"的关口，兜底句因此归它，而不是散落在调用方。</p>
      */
     public String emptyAnswerText() {

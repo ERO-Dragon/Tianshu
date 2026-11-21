@@ -17,7 +17,7 @@ import java.util.Optional;
 /**
  * Built-in tier table and attention list for event kinds.
  *
- * <p>The table is data, not code: it ships as {@code ax_event_tiers.json} next to this package so the built-in kinds
+ * <p>The table is data, not code: it ships as {@code dubhe_event_tiers.json} next to this package so the built-in kinds
  * can be audited against the design document without reading Java. It holds two separate things, because they
  * answer two separate questions:
  *
@@ -36,7 +36,7 @@ import java.util.Optional;
  */
 public final class DubheEventTierTable {
     private static final String BUILTIN_RESOURCE =
-            "/com/rheinmetal/tianshu/dubhe/event/ax_event_tiers.json";
+            "/com/rheinmetal/tianshu/dubhe/event/dubhe_event_tiers.json";
     private static final int SCHEMA_VERSION = 2;
     private static final String KINDS_FIELD = "kinds";
     private static final String LIST_FIELD = "list";

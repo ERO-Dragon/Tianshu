@@ -41,7 +41,7 @@ class DubheDialogueInputTest {
 
         assertEquals(first.sessionId(), second.sessionId(), "typed turns of one player read as one conversation");
         assertNotEquals(first.turnId(), second.turnId(), "two utterances are two turns");
-        assertTrue(first.sessionId().startsWith("ax.text."), "typed sessions stay separate from spoken ones");
+        assertTrue(first.sessionId().startsWith("dubhe.text."), "typed sessions stay separate from spoken ones");
     }
 
     @Test

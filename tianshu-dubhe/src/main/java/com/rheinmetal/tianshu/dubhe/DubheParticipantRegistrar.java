@@ -24,7 +24,7 @@ import java.util.function.Supplier;
 public final class DubheParticipantRegistrar {
     public static final String PARTICIPANT_ID = "tianshu.AX";
     /** The name IA shows in UI and diagnostics: a language key, never a literal. */
-    public static final String DISPLAY_NAME_KEY = "tianshu.ax.participant.display_name";
+    public static final String DISPLAY_NAME_KEY = "tianshu.dubhe.participant.display_name";
 
     private final DubheDialogueChannel channel;
     private final DubheAssistantSettings settings;
@@ -83,7 +83,7 @@ public final class DubheParticipantRegistrar {
             return DialogueClaimProfile.DEFAULT_OWNER;
         }
         return DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.any(
-                "ax.wake_word",
+                "dubhe.wake_word",
                 wakeWords.stream().map(DialogueClaimCondition::wakeWord).toArray(DialogueClaimCondition[]::new)
         ));
     }

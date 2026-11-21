@@ -109,7 +109,7 @@ class TtsRuntimePipelineSmokeTest {
         SlowAudioBridge audioBridge = new SlowAudioBridge();
         TtsRuntime runtime = new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audioBridge, ignored -> {}, ignored -> {});
         prepareRuntime(runtime);
-        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.ax", 61L, 1, "context");
+        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.dubhe", 61L, 1, "context");
 
         runtime.submitSpeech(key, com.rheinmetal.tianshu.echo.contract.TtsTextInputMode.SENTENCE_STREAM, false,
                 request("context", "第一句。"));
@@ -138,7 +138,7 @@ class TtsRuntimePipelineSmokeTest {
     }
 
     private static TtsRequest request(String requestId, String text) {
-        return new TtsRequest(requestId, groupId(requestId), requestId, requestId, text, TtsRequestSource.of("module.ax"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
+        return new TtsRequest(requestId, groupId(requestId), requestId, requestId, text, TtsRequestSource.of("module.dubhe"), TtsPlaybackPolicy.QUEUE, Priority.NORMAL, TtsVoiceProfile.defaults());
     }
 
     private static TtsRequest interruptRequest(String requestId, String text) {

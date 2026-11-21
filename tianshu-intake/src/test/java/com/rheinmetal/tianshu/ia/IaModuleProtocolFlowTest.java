@@ -165,7 +165,7 @@ class IaModuleProtocolFlowTest {
         RecordingHandler maidDelivery = new RecordingHandler();
         RecordingHandler axDelivery = new RecordingHandler();
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", maidDelivery);
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", axDelivery);
         subscribeSessionEvents(new RecordingHandler());
         IaModuleService service = services.require(IaModuleService.class);
 
@@ -180,7 +180,7 @@ class IaModuleProtocolFlowTest {
                 )),
                 DialogueTriggerGroup.of(List.of("maid"), List.of("farm"))
         ));
-        service.registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+        service.registerParticipant(factoryDefaultOwnerParticipant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT"));
 
         assertEquals(List.of("maid", "farm"), voiceResources.registeredWords());
 
@@ -244,7 +244,7 @@ class IaModuleProtocolFlowTest {
         RecordingHandler maidDelivery = new RecordingHandler();
         RecordingHandler axDelivery = new RecordingHandler();
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", maidDelivery);
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", axDelivery);
         RecordingHandler previewEvents = new RecordingHandler();
         subscribePartner(previewEvents);
         subscribeSessionEvents(new RecordingHandler());
@@ -259,7 +259,7 @@ class IaModuleProtocolFlowTest {
                         DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
                 ))
         ));
-        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        registerParticipant(participant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
         // The digest is the only context a turn is arbitrated against now, so what the player was aiming at when the
         // speech started has to arrive as a push, not as an answer to a query.
         publishInteractionContext("local", "minecraft:overworld", "主世界", "",
@@ -313,9 +313,9 @@ class IaModuleProtocolFlowTest {
         IaModule ia = new IaModule(runtime);
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler axDelivery = new RecordingHandler();
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", axDelivery);
         subscribeSessionEvents(new RecordingHandler());
-        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT"));
         DialogueArbitrationRequestPayload payload = request("req-2", "player", "turn-2", 901L, "帮我记一下", List.of(), List.of());
         TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
                 "module.ir",
@@ -332,7 +332,7 @@ class IaModuleProtocolFlowTest {
         DialogueArbitrationResultPayload result = resultHandler.awaitPayload(DialogueArbitrationResultPayload.class);
         assertEquals("帮我记一下", delivery.repairedText());
         assertTrue(result.accepted());
-        assertEquals("module.ax", result.ownerModuleId());
+        assertEquals("module.dubhe", result.ownerModuleId());
         assertEquals("ax", result.ownerParticipantId());
         assertEquals("DEFAULT_OWNER", result.reason());
     }
@@ -354,9 +354,9 @@ class IaModuleProtocolFlowTest {
         });
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler axDelivery = new RecordingHandler();
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", axDelivery);
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", axDelivery);
         subscribeSessionEvents(new RecordingHandler());
-        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT"));
         TianshuEnvelope requestEnvelope = EnvelopeBuilder.requestCapability(
                 "module.ir",
                 IaCapabilities.DIALOGUE_ARBITRATE,
@@ -566,7 +566,7 @@ class IaModuleProtocolFlowTest {
         RecordingHandler partnerEvents = new RecordingHandler();
         subscribePartner(partnerEvents);
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", new RecordingHandler());
         registerParticipant(participant(
                 "maid",
                 "module.maid",
@@ -577,7 +577,7 @@ class IaModuleProtocolFlowTest {
                         DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
                 ))
         ));
-        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        registerParticipant(participant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
 
         publishInteractionContext("player", "minecraft:overworld", "", "", "maid-uuid",
                 "touhou_little_maid:maid", "", 0.0D);
@@ -752,7 +752,7 @@ class IaModuleProtocolFlowTest {
         RecordingHandler interruptEvents = new RecordingHandler();
         subscribeInterruptRequested(interruptEvents);
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", new RecordingHandler());
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", new RecordingHandler());
         registerParticipant(participant(
                 "maid",
                 "module.maid",
@@ -763,7 +763,7 @@ class IaModuleProtocolFlowTest {
                         DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
                 ))
         ));
-        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        registerParticipant(participant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
         publishInteractionContext("player", "minecraft:overworld", "", "", "maid-uuid",
                 "touhou_little_maid:maid", "", 0.0D);
         PresencePartnerPayload partner = partnerEvents.awaitPayload(PresencePartnerPayload.class);
@@ -808,8 +808,8 @@ class IaModuleProtocolFlowTest {
         subscribeSessionEvents(sessionEvents);
         RecordingHandler interruptEvents = new RecordingHandler();
         subscribeInterruptRequested(interruptEvents);
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
-        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT"));
 
         runtime.submit(EnvelopeBuilder.commandToCapability(
                 "module.ir",
@@ -821,7 +821,7 @@ class IaModuleProtocolFlowTest {
 
         submitInterruptRequest("module.asr");
         DialogueInterruptRequestedPayload interrupt = interruptEvents.awaitPayload(DialogueInterruptRequestedPayload.class);
-        assertEquals("module.ax", interrupt.targetModuleId());
+        assertEquals("module.dubhe", interrupt.targetModuleId());
         Thread.sleep(200L);
 
         for (TianshuEnvelope envelope : sessionEvents.envelopes()) {
@@ -841,8 +841,8 @@ class IaModuleProtocolFlowTest {
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler interruptEvents = new RecordingHandler();
         subscribeInterruptRequested(interruptEvents);
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
-        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.ax", "AX.DIALOGUE_INPUT"));
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", new RecordingHandler());
+        registerParticipant(factoryDefaultOwnerParticipant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT"));
 
         submitInterruptRequest("module.evil");
         Thread.sleep(200L);
@@ -860,7 +860,7 @@ class IaModuleProtocolFlowTest {
         ia.register(new ModuleRegistrationContext(runtime, new ModuleServiceRegistry()));
         RecordingHandler maidDelivery = new RecordingHandler();
         registerDelivery("module.maid", "MAID.DIALOGUE_INPUT", maidDelivery);
-        registerDelivery("module.ax", "AX.DIALOGUE_INPUT", new RecordingHandler());
+        registerDelivery("module.dubhe", "DUBHE.DIALOGUE_INPUT", new RecordingHandler());
         registerParticipant(participant(
                 "maid",
                 "module.maid",
@@ -871,7 +871,7 @@ class IaModuleProtocolFlowTest {
                         DialogueClaimCondition.crosshairEntity("touhou_little_maid:maid")
                 ))
         ));
-        registerParticipant(participant("ax", "module.ax", "AX.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
+        registerParticipant(participant("ax", "module.dubhe", "DUBHE.DIALOGUE_INPUT", 0, DialogueClaimProfile.DEFAULT_OWNER));
         publishInteractionContext("player", "minecraft:overworld", "主世界", "",
                 "maid-uuid", "touhou_little_maid:maid", "酒狐", 3.0D);
 

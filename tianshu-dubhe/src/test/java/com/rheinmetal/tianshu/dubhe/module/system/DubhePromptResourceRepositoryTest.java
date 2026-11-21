@@ -42,17 +42,17 @@ class DubhePromptResourceRepositoryTest {
         DubheStorageLayout layout = new DubheStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
         DubhePromptResourceRepository repository = new DubhePromptResourceRepository(layout, new DubheJsonStore(new FakeGameEnvironment()));
 
-        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_AX, DubhePromptLanguage.ZH_CN, "default");
+        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_DUBHE, DubhePromptLanguage.ZH_CN, "default");
 
-        assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_ax.zh_cn.default.json")));
-        assertFalse(Files.exists(layout.promptsRoot().resolve("general_ax.en_us.default.json")),
+        assertTrue(Files.isRegularFile(layout.promptsRoot().resolve("general_dubhe.zh_cn.default.json")));
+        assertFalse(Files.exists(layout.promptsRoot().resolve("general_dubhe.en_us.default.json")),
                 "提示词已收敛为单一文件：按玩家语言回答写在同一份 S 里");
         assertEquals(profile.systemPrompt(),
-                repository.loadProfile(DubhePromptTask.GENERAL_AX, DubhePromptLanguage.EN_US, "default").systemPrompt(),
+                repository.loadProfile(DubhePromptTask.GENERAL_DUBHE, DubhePromptLanguage.EN_US, "default").systemPrompt(),
                 "英文语种必须回退到同一份共享提示词，而不是 Java 默认档");
         assertTrue(profile.systemPrompt().contains("你是天枢"));
         assertTrue(profile.systemPrompt().contains("信息不足"));
-        assertTrue(profile.sectionOrder().contains("ax_system"));
+        assertTrue(profile.sectionOrder().contains("dubhe_system"));
         assertTrue(profile.sectionOrder().contains("game_context"));
         assertTrue(profile.sectionOrder().contains("player_memory"));
     }
@@ -91,7 +91,7 @@ class DubhePromptResourceRepositoryTest {
         DubheStorageLayout layout = new DubheStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
         Files.createDirectories(layout.promptsRoot());
         Files.writeString(
-                layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
+                layout.promptsRoot().resolve("general_dubhe.zh_cn.default.json"),
                 """
                 {
                   "schemaVersion": 4,
@@ -99,7 +99,7 @@ class DubhePromptResourceRepositoryTest {
                     "system": "完整的测试提示词"
                   },
                   "sectionOrder": [
-                    "ax_system",
+                    "dubhe_system",
                     "game_context",
                     "current_input"
                   ]
@@ -109,10 +109,10 @@ class DubhePromptResourceRepositoryTest {
         );
         DubhePromptResourceRepository repository = new DubhePromptResourceRepository(layout, new DubheJsonStore(new FakeGameEnvironment()));
 
-        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_AX, DubhePromptLanguage.ZH_CN, "default");
+        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_DUBHE, DubhePromptLanguage.ZH_CN, "default");
 
         assertEquals("完整的测试提示词", profile.systemPrompt());
-        assertEquals(List.of("ax_system", "game_context", "current_input"), profile.sectionOrder());
+        assertEquals(List.of("dubhe_system", "game_context", "current_input"), profile.sectionOrder());
     }
 
     @Test
@@ -120,7 +120,7 @@ class DubhePromptResourceRepositoryTest {
         DubheStorageLayout layout = new DubheStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
         Files.createDirectories(layout.promptsRoot());
         Files.writeString(
-                layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
+                layout.promptsRoot().resolve("general_dubhe.zh_cn.default.json"),
                 """
                 {
                   "schemaVersion": 3,
@@ -130,7 +130,7 @@ class DubhePromptResourceRepositoryTest {
                     "full": "旧格式的完整提示词"
                   },
                   "sectionOrder": [
-                    "ax_system",
+                    "dubhe_system",
                     "current_input"
                   ]
                 }
@@ -139,7 +139,7 @@ class DubhePromptResourceRepositoryTest {
         );
         DubhePromptResourceRepository repository = new DubhePromptResourceRepository(layout, new DubheJsonStore(new FakeGameEnvironment()));
 
-        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_AX, DubhePromptLanguage.ZH_CN, "default");
+        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_DUBHE, DubhePromptLanguage.ZH_CN, "default");
 
         assertEquals("旧格式的完整提示词", profile.systemPrompt());
     }
@@ -149,7 +149,7 @@ class DubhePromptResourceRepositoryTest {
         DubheStorageLayout layout = new DubheStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module")));
         Files.createDirectories(layout.promptsRoot());
         Files.writeString(
-                layout.promptsRoot().resolve("general_ax.zh_cn.default.json"),
+                layout.promptsRoot().resolve("general_dubhe.zh_cn.default.json"),
                 """
                 {
                   "schemaVersion": 3,
@@ -163,7 +163,7 @@ class DubhePromptResourceRepositoryTest {
         );
         DubhePromptResourceRepository repository = new DubhePromptResourceRepository(layout, new DubheJsonStore(new FakeGameEnvironment()));
 
-        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_AX, DubhePromptLanguage.ZH_CN, "default");
+        DubhePromptProfile profile = repository.loadProfile(DubhePromptTask.GENERAL_DUBHE, DubhePromptLanguage.ZH_CN, "default");
 
         assertEquals("旧格式的标准提示词", profile.systemPrompt());
     }

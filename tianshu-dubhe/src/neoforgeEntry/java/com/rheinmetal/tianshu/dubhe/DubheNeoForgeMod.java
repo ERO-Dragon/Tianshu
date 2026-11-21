@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.dubhe;
 import net.neoforged.fml.common.Mod;
 
 /**
- * NeoForge shell for the auxilium feature.
+ * NeoForge shell for the dubhe feature.
  *
  * <p>Its only job is to be constructed: a loader needs a class before it considers the mod real, and that is
  * the moment the module announces itself. What gets announced lives in {@link DubheModuleRegistration},

@@ -78,7 +78,7 @@ final class LlmUsageValueFormatTest {
 
     @Test
     void aKnownSourceIsTranslatedAndAnUnknownOneStaysReadable() {
-        assertSourceKey(LlmUsageValueFormat.sourceLabel("module.ax"), "module_ax");
+        assertSourceKey(LlmUsageValueFormat.sourceLabel("module.dubhe"), "module_ax");
         assertSourceKey(LlmUsageValueFormat.sourceLabel(" CORE.RUNTIME "), "core_runtime");
         assertSourceKey(LlmUsageValueFormat.sourceLabel(""), "unknown");
 

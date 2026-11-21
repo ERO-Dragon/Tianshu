@@ -20,15 +20,15 @@ public final class DubheTurnStatusPublisher {
     public static final String TYPE_FAILED = "turn.failed";
     public static final String TYPE_TURN_IDLE = "turn.idle";
 
-    public static final String KEY_TURN_ACCEPTED = "tianshu.runtime.module.ax.turn_accepted";
-    public static final String KEY_TURN_PROCESSING = "tianshu.runtime.module.ax.turn_processing";
-    public static final String KEY_MEMORY_RETRIEVING = "tianshu.runtime.module.ax.memory_retrieving";
-    public static final String KEY_LLM_THINKING = "tianshu.runtime.module.ax.thinking";
-    public static final String KEY_RESPONDING = "tianshu.runtime.module.ax.responding";
-    public static final String KEY_INTERRUPTED = "tianshu.runtime.module.ax.interrupted";
+    public static final String KEY_TURN_ACCEPTED = "tianshu.runtime.module.dubhe.turn_accepted";
+    public static final String KEY_TURN_PROCESSING = "tianshu.runtime.module.dubhe.turn_processing";
+    public static final String KEY_MEMORY_RETRIEVING = "tianshu.runtime.module.dubhe.memory_retrieving";
+    public static final String KEY_LLM_THINKING = "tianshu.runtime.module.dubhe.thinking";
+    public static final String KEY_RESPONDING = "tianshu.runtime.module.dubhe.responding";
+    public static final String KEY_INTERRUPTED = "tianshu.runtime.module.dubhe.interrupted";
     /** 失败状态的语言键；认不出原因时就是这一句。词表是唯一出处，这里不留第二份字面量。 */
-    public static final String KEY_FAILED = "tianshu.runtime.module.ax.failed";
-    public static final String KEY_TURN_IDLE = "tianshu.runtime.module.ax.idle";
+    public static final String KEY_FAILED = "tianshu.runtime.module.dubhe.failed";
+    public static final String KEY_TURN_IDLE = "tianshu.runtime.module.dubhe.idle";
 
     private static final long SHORT_TTL_MILLIS = 1_500L;
     private static final long ACTIVE_TTL_MILLIS = 30_000L;

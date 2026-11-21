@@ -39,7 +39,7 @@ public record DubhePromptProfile(
     private static final List<String> LEGACY_PROMPT_KEYS = List.of("full", "standard", "short");
 
     public DubhePromptProfile {
-        task = task == null ? DubhePromptTask.GENERAL_AX : task;
+        task = task == null ? DubhePromptTask.GENERAL_DUBHE : task;
         language = language == null ? DubhePromptLanguage.EN_US : language;
         systemPrompt = systemPrompt == null ? "" : systemPrompt.trim();
         sectionOrder = sectionOrder == null ? List.of() : List.copyOf(sectionOrder);
@@ -47,7 +47,7 @@ public record DubhePromptProfile(
 
     public static DubhePromptProfile defaultFor(DubhePromptTask task, DubhePromptLanguage language) {
         DubhePromptLanguage effectiveLanguage = language == null ? DubhePromptLanguage.EN_US : language;
-        DubhePromptTask effectiveTask = task == null ? DubhePromptTask.GENERAL_AX : task;
+        DubhePromptTask effectiveTask = task == null ? DubhePromptTask.GENERAL_DUBHE : task;
         return loadBuiltin(effectiveTask, effectiveLanguage).orElseGet(() -> new DubhePromptProfile(
                 effectiveTask,
                 effectiveLanguage,
@@ -136,7 +136,7 @@ public record DubhePromptProfile(
     }
 
     private static final List<String> DEFAULT_SECTION_ORDER = List.of(
-            "ax_system",
+            "dubhe_system",
             "memory_summary",
             "game_context",
             "player_memory",

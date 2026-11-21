@@ -54,13 +54,13 @@ import java.util.List;
  */
 public final class DubheGameEventService {
     /** Diagnostic emitted when a template cannot be worded and the entry falls back to the kind code. */
-    private static final String UNRESOLVED = "ax.event.text.unresolved";
+    private static final String UNRESOLVED = "dubhe.event.text.unresolved";
 
     /** Separator between the sentences of one voluntary turn; the layer holds no wording of its own. */
     private static final String VOLUNTARY_TURN_SEPARATOR = "\n";
 
     /** Language key of the separator between two occurrence groups inside one batch line. */
-    private static final String BATCH_JOIN_KEY = "tianshu.ax.event.batch.join";
+    private static final String BATCH_JOIN_KEY = "tianshu.dubhe.event.batch.join";
 
     /** How many characters one batch line may spend before it is shortened with a "more" suffix. */
     private static final int MAX_BATCH_CHARS = 50;
@@ -294,7 +294,7 @@ public final class DubheGameEventService {
             case IMMEDIATE -> submitImmediate(descriptor, sentence, nowMillis);
             case DEFERRED -> {
                 buffer.defer(descriptor.kind(), sentence, nowMillis);
-                logSink.info("ax.event.deferred kind=" + descriptor.kind()
+                logSink.info("dubhe.event.deferred kind=" + descriptor.kind()
                         + " source=" + descriptor.sourceId()
                         + " buffered=" + buffer.deferredSize());
             }
@@ -391,7 +391,7 @@ public final class DubheGameEventService {
             return;
         }
         buffer.holdImmediate(descriptor.kind(), sentence, nowMillis);
-        logSink.info("ax.event.queued kind=" + descriptor.kind()
+        logSink.info("dubhe.event.queued kind=" + descriptor.kind()
                 + " source=" + descriptor.sourceId()
                 + " queued=" + buffer.immediateSize());
     }
@@ -420,7 +420,7 @@ public final class DubheGameEventService {
             return;
         }
         String kind = batch.get(0).kind() == null ? "" : batch.get(0).kind();
-        logSink.info("ax.event." + reason + " kind=" + kind + " merged=" + batch.size());
+        logSink.info("dubhe.event." + reason + " kind=" + kind + " merged=" + batch.size());
         speechSink.speak(kind, joined.toString());
         // Each occurrence was its own event even though it was said in one breath, so the history keeps them apart.
         for (DubheEventClassBuffer.Entry entry : batch) {
@@ -433,7 +433,7 @@ public final class DubheGameEventService {
     private void speak(String kind, String sentence, String reason) {
         // The utterance is the sentence this service rendered, passed through unchanged: the event layer holds no
         // wording of its own. The log line is the diagnostic; the sink is the voice channel.
-        logSink.info("ax.event.speech_pending kind=" + kind
+        logSink.info("dubhe.event.speech_pending kind=" + kind
                 + " reason=" + reason
                 + " text=" + sentence);
         speechSink.speak(kind, sentence);

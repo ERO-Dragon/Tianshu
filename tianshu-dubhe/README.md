@@ -41,4 +41,4 @@ When something on the field can do a job, Tianshu can hand a subtask off and fol
 
 This mod is open source under the GNU Lesser General Public License v3.0 (© 2026 Ero-Dragon).
 
-More: [architecture](../../Tianshu/doc/function/auxilium/AX_运行架构.md) · [context assembly](../../Tianshu/doc/function/auxilium/AX_上下文编排.md) · [memory strategy](../../Tianshu/doc/function/auxilium/AX_记忆策略.md) · [event system](../../Tianshu/doc/function/auxilium/AX_事件系统.md)
+More: [architecture](../../Tianshu/doc/function/dubhe/Dubhe_运行架构.md) · [context assembly](../../Tianshu/doc/function/dubhe/Dubhe_上下文编排.md) · [memory strategy](../../Tianshu/doc/function/dubhe/Dubhe_记忆策略.md) · [event system](../../Tianshu/doc/function/dubhe/Dubhe_事件系统.md)

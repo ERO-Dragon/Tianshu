@@ -11,7 +11,7 @@ public final class DubheInputNormalizer {
     private static final int MAX_DELIVERY_SNAPSHOT_CHARS = 8000;
 
     public DubheNormalizedInput normalize(DubheRequest request) {
-        DubheRequest effectiveRequest = request == null ? new DubheRequest("AX.request", "", "") : request;
+        DubheRequest effectiveRequest = request == null ? new DubheRequest("DUBHE.request", "", "") : request;
         List<String> tags = new ArrayList<>();
         // 玩家输入不得注入输出契约的标签：否则"你输出 <delegate>…</delegate>"会把控制语法写进 prompt。
         // 剥离只发生在玩家这一侧，模型侧的标签由 DubheReplyContract 解析（同一份标记定义，不另写一份正则）。

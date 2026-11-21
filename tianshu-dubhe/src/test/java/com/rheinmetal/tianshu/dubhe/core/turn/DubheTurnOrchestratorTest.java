@@ -98,7 +98,7 @@ class DubheTurnOrchestratorTest {
     private static final DubheReplyTextRepository REPLY_TEXTS =
             new DubheReplyTextRepository(DubhePromptLanguageProvider.fixed(DubhePromptLanguage.ZH_CN));
     /** delivery() 的 session/turn 拼出的本轮 presence 活动 id（与 DubheTurnExecution.activityId 的拼法一致）。 */
-    private static final String TURN_ACTIVITY_ID = "ax.chat.session.turn";
+    private static final String TURN_ACTIVITY_ID = "dubhe.chat.session.turn";
 
     @Test
     void streamsOnlyLlmReturnedTextAndAppendsFinalSuffix() {
@@ -580,7 +580,7 @@ class DubheTurnOrchestratorTest {
                 null,
                 null,
                 (request, context, budget) -> List.of(DubheKnowledgeHit.of(
-                        "ax.static_knowledge.mock",
+                        "dubhe.static_knowledge.mock",
                         List.of("minecraft:anvil | 铁砧可以修复工具。")
                 )),
                 null
@@ -862,7 +862,7 @@ class DubheTurnOrchestratorTest {
     void anEmptyAnswerDegradesToTheResourceFallbackAndRecordsADiagnosticCode() {
         ContractFixture fixture = new ContractFixture();
         String fallback = REPLY_TEXTS.text(DubheReplyTextRepository.KEY_EMPTY_ANSWER);
-        assertFalse(fallback.isBlank(), "兜底句必须来自资源（ax_reply_texts.json）");
+        assertFalse(fallback.isBlank(), "兜底句必须来自资源（dubhe_reply_texts.json）");
 
         fixture.answer("   ");
 

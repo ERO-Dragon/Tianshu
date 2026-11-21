@@ -20,7 +20,7 @@
 "tianshu.gui.presence.debug.empty": "No module status",
 "tianshu.gui.presence.debug.module.asr": "ASR",
 "tianshu.gui.presence.debug.module.ia": "IA",
-"tianshu.gui.presence.debug.module.ax": "AX",
+"tianshu.gui.presence.debug.module.dubhe": "AX",
 "tianshu.gui.presence.debug.module.llm": "LLM",
 "tianshu.gui.presence.debug.module.tts": "TTS",
 "tianshu.gui.presence.debug.module.presence": "Presence",

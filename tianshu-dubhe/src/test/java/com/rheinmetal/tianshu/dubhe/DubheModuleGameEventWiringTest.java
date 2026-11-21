@@ -50,7 +50,7 @@ class DubheModuleGameEventWiringTest {
 
         module.register(new ModuleRegistrationContext(runtime, services));
         assertFalse(services.find(DubheGameEventService.class).isPresent());
-        assertEquals(1, runtime.capabilityProviderCount(DubheCapabilities.AX_EVENT_INPUT),
+        assertEquals(1, runtime.capabilityProviderCount(DubheCapabilities.DUBHE_EVENT_INPUT),
                 "the event entry exists as soon as the module is registered, before the layer runs");
 
         module.prepare(new ModuleRuntimeContext(
@@ -67,9 +67,9 @@ class DubheModuleGameEventWiringTest {
         // Any module that only holds the registry handle submits here; nothing marks a source as the
         // privileged one, so a third-party kind takes the same call as a built-in one.
         service.submit(DubheEventDescriptor.of("plugin:harvest", "plugin.farming", DubheEventPayload.of(),
-                DubheEventText.of("tianshu.ax.event.line.plugin.harvest")));
+                DubheEventText.of("tianshu.dubhe.event.line.plugin.harvest")));
         service.submit(DubheEventDescriptor.of("tianshu:death", "module.probe", DubheEventPayload.of(),
-                DubheEventText.of("tianshu.ax.event.line.tianshu.death")));
+                DubheEventText.of("tianshu.dubhe.event.line.tianshu.death")));
         assertFalse(service.closed());
 
         module.stop();

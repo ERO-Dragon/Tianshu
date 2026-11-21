@@ -11,7 +11,7 @@ import com.rheinmetal.tianshu.client.host.ClientPresentationPort;
  */
 public final class DubheChatOutput implements DubheChatOutputSink {
 
-    public static final String FAILURE_KEY = "tianshu.gui.ax.output.failed";
+    public static final String FAILURE_KEY = "tianshu.gui.dubhe.output.failed";
 
     private final ClientPresentationPort presentation;
 

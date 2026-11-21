@@ -106,7 +106,7 @@ public final class DubheLlmPrimitiveClient {
             }
             query.cancelTimeout("AX primitive query expired");
             adapter.unregisterLlmPrimitiveResponses(entry.getKey());
-            adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
+            adapter.cancelLlmPrimitiveQuery(query.envelope(), "DUBHE_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
             query.completion().complete(LLMPrimitiveResultPayload.failed(
                     "llm.primitive.query",
                     LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS,
@@ -126,11 +126,11 @@ public final class DubheLlmPrimitiveClient {
             adapter.unregisterLlmPrimitiveResponses(requestEnvelopeId);
             if (query != null) {
                 query.cancelTimeout("AX primitive client stopped");
-                adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_CANCELLED", reason == null ? "AX primitive query cancelled" : reason);
+                adapter.cancelLlmPrimitiveQuery(query.envelope(), "DUBHE_PRIMITIVE_CANCELLED", reason == null ? "AX primitive query cancelled" : reason);
                 query.completion().complete(LLMPrimitiveResultPayload.failed(
                         "llm.primitive.query",
                         LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS,
-                    "AX_PRIMITIVE_CLIENT_STOPPED",
+                    "DUBHE_PRIMITIVE_CLIENT_STOPPED",
                     reason == null ? "AX primitive client stopped" : reason
                 ));
             }
@@ -154,11 +154,11 @@ public final class DubheLlmPrimitiveClient {
             query.cancelTimeout("AX primitive query cancelled");
             adapter.unregisterLlmPrimitiveResponses(entry.getKey());
             String message = reason == null ? "AX primitive query cancelled" : reason;
-            adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_CANCELLED", message);
+            adapter.cancelLlmPrimitiveQuery(query.envelope(), "DUBHE_PRIMITIVE_CANCELLED", message);
             query.completion().complete(LLMPrimitiveResultPayload.failed(
                     query.requestId(),
                     LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS,
-                    "AX_PRIMITIVE_CANCELLED",
+                    "DUBHE_PRIMITIVE_CANCELLED",
                     message
             ));
             cancelled = true;
@@ -190,7 +190,7 @@ public final class DubheLlmPrimitiveClient {
             return;
         }
         query.timeoutHandle = adapter.scheduleTimeout(
-                "ax.primitive.timeout." + requestEnvelopeId,
+                "dubhe.primitive.timeout." + requestEnvelopeId,
                 () -> timeout(requestEnvelopeId, payload),
                 Duration.ofMillis(timeoutMillis)
         );
@@ -203,7 +203,7 @@ public final class DubheLlmPrimitiveClient {
         }
         query.cancelTimeout("AX primitive timeout fired");
         adapter.unregisterLlmPrimitiveResponses(requestEnvelopeId);
-        adapter.cancelLlmPrimitiveQuery(query.envelope(), "AX_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
+        adapter.cancelLlmPrimitiveQuery(query.envelope(), "DUBHE_PRIMITIVE_TIMEOUT", "AX LLM primitive query timed out");
         query.completion().complete(LLMPrimitiveResultPayload.failed(
                 payload == null ? "llm.primitive.query" : payload.requestId(),
                 payload == null ? LLMPrimitiveQueryPayload.QUERY_TYPE_STATUS : payload.queryType(),

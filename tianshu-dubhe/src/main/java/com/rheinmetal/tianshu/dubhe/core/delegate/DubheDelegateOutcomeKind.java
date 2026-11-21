@@ -14,14 +14,14 @@ public enum DubheDelegateOutcomeKind {
     /** 拿到结论：播报读结论正文本身，不再二次改写（§6.2）。 */
     OK("delegate_ok", null),
     /** 失败或"没查全"：必须出声一句（§6.2）。 */
-    FAILED("delegate_failed", "ax.runtime.delegate.failed"),
+    FAILED("delegate_failed", "dubhe.runtime.delegate.failed"),
     /** 撞 COMPLEX 的 120s 挂钟（§3.2 / A.1）。 */
-    TIMEOUT("delegate_timeout", "ax.runtime.delegate.timeout"),
+    TIMEOUT("delegate_timeout", "dubhe.runtime.delegate.timeout"),
     /** 本地状态机取消（§5.3；不是模型工具，§7.4）。 */
-    CANCELLED("delegate_cancelled", "ax.runtime.delegate.cancelled");
+    CANCELLED("delegate_cancelled", "dubhe.runtime.delegate.cancelled");
 
     /** 委派回执"我查一下"的播报键：与结论播报是两条不同资源键，不得复用（§6.2）。 */
-    public static final String ACK_SPEECH_KEY = "ax.runtime.delegate.ack";
+    public static final String ACK_SPEECH_KEY = "dubhe.runtime.delegate.ack";
 
     private final String code;
     private final String speechKey;

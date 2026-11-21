@@ -64,9 +64,9 @@ public final class DubheMemoryMaintenanceService {
     private static final int VECTOR_BATCH_SIZE = 64;
     private static final long TASK_STAGE_TIMEOUT_SECONDS = 120L;
     private static final long WORLD_EVENT_ATTACHMENT_GRACE_MILLIS = 30_000L;
-    private static final String STATUS_KEY_STARTED = "tianshu.runtime.module.ax.memory_maintenance_started";
-    private static final String STATUS_KEY_COMPLETE = "tianshu.runtime.module.ax.memory_maintenance_complete";
-    private static final String STATUS_KEY_FAILED = "tianshu.runtime.module.ax.memory_maintenance_failed";
+    private static final String STATUS_KEY_STARTED = "tianshu.runtime.module.dubhe.memory_maintenance_started";
+    private static final String STATUS_KEY_COMPLETE = "tianshu.runtime.module.dubhe.memory_maintenance_complete";
+    private static final String STATUS_KEY_FAILED = "tianshu.runtime.module.dubhe.memory_maintenance_failed";
 
     private volatile MaintenanceObserver maintenanceObserver = MaintenanceObserver.NONE;
 
@@ -178,7 +178,7 @@ public final class DubheMemoryMaintenanceService {
             return false;
         }
         long generation = lifecycleGeneration.incrementAndGet();
-        String activityId = "ax.memory.maintenance." + DubheStorageSafeName.of(scope.worldId());
+        String activityId = "dubhe.memory.maintenance." + DubheStorageSafeName.of(scope.worldId());
         AtomicBoolean activityStarted = new AtomicBoolean(false);
         currentTask = adapter.submitAxTask(activityId, ExecutionLane.LONG, () -> {
             try {
@@ -438,7 +438,7 @@ public final class DubheMemoryMaintenanceService {
         }
         int reasoningTier = thinkingEnhancement.getAsBoolean() ? 2 : 1;
         return new LLMPromptRequestPayload(
-                "ax.memory.compact." + batch.stmId(),
+                "dubhe.memory.compact." + batch.stmId(),
                 messages,
                 false,
                 false,
@@ -562,7 +562,7 @@ public final class DubheMemoryMaintenanceService {
 
     private CompletableFuture<VectorRebuildResult> rebuildMissingVectors(DubheScope scope, AtomicBoolean startedStatusPublished, long generation) {
         CompletableFuture<VectorRebuildResult> done = new CompletableFuture<>();
-        primitiveClient.requestStatus("ax.memory.embedding.status", status -> {
+        primitiveClient.requestStatus("dubhe.memory.embedding.status", status -> {
             if (!isCurrent(generation)) {
                 done.complete(VectorRebuildResult.none());
                 return;
@@ -594,7 +594,7 @@ public final class DubheMemoryMaintenanceService {
         }
         int to = Math.min(events.size(), from + VECTOR_BATCH_SIZE);
         List<DubheMemoryEvent> batch = events.subList(from, to);
-        primitiveClient.requestEmbedding("ax.memory.embedding.batch." + from, batch.stream().map(DubheMemoryEvent::fact).toList(), result -> {
+        primitiveClient.requestEmbedding("dubhe.memory.embedding.batch." + from, batch.stream().map(DubheMemoryEvent::fact).toList(), result -> {
             if (!isCurrent(generation)) {
                 done.complete(new VectorRebuildResult(namespace, written));
                 return;
@@ -686,7 +686,7 @@ public final class DubheMemoryMaintenanceService {
         if (completionTokens > 0) {
             return completionTokens;
         }
-        OptionalInt counted = primitiveClient.countTokens("ax.memory.stm.token", text);
+        OptionalInt counted = primitiveClient.countTokens("dubhe.memory.stm.token", text);
         return counted.orElse(0);
     }
 

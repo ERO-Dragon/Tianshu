@@ -24,7 +24,7 @@ class DubhePresenceEventMapperTest {
         DubhePresenceEventMapper.Batch batch = batch(advancement("成就：探险时间"));
 
         assertEquals("tianshu:advancement", batch.kind());
-        assertEquals("tianshu.ax.event.line.tianshu.advancement", batch.lineKey());
+        assertEquals("tianshu.dubhe.event.line.tianshu.advancement", batch.lineKey());
         assertEquals(1, batch.totalCount());
         assertEquals(1, batch.parts().size());
         assertEquals("成就：探险时间", detailOf(batch.parts().get(0)),
@@ -41,7 +41,7 @@ class DubhePresenceEventMapperTest {
 
         assertTrue(batch.parts().isEmpty(), "no detail means the kind words itself as a whole sentence");
         assertEquals(1, batch.totalCount(), "the occurrence still counts");
-        assertEquals("tianshu.ax.event.line.tianshu.advancement", batch.lineKey());
+        assertEquals("tianshu.dubhe.event.line.tianshu.advancement", batch.lineKey());
     }
 
     /** The facts the optional server component reports: each one lands on its own kind and detail. */
@@ -66,7 +66,7 @@ class DubhePresenceEventMapperTest {
                 PresenceWorldEventPayload.VALUE_ITEM_NAME, "橡木木板",
                 PresenceWorldEventPayload.VALUE_ITEM_ID, "minecraft:oak_planks")));
         assertEquals("tianshu:item_crafted", named.kind());
-        assertEquals("tianshu.ax.event.line.tianshu.item_crafted", named.lineKey());
+        assertEquals("tianshu.dubhe.event.line.tianshu.item_crafted", named.lineKey());
         assertEquals("橡木木板", detailOf(named.parts().get(0)));
 
         DubhePresenceEventMapper.Batch idOnly = batch(craft(Map.of(
@@ -102,7 +102,7 @@ class DubhePresenceEventMapperTest {
         DubhePresenceEventMapper.Batch batch = batch(payload);
 
         assertEquals("tianshu:pickup", batch.kind());
-        assertEquals("tianshu.ax.event.line.tianshu.pickup", batch.lineKey());
+        assertEquals("tianshu.dubhe.event.line.tianshu.pickup", batch.lineKey());
         assertEquals(2, batch.parts().size(), "two groups must not collapse into one");
         assertEquals(80, batch.totalCount(), "the frequency step needs the real number of occurrences");
         assertEquals("20", countOf(batch.parts().get(0)));

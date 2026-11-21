@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TtsSpeechInputAssemblerTest {
     @Test
     void sessionIdentityIncludesRealSourceId() {
-        TtsSpeechSessionKey ax = TtsSpeechSessionKey.of("module.ax", 42L, 3, "a");
+        TtsSpeechSessionKey ax = TtsSpeechSessionKey.of("module.dubhe", 42L, 3, "a");
         TtsSpeechSessionKey npc = TtsSpeechSessionKey.of("other.npc", 42L, 3, "b");
 
         assertNotEquals(ax, npc);
@@ -22,7 +22,7 @@ class TtsSpeechInputAssemblerTest {
     @Test
     void sentenceStreamDoesNotSplitCallerDefinedSentence() {
         TtsSpeechInputAssembler assembler = new TtsSpeechInputAssembler();
-        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.ax", 1L, 1, "e1");
+        TtsSpeechSessionKey key = TtsSpeechSessionKey.of("module.dubhe", 1L, 1, "e1");
 
         TtsSpeechInputAssembler.Batch batch = assembler.accept(
                 key,

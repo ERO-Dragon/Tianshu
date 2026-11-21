@@ -54,7 +54,7 @@ class TtsRuntimeSnapshotTest {
                 "request", TtsRequestSource.PREVIEW.value(), Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
         TtsRuntimeSnapshot dialogue = new TtsRuntimeSnapshot(
                 true, true, true, true, false, "", TtsPlaybackState.SPEAKING,
-                "request", "module.ax", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
+                "request", "module.dubhe", Priority.NORMAL, TtsFailureCode.UNKNOWN, "", 0L);
 
         assertTrue(preview.previewing());
         assertFalse(dialogue.previewing());

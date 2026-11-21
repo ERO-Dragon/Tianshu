@@ -19,8 +19,8 @@ class DubheGameContextPromptContributorTest {
     @Test
     void dynamicFactsAndDynamicRagHitsShareDynamicContent() {
         DubheGameContextKnowledgePlanner planner = (request, context, budget) -> List.of(
-                DubheKnowledgeHit.dynamic("ax.dynamic_knowledge.mock", List.of("minecraft:anvil | 当前指向铁砧时，应说明修复、改名和附魔合并。")),
-                DubheKnowledgeHit.of("ax.static_knowledge.mock", List.of("minecraft:anvil | 铁砧可以修复工具。"))
+                DubheKnowledgeHit.dynamic("dubhe.dynamic_knowledge.mock", List.of("minecraft:anvil | 当前指向铁砧时，应说明修复、改名和附魔合并。")),
+                DubheKnowledgeHit.of("dubhe.static_knowledge.mock", List.of("minecraft:anvil | 铁砧可以修复工具。"))
         );
         DubhePromptAssemblyBuilder builder = new DubhePromptAssemblyBuilder();
 

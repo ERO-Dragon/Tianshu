@@ -21,9 +21,9 @@ package com.rheinmetal.tianshu.presence.payload;
  */
 public enum PresenceActivityType {
     /** The assistant is delivering a reply it already has. */
-    RESPONDING("module.ax", 60, true, false),
+    RESPONDING("module.dubhe", 60, true, false),
     /** The assistant accepted the turn and is working on the reply. */
-    THINKING("module.ax", 50, true, false),
+    THINKING("module.dubhe", 50, true, false),
     /** A module failed for good; the player has to act for it to recover. Any module may report it. */
     ERROR("", 40, true, false),
     /** A module is retrying after a failed start; it recovers on its own. Any module may report it. */

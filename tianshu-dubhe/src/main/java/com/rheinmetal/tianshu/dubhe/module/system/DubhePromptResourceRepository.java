@@ -17,9 +17,9 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class DubhePromptResourceRepository {
-    private static final String BUILTIN_TEXTS_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/ax_prompt_texts.json";
+    private static final String BUILTIN_TEXTS_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/dubhe_prompt_texts.json";
     private static final String[] BUILTIN_PROFILE_RESOURCES = {
-            "/com/rheinmetal/tianshu/dubhe/prompts/general_ax.zh_cn.default.json"
+            "/com/rheinmetal/tianshu/dubhe/prompts/general_dubhe.zh_cn.default.json"
     };
 
     private final DubheStorageLayout layout;
@@ -33,12 +33,12 @@ public final class DubhePromptResourceRepository {
     }
 
     public DubhePromptProfile loadProfile(DubhePromptTask task, DubhePromptLanguage language, String variant) {
-        DubhePromptTask effectiveTask = task == null ? DubhePromptTask.GENERAL_AX : task;
+        DubhePromptTask effectiveTask = task == null ? DubhePromptTask.GENERAL_DUBHE : task;
         DubhePromptLanguage effectiveLanguage = language == null ? DubhePromptLanguage.ZH_CN : language;
         return loadProfile(new DubhePromptResourceKey(effectiveTask, effectiveLanguage, variant))
                 .or(() -> loadProfile(new DubhePromptResourceKey(effectiveTask, DubhePromptLanguage.ZH_CN, variant)))
-                .or(() -> loadProfile(new DubhePromptResourceKey(DubhePromptTask.GENERAL_AX, effectiveLanguage, variant)))
-                .or(() -> loadProfile(new DubhePromptResourceKey(DubhePromptTask.GENERAL_AX, DubhePromptLanguage.ZH_CN, variant)))
+                .or(() -> loadProfile(new DubhePromptResourceKey(DubhePromptTask.GENERAL_DUBHE, effectiveLanguage, variant)))
+                .or(() -> loadProfile(new DubhePromptResourceKey(DubhePromptTask.GENERAL_DUBHE, DubhePromptLanguage.ZH_CN, variant)))
                 .orElseGet(() -> DubhePromptProfile.defaultFor(effectiveTask, effectiveLanguage));
     }
 

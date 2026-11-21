@@ -65,7 +65,7 @@ class DubheStartupActivityTest {
         assertEquals(2, activities.size());
         assertEquals(PresenceActivityType.LOADING, activities.get(0).activityType());
         assertEquals(PresenceActivityAction.STARTED, activities.get(0).action());
-        assertEquals("ax.module.load", activities.get(0).activityId());
+        assertEquals("dubhe.module.load", activities.get(0).activityId());
         assertEquals(PresenceActivityType.LOADING, activities.get(1).activityType());
         assertEquals(PresenceActivityAction.ENDED, activities.get(1).action());
     }
@@ -112,7 +112,7 @@ class DubheStartupActivityTest {
         );
         Optional<ModuleStatus> failed = runtime.moduleStatusCache().latest(DubheModule.MODULE_ID, ModuleStatuses.TYPE_LIFECYCLE);
         assertTrue(failed.isPresent(), "装配失败要留下一条模块状态");
-        assertEquals("tianshu.runtime.module.ax.startup_failed", failed.get().messageKey());
+        assertEquals("tianshu.runtime.module.dubhe.startup_failed", failed.get().messageKey());
     }
 
     private static List<PresenceActivityPayload> captureActivities(ProtocolRuntime runtime) {

@@ -12,7 +12,7 @@ public record DubheNormalizedInput(
         List<String> tags
 ) {
     public DubheNormalizedInput {
-        requestKey = requestKey == null || requestKey.isBlank() ? "AX.request" : requestKey.trim();
+        requestKey = requestKey == null || requestKey.isBlank() ? "DUBHE.request" : requestKey.trim();
         userText = userText == null ? "" : userText.trim();
         deliverySnapshot = deliverySnapshot == null ? "" : deliverySnapshot.trim();
         source = source == null ? DubheInputSource.UNKNOWN : source;

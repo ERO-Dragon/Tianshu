@@ -23,7 +23,7 @@ class DubheSpeechBridgeTest {
         DubheSpeechBridge bridge = new DubheSpeechBridge(outlet, LogSink.NOOP);
 
         bridge.publish(new DubheDelegateDelivery(
-                "ax.delegate.1",
+                "dubhe.delegate.1",
                 DubheDelegateOutcomeKind.OK,
                 DubheRunTermination.COMPLETED,
                 "Iron blocks can be mined with a stone pickaxe.",
@@ -43,7 +43,7 @@ class DubheSpeechBridgeTest {
         RecordingOutlet outlet = new RecordingOutlet();
         DubheSpeechBridge bridge = new DubheSpeechBridge(outlet, LogSink.NOOP);
 
-        bridge.publish(DubheDelegateDelivery.ack("ax.delegate.2"));
+        bridge.publish(DubheDelegateDelivery.ack("dubhe.delegate.2"));
 
         DubheSpeechLine line = outlet.lines.get(0);
         assertEquals(DubheSpeechSource.DELEGATE, line.source());
@@ -58,15 +58,15 @@ class DubheSpeechBridgeTest {
         DubheSpeechBridge bridge = new DubheSpeechBridge(outlet, LogSink.NOOP);
 
         bridge.publish(new DubheDelegateDelivery(
-                "ax.delegate.3",
+                "dubhe.delegate.3",
                 DubheDelegateOutcomeKind.TIMEOUT,
                 DubheRunTermination.ABORT_TIMEOUT,
                 "",
                 List.of(),
-                "ax.runtime.delegate.timeout"));
+                "dubhe.runtime.delegate.timeout"));
 
         DubheSpeechLine line = outlet.lines.get(0);
-        assertEquals("ax.runtime.delegate.timeout", line.key());
+        assertEquals("dubhe.runtime.delegate.timeout", line.key());
         assertEquals(DubheSpeechPriority.HIGH, line.priority(), "a terminal notice is what the player waits for");
     }
 
@@ -88,7 +88,7 @@ class DubheSpeechBridgeTest {
         DubheSpeechBridge bridge = new DubheSpeechBridge(outlet, LogSink.NOOP);
 
         bridge.publish(new DubheDelegateDelivery(
-                "ax.delegate.4", DubheDelegateOutcomeKind.FAILED, DubheRunTermination.FAILED, "", List.of(), null));
+                "dubhe.delegate.4", DubheDelegateOutcomeKind.FAILED, DubheRunTermination.FAILED, "", List.of(), null));
         bridge.speak("tianshu:death", "   ");
         bridge.speak("tianshu:death", null);
 
@@ -102,7 +102,7 @@ class DubheSpeechBridgeTest {
         }, LogSink.NOOP);
 
         bridge.publish(new DubheDelegateDelivery(
-                "ax.delegate.5", DubheDelegateOutcomeKind.OK, DubheRunTermination.COMPLETED, "some conclusion",
+                "dubhe.delegate.5", DubheDelegateOutcomeKind.OK, DubheRunTermination.COMPLETED, "some conclusion",
                 List.of(), null));
         bridge.speak("tianshu:death", "You died");
     }

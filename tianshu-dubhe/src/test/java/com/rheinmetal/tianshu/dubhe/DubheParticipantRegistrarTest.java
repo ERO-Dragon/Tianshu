@@ -72,7 +72,7 @@ class DubheParticipantRegistrarTest {
         assertEquals(DubheProtocolAdapter.DIALOGUE_INPUT_CAPABILITY, registerPayload.descriptor().routeCapability());
         assertEquals(DialogueClaimProfile.defaultOwnerWithRules(
                 com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule.any(
-                        "ax.wake_word",
+                        "dubhe.wake_word",
                         com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition.wakeWord("天枢")
                 )
         ), registerPayload.descriptor().claimProfile());
@@ -103,7 +103,7 @@ class DubheParticipantRegistrarTest {
         DialogueParticipantRegisterPayload payload = registered.get();
         assertEquals("天枢", payload.descriptor().displayName());
         assertEquals(DialogueClaimProfile.defaultOwnerWithRules(DialogueClaimRule.any(
-                        "ax.wake_word",
+                        "dubhe.wake_word",
                         DialogueClaimCondition.wakeWord("天枢"))),
                 payload.descriptor().claimProfile(),
                 "the wake word still drives the claim; only the shown name moved to the language table");

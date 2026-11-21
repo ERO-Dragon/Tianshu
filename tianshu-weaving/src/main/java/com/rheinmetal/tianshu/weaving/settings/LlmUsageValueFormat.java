@@ -164,7 +164,7 @@ final class LlmUsageValueFormat {
     /**
      * Attribution key of one usage record as the player sees it.
      *
-     * <p>The ledger keys usage by protocol source id ({@code module.ax}, {@code core.runtime}, ...).
+     * <p>The ledger keys usage by protocol source id ({@code module.dubhe}, {@code core.runtime}, ...).
      * A known id maps to a language key; an id this build does not name is shown verbatim rather than
      * hidden, so a new source is visible before it is translated.
      */
@@ -172,7 +172,7 @@ final class LlmUsageValueFormat {
         String id = sourceId == null ? "" : sourceId.trim().toLowerCase(Locale.ROOT);
         return switch (id) {
             case "module.asr" -> key("source.module_asr");
-            case "module.ax" -> key("source.module_ax");
+            case "module.dubhe" -> key("source.module_ax");
             case "module.ia" -> key("source.module_ia");
             case "module.ir" -> key("source.module_ir");
             case LlmProtocolAdapter.MODULE_ID -> key("source.module_llm");

@@ -25,7 +25,7 @@ public final class DubheMemoryStorageCompatibilityChecker {
     public DubheMemoryStorageCompatibilityReport check(DubheScope scope) {
         if (scope == null || !scope.writable() || layout == null || jsonStore == null) {
             return new DubheMemoryStorageCompatibilityReport(false, false, List.of(
-                    DubheMemoryStorageCompatibilityReport.Issue.error("AX_MEMORY_SCOPE_NOT_WRITABLE", "scope is not writable")
+                    DubheMemoryStorageCompatibilityReport.Issue.error("DUBHE_MEMORY_SCOPE_NOT_WRITABLE", "scope is not writable")
             ));
         }
         Path path = layout.worldManifestFile(scope);
@@ -35,7 +35,7 @@ public final class DubheMemoryStorageCompatibilityChecker {
         JsonObject manifest = jsonStore.readObject(path).orElse(null);
         if (manifest == null) {
             return new DubheMemoryStorageCompatibilityReport(true, false, List.of(
-                    DubheMemoryStorageCompatibilityReport.Issue.error("AX_MEMORY_MANIFEST_UNREADABLE", "manifest is not valid json")
+                    DubheMemoryStorageCompatibilityReport.Issue.error("DUBHE_MEMORY_MANIFEST_UNREADABLE", "manifest is not valid json")
             ));
         }
         List<DubheMemoryStorageCompatibilityReport.Issue> issues = new ArrayList<>();
@@ -49,24 +49,24 @@ public final class DubheMemoryStorageCompatibilityChecker {
     private void checkIdentity(JsonObject manifest, List<DubheMemoryStorageCompatibilityReport.Issue> issues) {
         String kind = readString(manifest, "kind");
         if (kind.isBlank()) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_MANIFEST_KIND_MISSING", "manifest kind is missing"));
-        } else if (!"ax.world_memory".equals(kind)) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.error("AX_MEMORY_MANIFEST_KIND_UNSUPPORTED", "manifest kind is not ax.world_memory"));
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_MANIFEST_KIND_MISSING", "manifest kind is missing"));
+        } else if (!"dubhe.world_memory".equals(kind)) {
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.error("DUBHE_MEMORY_MANIFEST_KIND_UNSUPPORTED", "manifest kind is not ax.world_memory"));
         }
         checkVersion(
                 manifest,
                 "manifestSchemaVersion",
                 DubheMemoryStorageManifestStore.MANIFEST_SCHEMA_VERSION,
-                "AX_MEMORY_MANIFEST_SCHEMA_MISSING",
-                "AX_MEMORY_MANIFEST_SCHEMA_FUTURE",
+                "DUBHE_MEMORY_MANIFEST_SCHEMA_MISSING",
+                "DUBHE_MEMORY_MANIFEST_SCHEMA_FUTURE",
                 issues
         );
         checkVersion(
                 manifest,
                 "layoutVersion",
                 DubheMemoryStorageManifestStore.LAYOUT_VERSION,
-                "AX_MEMORY_LAYOUT_VERSION_MISSING",
-                "AX_MEMORY_LAYOUT_VERSION_FUTURE",
+                "DUBHE_MEMORY_LAYOUT_VERSION_MISSING",
+                "DUBHE_MEMORY_LAYOUT_VERSION_FUTURE",
                 issues
         );
     }
@@ -74,7 +74,7 @@ public final class DubheMemoryStorageCompatibilityChecker {
     private void checkSchemas(JsonObject manifest, List<DubheMemoryStorageCompatibilityReport.Issue> issues) {
         JsonObject schemas = object(manifest, "schemas");
         if (schemas == null) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_SCHEMAS_MISSING", "schema declarations are missing"));
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_SCHEMAS_MISSING", "schema declarations are missing"));
             return;
         }
         for (Map.Entry<String, Integer> schema : DubheMemoryStorageManifestStore.currentSchemas().entrySet()) {
@@ -82,8 +82,8 @@ public final class DubheMemoryStorageCompatibilityChecker {
                     schemas,
                     schema.getKey(),
                     schema.getValue(),
-                    "AX_MEMORY_SCHEMA_MISSING_" + schema.getKey(),
-                    "AX_MEMORY_SCHEMA_FUTURE_" + schema.getKey(),
+                    "DUBHE_MEMORY_SCHEMA_MISSING_" + schema.getKey(),
+                    "DUBHE_MEMORY_SCHEMA_FUTURE_" + schema.getKey(),
                     issues
             );
         }
@@ -92,25 +92,25 @@ public final class DubheMemoryStorageCompatibilityChecker {
     private void checkFiles(JsonObject manifest, List<DubheMemoryStorageCompatibilityReport.Issue> issues) {
         JsonObject files = object(manifest, "files");
         if (files == null) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_FILES_MISSING", "file declarations are missing"));
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_FILES_MISSING", "file declarations are missing"));
             return;
         }
         for (Map.Entry<String, String> file : DubheMemoryStorageManifestStore.requiredFiles().entrySet()) {
             String declared = readString(files, file.getKey());
             if (declared.isBlank()) {
-                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_FILE_MISSING_" + file.getKey(), "file declaration is missing"));
+                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_FILE_MISSING_" + file.getKey(), "file declaration is missing"));
             } else if (!file.getValue().equals(declared)) {
-                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_FILE_PATH_DIFFERS_" + file.getKey(), "file declaration differs from current layout"));
+                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_FILE_PATH_DIFFERS_" + file.getKey(), "file declaration differs from current layout"));
             }
         }
         JsonArray appendOnly = array(files, "appendOnly");
         if (appendOnly == null) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_APPEND_ONLY_MISSING", "append-only file set is missing"));
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_APPEND_ONLY_MISSING", "append-only file set is missing"));
             return;
         }
         for (String key : DubheMemoryStorageManifestStore.appendOnlyFileKeys()) {
             if (!arrayContains(appendOnly, key)) {
-                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_APPEND_ONLY_FILE_MISSING_" + key, "append-only declaration is incomplete"));
+                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_APPEND_ONLY_FILE_MISSING_" + key, "append-only declaration is incomplete"));
             }
         }
     }
@@ -118,20 +118,20 @@ public final class DubheMemoryStorageCompatibilityChecker {
     private void checkDerivedArtifacts(JsonObject manifest, List<DubheMemoryStorageCompatibilityReport.Issue> issues) {
         JsonObject derived = object(manifest, "derivedArtifacts");
         if (derived == null) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_DERIVED_ARTIFACTS_MISSING", "derived artifact declarations are missing"));
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_DERIVED_ARTIFACTS_MISSING", "derived artifact declarations are missing"));
             return;
         }
         if (readBoolean(derived, "authority", false)) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.error("AX_MEMORY_DERIVED_ARTIFACTS_AUTHORITY", "derived artifacts must not be authority data"));
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.error("DUBHE_MEMORY_DERIVED_ARTIFACTS_AUTHORITY", "derived artifacts must not be authority data"));
         }
         JsonArray rebuildable = array(derived, "rebuildable");
         if (rebuildable == null) {
-            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_DERIVED_REBUILDABLE_MISSING", "rebuildable derived artifact set is missing"));
+            issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_DERIVED_REBUILDABLE_MISSING", "rebuildable derived artifact set is missing"));
             return;
         }
         for (String key : DubheMemoryStorageManifestStore.rebuildableArtifactKeys()) {
             if (!arrayContains(rebuildable, key)) {
-                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("AX_MEMORY_DERIVED_REBUILDABLE_MISSING_" + key, "derived artifact is not declared rebuildable"));
+                issues.add(DubheMemoryStorageCompatibilityReport.Issue.warning("DUBHE_MEMORY_DERIVED_REBUILDABLE_MISSING_" + key, "derived artifact is not declared rebuildable"));
             }
         }
     }

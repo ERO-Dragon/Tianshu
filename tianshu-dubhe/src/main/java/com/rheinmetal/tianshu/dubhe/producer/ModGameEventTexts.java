@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.client.host.ClientTextProvider;
  * Dubhe's view of the game's language table.
  *
  * <p>The platform already exposes one text port, so this module adapts it instead of asking the
- * platform to implement an auxilium interface. The kernel stays free of auxilium types, and a missing
+ * platform to implement an dubhe interface. The kernel stays free of dubhe types, and a missing
  * key keeps rendering as empty rather than as the key itself.</p>
  */
 public final class ModGameEventTexts implements DubheGameEventTextProvider {

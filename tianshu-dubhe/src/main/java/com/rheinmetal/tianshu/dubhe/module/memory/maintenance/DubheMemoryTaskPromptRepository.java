@@ -19,7 +19,7 @@ import java.util.Objects;
 import com.rheinmetal.tianshu.dubhe.module.recentdialogue.DubheRawTurn;
 
 /**
- * 记忆维护任务的提示词目录（{@code ax_memory_tasks.json}）。
+ * 记忆维护任务的提示词目录（{@code dubhe_memory_tasks.json}）。
  *
  * <p>所有文案都走资源：代码里不出现规则文本，也不出现语言片段。键名：</p>
  * <ul>
@@ -29,7 +29,7 @@ import com.rheinmetal.tianshu.dubhe.module.recentdialogue.DubheRawTurn;
  * </ul>
  */
 public final class DubheMemoryTaskPromptRepository {
-    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/ax_memory_tasks.json";
+    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/dubhe_memory_tasks.json";
 
     private final DubheStorageLayout layout;
     private final DubhePromptLanguageProvider languageProvider;

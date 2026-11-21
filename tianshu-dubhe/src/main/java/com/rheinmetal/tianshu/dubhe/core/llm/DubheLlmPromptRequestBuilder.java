@@ -30,7 +30,7 @@ public final class DubheLlmPromptRequestBuilder {
         // 普通对话不需要长思维链：关闭增强时用最低档（通常就是非思考），开启时才抬到次低档。
         Integer reasoningTier = assistantSettings.chatThinkingEnabled() ? 1 : 0;
         return new LLMPromptRequestPayload(
-                request == null ? "AX.request" : request.requestKey(),
+                request == null ? "DUBHE.request" : request.requestKey(),
                 assembly.messages(),
                 true,
                 false,

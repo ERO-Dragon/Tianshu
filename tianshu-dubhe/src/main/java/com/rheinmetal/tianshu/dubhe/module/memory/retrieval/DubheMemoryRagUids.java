@@ -4,7 +4,7 @@ import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
 import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
 
 public final class DubheMemoryRagUids {
-    private static final String PREFIX = "module.ax.memory";
+    private static final String PREFIX = "module.dubhe.memory";
 
     private DubheMemoryRagUids() {
     }

@@ -8,9 +8,9 @@ package com.rheinmetal.tianshu.dubhe.protocol;
  */
 public final class DubheCapabilities {
 
-    public static final String AX_DIALOGUE_INPUT = "AX.DIALOGUE_INPUT";
-    public static final String AX_CONTEXT_INPUT = "AX.CONTEXT_INPUT";
-    public static final String AX_EVENT_INPUT = "AX.EVENT_INPUT";
+    public static final String DUBHE_DIALOGUE_INPUT = "DUBHE.DIALOGUE_INPUT";
+    public static final String DUBHE_CONTEXT_INPUT = "DUBHE.CONTEXT_INPUT";
+    public static final String DUBHE_EVENT_INPUT = "DUBHE.EVENT_INPUT";
 
     private DubheCapabilities() {
     }

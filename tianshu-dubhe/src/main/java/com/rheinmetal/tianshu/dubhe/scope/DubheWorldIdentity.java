@@ -9,7 +9,7 @@ import java.util.function.Supplier;
  * Dubhe's reading of the platform's world facts.
  *
  * <p>The platform reports what it knows and names it in its own vocabulary; this class decides what
- * kind of scope that is. That keeps the classification — which is auxilium's opinion — out of the kernel
+ * kind of scope that is. That keeps the classification — which is dubhe's opinion — out of the kernel
  * and out of the adapter.</p>
  */
 public final class DubheWorldIdentity implements DubheWorldIdentityProvider {

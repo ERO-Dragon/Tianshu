@@ -47,7 +47,7 @@ class DubheFailureCauseTest {
 
     @Test
     void everyCauseNamesItsOwnSentence() {
-        assertEquals("tianshu.runtime.module.ax.failed.rate_limited", DubheFailureCause.RATE_LIMITED.messageKey());
+        assertEquals("tianshu.runtime.module.dubhe.failed.rate_limited", DubheFailureCause.RATE_LIMITED.messageKey());
         assertEquals(DubheFailureCause.STATUS_KEY_UNKNOWN, DubheFailureCause.UNKNOWN.messageKey());
         assertNotEquals(DubheFailureCause.PARAMETER.messageKey(), DubheFailureCause.PROVIDER_ERROR.messageKey());
         for (DubheFailureCause value : DubheFailureCause.values()) {

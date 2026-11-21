@@ -84,13 +84,13 @@ class DubheEventTextRenderingTest {
         // Highlighted so the event takes the immediate class: this case is about the fallback wording, not about the
         // tier table, and an immediate event is the one that reaches the history on arrival.
         service.submit(DubheEventDescriptor.of("tianshu:death", "module.probe", DubheEventPayload.of(),
-                DubheEventText.of("tianshu.ax.event.line.tianshu.death")).withHighlight(true), 1_000L);
+                DubheEventText.of("tianshu.dubhe.event.line.tianshu.death")).withHighlight(true), 1_000L);
 
         assertEquals(1, appended.size(), "the entry is still recorded");
         DubheEventAppend entry = appended.get(0);
         assertEquals("tianshu:death", entry.text(),
                 "an unwordable event must occupy its slot with the kind code, never with an empty line");
-        assertTrue(logs.stream().anyMatch(line -> line.contains("ax.event.text.unresolved")),
+        assertTrue(logs.stream().anyMatch(line -> line.contains("dubhe.event.text.unresolved")),
                 "falling back has to be observable: " + logs);
     }
 
@@ -107,7 +107,7 @@ class DubheEventTextRenderingTest {
                 DubheEventText.of("line.mob_killed")), 1_000L);
 
         assertEquals("line.mob_killed", appended.get(0).text());
-        assertTrue(logs.stream().noneMatch(line -> line.contains("ax.event.text.unresolved")),
+        assertTrue(logs.stream().noneMatch(line -> line.contains("dubhe.event.text.unresolved")),
                 "a resolvable template reports no fallback: " + logs);
     }
 

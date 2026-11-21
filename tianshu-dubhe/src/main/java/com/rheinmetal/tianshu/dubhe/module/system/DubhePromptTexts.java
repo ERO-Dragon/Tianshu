@@ -16,9 +16,9 @@ public record DubhePromptTexts(
         DubhePromptLanguage language,
         Map<String, String> values
 ) {
-    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/ax_prompt_texts.json";
+    private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/dubhe_prompt_texts.json";
 
-    public static final String SECTION_AX_SYSTEM = "section.ax_system";
+    public static final String SECTION_DUBHE_SYSTEM = "section.dubhe_system";
     public static final String SECTION_GAME_CONTEXT = "section.game_context";
     public static final String GAME_CONTEXT_CURRENT_SITUATION_INTRO = "game_context.current_situation_intro";
     public static final String GAME_CONTEXT_RELEVANT_KNOWLEDGE_INTRO = "game_context.relevant_knowledge_intro";

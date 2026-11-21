@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.dubhe.input.DubheDialogueInput;
 public final class DubheDialogueInputMapper {
     public DubheRequest map(DubheDialogueInput delivery) {
         if (delivery == null) {
-            return new DubheRequest("AX.request", "", "", DubheInputSource.FORWARDED);
+            return new DubheRequest("DUBHE.request", "", "", DubheInputSource.FORWARDED);
         }
         return new DubheRequest(requestKey(delivery), delivery.text(), deliverySnapshot(delivery), DubheInputSource.FORWARDED);
     }
@@ -15,7 +15,7 @@ public final class DubheDialogueInputMapper {
     private String requestKey(DubheDialogueInput delivery) {
         String sessionId = delivery.sessionId() == null || delivery.sessionId().isBlank() ? "session" : delivery.sessionId();
         String turnId = delivery.turnId() == null || delivery.turnId().isBlank() ? "turn" : delivery.turnId();
-        return "AX." + sessionId + "." + turnId;
+        return "DUBHE." + sessionId + "." + turnId;
     }
 
     private String deliverySnapshot(DubheDialogueInput delivery) {
