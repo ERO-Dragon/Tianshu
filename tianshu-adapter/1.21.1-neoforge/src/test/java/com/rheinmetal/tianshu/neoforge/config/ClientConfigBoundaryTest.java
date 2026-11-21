@@ -79,7 +79,7 @@ final class ClientConfigBoundaryTest {
         assertFalse(presence.contains("ASR_STATUS_VISIBLE"));
         assertFalse(presence.contains("LLM_STATUS_VISIBLE"));
         assertFalse(presence.contains("TTS_STATUS_VISIBLE"));
-        assertFalse(presence.contains("AX_STATUS_VISIBLE"));
+        assertFalse(presence.contains("DUBHE_STATUS_VISIBLE"));
         assertFalse(presence.contains("PANEL_"));
     }
 

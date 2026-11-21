@@ -142,14 +142,14 @@ neoForge {
     //   repository root  -> every feature (the full assembly)
     //   this adapter     -> every feature plus the development bench (the full assembly, from the adapter)
     //   a feature module -> that feature plus the modules it requires, never its optional partners
-    // so launching `runClient` from echo installs kernel+echo, and launching it from auxilium installs
-    // kernel+auxilium+intake+weaving (its hard dependencies) but not echo (an optional integration).
+    // so launching `runClient` from echo installs kernel+echo, and launching it from dubhe installs
+    // kernel+dubhe+intake+weaving (its hard dependencies) but not echo (an optional integration).
     // `-PfeatureMods=` overrides the whole thing: `-PfeatureMods=` is the kernel alone.
     def runFeatureNames = ['intake', 'echo', 'weaving', 'dubhe', 'presence']
     def startedFrom = {
         def startParameter = gradle.startParameter
         def explicitFeature = startParameter.taskNames.findResult { name ->
-            def match = name =~ /^:?(tianshu-(intake|echo|weaving|auxilium|presence)):run(Client|Server)$/
+            def match = name =~ /^:?(tianshu-(intake|echo|weaving|dubhe|presence)):run(Client|Server)$/
             match.find() ? match.group(2) : null
         }
         if (explicitFeature != null) {

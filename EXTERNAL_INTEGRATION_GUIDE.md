@@ -245,7 +245,7 @@ DubheWorldEventPayload payload = new DubheWorldEventPayload(
 api.submit(EnvelopeBuilder.commandToCapability(
         "example_radar",
         DubheProtocolAdapter.EVENT_INPUT_CAPABILITY,
-        PayloadType.of("AX_WORLD_EVENT"),
+        PayloadType.of("DUBHE_WORLD_EVENT"),
         payload
 ).build());
 ```
