@@ -7,7 +7,7 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.rheinmetal.tianshu.function.lab.LabFabricMod"
+      "com.rheinmetal.tianshu.lab.LabFabricMod"
     ]
   },
   "depends": {

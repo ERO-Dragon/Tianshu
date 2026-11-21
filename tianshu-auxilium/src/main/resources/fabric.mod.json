@@ -8,7 +8,7 @@
   "environment": "client",
   "entrypoints": {
     "main": [
-      "com.rheinmetal.tianshu.function.auxilium.AuxiliumFabricMod"
+      "com.rheinmetal.tianshu.auxilium.AuxiliumFabricMod"
     ]
   },
   "depends": {

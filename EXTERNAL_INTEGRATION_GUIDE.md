@@ -207,7 +207,7 @@ ExternalSettingsContributors.register(contributor);
 
 ## Dialogue / IA 接入
 
-需要参与对话仲裁的外部模组，用听澜的 Dialogue 契约（硬性依赖 `tianshu-intake`）。相关类型在 `com.rheinmetal.tianshu.function.ia.contract`：
+需要参与对话仲裁的外部模组，用听澜的 Dialogue 契约（硬性依赖 `tianshu-intake`）。相关类型在 `com.rheinmetal.tianshu.ia.contract`：
 
 - `DialogueParticipantRegisterPayload(DialogueParticipantDescriptor descriptor, long timestampMillis)`
 - `DialogueParticipantUnregisterPayload(String moduleId, String participantId, boolean allParticipants, long timestampMillis)`

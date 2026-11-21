@@ -8,7 +8,7 @@
   "environment": "client",
   "entrypoints": {
     "main": [
-      "com.rheinmetal.tianshu.function.intake.IntakeFabricMod"
+      "com.rheinmetal.tianshu.intake.IntakeFabricMod"
     ]
   },
   "depends": {

@@ -1,0 +1,199 @@
+package com.rheinmetal.tianshu.auxilium.module.gamecontext;
+
+import com.rheinmetal.tianshu.auxilium.AXProtocolAdapter;
+import com.rheinmetal.tianshu.auxilium.AXRequest;
+import com.rheinmetal.tianshu.auxilium.scope.AXScope;
+import com.rheinmetal.tianshu.auxilium.input.AXDialogueInput;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.presence.payload.PresenceContextQueryPayload;
+import com.rheinmetal.tianshu.presence.payload.PresenceContextSnapshotPayload;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskHandle;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+public final class AXDynamicFactClient {
+    private final AXProtocolAdapter adapter;
+    private final AXDynamicKnowledgeFormatter formatter;
+    private final long timeoutMillis;
+    private final ConcurrentMap<String, PendingQuery> pending = new ConcurrentHashMap<>();
+
+    public AXDynamicFactClient(AXProtocolAdapter adapter, AXDynamicKnowledgeFormatter formatter, long timeoutMillis) {
+        this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this.formatter = Objects.requireNonNull(formatter, "formatter");
+        this.timeoutMillis = Math.max(0L, timeoutMillis);
+    }
+
+    public String request(
+            TianshuEnvelope parent,
+            AXDialogueInput delivery,
+            AXScope scope,
+            AXRequest request,
+            Completion completion
+    ) {
+        Objects.requireNonNull(completion, "completion");
+        if (parent == null || delivery == null) {
+            completion.complete(List.of());
+            return "";
+        }
+        PresenceContextQueryPayload payload = new PresenceContextQueryPayload(
+                request == null ? "AX.dynamic_facts" : request.requestKey() + ".dynamic_facts",
+                delivery.sessionId(),
+                delivery.turnId(),
+                delivery.playerId(),
+                scope == null ? "" : scope.worldId(),
+                delivery.contextSnapshot() == null ? "" : delivery.contextSnapshot().dimensionId(),
+                request == null ? "" : request.userText(),
+                focusIds(delivery),
+                System.currentTimeMillis(),
+                AXPresenceFactIds.DEFAULT_DYNAMIC_FACTS
+        );
+        if (adapter.presenceContextProviderCount() <= 0) {
+            completion.complete(List.of());
+            return "";
+        }
+        TianshuEnvelope queryEnvelope = adapter.buildPresenceContextQuery(parent, payload);
+        PendingQuery pendingQuery = new PendingQuery(completion, System.currentTimeMillis() + timeoutMillis, queryEnvelope);
+        pending.put(queryEnvelope.envelopeId(), pendingQuery);
+        adapter.registerPresenceContextSnapshotResponse(queryEnvelope.envelopeId(), this::handleResponse);
+        scheduleTimeout(queryEnvelope.envelopeId(), pendingQuery);
+        adapter.submitPresenceContextQuery(queryEnvelope);
+        return queryEnvelope.envelopeId();
+    }
+
+    public void cancelRequest(String requestEnvelopeId, String reason) {
+        if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
+            return;
+        }
+        PendingQuery query = pending.remove(requestEnvelopeId);
+        if (query == null) {
+            return;
+        }
+        query.cancelTimeout("AX dynamic fact query cancelled");
+        adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        adapter.cancelPresenceContextQuery(query.envelope(), "AX_TURN_CANCELLED", reason == null ? "AX turn cancelled" : reason);
+        query.completion().complete(List.of());
+    }
+
+    public void sweepExpired() {
+        long now = System.currentTimeMillis();
+        pending.entrySet().removeIf(entry -> {
+            PendingQuery query = entry.getValue();
+            if (query == null || query.deadlineMillis() > now) {
+                return false;
+            }
+            query.cancelTimeout("AX dynamic fact query expired");
+            adapter.unregisterPresenceContextResponses(entry.getKey());
+            adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
+            query.completion().complete(List.of());
+            return true;
+        });
+    }
+
+    public void clear() {
+        pending.forEach((requestEnvelopeId, query) -> {
+            adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+            if (query != null) {
+                query.cancelTimeout("AX dynamic fact client stopped");
+                adapter.cancelPresenceContextQuery(query.envelope(), "AX_MODULE_STOPPED", "AX dynamic fact client stopped");
+                query.completion().complete(List.of());
+            }
+        });
+        pending.clear();
+    }
+
+    private void handleResponse(TianshuEnvelope envelope, ProtocolContext context) {
+        PendingQuery query = envelope == null ? null : pending.remove(envelope.parentId());
+        if (query == null) {
+            if (context != null && envelope != null) {
+                context.complete(envelope.envelopeId());
+            }
+            return;
+        }
+        List<AXDynamicFact> facts = List.of();
+        if (envelope.payload() instanceof PresenceContextSnapshotPayload payload && payload.success()) {
+            facts = payload.facts().stream()
+                    .map(formatter::format)
+                    .filter(Objects::nonNull)
+                    .filter(fact -> !fact.isEmpty())
+                    .toList();
+        }
+        adapter.unregisterPresenceContextResponses(envelope.parentId());
+        query.cancelTimeout("AX dynamic fact response received");
+        query.completion().complete(facts);
+        if (context != null) {
+            context.complete(envelope.envelopeId());
+        }
+    }
+
+    private void scheduleTimeout(String requestEnvelopeId, PendingQuery query) {
+        if (requestEnvelopeId == null || requestEnvelopeId.isBlank()) {
+            return;
+        }
+        if (timeoutMillis <= 0L) {
+            return;
+        }
+        query.timeoutHandle = adapter.scheduleTimeout(
+                "ax.dynamic-facts.timeout." + requestEnvelopeId,
+                () -> timeout(requestEnvelopeId),
+                Duration.ofMillis(timeoutMillis)
+        );
+    }
+
+    private void timeout(String requestEnvelopeId) {
+        PendingQuery query = pending.remove(requestEnvelopeId);
+        if (query == null) {
+            return;
+        }
+        query.cancelTimeout("AX dynamic fact timeout fired");
+        adapter.unregisterPresenceContextResponses(requestEnvelopeId);
+        adapter.cancelPresenceContextQuery(query.envelope(), "AX_DYNAMIC_FACT_TIMEOUT", "AX dynamic fact query timed out");
+        query.completion().complete(List.of());
+    }
+
+    private List<String> focusIds(AXDialogueInput delivery) {
+        if (delivery == null) {
+            return List.of();
+        }
+        java.util.ArrayList<String> values = new java.util.ArrayList<>();
+        delivery.objectMatches().stream()
+                .map(match -> match.registryId())
+                .forEach(values::add);
+        if (delivery.interactionHints() != null && !delivery.interactionHints().heldItemId().isBlank()) {
+            values.add(delivery.interactionHints().heldItemId());
+        }
+        return values.stream().filter(value -> value != null && !value.isBlank()).distinct().toList();
+    }
+
+    public interface Completion {
+        void complete(List<AXDynamicFact> facts);
+    }
+
+    private static final class PendingQuery {
+        private final Completion completion;
+        private final long deadlineMillis;
+        private final TianshuEnvelope envelope;
+        private volatile ProtocolTaskHandle timeoutHandle;
+
+        private PendingQuery(Completion completion, long deadlineMillis, TianshuEnvelope envelope) {
+            this.completion = completion;
+            this.deadlineMillis = deadlineMillis;
+            this.envelope = envelope;
+        }
+
+        private Completion completion() { return completion; }
+        private long deadlineMillis() { return deadlineMillis; }
+        private TianshuEnvelope envelope() { return envelope; }
+
+        private void cancelTimeout(String reason) {
+            ProtocolTaskHandle handle = timeoutHandle;
+            if (handle != null && !handle.isDone()) {
+                handle.cancel(reason);
+            }
+        }
+    }
+}

@@ -30,7 +30,7 @@ tasks.register('exportHudPreviewAssets', JavaExec) {
     description = 'Regenerates tools/hud-preview from the presence HUD model and shader sources'
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.rheinmetal.tianshu.function.presence.hud.HudPreviewAssetExporter'
+    mainClass = 'com.rheinmetal.tianshu.presence.hud.HudPreviewAssetExporter'
     workingDir = projectDir
 }
 

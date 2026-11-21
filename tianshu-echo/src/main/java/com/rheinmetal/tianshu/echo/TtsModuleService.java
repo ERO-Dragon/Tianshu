@@ -1,0 +1,196 @@
+package com.rheinmetal.tianshu.echo;
+
+import com.rheinmetal.tianshu.echo.runtime.TtsControlAction;
+import com.rheinmetal.tianshu.echo.runtime.TtsControlResult;
+import com.rheinmetal.tianshu.echo.runtime.TtsFailure;
+import com.rheinmetal.tianshu.echo.runtime.TtsFailureCode;
+import com.rheinmetal.tianshu.echo.runtime.TtsOperationResult;
+import com.rheinmetal.tianshu.echo.runtime.TtsPlaybackPolicy;
+import com.rheinmetal.tianshu.echo.runtime.TtsRequest;
+import com.rheinmetal.tianshu.echo.synthesis.CloudTtsBackendSelection;
+import com.rheinmetal.tianshu.echo.synthesis.cloud.TtsCloudProfile;
+import com.rheinmetal.tianshu.echo.runtime.TtsRequestSource;
+import com.rheinmetal.tianshu.echo.runtime.TtsRuntime;
+import com.rheinmetal.tianshu.echo.runtime.TtsRuntimeSnapshot;
+import com.rheinmetal.tianshu.echo.runtime.TtsVoiceProfile;
+import com.rheinmetal.tianshu.echo.model.TtsModelInfo;
+import com.rheinmetal.tianshu.protocol.Priority;
+
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+public final class TtsModuleService {
+    private final AtomicReference<TtsRuntime> runtime = new AtomicReference<>();
+    private final AtomicReference<TtsModelService> modelService = new AtomicReference<>();
+
+    public void bindRuntime(TtsRuntime ttsRuntime) {
+        runtime.set(Objects.requireNonNull(ttsRuntime));
+    }
+
+    public void bindModelService(TtsModelService service) {
+        modelService.set(Objects.requireNonNull(service));
+    }
+
+    public void unbindModelService(TtsModelService service) {
+        modelService.compareAndSet(service, null);
+    }
+
+    public void unbindRuntime(TtsRuntime ttsRuntime) {
+        runtime.compareAndSet(ttsRuntime, null);
+    }
+
+    public TtsRuntimeSnapshot snapshot() {
+        TtsRuntime current = runtime.get();
+        return current == null ? TtsRuntimeSnapshot.unbound() : current.snapshot();
+    }
+
+    /** Whether a settings preview is still the active playback, so the stop button can disappear. */
+    public boolean previewActive() {
+        TtsRuntime current = runtime.get();
+        return current != null && current.snapshot().previewing();
+    }
+
+    public TtsOperationResult previewModel(String modelName, String text, TtsVoiceProfile voiceProfile, Runnable onComplete, Consumer<TtsFailure> onFailure) {
+        TtsRuntime current = runtime.get();
+        TtsModelService models = modelService.get();
+        if (current == null) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS runtime is not available");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        if (models == null) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS model service is not available");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        if (modelName == null || modelName.isBlank()) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS preview model is empty");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        if (text == null || text.isBlank()) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.EMPTY_TEXT, "TTS preview text is empty");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        TtsModelInfo previewModel = models.findModelByName(modelName);
+        if (previewModel == null || !models.hasModelContent(previewModel)) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.SYNTHESIS_ENGINE_UNAVAILABLE, "TTS preview model is not installed");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        String requestId = "tts-preview:" + UUID.randomUUID();
+        TtsRequest request = new TtsRequest(
+                requestId,
+                requestId,
+                requestId,
+                requestId,
+                text,
+                TtsRequestSource.PREVIEW,
+                TtsPlaybackPolicy.REPLACE_CURRENT,
+                Priority.NORMAL,
+                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
+        );
+        TtsOperationResult result = current.previewWithModel(
+                previewModel.name,
+                models.currentConfiguredModelName(),
+                request,
+                onComplete,
+                onFailure
+        );
+        return result;
+    }
+
+    /**
+     * Speaks {@code text} through a cloud provider without touching the configured local model.
+     *
+     * <p>It is the same exclusive-preview path as a local preview, only the selection is the cloud one; the
+     * restore name is the configured local model so leaving the panel puts the player back where they were.</p>
+     */
+    public TtsOperationResult previewCloud(
+            TtsCloudProfile profile,
+            String text,
+            TtsVoiceProfile voiceProfile,
+            Runnable onComplete,
+            Consumer<TtsFailure> onFailure
+    ) {
+        TtsRuntime current = runtime.get();
+        if (current == null) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS runtime is not available");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        if (profile == null || profile.providerId().isEmpty()) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.INVALID_REQUEST, "TTS cloud preview has no provider");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        if (text == null || text.isBlank()) {
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.EMPTY_TEXT, "TTS preview text is empty");
+            notifyFailure(onFailure, failure);
+            return TtsOperationResult.rejected(failure);
+        }
+        String requestId = "tts-preview:" + UUID.randomUUID();
+        TtsRequest request = new TtsRequest(
+                requestId,
+                requestId,
+                requestId,
+                requestId,
+                text,
+                TtsRequestSource.PREVIEW,
+                TtsPlaybackPolicy.REPLACE_CURRENT,
+                Priority.NORMAL,
+                voiceProfile == null ? TtsVoiceProfile.defaults() : voiceProfile
+        );
+        // The cloud selection is what the lane should return to: in cloud mode there is no local model to restore.
+        return current.previewWithSelection(new CloudTtsBackendSelection(profile),
+                new CloudTtsBackendSelection(profile), request, onComplete, onFailure);
+    }
+
+    public TtsControlResult stopPreview(String reason) {
+        TtsRuntime current = runtime.get();
+        if (current == null) {
+            return runtimeUnavailable(TtsControlAction.STOP_PREVIEW);
+        }
+        TtsControlResult result = current.stopSource(TtsRequestSource.PREVIEW, reason == null || reason.isBlank() ? "preview stopped" : reason);
+        return result.accepted()
+                ? TtsControlResult.accepted(TtsControlAction.STOP_PREVIEW, result.affectedSessions())
+                : TtsControlResult.rejected(TtsControlAction.STOP_PREVIEW, result.failure());
+    }
+
+    public TtsControlResult stopAll(String reason) {
+        TtsRuntime current = runtime.get();
+        if (current == null) {
+            return runtimeUnavailable(TtsControlAction.STOP_ALL);
+        }
+        return current.stopAll(reason == null || reason.isBlank() ? "tts stopped" : reason);
+    }
+
+    public TtsControlResult stopCurrent(String reason) {
+        TtsRuntime current = runtime.get();
+        if (current == null) {
+            return runtimeUnavailable(TtsControlAction.STOP_CURRENT);
+        }
+        return current.stopCurrent(reason == null || reason.isBlank() ? "tts current stopped" : reason);
+    }
+
+    public TtsControlResult reloadModel() {
+        TtsRuntime current = runtime.get();
+        if (current == null) {
+            return runtimeUnavailable(TtsControlAction.RELOAD_MODEL);
+        }
+        return current.reloadModel();
+    }
+
+    private TtsControlResult runtimeUnavailable(TtsControlAction action) {
+        return TtsControlResult.rejected(action, TtsFailure.of(TtsFailureCode.RUNTIME_NOT_RUNNING, "TTS runtime is not available"));
+    }
+
+    private void notifyFailure(Consumer<TtsFailure> onFailure, TtsFailure failure) {
+        if (onFailure != null) {
+            onFailure.accept(failure);
+        }
+    }
+}

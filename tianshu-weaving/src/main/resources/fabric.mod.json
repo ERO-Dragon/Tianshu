@@ -8,7 +8,7 @@
   "environment": "client",
   "entrypoints": {
     "main": [
-      "com.rheinmetal.tianshu.function.weaving.WeavingFabricMod"
+      "com.rheinmetal.tianshu.weaving.WeavingFabricMod"
     ]
   },
   "depends": {
