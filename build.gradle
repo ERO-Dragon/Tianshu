@@ -31,7 +31,7 @@ def requireNonEmpty = { list, what ->
     }
 }
 
-def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-auxilium', 'tianshu-presence']
+def featureModules = ['tianshu-intake', 'tianshu-echo', 'tianshu-weaving', 'tianshu-dubhe', 'tianshu-presence']
 def neutralModules = featureModules + ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-testkit']
 
 // Where a module's directory is.
@@ -101,21 +101,21 @@ subprojects {
 //   optional — "integrate when present": compileOnly plus a runtime presence guard.
 //   none     — no relation at all: no Gradle dependency, no manifest entry, no gate permission. This is
 //              the default; an edge exists only because it is listed below.
-//   auxilium -> weaving (required), intake/echo (optional)
+//   dubhe -> weaving (required), intake/echo (optional)
 //   intake, weaving, echo are leaves
 // Dialogue is two-way (delivery flows down, participant and session control flow up) but all of its
-// vocabulary lives on the intake side: intake imports nothing from auxilium, so the dependency stays
+// vocabulary lives on the intake side: intake imports nothing from dubhe, so the dependency stays
 // one-directional and no cycle forms. That edge is required today because without intake nothing delivers
-// dialogue to auxilium at all; making it optional needs a bridge over the 12 files that use those types.
+// dialogue to dubhe at all; making it optional needs a bridge over the 12 files that use those types.
 def requiredFeatureEdges = [
-        'auxilium': ['weaving', 'presence'],
+        'dubhe': ['weaving', 'presence'],
         'intake'  : ['presence'],
         'weaving' : [],
         'echo'    : [],
         'presence': [],
 ]
 def optionalFeatureEdges = [
-        'auxilium': ['intake', 'echo'],
+        'dubhe': ['intake', 'echo'],
         'intake'  : [],
         'weaving' : ['presence'],
         'echo'    : ['presence'],
@@ -170,7 +170,7 @@ tasks.register('verifyFeatureIsolation') {
             // {@link} references are caught too, which is intended: they need the class on the classpath.
             def offenders = new TreeSet<String>()
             def referenced = source.getText('UTF-8') =~
-                    /com\.rheinmetal\.tianshu\.(intake|echo|weaving|auxilium|presence)\./
+                    /com\.rheinmetal\.tianshu\.(intake|echo|weaving|dubhe|presence)\./
             referenced.each { match ->
                 // Groovy hands this closure the match, and `match[1]` reads group 1 on both a Matcher and the list
                 // form it produces; `match.group(1)` only exists on the former.
@@ -207,7 +207,7 @@ tasks.register('verifyFeatureOptionalDependencies') {
         [(module): new File(moduleDir(module), 'src/main/resources/fabric.mod.json')]
     }
     // The package roots each module owns, read from where its sources live. Package name and module name do
-    // not always match: the arbitration module ships inside intake as `function.ia`, so usage has to be
+    // not always match: the arbitration module ships inside intake as `ia`, so usage has to be
     // detected against what the target module actually owns.
     def packagesByModule = featureModules.collectEntries { module ->
         def root = new File(moduleDir(module), 'src/main/java/com/rheinmetal/tianshu')
@@ -238,7 +238,7 @@ tasks.register('verifyFeatureOptionalDependencies') {
             (required + optional).each { target ->
                 // Usage is detected against the packages the target module actually owns: package name and
                 // module name are not the same thing (the arbitration module ships inside intake as
-                // `function.ia`), so matching on the module name alone would misreport auxilium -> intake.
+                // `ia`), so matching on the module name alone would misreport dubhe -> intake.
                 // The key is coerced to String because an interpolated Groovy string is a GString, whose
                 // hashCode differs from String's and therefore never matches a map key.
                 def used = packagesByModule[("tianshu-" + target)].any { pkg ->
@@ -473,7 +473,7 @@ tasks.register('verifyHostHasNoFeatureDependency') {
         // kernel fail to build when a feature jar is removed, even though no import says so.
         hostBuildFiles.each { buildFile ->
             if (!buildFile.exists()) return
-            (buildFile.text =~ /(api|implementation|compileOnly) project\(':tianshu-(intake|echo|weaving|auxilium|presence)'\)/).each { match ->
+            (buildFile.text =~ /(api|implementation|compileOnly) project\(':tianshu-(intake|echo|weaving|dubhe|presence)'\)/).each { match ->
                 throw new GradleException("${buildFile} declares a dependency on tianshu-${match[2]}; the kernel must not depend on a feature module")
             }
         }
@@ -482,7 +482,7 @@ tasks.register('verifyHostHasNoFeatureDependency') {
             // The package root anywhere in the file, not only at the start of an import line: an inline
             // fully-qualified reference and an `import static` were both invisible to the line-anchored pattern.
             def referenced = source.getText('UTF-8') =~
-                    /com\.rheinmetal\.tianshu\.(intake|echo|weaving|auxilium|presence)\./
+                    /com\.rheinmetal\.tianshu\.(intake|echo|weaving|dubhe|presence)\./
             if (referenced.find()) {
                 violations << "${source.name}: references a feature module (${referenced.group(1)})"
             }

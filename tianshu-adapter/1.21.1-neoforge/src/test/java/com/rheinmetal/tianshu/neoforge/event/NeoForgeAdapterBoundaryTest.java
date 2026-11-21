@@ -28,11 +28,11 @@ final class NeoForgeAdapterBoundaryTest {
         );
 
         // The mapping from a platform locale to a prompt language moved into the module that owns it.
-        assertFalse(bootstrap.contains("AXPromptLanguageProvider"));
+        assertFalse(bootstrap.contains("DubhePromptLanguageProvider"));
         assertTrue(Files.readString(
-                Path.of("../../../Tianshu-features/tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/auxilium/AuxiliumModuleProvider.java"),
+                Path.of("../../../Tianshu-features/tianshu-dubhe/src/main/java/com/rheinmetal/tianshu/dubhe/DubheModuleProvider.java"),
                 StandardCharsets.UTF_8
-        ).contains("AXPromptLanguageProvider.ofCode(ports.texts()::currentLanguage)"));
+        ).contains("DubhePromptLanguageProvider.ofCode(ports.texts()::currentLanguage)"));
         assertFalse(bootstrap.contains("ClientLanguagePolicy::currentPromptLanguage"));
         assertFalse(methodBody(config, "public String getLlmEmbeddingModelName").contains("Minecraft.getInstance()"));
     }

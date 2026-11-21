@@ -56,7 +56,7 @@ final class ClientConfigBoundaryTest {
         assertFalse(source.contains("IntakeConfiguration"));
         assertFalse(source.contains("EchoConfiguration"));
         assertFalse(source.contains("WeavingConfiguration"));
-        assertFalse(source.contains("AuxiliumAssistantSettings"));
+        assertFalse(source.contains("DubheAssistantSettings"));
     }
 
     @Test

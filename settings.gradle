@@ -30,8 +30,8 @@ include 'tianshu-echo'
 project(':tianshu-echo').projectDir = file('../Tianshu-features/tianshu-echo')
 include 'tianshu-weaving'
 project(':tianshu-weaving').projectDir = file('../Tianshu-features/tianshu-weaving')
-include 'tianshu-auxilium'
-project(':tianshu-auxilium').projectDir = file('../Tianshu-features/tianshu-auxilium')
+include 'tianshu-dubhe'
+project(':tianshu-dubhe').projectDir = file('../Tianshu-features/tianshu-dubhe')
 include 'tianshu-presence'
 project(':tianshu-presence').projectDir = file('../Tianshu-features/tianshu-presence')
 include 'tianshu-client'
