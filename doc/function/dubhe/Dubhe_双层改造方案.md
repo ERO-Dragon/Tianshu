@@ -360,12 +360,12 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 | 文档 | 现状 | 改法与时机 |
 |---|---|---|
 | 本文 | — | P0 |
-| `AX_文档索引` | 未列本文 | P0 |
-| `AX_事件系统` | "41 条内置映射 / §4.3 内置表（41 条）" | **已改**：40 条，删掉已全仓删除的 `respawn` 行，名单分布同步为 5 / 14 / 21 |
-| `AX_文档索引` | "44 条内置表" | **已改**：40 条 |
-| `AX_Agent运行时` | A3"主对话无工具、历史无工具消息" | **P3**（与代码同批）：重述为"simple 的工具集恒为 `{delegate}`"，并补专席模型与办事报告 |
-| `AX_Agent运行时` | §4 两套预设（simple / complex） | **P3**：改为"角色层一套 + 专席各自预算" |
-| `AX_运行架构` | 只描述单层 | **P3**：补 dialogue / agent 分层与依赖方向 |
+| `Dubhe_文档索引` | 未列本文 | P0 |
+| `Dubhe_事件系统` | "41 条内置映射 / §4.3 内置表（41 条）" | **已改**：40 条，删掉已全仓删除的 `respawn` 行，名单分布同步为 5 / 14 / 21 |
+| `Dubhe_文档索引` | "44 条内置表" | **已改**：40 条 |
+| `Dubhe_Agent运行时` | A3"主对话无工具、历史无工具消息" | **P3**（与代码同批）：重述为"simple 的工具集恒为 `{delegate}`"，并补专席模型与办事报告 |
+| `Dubhe_Agent运行时` | §4 两套预设（simple / complex） | **P3**：改为"角色层一套 + 专席各自预算" |
+| `Dubhe_运行架构` | 只描述单层 | **P3**：补 dialogue / agent 分层与依赖方向 |
 
 ### 4.4 架构门禁
 
@@ -484,7 +484,7 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 | `DubheEventAggregator` | 接收 `FOLD`；不足阈值直接丢弃、不退化成逐条；聚合行标记 `transient`，压缩与重置时跳过 |
 | 表解析 / 资源 | 读 v2 旧结构（`kinds` + `list`）时按 白→强调、黑→削弱 换算，结果必须与旧行为逐格一致 |
 
-**连带修正**：`AX_事件系统` §4 要整节重写（矩阵、五档、三态改名），在实现这一档时同步（P5 同批）。
+**连带修正**：`Dubhe_事件系统` §4 要整节重写（矩阵、五档、三态改名），在实现这一档时同步（P5 同批）。
 ## 5. 改名（Dubhe）
 
 ### 5.1 为什么要改
@@ -504,10 +504,10 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 | 模块 id | `module.ax` | `module.dubhe` |
 | 模块配置 | `config/Tianshu/module/ax.properties` | `dubhe.properties` |
 | 模块存储 | `ax/cache` 及其它 `ax/` 子树 | `dubhe/` 同名子树 |
-| 公开能力 id | `AX.DIALOGUE_INPUT` / `AX.CONTEXT_INPUT` / `AX.EVENT_INPUT` | `DUBHE.DIALOGUE_INPUT` / `DUBHE.CONTEXT_INPUT` / `DUBHE.EVENT_INPUT` |
+| 公开能力 id | `DUBHE.DIALOGUE_INPUT` / `DUBHE.CONTEXT_INPUT` / `DUBHE.EVENT_INPUT` | `DUBHE.DIALOGUE_INPUT` / `DUBHE.CONTEXT_INPUT` / `DUBHE.EVENT_INPUT` |
 | 语言键 | `tianshu.gui.ax.*`、`tianshu.runtime.module.ax.*`、`ax.runtime.delegate.*` | 同上把 `ax` 换 `dubhe` |
 | 资源文件 | `ax_prompt_texts.json`、`ax_memory_tasks.json`、`ax_event_tiers.json`、`general_ax.*.json` 等 | `dubhe_*` / `general_dubhe.*` |
-| 文档 | `AX_*.md`（8 篇，含本文） | `Dubhe_*.md` |
+| 文档 | `Dubhe_*.md`（8 篇，含本文） | `Dubhe_*.md` |
 | 中文显示名 | 天枢 | **不变** |
 
 ### 5.3 必须同批改的接线点
@@ -525,7 +525,7 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 | 7 | `ModuleStatusLanguageTest` | 期望值里的 `module.ax` / `tianshu-auxilium` |
 | 8 | 三份 `EXTERNAL_INTEGRATION_GUIDE.md` | 能力 id 与模块名 |
 | 9 | `zh_cn.json` / `en_us.json` | 语言键同步（缺一个就是界面上裸 key） |
-| 10 | 文档正文 | `AX_文档索引`、`模块架构`、`未完成事项`、`舟楫待修问题清单` 里的模块名与文件名 |
+| 10 | 文档正文 | `Dubhe_文档索引`、`模块架构`、`未完成事项`、`舟楫待修问题清单` 里的模块名与文件名 |
 
 ### 5.4 执行顺序（P1）
 
@@ -716,7 +716,7 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 
 - 不做自由 persona（破坏 P2 字节冻结与语音可读性）。
 - 不做语速、音量、打断时长的细调——那是回声模块的地盘，天枢只选策略。
-- 不做定时主动找话（沿用《AX_Agent运行时》§7 的禁止项）。
+- 不做定时主动找话（沿用《Dubhe_Agent运行时》§7 的禁止项）。
 
 ## 8. 进度
 

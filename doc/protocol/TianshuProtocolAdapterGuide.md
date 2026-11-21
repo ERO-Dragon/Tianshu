@@ -125,7 +125,7 @@ public TianshuEnvelope publishAsrFinalText(AsrTextPayload payload) {
 ```java
 public void registerDialogueInput(EnvelopeHandler handler) {
     registerCapability(
-        "AX.DIALOGUE_INPUT",
+        "DUBHE.DIALOGUE_INPUT",
         PayloadType.of("DIALOGUE_DELIVERY"),
         DialogueDeliveryPayload.class,
         BrokerType.BOUNDED_QUEUE,

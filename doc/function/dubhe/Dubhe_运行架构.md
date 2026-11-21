@@ -10,7 +10,7 @@
 > 本篇其余内容仍描述当前实现；实施完成后按新口径重写。
 
 
-天枢（Tianshu）的运行期架构：模块分工、一轮请求的端到端数据流、跨模块不变量，以及这些不变量背后的成本与一致性理由。本文只写架构层面的结论；具体参数与算法见《AX_上下文编排》《AX_记忆策略》《AX_事件系统》《AX_Agent运行时》。
+天枢（Tianshu）的运行期架构：模块分工、一轮请求的端到端数据流、跨模块不变量，以及这些不变量背后的成本与一致性理由。本文只写架构层面的结论；具体参数与算法见《Dubhe_上下文编排》《Dubhe_记忆策略》《Dubhe_事件系统》《Dubhe_Agent运行时》。
 
 ## 1. 分层与依赖方向
 
@@ -23,7 +23,7 @@
 | `tianshu-intake` | 语音输入（ASR）：模型装载、音频流、转写结果 | 依赖 api / core |
 | `tianshu-weaving` | 语言模型引擎：请求调度、并发与配额、流式片段转发 | 依赖 api / core |
 | `tianshu-echo` | 语音输出（TTS）：音色库、合成、播放投递 | 依赖 api / core |
-| `tianshu-auxilium` | 对话智能体（AX）：轮次编排、提示词装配、记忆、事件、委派 | 依赖 api / core |
+| `tianshu-dubhe` | 对话智能体（AX）：轮次编排、提示词装配、记忆、事件、委派 | 依赖 api / core |
 | `tianshu-client` | 客户端胶水：本地状态采集、界面、平台事件桥 | 依赖 api / core |
 | `tianshu-adapter:neoforge-*` | 平台适配：NeoForge 事件、配置、注册表 | 依赖以上全部 |
 
@@ -39,16 +39,16 @@
 输入（文本 / ASR 转写）
       │
       ▼
-auxilium：轮次开始 ──► 事件缓冲并入历史（用户先开口）
+dubhe：轮次开始 ──► 事件缓冲并入历史（用户先开口）
       │
       ├─ 上下文采集：状态快照、记忆检索、近期对话、动态知识
       ├─ 提示词装配：单一 system + 追加式历史 + 尾部易变块
       │
       ▼
-weaving：LLM 请求（流式）── 输出片段回投 auxilium
+weaving：LLM 请求（流式）── 输出片段回投 dubhe
       │
       ▼
-auxilium：输出解析（标签：委派 / 检索 / 正文）── 回答正文落历史
+dubhe：输出解析（标签：委派 / 检索 / 正文）── 回答正文落历史
       │
       ▼
 echo：TTS 合成与播放（播报不调模型）
@@ -58,8 +58,8 @@ echo：TTS 合成与播放（播报不调模型）
 
 | 环节 | 谁负责 | 不变量 |
 |---|---|---|
-| 历史 | auxilium 的近期对话系统 | 只追加；唯一改写来自压缩 |
-| 提示词 | auxilium 的装配器 | 单一 system；易变内容只在尾部 |
+| 历史 | dubhe 的近期对话系统 | 只追加；唯一改写来自压缩 |
+| 提示词 | dubhe 的装配器 | 单一 system；易变内容只在尾部 |
 | 模型请求 | weaving | 请求头确定性；不做内容改写 |
 | 出声 | echo | 只播已经存在的正文，不为播出再跑模型 |
 
@@ -69,14 +69,14 @@ echo：TTS 合成与播放（播报不调模型）
 
 | 主题 | 入口 |
 |---|---|
-| AX 模块装配与对外服务 | `tianshu-auxilium/.../auxilium/DubheModule.java`、`DubheProtocolAdapter.java`、`DubheParticipantRegistrar.java` |
-| 一轮对话 | `auxilium/core/turn/DubheTurnOrchestrator.java`、`DubheReplyContract.java`、`DubheDialogueGateway.java` |
-| 模型请求的重投 | `auxilium/core/llm/DubheLlmClient.java`、`DubheLlmRetryPolicy.java` |
-| 提示词装配 | `auxilium/core/prompt/DubhePromptOrchestrator.java`、`DubhePromptAssemblyBuilder.java`、`module/system/DubheSystemPromptContributor.java`、其余 `*PromptContributor` |
-| 预算与窗口 | `auxilium/core/context/DubheContextBudget.java`、`DubheMemoryWindowPolicy.java` |
-| 记忆 | `auxilium/module/memory/DubheMemorySystem.java`、`module/recentdialogue/DubheRawTurnWindow.java`、`module/memory/{compression,retrieval,summary,preference}` |
-| 事件 | `auxilium/event/` 整包 + `resources/.../event/ax_event_tiers.json` |
-| 委派与运行循环 | `auxilium/core/agent/DubheAgentLoop.java`、`DubheRunPolicy.java`、`core/delegate/` |
+| AX 模块装配与对外服务 | `tianshu-dubhe/.../dubhe/DubheModule.java`、`DubheProtocolAdapter.java`、`DubheParticipantRegistrar.java` |
+| 一轮对话 | `dubhe/core/turn/DubheTurnOrchestrator.java`、`DubheReplyContract.java`、`DubheDialogueGateway.java` |
+| 模型请求的重投 | `dubhe/core/llm/DubheLlmClient.java`、`DubheLlmRetryPolicy.java` |
+| 提示词装配 | `dubhe/core/prompt/DubhePromptOrchestrator.java`、`DubhePromptAssemblyBuilder.java`、`module/system/DubheSystemPromptContributor.java`、其余 `*PromptContributor` |
+| 预算与窗口 | `dubhe/core/context/DubheContextBudget.java`、`DubheMemoryWindowPolicy.java` |
+| 记忆 | `dubhe/module/memory/DubheMemorySystem.java`、`module/recentdialogue/DubheRawTurnWindow.java`、`module/memory/{compression,retrieval,summary,preference}` |
+| 事件 | `dubhe/event/` 整包 + `resources/.../event/ax_event_tiers.json` |
+| 委派与运行循环 | `dubhe/core/agent/DubheAgentLoop.java`、`DubheRunPolicy.java`、`core/delegate/` |
 | 语言资源 | `resources/.../prompts/`（系统提示词 profile、提示词文本、记忆任务提示词、回复文案） |
 
 ## 2. 跨模块不变量
@@ -198,7 +198,7 @@ echo：TTS 合成与播放（播报不调模型）
 |---|---|---|
 | 内容 | 当前状态、检索到的记忆、待处理项 | 用户与 AX 的对话、事件 |
 | 生命周期 | 每轮重建，下一轮丢弃 | 追加后长期存在，可被压缩成记忆 |
-| 能否被压缩 | 否 | 能（事件除外，见《AX_事件系统》§10） |
+| 能否被压缩 | 否 | 能（事件除外，见《Dubhe_事件系统》§10） |
 | 前缀影响 | 不影响（在末尾） | 影响很小（只追加） |
 
 判定"该进哪一边"的唯一问题：**它有发生时刻吗？** 有（死亡、进入维度、别人说了话）→ 历史；没有（准星、血量、附近敌对数）→ 尾部。

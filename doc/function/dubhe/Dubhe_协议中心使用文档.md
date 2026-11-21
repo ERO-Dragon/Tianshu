@@ -20,9 +20,9 @@ AX 是 IA 管理的 dialogue participant，不是可以绕过 IA 直接调用的
 |---|---|
 | moduleId | `module.ax` |
 | participantId | `tianshu.AX` |
-| 提问型入口能力 | `AX_DIALOGUE_INPUT`（`DialogueDeliveryPayload`） |
-| 上下文型入口能力 | `AX_CONTEXT_INPUT`（`DialogueContextInputPayload`） |
-| 事件型入口能力 | `AX_EVENT_INPUT`（`DubheWorldEventPayload`） |
+| 提问型入口能力 | `Dubhe_DIALOGUE_INPUT`（`DialogueDeliveryPayload`） |
+| 上下文型入口能力 | `Dubhe_CONTEXT_INPUT`（`DialogueContextInputPayload`） |
+| 事件型入口能力 | `Dubhe_EVENT_INPUT`（`DubheWorldEventPayload`） |
 
 注册 / 注销分别使用 `DIALOGUE_PARTICIPANT_REGISTER` / `DIALOGUE_PARTICIPANT_UNREGISTER`，并把自己的路由能力、唤醒词声明与语音触发组一并交给 IA。
 
@@ -34,7 +34,7 @@ AX 是 IA 管理的 dialogue participant，不是可以绕过 IA 直接调用的
 
 | 项目 | 值 |
 |---|---|
-| 能力 | `AX_DIALOGUE_INPUT` |
+| 能力 | `Dubhe_DIALOGUE_INPUT` |
 | PayloadType | `DIALOGUE_DELIVERY` |
 | Payload | `DialogueDeliveryPayload` |
 | PacketType | `COMMAND` |
@@ -68,7 +68,7 @@ AX 在处理前会检查自身就绪状态、会话与轮次、投递时效。�
 
 | 项目 | 值 |
 |---|---|
-| 能力 | `AX_CONTEXT_INPUT` |
+| 能力 | `Dubhe_CONTEXT_INPUT` |
 | PayloadType | `DIALOGUE_CONTEXT_INPUT` |
 | Payload | `DialogueContextInputPayload` |
 | PacketType | `COMMAND` |
@@ -95,8 +95,8 @@ AX 在处理前会检查自身就绪状态、会话与轮次、投递时效。�
 
 | 项目 | 值 |
 |---|---|
-| 能力 | `AX_EVENT_INPUT` |
-| PayloadType | `AX_WORLD_EVENT` |
+| 能力 | `Dubhe_EVENT_INPUT` |
+| PayloadType | `Dubhe_WORLD_EVENT` |
 | Payload | `DubheWorldEventPayload` |
 | PacketType | `COMMAND` |
 | Broker | `BOUNDED_QUEUE` |
@@ -138,12 +138,12 @@ AX 在处理前会检查自身就绪状态、会话与轮次、投递时效。�
 - **不去重**：同一次发生投递两次就是两条历史。生产方负责"每次发生只投一次"。
 - **不校验来源**：任何模块都能投，`sourceId` 只记 provenance、不参与判定——与事件层"谁都能提交"的定位一致。
 - **不触发回答**：不占会话、不走 IA、不请求模型。需要 AX 回答的输入走 §2 的提问型入口。
-- 事件层没在运行时投递会被拒绝（`AX_NOT_READY`），不会静默吞掉。
+- 事件层没在运行时投递会被拒绝（`Dubhe_NOT_READY`），不会静默吞掉。
 
 ### 4.4 投递方式
 
-外部模组对 `tianshu-auxilium` 硬性依赖（`compileOnly` 足够，运行时由天枢提供），用
-`EnvelopeBuilder.commandToCapability(自己的 moduleId, DubheProtocolAdapter.EVENT_INPUT_CAPABILITY, PayloadType.of("AX_WORLD_EVENT"), payload)`
+外部模组对 `tianshu-dubhe` 硬性依赖（`compileOnly` 足够，运行时由天枢提供），用
+`EnvelopeBuilder.commandToCapability(自己的 moduleId, DubheProtocolAdapter.EVENT_INPUT_CAPABILITY, PayloadType.of("Dubhe_WORLD_EVENT"), payload)`
 建信封，再交给 `TianshuIntegrationApi.submit(envelope)`。
 
 不要从服务注册表取 `DubheGameEventService` 去调 `tick` / `flush` / `stop`：那三个方法是本模块自己的生命周期，不属于对外契约。
@@ -277,17 +277,17 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 
 | 符号 | 能力名 | 含义 |
 |---|---|---|
-| `DubheProtocolAdapter.DIALOGUE_INPUT_CAPABILITY` | `AX.DIALOGUE_INPUT` | 提问型入口：让 AX 就这一轮说话 |
-| `DubheProtocolAdapter.CONTEXT_INPUT_CAPABILITY` | `AX.CONTEXT_INPUT` | 上下文型入口：把外部话语送进 AX 的历史 |
-| `DubheProtocolAdapter.EVENT_INPUT_CAPABILITY` | `AX.EVENT_INPUT` | 事件型入口：投递一句世界事件 + 一个行为 |
+| `DubheProtocolAdapter.DIALOGUE_INPUT_CAPABILITY` | `DUBHE.DIALOGUE_INPUT` | 提问型入口：让 AX 就这一轮说话 |
+| `DubheProtocolAdapter.CONTEXT_INPUT_CAPABILITY` | `DUBHE.CONTEXT_INPUT` | 上下文型入口：把外部话语送进 AX 的历史 |
+| `DubheProtocolAdapter.EVENT_INPUT_CAPABILITY` | `DUBHE.EVENT_INPUT` | 事件型入口：投递一句世界事件 + 一个行为 |
 
 对应登记值来自 `DubheCapabilities`：
 
 | 符号 | 值 |
 |---|---|
-| `"AX.DIALOGUE_INPUT"` | `AX.DIALOGUE_INPUT` |
-| `"AX.CONTEXT_INPUT"` | `AX.CONTEXT_INPUT` |
-| `"AX.EVENT_INPUT"` | `AX.EVENT_INPUT` |
+| `"DUBHE.DIALOGUE_INPUT"` | `DUBHE.DIALOGUE_INPUT` |
+| `"DUBHE.CONTEXT_INPUT"` | `DUBHE.CONTEXT_INPUT` |
+| `"DUBHE.EVENT_INPUT"` | `DUBHE.EVENT_INPUT` |
 
 ### 13.3 入站载荷
 
