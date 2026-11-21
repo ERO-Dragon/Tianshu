@@ -30,9 +30,9 @@ class ModelArchiveDownloaderTest {
     void ttsArchiveDownloadUsesDedicatedUriFacadeWithoutLegacyUrlApi() throws Exception {
         assertTrue(Files.isRegularFile(FACADE_SOURCE), "model domain must own a narrow archive downloader facade");
 
-        String modelInfo = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/model/TtsModelInfo.java").toString());
-        String coordinator = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/download/TtsModelDownloadCoordinator.java").toString());
-        String service = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/TtsModelService.java").toString());
+        String modelInfo = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/echo/model/TtsModelInfo.java").toString());
+        String coordinator = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/echo/download/TtsModelDownloadCoordinator.java").toString());
+        String service = source(WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/echo/TtsModelService.java").toString());
         String catalog = source(WorkspacePaths.require("tianshu-echo/src/main/resources/com/rheinmetal/tianshu/model/catalog/tts-model.json").toString());
 
         assertTrue(modelInfo.contains("downloadUri"));

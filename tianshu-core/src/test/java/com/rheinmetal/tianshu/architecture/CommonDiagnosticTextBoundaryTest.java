@@ -14,7 +14,7 @@ class CommonDiagnosticTextBoundaryTest {
     @Test
     void functionModuleEnvironmentLogsDoNotEmbedLocalizedSentences() throws Exception {
         for (String module : List.of("tianshu-intake", "tianshu-echo", "tianshu-weaving", "tianshu-auxilium")) {
-            Path root = WorkspacePaths.require(module + "/src/main/java/com/rheinmetal/tianshu/function");
+            Path root = WorkspacePaths.require(module + "/src/main/java/com/rheinmetal/tianshu");
             try (var files = Files.walk(root)) {
                 for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
                     int lineNumber = 0;

@@ -14,10 +14,10 @@ class CommonDelayedWorkBoundaryTest {
     @Test
     void functionModulesDoNotOwnIndependentDelayedExecutors() throws Exception {
         List<String> relativeSources = List.of(
-                "tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/repair/AsrTextRepairer.java",
-                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/core/llm/AXLlmRagClient.java",
-                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/core/llm/AXLlmPrimitiveClient.java",
-                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/module/gamecontext/AXDynamicFactClient.java"
+                "tianshu-intake/src/main/java/com/rheinmetal/tianshu/intake/repair/AsrTextRepairer.java",
+                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/auxilium/core/llm/AXLlmRagClient.java",
+                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/auxilium/core/llm/AXLlmPrimitiveClient.java",
+                "tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/auxilium/module/gamecontext/AXDynamicFactClient.java"
         );
         for (String relativeSource : relativeSources) {
             Path source = WorkspacePaths.require(relativeSource);

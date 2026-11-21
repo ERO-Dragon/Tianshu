@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.architecture;
 
-import com.rheinmetal.tianshu.function.intake.protocol.IntakeTopics;
+import com.rheinmetal.tianshu.intake.protocol.IntakeTopics;
 
 import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;

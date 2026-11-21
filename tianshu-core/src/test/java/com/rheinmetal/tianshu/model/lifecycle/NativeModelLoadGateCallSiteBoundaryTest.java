@@ -36,13 +36,13 @@ class NativeModelLoadGateCallSiteBoundaryTest {
     private static final Path REPO = Path.of("..");
 
     private static final Path LLM_LANE =
-            WorkspacePaths.require("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/LlmEngineProvider.java");
+            WorkspacePaths.require("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/weaving/LlmEngineProvider.java");
     private static final Path LLM_MODULE =
-            WorkspacePaths.require("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/LlmModule.java");
+            WorkspacePaths.require("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/weaving/LlmModule.java");
     private static final Path ASR_LANE =
-            WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/AsrModule.java");
+            WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/intake/AsrModule.java");
     private static final Path TTS_LANE =
-            WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/runtime/TtsModelLifecycleCoordinator.java");
+            WorkspacePaths.require("tianshu-echo/src/main/java/com/rheinmetal/tianshu/echo/runtime/TtsModelLifecycleCoordinator.java");
 
     @Test
     void theGateIsConstructedOnceInTheWholeBuild() throws Exception {

@@ -61,12 +61,12 @@ class DialogueContractBoundaryTest {
             throw new IllegalStateException("Failed to read " + path, exception);
         }
 
-        return code.contains("com.rheinmetal.tianshu.function.ia.payload.")
-                || code.contains("com.rheinmetal.tianshu.function.ia.model.")
-                || code.contains("com.rheinmetal.tianshu.function.ia.context.DialogueContextFrame")
-                || code.contains("com.rheinmetal.tianshu.function.ia.context.DialogueContextSnapshot")
-                || code.contains("com.rheinmetal.tianshu.function.ia.context.DialogueEntityRef")
-                || code.contains("com.rheinmetal.tianshu.function.ia.context.DialogueInteractionHints");
+        return code.contains("com.rheinmetal.tianshu.ia.payload.")
+                || code.contains("com.rheinmetal.tianshu.ia.model.")
+                || code.contains("com.rheinmetal.tianshu.ia.context.DialogueContextFrame")
+                || code.contains("com.rheinmetal.tianshu.ia.context.DialogueContextSnapshot")
+                || code.contains("com.rheinmetal.tianshu.ia.context.DialogueEntityRef")
+                || code.contains("com.rheinmetal.tianshu.ia.context.DialogueInteractionHints");
     }
 
     @Test

@@ -92,7 +92,7 @@ class ModuleConfigurationBoundaryTest {
         Map<String, Path> roots = new LinkedHashMap<>();
         for (String module : List.of("tianshu-intake", "tianshu-echo", "tianshu-weaving", "tianshu-auxilium")) {
             roots.put(module, REPO_ROOT.resolve(module)
-                    .resolve("src/main/java/com/rheinmetal/tianshu/function"));
+                    .resolve("src/main/java/com/rheinmetal/tianshu"));
         }
         return Map.copyOf(roots);
     }

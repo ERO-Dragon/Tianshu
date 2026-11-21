@@ -1,9 +1,9 @@
 package com.rheinmetal.tianshu.architecture;
 
-import com.rheinmetal.tianshu.function.intake.settings.IntakeConfiguration;
-import com.rheinmetal.tianshu.function.auxilium.storage.AuxiliumStorageConfiguration;
-import com.rheinmetal.tianshu.function.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.function.echo.settings.EchoConfiguration;
+import com.rheinmetal.tianshu.intake.settings.IntakeConfiguration;
+import com.rheinmetal.tianshu.auxilium.storage.AuxiliumStorageConfiguration;
+import com.rheinmetal.tianshu.weaving.settings.WeavingConfiguration;
+import com.rheinmetal.tianshu.echo.settings.EchoConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

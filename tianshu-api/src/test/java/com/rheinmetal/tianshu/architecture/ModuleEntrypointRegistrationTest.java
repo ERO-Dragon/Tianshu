@@ -37,7 +37,7 @@ class ModuleEntrypointRegistrationTest {
 
     private static final Path REPOSITORY_ROOT = Path.of(System.getProperty("tianshu.workspaceRoot", "../.."));
     private static final Path CORE_ROOT = Path.of(System.getProperty("tianshu.featuresRoot", REPOSITORY_ROOT.resolve("core").toString()));
-    private static final String FUNCTION_PACKAGE = "com/rheinmetal/tianshu/function";
+    private static final String MODULE_PACKAGE = "com/rheinmetal/tianshu";
     /**
      * Directories under the repository root that look like modules but are not shipped features.
      *
@@ -290,7 +290,7 @@ class ModuleEntrypointRegistrationTest {
 
     private static Path announcementOf(Path module) {
         String feature = featureNameOf(module);
-        return module.resolve("src/main/java/" + FUNCTION_PACKAGE + "/" + feature + "/"
+        return module.resolve("src/main/java/" + MODULE_PACKAGE + "/" + feature + "/"
                 + announcementClassNameOf(module) + ".java");
     }
 

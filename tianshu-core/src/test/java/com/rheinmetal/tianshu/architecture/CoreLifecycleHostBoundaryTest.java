@@ -131,11 +131,11 @@ class CoreLifecycleHostBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String manager = Files.readString(
-                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/index/ClientNamedObjectIndexManager.java"),
+                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/intake/index/ClientNamedObjectIndexManager.java"),
                 StandardCharsets.UTF_8
         );
         String provider = Files.readString(
-                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/IntakeModuleProvider.java"),
+                WorkspacePaths.require("tianshu-intake/src/main/java/com/rheinmetal/tianshu/intake/IntakeModuleProvider.java"),
                 StandardCharsets.UTF_8
         );
         String reloadListener = Files.readString(

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class SentenceSegmenterBoundaryTest {
     @Test
     void auxiliumDoesNotDependOnTtsTextUtilities() throws Exception {
-        Path source = WorkspacePaths.require("tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/function/auxilium/core/output/AXSentenceBuffer.java");
+        Path source = WorkspacePaths.require("tianshu-auxilium/src/main/java/com/rheinmetal/tianshu/auxilium/core/output/AXSentenceBuffer.java");
 
         String content = Files.readString(source, StandardCharsets.UTF_8);
 

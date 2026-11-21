@@ -30,11 +30,11 @@ final class SettingsSourcePaths {
     static Path page(String module, String fileName) {
         return switch (module) {
             case "client" -> moduleSource("tianshu-client", "client/settings/module").resolve(fileName);
-            case "presence" -> moduleSource("tianshu-presence", "function/presence/settings").resolve(fileName);
-            case "intake" -> moduleSource("tianshu-intake", "function/intake/settings").resolve(fileName);
-            case "echo" -> moduleSource("tianshu-echo", "function/echo/settings").resolve(fileName);
-            case "weaving" -> moduleSource("tianshu-weaving", "function/weaving/settings").resolve(fileName);
-            case "auxilium" -> moduleSource("tianshu-auxilium", "function/auxilium/settings").resolve(fileName);
+            case "presence" -> moduleSource("tianshu-presence", "presence/settings").resolve(fileName);
+            case "intake" -> moduleSource("tianshu-intake", "intake/settings").resolve(fileName);
+            case "echo" -> moduleSource("tianshu-echo", "echo/settings").resolve(fileName);
+            case "weaving" -> moduleSource("tianshu-weaving", "weaving/settings").resolve(fileName);
+            case "auxilium" -> moduleSource("tianshu-auxilium", "auxilium/settings").resolve(fileName);
             default -> throw new IllegalArgumentException("unknown module: " + module);
         };
     }

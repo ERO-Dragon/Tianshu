@@ -82,20 +82,20 @@ class ModelCatalogOwnershipTest {
 
     @Test
     void everyReaderNamesTheOwnedPath() throws Exception {
-        assertReaderNames("tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/model/AsrModelManager.java",
+        assertReaderNames("tianshu-intake/src/main/java/com/rheinmetal/tianshu/intake/model/AsrModelManager.java",
                 "/com/rheinmetal/tianshu/model/catalog/asr_model.json");
-        assertReaderNames("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/model/LlmModelManager.java",
+        assertReaderNames("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/weaving/model/LlmModelManager.java",
                 "/com/rheinmetal/tianshu/model/catalog/llm_models.json");
-        assertReaderNames("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/function/weaving/model/LlmModelManager.java",
+        assertReaderNames("tianshu-weaving/src/main/java/com/rheinmetal/tianshu/weaving/model/LlmModelManager.java",
                 "/com/rheinmetal/tianshu/model/catalog/llm_embedding_models.json");
-        assertReaderNames("tianshu-echo/src/main/java/com/rheinmetal/tianshu/function/echo/model/TtsModelInfo.java",
+        assertReaderNames("tianshu-echo/src/main/java/com/rheinmetal/tianshu/echo/model/TtsModelInfo.java",
                 "/com/rheinmetal/tianshu/model/catalog/tts-model.json");
     }
 
     @Test
     void theIntentKeywordTableShipsWithTheModuleThatReadsIt() throws Exception {
         Path owned = WorkspacePaths.require(
-                "tianshu-intake/src/main/resources/com/rheinmetal/tianshu/function/intake/repair/ir_intent_keywords.json");
+                "tianshu-intake/src/main/resources/com/rheinmetal/tianshu/intake/repair/ir_intent_keywords.json");
         assertTrue(Files.isRegularFile(owned), "the intent keyword table must ship beside its loader: " + owned);
 
         Path platformAsset = WorkspacePaths.find("tianshu-client/src/main/resources/assets/tianshu/ir-intent-keywords.json").orElse(null);
@@ -103,10 +103,10 @@ class ModelCatalogOwnershipTest {
                 "the table must not stay in the client's resource-pack assets: two copies would race");
 
         String loader = Files.readString(WorkspacePaths.require(
-                "tianshu-intake/src/main/java/com/rheinmetal/tianshu/function/intake/repair/core/IntentKeywordLoader.java"),
+                "tianshu-intake/src/main/java/com/rheinmetal/tianshu/intake/repair/core/IntentKeywordLoader.java"),
                 StandardCharsets.UTF_8);
         assertTrue(loader.contains(
-                        "\"/com/rheinmetal/tianshu/function/intake/repair/ir_intent_keywords.json\""),
+                        "\"/com/rheinmetal/tianshu/intake/repair/ir_intent_keywords.json\""),
                 "the loader has to name the bundled file by absolute path: a relative name resolves against"
                         + " the loader's own package and reads nothing");
         assertTrue(loader.contains("getResourceAsStream("),
