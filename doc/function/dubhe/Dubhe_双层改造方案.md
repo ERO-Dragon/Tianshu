@@ -575,9 +575,9 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 
 - **验收**：构建绿；门禁能对空包生效（故意引用一次即红）。
 
-### P3 simple 调度（角色层）
+### P3 simple 调度（角色层）— 结构部分已完成
 
-1. 删 `DubheRunPolicy.toolsAllowed` 布尔与 simple 的工具分支；simple 的工具集恒为 `{delegate}`。
+1. ~~删 `DubheRunPolicy.toolsAllowed` 布尔与 simple 的工具分支~~（已完成：策略不再带工具标志；编排器不再构造工具轮次；`DubheToolTurn`/`DubheToolRoundHandler` 留在执行层供 P4 接线）。门禁：`dialogue` 包不得出现 `TianshuTool` / `ToolCaller` / `CapabilityCatalog` / `DubheToolTurn` / `DubheToolRoundHandler`。
 2. `pending_work` 尾部块：在办事项每轮重建，不进历史、不进压缩。
 3. 人设口径改承诺-兑现（G7）；触发源收敛为"玩家输入 + 事件"（G20）。
 4. 办事失败词表接入（工具被拒 / 权限不足 / 目标不存在 / 上限拦截）。
@@ -725,7 +725,8 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 | P0 | 已完成（文档部分） | 本文 + 索引登记 + 事件计数与 `respawn` 行 |
 | P1 改名 | **已完成** | 五步全部落地：包层、模块与目录、类前缀、id 与持久化、文档；全模块测试与五条架构门禁通过 |
 | P2 入口层 | **已完成** | 包骨架 `dialogue` / `agent` / `shared` 落位；`protocol` 与 `settings` 在顶层；记忆包暂留原位（下一步专项）。两条门禁落地：执行层不碰语音侧、system 资源不点专席名 |
-| P3–P8 | 未开始 | 角色层 → 执行层 → 事件 → 记忆 → 专席 → 对外，见 §6 |
+| P3 simple 调度 | **结构部分完成** | 工具标志与分支已删；`dialogue` 工具词汇门禁落地。人设口径、办事失败词表、`pending_work` **随 P4 执行器落地**（它们需要「有人可派」与「报告有内容」才有意义） |
+| P4–P8 | 未开始 | 执行层 → 事件 → 记忆 → 专席 → 对外，见 §6 |
 
 ## 9. 待定项
 
