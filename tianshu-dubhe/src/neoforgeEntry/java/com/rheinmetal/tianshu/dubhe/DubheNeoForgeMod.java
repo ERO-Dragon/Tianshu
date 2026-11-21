@@ -1,0 +1,18 @@
+package com.rheinmetal.tianshu.dubhe;
+
+import net.neoforged.fml.common.Mod;
+
+/**
+ * NeoForge shell for the auxilium feature.
+ *
+ * <p>Its only job is to be constructed: a loader needs a class before it considers the mod real, and that is
+ * the moment the module announces itself. What gets announced lives in {@link DubheModuleRegistration},
+ * shared with the Fabric shell, so this class never grows logic.</p>
+ */
+@Mod("tianshu")
+public final class DubheNeoForgeMod {
+
+    public DubheNeoForgeMod() {
+        DubheModuleRegistration.announce();
+    }
+}

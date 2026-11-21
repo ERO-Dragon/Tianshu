@@ -16,7 +16,7 @@ From the repository root:
 ./gradlew :tianshu-lab:runClient
 ```
 
-That launches the adapter with every dev module (Intake, Echo, Weaving, Auxilium, Presence, Lab). Options:
+That launches the adapter with every dev module (Intake, Echo, Weaving, Dubhe, Presence, Lab). Options:
 
 - `-Padapter=1.20.5-neoforge` — another adapter;
 - `-Pmods=intake,presence,lab` — a smaller set (Lab needs `intake`, and `intake` requires `presence`);

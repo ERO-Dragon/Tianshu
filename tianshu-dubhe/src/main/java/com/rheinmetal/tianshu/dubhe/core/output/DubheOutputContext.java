@@ -1,0 +1,62 @@
+package com.rheinmetal.tianshu.dubhe.core.output;
+
+import com.rheinmetal.tianshu.dubhe.input.DubheDialogueInput;
+
+import java.util.Objects;
+
+public record DubheOutputContext(
+        String sessionId,
+        String requestId,
+        String turnId,
+        String playerId,
+        long startedAtMillis
+) {
+    public DubheOutputContext {
+        sessionId = clean(sessionId);
+        requestId = clean(requestId);
+        turnId = clean(turnId);
+        playerId = clean(playerId);
+        startedAtMillis = Math.max(0L, startedAtMillis);
+    }
+
+    public DubheOutputContext(String sessionId, String turnId, String playerId, long startedAtMillis) {
+        // The four-field form is what callers have: a turn id is the only per-turn identity there is. The
+        // five-field record keeps a third slot for the numeric-id fallback and fills it with the same value.
+        this(sessionId, turnId, turnId, playerId, startedAtMillis);
+    }
+
+    public static DubheOutputContext from(DubheDialogueInput input) {
+        Objects.requireNonNull(input, "input");
+        return new DubheOutputContext(
+                input.sessionId(),
+                input.turnId(),
+                input.playerId(),
+                System.currentTimeMillis()
+        );
+    }
+
+    public int ttsTurnId() {
+        return numericId(turnId, requestId);
+    }
+
+    public long ttsSessionId() {
+        return numericId(sessionId, requestId);
+    }
+
+    private static String clean(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static int numericId(String primary, String fallback) {
+        String value = !clean(primary).isBlank() ? clean(primary) : clean(fallback);
+        if (value.isBlank()) {
+            return 0;
+        }
+        try {
+            long parsed = Long.parseLong(value);
+            return (int) Math.max(0, Math.min(Integer.MAX_VALUE, Math.abs(parsed)));
+        } catch (NumberFormatException ignored) {
+            return Math.abs(value.hashCode());
+        }
+    }
+}

@@ -92,7 +92,7 @@ jar {
 // modules with -Pmods=..., or force the local cache with -Poffline=true.
 tasks.register('runClient', Exec) {
     group = 'run'
-    description = 'Launch the dev client with every module (Intake, Echo, Weaving, Auxilium, Presence, Lab).'
+    description = 'Launch the dev client with every module (Intake, Echo, Weaving, Dubhe, Presence, Lab).'
     def adapterName = providers.gradleProperty('adapter').orElse('1.21.1-neoforge').get()
     def featureList = providers.gradleProperty('mods')
             .orElse('intake,echo,weaving,auxilium,presence,lab').get()

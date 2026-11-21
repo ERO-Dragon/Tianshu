@@ -1400,7 +1400,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          *
          * <p>Downloaded, it carries the one warning a player needs before switching to the card.
          * Missing, it says the lane still chats and names the thing that does not work — a module that
-         * depends on retrieval (Auxilium) simply has nothing to detect and cannot run, and that must be
+         * depends on retrieval (Dubhe) simply has nothing to detect and cannot run, and that must be
          * visible here instead of surfacing as "the other module is broken".</p>
          */
         private UiText embeddingHintStatus() {

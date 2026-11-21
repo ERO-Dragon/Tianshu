@@ -79,7 +79,7 @@ if (TianshuIntegrationAccess.isAvailable()) {
 
 跨模块调用只有两条合法路线，区别只在"什么时候把对目标类型的认识加载进来"：
 
-1. **硬性依赖**：把目标模块（如 `tianshu-auxilium`）声明为 `compileOnly`，直接引用它的能力常量、payload 与对外服务接口。没有天枢时这些类不存在，所以清单里要写软依赖，并在入口做存在性判断。
+1. **硬性依赖**：把目标模块（如 `tianshu-dubhe`）声明为 `compileOnly`，直接引用它的能力常量、payload 与对外服务接口。没有天枢时这些类不存在，所以清单里要写软依赖，并在入口做存在性判断。
 2. **联动桥**：只依赖 `tianshu-api`，把天枢侧的适配单独写成一个类，只在检测到天枢（或某模块）已加载时才实例化它；主逻辑保持零依赖。
 
 两条路线下对外可见的面只有三类：**能力名**、**载荷记录**、**明确标注为对外契约的服务接口**。不属于契约的一律不调：`tick` / `flush` / `stop` 这类生命周期方法、内部编排、记忆与提示词实现都不能出现在外部调用里。
@@ -233,18 +233,18 @@ api.submit(envelope);
 
 ### 提交一句世界事件（AX）
 
-要交给天枢"说一句"，需硬性依赖 `tianshu-auxilium` 才能拿到能力名与载荷类：
+要交给天枢"说一句"，需硬性依赖 `tianshu-dubhe` 才能拿到能力名与载荷类：
 
 ```java
-AXWorldEventPayload payload = new AXWorldEventPayload(
+DubheWorldEventPayload payload = new DubheWorldEventPayload(
         "example_radar:threat_spotted",   // 自己的命名空间，不得占用 tianshu:
-        AXEventClass.IMMEDIATE,           // IMMEDIATE / DEFERRED / SILENT
+        DubheEventClass.IMMEDIATE,           // IMMEDIATE / DEFERRED / SILENT
         "雷达发现三名敌人接近。"           // 自己渲染好的整句
 );
 
 api.submit(EnvelopeBuilder.commandToCapability(
         "example_radar",
-        AXProtocolAdapter.EVENT_INPUT_CAPABILITY,
+        DubheProtocolAdapter.EVENT_INPUT_CAPABILITY,
         PayloadType.of("AX_WORLD_EVENT"),
         payload
 ).build());
@@ -308,7 +308,7 @@ Fabric 侧把两行换掉即可：事件换成 `TianshuIntegrationAccess.registe
 - `TriggerRegistration` / `TriggerRegistrationResult` / `TriggerConflict` / `TriggerDeliveryTarget`
 - `ModuleStatus` / `ModuleStatusQuery` / `ModuleStatusSeverity`
 - `TianshuSettingsContributor` / `ModuleSettingsCategory` / `ModuleSettingsPanel`（`tianshu-api`）
-- `AXProtocolAdapter.EVENT_INPUT_CAPABILITY` + `AXWorldEventPayload`（需硬性依赖 `tianshu-auxilium`）
+- `DubheProtocolAdapter.EVENT_INPUT_CAPABILITY` + `DubheWorldEventPayload`（需硬性依赖 `tianshu-dubhe`）
 - `IrResultPayload` / Dialogue 契约（需硬性依赖 `tianshu-intake`）
 
 ## 已知限制

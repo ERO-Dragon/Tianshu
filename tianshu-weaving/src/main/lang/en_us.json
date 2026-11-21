@@ -12,7 +12,7 @@
   "tianshu.gui.llm.row.embedding_state": "Download State",
   "tianshu.gui.llm.row.embedding_hint": "Note",
   "tianshu.gui.llm.status.embedding_gpu_hint": "On some cards and drivers the GPU load can affect game stability; switch back to the CPU if the game misbehaves or crashes",
-  "tianshu.gui.llm.status.embedding_optional_note": "Optional: cloud chat works without it; vector retrieval and the modules that depend on it (such as Auxilium) only work after it is downloaded",
+  "tianshu.gui.llm.status.embedding_optional_note": "Optional: cloud chat works without it; vector retrieval and the modules that depend on it (such as Dubhe) only work after it is downloaded",
   "tianshu.gui.llm.action.download_embedding": "Download Embedding Model",
   "tianshu.gui.llm.action.retry": "Retry",
   "tianshu.gui.llm.action.embedding_position_cpu": "CPU",
