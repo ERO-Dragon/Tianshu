@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.architecture;
 
 import com.rheinmetal.tianshu.intake.settings.IntakeConfiguration;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageConfiguration;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageConfiguration;
 import com.rheinmetal.tianshu.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.echo.settings.EchoConfiguration;
 import org.junit.jupiter.api.Test;

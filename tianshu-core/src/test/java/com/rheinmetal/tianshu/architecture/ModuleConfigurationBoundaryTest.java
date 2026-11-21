@@ -43,15 +43,15 @@ class ModuleConfigurationBoundaryTest {
         assertNoConfigurationDependency("tianshu-intake",
                 "weaving.settings.WeavingConfiguration",
                 "echo.settings.EchoConfiguration",
-                "dubhe.storage.DubheStorageConfiguration");
+                "dubhe.shared.storage.DubheStorageConfiguration");
         assertNoConfigurationDependency("tianshu-weaving",
                 "intake.settings.IntakeConfiguration",
                 "echo.settings.EchoConfiguration",
-                "dubhe.storage.DubheStorageConfiguration");
+                "dubhe.shared.storage.DubheStorageConfiguration");
         assertNoConfigurationDependency("tianshu-echo",
                 "intake.settings.IntakeConfiguration",
                 "weaving.settings.WeavingConfiguration",
-                "dubhe.storage.DubheStorageConfiguration");
+                "dubhe.shared.storage.DubheStorageConfiguration");
         assertNoConfigurationDependency("tianshu-dubhe",
                 "intake.settings.IntakeConfiguration",
                 "weaving.settings.WeavingConfiguration",

@@ -26,7 +26,7 @@ class ModuleStatusBoundaryTest {
     void moduleStatusDoesNotCarryProductHudTags() throws Exception {
         for (String relative : new String[]{
                 "tianshu-api/src/main/java/com/rheinmetal/tianshu/protocol/status/ModuleStatuses.java",
-                "tianshu-dubhe/src/main/java/com/rheinmetal/tianshu/dubhe/core/turn/DubheTurnStatusPublisher.java",
+                "tianshu-dubhe/src/main/java/com/rheinmetal/tianshu/dubhe/dialogue/turn/DubheTurnStatusPublisher.java",
                 "tianshu-dubhe/src/main/java/com/rheinmetal/tianshu/dubhe/module/memory/maintenance/DubheMemoryMaintenanceService.java"
         }) {
             Path source = resolveFromWorkspace(Path.of(relative));
