@@ -50,7 +50,7 @@ def moduleDir = { String module ->
 }
 // The package roots a feature module owns, taken from where its sources actually are.
 def featurePackages = { String module ->
-    def root = new File(moduleDir(module), 'src/main/java/com/rheinmetal/tianshu/function')
+    def root = new File(moduleDir(module), 'src/main/java/com/rheinmetal/tianshu')
     return root.isDirectory() ? root.listFiles().findAll { it.isDirectory() }*.name : []
 }
 
@@ -170,7 +170,7 @@ tasks.register('verifyFeatureIsolation') {
             // {@link} references are caught too, which is intended: they need the class on the classpath.
             def offenders = new TreeSet<String>()
             def referenced = source.getText('UTF-8') =~
-                    /com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./
+                    /com\.rheinmetal\.tianshu\.(intake|echo|weaving|auxilium|presence)\./
             referenced.each { match ->
                 // Groovy hands this closure the match, and `match[1]` reads group 1 on both a Matcher and the list
                 // form it produces; `match.group(1)` only exists on the former.
@@ -210,7 +210,7 @@ tasks.register('verifyFeatureOptionalDependencies') {
     // not always match: the arbitration module ships inside intake as `function.ia`, so usage has to be
     // detected against what the target module actually owns.
     def packagesByModule = featureModules.collectEntries { module ->
-        def root = new File(moduleDir(module), 'src/main/java/com/rheinmetal/tianshu/function')
+        def root = new File(moduleDir(module), 'src/main/java/com/rheinmetal/tianshu')
         [(module): root.isDirectory() ? root.listFiles().findAll { it.isDirectory() }*.name : []]
     }
     inputs.files(buildFiles.values())
@@ -245,7 +245,7 @@ tasks.register('verifyFeatureOptionalDependencies') {
                     // The package root anywhere in the file, not only inside an import statement: a fully-qualified
                     // inline reference is a real dependency, and missing it made this gate complain that a declared
                     // edge was unused.
-                    def packageRoot = "com.rheinmetal.tianshu.function.${pkg}."
+                    def packageRoot = "com.rheinmetal.tianshu.${pkg}."
                     sources.any { candidate -> candidate.getText('UTF-8').contains(packageRoot) }
                 }
                 // An edge nobody uses is a promise the code does not keep. The matrix has to describe
@@ -482,7 +482,7 @@ tasks.register('verifyHostHasNoFeatureDependency') {
             // The package root anywhere in the file, not only at the start of an import line: an inline
             // fully-qualified reference and an `import static` were both invisible to the line-anchored pattern.
             def referenced = source.getText('UTF-8') =~
-                    /com\.rheinmetal\.tianshu\.function\.(intake|echo|weaving|auxilium|presence)\./
+                    /com\.rheinmetal\.tianshu\.(intake|echo|weaving|auxilium|presence)\./
             if (referenced.find()) {
                 violations << "${source.name}: references a feature module (${referenced.group(1)})"
             }
@@ -589,7 +589,7 @@ tasks.register('verifyUniversalModuleJars') {
             }
             def feature = module - 'tianshu-'
             def shell = feature.capitalize()
-            def packagePath = "com/rheinmetal/tianshu/function/${feature}"
+            def packagePath = "com/rheinmetal/tianshu/${feature}"
             // Normalised to String: interpolated Groovy strings are GStrings, and a GString's hashCode is not
             // a String's, so Set.contains would report every interpolated entry as missing.
             def expected = [

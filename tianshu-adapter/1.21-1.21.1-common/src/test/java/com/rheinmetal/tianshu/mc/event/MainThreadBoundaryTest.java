@@ -105,7 +105,7 @@ final class MainThreadBoundaryTest {
                 StandardCharsets.UTF_8
         );
         String layer = Files.readString(
-                Path.of("../../../Tianshu-features/tianshu-presence/src/main/java/com/rheinmetal/tianshu/function/presence/hud/PresenceHudLayer.java"),
+                Path.of("../../../Tianshu-features/tianshu-presence/src/main/java/com/rheinmetal/tianshu/presence/hud/PresenceHudLayer.java"),
                 StandardCharsets.UTF_8
         );
 
