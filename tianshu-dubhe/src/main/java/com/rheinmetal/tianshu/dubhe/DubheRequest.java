@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.dubhe;
 
-import com.rheinmetal.tianshu.dubhe.module.currentinput.DubheInputSource;
-import com.rheinmetal.tianshu.dubhe.module.currentinput.DubheNormalizedInput;
+import com.rheinmetal.tianshu.dubhe.dialogue.currentinput.DubheInputSource;
+import com.rheinmetal.tianshu.dubhe.dialogue.currentinput.DubheNormalizedInput;
 
 public record DubheRequest(String requestKey, String userText, String deliverySnapshot, DubheInputSource source) {
     public DubheRequest(String requestKey, String userText, String deliverySnapshot) {

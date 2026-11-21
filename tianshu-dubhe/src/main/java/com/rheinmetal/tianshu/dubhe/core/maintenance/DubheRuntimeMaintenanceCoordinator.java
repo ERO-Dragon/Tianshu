@@ -2,7 +2,7 @@ package com.rheinmetal.tianshu.dubhe.core.maintenance;
 
 import com.rheinmetal.tianshu.dubhe.DubheRequest;
 import com.rheinmetal.tianshu.dubhe.module.memory.maintenance.DubheMemoryMaintenanceService;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 
 public final class DubheRuntimeMaintenanceCoordinator {
     private final DubheMemoryMaintenanceService memoryMaintenanceService;

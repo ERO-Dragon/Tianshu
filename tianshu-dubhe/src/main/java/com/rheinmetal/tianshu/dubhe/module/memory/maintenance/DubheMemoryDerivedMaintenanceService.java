@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.maintenance;
 
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

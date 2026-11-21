@@ -10,8 +10,8 @@ import com.rheinmetal.tianshu.presence.protocol.PresenceTopics;
 
 import com.rheinmetal.tianshu.presence.protocol.PresencePayloadTypes;
 
-import com.rheinmetal.tianshu.dubhe.contract.DubheWorldEventPayload;
-import com.rheinmetal.tianshu.dubhe.contract.DialogueContextInputPayload;
+import com.rheinmetal.tianshu.dubhe.shared.contract.DubheWorldEventPayload;
+import com.rheinmetal.tianshu.dubhe.shared.contract.DialogueContextInputPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;

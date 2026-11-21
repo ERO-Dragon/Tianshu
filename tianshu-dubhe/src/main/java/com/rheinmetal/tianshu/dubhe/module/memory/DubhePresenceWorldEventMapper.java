@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.module.memory;
 
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 import com.rheinmetal.tianshu.presence.payload.PresenceWorldEventPayload;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 

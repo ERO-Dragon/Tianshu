@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.retrieval;
 
-import com.rheinmetal.tianshu.dubhe.core.llm.DubheLlmRagClient;
+import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRagClient;
 import com.rheinmetal.tianshu.dubhe.module.memory.event.DubheMemoryEvent;
 import com.rheinmetal.tianshu.dubhe.module.memory.DubheMemoryBlockView;
 import com.rheinmetal.tianshu.dubhe.module.memory.DubheMemorySystem;

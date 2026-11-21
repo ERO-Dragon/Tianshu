@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
-import com.rheinmetal.tianshu.dubhe.storage.DubheHashing;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheHashing;
 
 import java.util.List;
 

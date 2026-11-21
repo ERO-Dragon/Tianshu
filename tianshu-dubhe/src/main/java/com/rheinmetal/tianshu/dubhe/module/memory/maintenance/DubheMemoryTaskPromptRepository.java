@@ -3,9 +3,9 @@ package com.rheinmetal.tianshu.dubhe.module.memory.maintenance;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptLanguage;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptLanguageProvider;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
 
 import java.io.InputStream;
 import java.io.IOException;

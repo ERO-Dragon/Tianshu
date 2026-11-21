@@ -4,14 +4,14 @@ import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleHost;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuModuleInstaller;
-import com.rheinmetal.tianshu.dubhe.core.delegate.DubheDelegateDeliverySink;
-import com.rheinmetal.tianshu.dubhe.core.output.DubheChatOutputSink;
-import com.rheinmetal.tianshu.dubhe.core.output.DubheOutputSettings;
-import com.rheinmetal.tianshu.dubhe.event.DubheEventSpeechSink;
-import com.rheinmetal.tianshu.dubhe.producer.DubheGameEventTextProvider;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptLanguageProvider;
-import com.rheinmetal.tianshu.dubhe.scope.DubheWorldIdentityProvider;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageConfiguration;
+import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateDeliverySink;
+import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheChatOutputSink;
+import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputSettings;
+import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventSpeechSink;
+import com.rheinmetal.tianshu.dubhe.shared.producer.DubheGameEventTextProvider;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheWorldIdentityProvider;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageConfiguration;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 public final class DubheModuleInstaller implements TianshuModuleInstaller {

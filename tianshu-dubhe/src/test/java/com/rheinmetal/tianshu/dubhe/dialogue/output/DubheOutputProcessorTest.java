@@ -1,0 +1,240 @@
+package com.rheinmetal.tianshu.dubhe.dialogue.output;
+
+import com.rheinmetal.tianshu.dubhe.DubheProtocolAdapter;
+import com.rheinmetal.tianshu.dubhe.dialogue.bridge.EchoSpeechBridge;
+import com.rheinmetal.tianshu.dubhe.dialogue.speech.DubheSpeechUtterance;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
+import com.rheinmetal.tianshu.protocol.BrokerType;
+import com.rheinmetal.tianshu.protocol.CompletionPolicy;
+import com.rheinmetal.tianshu.protocol.EnvelopeBuilder;
+import com.rheinmetal.tianshu.protocol.PacketType;
+import com.rheinmetal.tianshu.protocol.PayloadType;
+import com.rheinmetal.tianshu.protocol.Priority;
+import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
+import com.rheinmetal.tianshu.protocol.adapter.AdapterDefaults;
+import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.echo.contract.TtsSpeakPayload;
+import com.rheinmetal.tianshu.echo.contract.TtsVoiceOptions;
+import com.rheinmetal.tianshu.protocol.registry.CapabilityDescriptor;
+import com.rheinmetal.tianshu.protocol.registry.ModuleDescriptor;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
+import org.junit.jupiter.api.Test;
+
+import java.util.EnumSet;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class DubheOutputProcessorTest {
+    /** 兜底句读真实资源；本类只用它满足构造契约，不断言措辞（措辞归 DubheReplyContractResourcesTest）。 */
+    private static final DubheReplyTextRepository REPLY_TEXTS =
+            new DubheReplyTextRepository(DubhePromptLanguageProvider.fixed(DubhePromptLanguage.ZH_CN));
+
+    @Test
+    void uiAndTtsModeStreamsUiAndSpeaksCompletedSentences() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        List<String> spoken = new CopyOnWriteArrayList<>();
+        List<PacketType> packets = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, spoken, packets);
+        RecordingChatSink chatSink = new RecordingChatSink();
+        DubheOutputProcessor processor = new DubheOutputProcessor(new DubheProtocolAdapter(runtime), settings(DubheOutputMode.UI_AND_TTS), chatSink, REPLY_TEXTS, new EchoSpeechBridge(runtime));
+
+        DubheOutputProcessor.DubheOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
+        turn.append("This is the first sentence. ");
+        turn.append("This is the second sentence");
+        turn.complete("This is the first sentence. This is the second sentence");
+
+        await(() -> spoken.size() == 2 && packets.size() == 3);
+        assertEquals("This is the first sentence. This is the second sentence", chatSink.text.toString());
+        assertEquals(List.of("This is the first sentence.", "This is the second sentence"), spoken);
+        assertEquals(List.of(PacketType.STREAM_CHUNK, PacketType.STREAM_CHUNK, PacketType.STREAM_END), List.copyOf(packets));
+        assertEquals(1, chatSink.beginCount);
+        assertEquals(1, chatSink.completeCount);
+    }
+
+    @Test
+    void uiOnlyModeDoesNotSendTts() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        List<String> spoken = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, spoken);
+        RecordingChatSink chatSink = new RecordingChatSink();
+        DubheOutputProcessor processor = new DubheOutputProcessor(new DubheProtocolAdapter(runtime), settings(DubheOutputMode.UI_ONLY), chatSink, REPLY_TEXTS, new EchoSpeechBridge(runtime));
+
+        DubheOutputProcessor.DubheOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
+        turn.complete("Only visible in UI.");
+
+        assertEquals("Only visible in UI.", chatSink.text.toString());
+        assertTrue(spoken.isEmpty());
+    }
+
+    @Test
+    void ttsOnlyModeSpeaksWithoutUi() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        List<String> spoken = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, spoken);
+        RecordingChatSink chatSink = new RecordingChatSink();
+        DubheOutputProcessor processor = new DubheOutputProcessor(new DubheProtocolAdapter(runtime), settings(DubheOutputMode.TTS_ONLY), chatSink, REPLY_TEXTS, new EchoSpeechBridge(runtime));
+
+        DubheOutputProcessor.DubheOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
+        turn.complete("Only spoken.");
+
+        await(() -> spoken.size() == 1);
+        assertEquals("", chatSink.text.toString());
+        assertEquals(0, chatSink.beginCount);
+        assertEquals(List.of("Only spoken."), spoken);
+    }
+
+    @Test
+    void disabledModeSuppressesUiAndTts() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        List<String> spoken = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, spoken);
+        RecordingChatSink chatSink = new RecordingChatSink();
+        DubheOutputProcessor processor = new DubheOutputProcessor(new DubheProtocolAdapter(runtime), settings(DubheOutputMode.DISABLED), chatSink, REPLY_TEXTS, new EchoSpeechBridge(runtime));
+
+        DubheOutputProcessor.DubheOutputTurn turn = processor.startTurn(parentEnvelope(), context(), true);
+        turn.complete("No output.");
+
+        assertEquals("", chatSink.text.toString());
+        assertTrue(spoken.isEmpty());
+        assertEquals(0, chatSink.beginCount);
+    }
+
+    @Test
+    void taskLaneDoesNotEmitChatOrTtsOutput() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        List<String> spoken = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, spoken);
+        RecordingChatSink chatSink = new RecordingChatSink();
+        DubheOutputProcessor processor = new DubheOutputProcessor(new DubheProtocolAdapter(runtime), settings(DubheOutputMode.UI_AND_TTS), chatSink, REPLY_TEXTS, new EchoSpeechBridge(runtime));
+
+        DubheOutputProcessor.DubheOutputTurn turn = processor.startTurn(parentEnvelope(), context(), false);
+        turn.complete("Task result.");
+
+        assertEquals("", chatSink.text.toString());
+        assertTrue(spoken.isEmpty());
+    }
+
+    @Test
+    void axVoiceDefaultsAreForwardedOnEverySentenceOfTheSession() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        List<TtsVoiceOptions> voices = new CopyOnWriteArrayList<>();
+        registerTtsSink(runtime, new CopyOnWriteArrayList<>(), new CopyOnWriteArrayList<>(), voices);
+        DubheOutputSettings settings = new DubheOutputSettings() {
+            @Override public DubheOutputMode outputMode() { return DubheOutputMode.TTS_ONLY; }
+            @Override public DubheSpeechUtterance.VoiceProfile voiceProfile() { return new DubheSpeechUtterance.VoiceProfile(1.2, 3, "ax:voice"); }
+        };
+        DubheOutputProcessor processor = new DubheOutputProcessor(new DubheProtocolAdapter(runtime), settings, DubheChatOutputSink.NOOP, REPLY_TEXTS, new EchoSpeechBridge(runtime));
+
+        processor.startTurn(parentEnvelope(), context(), true).complete("First. Second.");
+
+        await(() -> voices.size() == 3);
+        assertTrue(voices.stream().allMatch(voice -> voice.equals(new TtsVoiceOptions("ax:voice", 1.2F, 3))));
+    }
+
+    private static DubheOutputSettings settings(DubheOutputMode mode) {
+        return () -> mode;
+    }
+
+    private static DubheOutputContext context() {
+        return new DubheOutputContext("session", "request", "turn", "player", 1L);
+    }
+
+    private static TianshuEnvelope parentEnvelope() {
+        return EnvelopeBuilder.commandToCapability(
+                "module.ia",
+                DubheProtocolAdapter.DIALOGUE_INPUT_CAPABILITY,
+                PayloadType.CUSTOM,
+                LLMPromptRequestPayload.EMPTY
+        ).build();
+    }
+
+    private static void registerTtsSink(ProtocolRuntime runtime, List<String> spoken) {
+        registerTtsSink(runtime, spoken, new CopyOnWriteArrayList<>());
+    }
+
+    private static void registerTtsSink(ProtocolRuntime runtime, List<String> spoken, List<PacketType> packets) {
+        registerTtsSink(runtime, spoken, packets, new CopyOnWriteArrayList<>());
+    }
+
+    private static void registerTtsSink(
+            ProtocolRuntime runtime,
+            List<String> spoken,
+            List<PacketType> packets,
+            List<TtsVoiceOptions> voices
+    ) {
+        AdapterDefaults defaults = AdapterDefaults.standard().withConcurrency(1, 64);
+        runtime.registerModule(new ModuleDescriptor(
+                "module.tts.test",
+                List.of(new CapabilityDescriptor(
+                        "TTS_SPEAK",
+                        PayloadType.of("TTS_TEXT"),
+                        TtsSpeakPayload.class,
+                        BrokerType.BOUNDED_QUEUE,
+                        EnumSet.of(PacketType.COMMAND, PacketType.STREAM_CHUNK, PacketType.STREAM_END),
+                        Priority.LOW,
+                        CompletionPolicy.MANUAL_COMPLETE
+                )),
+                defaults.threadPolicy(),
+                defaults.cancellationScope(),
+                defaults.failurePolicy(),
+                defaults.deliveryPolicy(),
+                defaults.cancellable(),
+                defaults.supportsStreaming(),
+                defaults.maxConcurrency(),
+                defaults.queueCapacity()
+        ), (envelope, context) -> {
+            if (envelope.payload() instanceof TtsSpeakPayload payload) {
+                voices.add(payload.voice());
+            }
+            handleTts(envelope, context, spoken, packets);
+        });
+    }
+
+    private static void handleTts(TianshuEnvelope envelope, ProtocolContext context, List<String> spoken, List<PacketType> packets) {
+        packets.add(envelope.header().packetType());
+        if (envelope.payload() instanceof TtsSpeakPayload payload) {
+            if (!payload.text().isBlank()) {
+                spoken.add(payload.text());
+            }
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private static void await(java.util.function.BooleanSupplier condition) {
+        long deadline = System.currentTimeMillis() + 2000L;
+        while (!condition.getAsBoolean() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    private static final class RecordingChatSink implements DubheChatOutputSink {
+        private final StringBuilder text = new StringBuilder();
+        private int beginCount;
+        private int completeCount;
+
+        @Override
+        public void begin(DubheOutputContext context) {
+            beginCount++;
+        }
+
+        @Override
+        public void append(DubheOutputContext context, String value) {
+            text.append(value);
+        }
+
+        @Override
+        public void complete(DubheOutputContext context, String fullText) {
+            completeCount++;
+        }
+    }
+}

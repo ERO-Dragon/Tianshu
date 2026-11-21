@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptTexts;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptTexts;
 
 import java.util.Map;
 

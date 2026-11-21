@@ -1,12 +1,12 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.retrieval;
 
 import com.rheinmetal.tianshu.dubhe.DubheModule;
-import com.rheinmetal.tianshu.dubhe.core.llm.DubheLlmRagClient;
+import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRagClient;
 import com.rheinmetal.tianshu.dubhe.module.memory.DubheMemorySystem;
 import com.rheinmetal.tianshu.dubhe.module.memory.event.DubheEventVector;
 import com.rheinmetal.tianshu.dubhe.module.memory.event.DubheMemoryEvent;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index.DubheMemoryRetrievalIndex;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 import com.rheinmetal.tianshu.weaving.contract.LLMCacheManageResultPayload;
 
 import java.util.LinkedHashMap;

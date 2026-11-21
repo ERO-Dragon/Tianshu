@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.retrieval;
 
-import com.rheinmetal.tianshu.dubhe.core.context.DubheContextTier;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextTier;
 
 /**
  * Retrieval policy.

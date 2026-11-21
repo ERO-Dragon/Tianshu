@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.maintenance;
 
 import com.rheinmetal.tianshu.dubhe.module.recentdialogue.DubheRawTurn;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptLanguage;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptLanguageProvider;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScopeKind;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

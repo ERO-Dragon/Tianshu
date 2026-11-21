@@ -1,14 +1,14 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.retrieval;
 
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
-import com.rheinmetal.tianshu.dubhe.core.context.DubheContextTier;
-import com.rheinmetal.tianshu.dubhe.core.llm.DubheLlmRagClient;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextTier;
+import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRagClient;
 import com.rheinmetal.tianshu.dubhe.DubheProtocolAdapter;
 import com.rheinmetal.tianshu.dubhe.DubheRequest;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScopeKind;
-import com.rheinmetal.tianshu.dubhe.storage.DubheJsonStore;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheJsonStore;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index.DubheMemoryRetrievalIndexSnapshot;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;

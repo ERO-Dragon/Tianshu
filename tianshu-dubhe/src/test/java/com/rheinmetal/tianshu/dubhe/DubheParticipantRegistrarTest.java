@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe;
 
-import com.rheinmetal.tianshu.dubhe.bridge.IaDialogueBridge;
+import com.rheinmetal.tianshu.dubhe.dialogue.bridge.IaDialogueBridge;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimCondition;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueClaimRule;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;

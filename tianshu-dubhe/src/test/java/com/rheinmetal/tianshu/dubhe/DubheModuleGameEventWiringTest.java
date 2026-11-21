@@ -7,13 +7,13 @@ import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleServiceRegistry;
 import com.rheinmetal.tianshu.core.runtime.ModuleRuntimeState;
-import com.rheinmetal.tianshu.dubhe.core.delegate.DubheDelegateService;
-import com.rheinmetal.tianshu.dubhe.core.output.DubheChatOutputSink;
-import com.rheinmetal.tianshu.dubhe.core.output.DubheOutputSettings;
-import com.rheinmetal.tianshu.dubhe.event.DubheEventDescriptor;
-import com.rheinmetal.tianshu.dubhe.event.DubheEventPayload;
-import com.rheinmetal.tianshu.dubhe.event.DubheEventText;
-import com.rheinmetal.tianshu.dubhe.producer.DubheGameEventService;
+import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
+import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheChatOutputSink;
+import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputSettings;
+import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventDescriptor;
+import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventPayload;
+import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventText;
+import com.rheinmetal.tianshu.dubhe.shared.producer.DubheGameEventService;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolRuntime;
 import com.rheinmetal.tianshu.protocol.trigger.TriggerRegistry;
@@ -67,9 +67,9 @@ class DubheModuleGameEventWiringTest {
         // Any module that only holds the registry handle submits here; nothing marks a source as the
         // privileged one, so a third-party kind takes the same call as a built-in one.
         service.submit(DubheEventDescriptor.of("plugin:harvest", "plugin.farming", DubheEventPayload.of(),
-                DubheEventText.of("tianshu.dubhe.event.line.plugin.harvest")));
+                DubheEventText.of("tianshu.dubhe.shared.event.line.plugin.harvest")));
         service.submit(DubheEventDescriptor.of("tianshu:death", "module.probe", DubheEventPayload.of(),
-                DubheEventText.of("tianshu.dubhe.event.line.tianshu.death")));
+                DubheEventText.of("tianshu.dubhe.shared.event.line.tianshu.death")));
         assertFalse(service.closed());
 
         module.stop();

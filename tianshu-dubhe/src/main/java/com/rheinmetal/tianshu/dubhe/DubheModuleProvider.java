@@ -11,16 +11,16 @@ import com.rheinmetal.tianshu.client.host.DiagnosticChatNotice;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleAssemblyContext;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProvider;
 import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleRegistrar;
-import com.rheinmetal.tianshu.dubhe.core.output.DubheChatOutput;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptLanguageProvider;
-import com.rheinmetal.tianshu.dubhe.producer.ModGameEventTexts;
-import com.rheinmetal.tianshu.dubhe.scope.DubheWorldIdentityProvider;
-import com.rheinmetal.tianshu.dubhe.scope.DubheWorldIdentity;
+import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheChatOutput;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
+import com.rheinmetal.tianshu.dubhe.shared.producer.ModGameEventTexts;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheWorldIdentityProvider;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheWorldIdentity;
 import com.rheinmetal.tianshu.dubhe.settings.DubheConfig;
 import com.rheinmetal.tianshu.dubhe.settings.DubheSettingsRegistrySource;
-import com.rheinmetal.tianshu.dubhe.speech.DubheProtocolSpeechOutlet;
-import com.rheinmetal.tianshu.dubhe.speech.DubheSpeechBridge;
-import com.rheinmetal.tianshu.dubhe.bridge.DubheSpeechSinks;
+import com.rheinmetal.tianshu.dubhe.dialogue.speech.DubheProtocolSpeechOutlet;
+import com.rheinmetal.tianshu.dubhe.dialogue.speech.DubheSpeechBridge;
+import com.rheinmetal.tianshu.dubhe.dialogue.bridge.DubheSpeechSinks;
 
 /**
  * Dubhe announces itself to the kernel.
@@ -45,7 +45,7 @@ public final class DubheModuleProvider implements TianshuModuleProvider {
         ClientPorts ports = context.clientPorts();
         // The wording of this module's progress lines belongs here; the host only looks the codes up.
         ports.diagnosticChat().register("DIALOGUE_DELIVERY", DiagnosticChatNotice.single(
-                "tianshu.chat.progress.dubhe.input", "normalizedText", "repairedText", "input"));
+                "tianshu.chat.progress.dubhe.dialogue.input", "normalizedText", "repairedText", "input"));
         // The assistant owns its name, so it also owns what the typed-dialogue bar says.
         ports.uiHost().setTextInputLabels(
                 UiText.key("tianshu.gui.dubhe.text_input.title"),

@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.module.memory;
 
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.storage.DubheJsonStore;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheJsonStore;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
 
 public final class DubheMemoryStatsStore {
     private final DubheStorageLayout layout;

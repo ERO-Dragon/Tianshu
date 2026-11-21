@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index;
 import com.rheinmetal.tianshu.dubhe.module.memory.event.DubheEventVector;
 import com.rheinmetal.tianshu.dubhe.module.memory.event.DubheMemoryEvent;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.DubheMemoryRetrievalPolicy;
-import com.rheinmetal.tianshu.dubhe.storage.DubheHashing;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheHashing;
 
 import java.util.ArrayList;
 import java.util.HashMap;

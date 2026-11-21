@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.preference;
 
-import com.rheinmetal.tianshu.dubhe.storage.DubheJsonStore;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStoreWriteResult;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheJsonStore;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStoreWriteResult;
 
 import java.util.List;
 

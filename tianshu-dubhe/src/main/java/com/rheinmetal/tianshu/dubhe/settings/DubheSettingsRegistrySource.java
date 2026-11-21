@@ -12,9 +12,9 @@ import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
 import com.rheinmetal.tianshu.api.assembly.ModuleRuntimeServices;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.dubhe.activity.DubheActivityLog;
-import com.rheinmetal.tianshu.dubhe.failure.DubheRetryEntry;
-import com.rheinmetal.tianshu.dubhe.failure.DubheRetryService;
+import com.rheinmetal.tianshu.dubhe.dialogue.activity.DubheActivityLog;
+import com.rheinmetal.tianshu.dubhe.shared.failure.DubheRetryEntry;
+import com.rheinmetal.tianshu.dubhe.shared.failure.DubheRetryService;
 import com.rheinmetal.tianshu.client.api.settings.SettingsListCard;
 import com.rheinmetal.tianshu.client.host.ClientUiHost;
 import com.rheinmetal.tianshu.dubhe.DubheModule;
@@ -79,10 +79,10 @@ public final class DubheSettingsRegistrySource implements TianshuSettingsRegistr
                 .toggles("dubhe.behavior", ax("section.behavior"), session.enabled::get, toggles -> toggles
                         .toggle("dubhe.behavior.thinking", ax("option.chat_thinking"), session.chatThinkingEnabled, session.enabled::get)
                         .toggle("dubhe.behavior.interrupt", ax("option.allow_interruption"), session.allowInterruption, session.enabled::get))
-                .toggles("dubhe.input", ax("section.input"), session.enabled::get, toggles -> toggles
-                        .toggle("dubhe.input.text", ax("option.text_input"), session.textInputEnabled, session.enabled::get))
-                .actions("dubhe.input.key", ax("section.input_key"), session.enabled::get, actions -> actions
-                        .button("dubhe.input.rebind", ax("action.rebind"), () -> rebind(KEY_TEXT_INPUT_KEY), session.enabled::get));
+                .toggles("dubhe.dialogue.input", ax("section.input"), session.enabled::get, toggles -> toggles
+                        .toggle("dubhe.dialogue.input.text", ax("option.text_input"), session.textInputEnabled, session.enabled::get))
+                .actions("dubhe.dialogue.input.key", ax("section.input_key"), session.enabled::get, actions -> actions
+                        .button("dubhe.dialogue.input.rebind", ax("action.rebind"), () -> rebind(KEY_TEXT_INPUT_KEY), session.enabled::get));
     }
 
     /** 右栏：日志，或者切过去看待办（单次记忆维护重试）。 */

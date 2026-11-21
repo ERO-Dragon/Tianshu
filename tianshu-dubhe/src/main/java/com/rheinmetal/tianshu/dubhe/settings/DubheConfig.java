@@ -2,9 +2,9 @@ package com.rheinmetal.tianshu.dubhe.settings;
 
 import com.rheinmetal.tianshu.api.config.ModuleConfigStore;
 import com.rheinmetal.tianshu.dubhe.DubheAssistantSettings;
-import com.rheinmetal.tianshu.dubhe.core.output.DubheOutputMode;
-import com.rheinmetal.tianshu.dubhe.core.output.DubheOutputSettings;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageConfiguration;
+import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputMode;
+import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputSettings;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageConfiguration;
 
 import java.nio.file.Path;
 import java.util.Objects;

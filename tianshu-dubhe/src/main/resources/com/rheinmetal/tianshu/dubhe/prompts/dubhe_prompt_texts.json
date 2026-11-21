@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "texts": {
-    "section.dubhe_system": {
-      "zh_cn": "<dubhe_system>\n{{content}}\n</dubhe_system>"
+    "section.system_prompt": {
+      "zh_cn": "<system_prompt>\n{{content}}\n</system_prompt>"
     },
     "section.game_context": {
       "zh_cn": "<game_context>\n{{content}}\n</game_context>"

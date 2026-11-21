@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.retrieval;
 
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
 
 public final class DubheMemoryRagUids {
     private static final String PREFIX = "module.dubhe.memory";

@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
-import com.rheinmetal.tianshu.dubhe.core.context.DubheMemoryWindowPolicy;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheMemoryWindowPolicy;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

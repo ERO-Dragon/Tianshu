@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index;
 
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;

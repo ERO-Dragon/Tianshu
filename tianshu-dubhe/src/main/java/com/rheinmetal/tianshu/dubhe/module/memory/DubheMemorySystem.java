@@ -1,15 +1,15 @@
 package com.rheinmetal.tianshu.dubhe.module.memory;
 
-import com.rheinmetal.tianshu.dubhe.core.context.DubheMemoryWindowPolicy;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheMemoryWindowPolicy;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.DubheMemoryRetrievalPolicy;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index.DubheMemoryPosition;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index.DubheMemoryRetrievalIndex;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index.DubheMemoryRetrievalIndexCache;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index.DubheMemoryRetrievalIndexSnapshot;
 import com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index.DubheMemoryRetrievalIndexSnapshotStore;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.storage.DubheJsonStore;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheJsonStore;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

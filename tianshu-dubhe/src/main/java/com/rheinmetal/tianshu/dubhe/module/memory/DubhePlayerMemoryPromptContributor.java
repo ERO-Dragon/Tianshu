@@ -1,10 +1,10 @@
 package com.rheinmetal.tianshu.dubhe.module.memory;
 
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptAssemblyBuilder;
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptBuildContext;
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptContributor;
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptSectionRenderer;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptTexts;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptAssemblyBuilder;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptBuildContext;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptContributor;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptSectionRenderer;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptTexts;
 
 import java.util.ArrayList;
 import java.util.List;

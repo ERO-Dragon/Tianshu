@@ -1,14 +1,14 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
 import com.rheinmetal.tianshu.dubhe.DubheRequest;
-import com.rheinmetal.tianshu.dubhe.core.context.DubheContextBudget;
-import com.rheinmetal.tianshu.dubhe.core.context.DubheContextSnapshot;
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptAssemblyBuilder;
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptBuildContext;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptLanguage;
-import com.rheinmetal.tianshu.dubhe.module.system.DubhePromptProfile;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScopeKind;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextBudget;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextSnapshot;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptAssemblyBuilder;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptBuildContext;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptProfile;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import org.junit.jupiter.api.Test;
 

@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
-import com.rheinmetal.tianshu.dubhe.core.context.DubheMemoryWindowPolicy;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScopeKind;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheMemoryWindowPolicy;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

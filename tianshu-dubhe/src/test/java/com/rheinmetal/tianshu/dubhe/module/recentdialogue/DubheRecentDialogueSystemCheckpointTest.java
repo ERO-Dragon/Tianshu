@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
-import com.rheinmetal.tianshu.dubhe.core.context.DubheMemoryWindowPolicy;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScopeKind;
-import com.rheinmetal.tianshu.dubhe.storage.DubheJsonStore;
-import com.rheinmetal.tianshu.dubhe.storage.DubheStorageLayout;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheMemoryWindowPolicy;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheJsonStore;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheStorageLayout;
 import com.rheinmetal.tianshu.testkit.TestLlmSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

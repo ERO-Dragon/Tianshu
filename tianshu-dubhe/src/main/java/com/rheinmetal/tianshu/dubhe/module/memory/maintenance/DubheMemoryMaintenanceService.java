@@ -1,19 +1,19 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.maintenance;
 
-import com.rheinmetal.tianshu.dubhe.core.llm.DubheLlmClient;
-import com.rheinmetal.tianshu.dubhe.core.llm.DubheLlmPrimitiveClient;
-import com.rheinmetal.tianshu.dubhe.core.llm.DubheLlmRagClient;
-import com.rheinmetal.tianshu.dubhe.core.llm.DubheLlmRequestHandler;
+import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmClient;
+import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmPrimitiveClient;
+import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRagClient;
+import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRequestHandler;
 import com.rheinmetal.tianshu.dubhe.DubheProtocolAdapter;
 import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
-import com.rheinmetal.tianshu.dubhe.failure.DubheFailureCause;
+import com.rheinmetal.tianshu.dubhe.shared.failure.DubheFailureCause;
 import com.rheinmetal.tianshu.dubhe.module.memory.compression.DubheMemoryCompressedEvent;
 import com.rheinmetal.tianshu.dubhe.module.memory.compression.DubheMemoryCompressedPreference;
 import com.rheinmetal.tianshu.dubhe.module.memory.compression.DubheMemoryCompressionParser;
 import com.rheinmetal.tianshu.dubhe.module.memory.compression.DubheMemoryCompressionResult;
 import com.rheinmetal.tianshu.dubhe.module.memory.preference.DubhePlayerPreference;
 import com.rheinmetal.tianshu.dubhe.module.recentdialogue.DubheRecentDialogueSystem;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptResultPayload;

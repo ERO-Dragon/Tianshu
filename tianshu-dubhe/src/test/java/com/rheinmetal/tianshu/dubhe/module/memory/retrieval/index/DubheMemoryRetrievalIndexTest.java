@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.dubhe.module.memory.retrieval.index;
 
 import com.rheinmetal.tianshu.dubhe.module.memory.event.DubheEventVector;
 import com.rheinmetal.tianshu.dubhe.module.memory.event.DubheMemoryEvent;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScopeKind;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

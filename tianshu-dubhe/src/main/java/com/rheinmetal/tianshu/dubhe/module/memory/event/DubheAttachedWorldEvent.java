@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.dubhe.module.memory.event;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.dubhe.storage.DubheHashing;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheHashing;
 
 import java.util.ArrayList;
 import java.util.List;

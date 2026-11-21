@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.module.memory.retrieval;
 
 import com.rheinmetal.tianshu.dubhe.DubheRequest;
-import com.rheinmetal.tianshu.dubhe.core.context.DubheContextTier;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.agent.context.DubheContextTier;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 
 /**
  * One retrieval request.

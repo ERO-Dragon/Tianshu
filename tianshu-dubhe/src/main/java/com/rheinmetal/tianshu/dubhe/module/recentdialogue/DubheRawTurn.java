@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.dubhe.scope.DubheScope;
-import com.rheinmetal.tianshu.dubhe.storage.DubheHashing;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.storage.DubheHashing;
 
 public record DubheRawTurn(
         String id,

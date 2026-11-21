@@ -1,8 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.module.recentdialogue;
 
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptAssemblyBuilder;
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptBuildContext;
-import com.rheinmetal.tianshu.dubhe.core.prompt.DubhePromptContributor;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptAssemblyBuilder;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptBuildContext;
+import com.rheinmetal.tianshu.dubhe.dialogue.prompt.DubhePromptContributor;
 
 import java.util.Comparator;
 import java.util.List;
