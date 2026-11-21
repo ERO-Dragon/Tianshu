@@ -69,14 +69,14 @@ echo：TTS 合成与播放（播报不调模型）
 
 | 主题 | 入口 |
 |---|---|
-| AX 模块装配与对外服务 | `tianshu-auxilium/.../auxilium/AXModule.java`、`AXProtocolAdapter.java`、`AXParticipantRegistrar.java` |
-| 一轮对话 | `auxilium/core/turn/AXTurnOrchestrator.java`、`AXReplyContract.java`、`AXDialogueGateway.java` |
-| 模型请求的重投 | `auxilium/core/llm/AXLlmClient.java`、`AXLlmRetryPolicy.java` |
-| 提示词装配 | `auxilium/core/prompt/AXPromptOrchestrator.java`、`AXPromptAssemblyBuilder.java`、`module/system/AXSystemPromptContributor.java`、其余 `*PromptContributor` |
-| 预算与窗口 | `auxilium/core/context/AXContextBudget.java`、`AXMemoryWindowPolicy.java` |
-| 记忆 | `auxilium/module/memory/AXMemorySystem.java`、`module/recentdialogue/AXRawTurnWindow.java`、`module/memory/{compression,retrieval,summary,preference}` |
+| AX 模块装配与对外服务 | `tianshu-auxilium/.../auxilium/DubheModule.java`、`DubheProtocolAdapter.java`、`DubheParticipantRegistrar.java` |
+| 一轮对话 | `auxilium/core/turn/DubheTurnOrchestrator.java`、`DubheReplyContract.java`、`DubheDialogueGateway.java` |
+| 模型请求的重投 | `auxilium/core/llm/DubheLlmClient.java`、`DubheLlmRetryPolicy.java` |
+| 提示词装配 | `auxilium/core/prompt/DubhePromptOrchestrator.java`、`DubhePromptAssemblyBuilder.java`、`module/system/DubheSystemPromptContributor.java`、其余 `*PromptContributor` |
+| 预算与窗口 | `auxilium/core/context/DubheContextBudget.java`、`DubheMemoryWindowPolicy.java` |
+| 记忆 | `auxilium/module/memory/DubheMemorySystem.java`、`module/recentdialogue/DubheRawTurnWindow.java`、`module/memory/{compression,retrieval,summary,preference}` |
 | 事件 | `auxilium/event/` 整包 + `resources/.../event/ax_event_tiers.json` |
-| 委派与运行循环 | `auxilium/core/agent/AXAgentLoop.java`、`AXRunPolicy.java`、`core/delegate/` |
+| 委派与运行循环 | `auxilium/core/agent/DubheAgentLoop.java`、`DubheRunPolicy.java`、`core/delegate/` |
 | 语言资源 | `resources/.../prompts/`（系统提示词 profile、提示词文本、记忆任务提示词、回复文案） |
 
 ## 2. 跨模块不变量
@@ -108,7 +108,7 @@ echo：TTS 合成与播放（播报不调模型）
 
 ### 2.3 失败与重投
 
-一次逻辑请求最多投五遍，退避 0.5 / 1 / 2 / 4 秒。判定在 `AXLlmRetryPolicy`，生命周期在 `AXLlmClient`。
+一次逻辑请求最多投五遍，退避 0.5 / 1 / 2 / 4 秒。判定在 `DubheLlmRetryPolicy`，生命周期在 `DubheLlmClient`。
 
 | 类型 | 例子 | 处理 |
 |---|---|---|
@@ -133,23 +133,23 @@ echo：TTS 合成与播放（播报不调模型）
 自动重投只在进程活着的时候有用。玩家真正会遇到的是另外两种情况：重投也用完了，或者游戏根本没等到答复就没了。
 所以失败要能被看见，并且**按"云端到底有没有答出内容"分两种处理**。
 
-**一套词表**（`AXFailureCause`）：限流、服务端故障、超时、网络、参数或凭证、上下文超限、内容拒绝、取消、没答完、未知。
+**一套词表**（`DubheFailureCause`）：限流、服务端故障、超时、网络、参数或凭证、上下文超限、内容拒绝、取消、没答完、未知。
 同一个结论同时决定三件事：玩家看到哪句话、这件事值不值得自动重投、界面里记什么原因。三处各写一份词表迟早会互相矛盾。
 
-**没答出内容 → 回滚**（`AXRecentDialogueSystem.rollbackTo`）：轮次开始时记一个历史水位，失败时把水位之后写进
+**没答出内容 → 回滚**（`DubheRecentDialogueSystem.rollbackTo`）：轮次开始时记一个历史水位，失败时把水位之后写进
 历史的东西撤掉——玩家那一问，以及这一轮期间除游戏事件之外的一切。云端直接拒绝（429、503、余额不足、连不上、
 内容被拒）属于这一类：它不是这段对话的一部分，留在历史里会让下一轮模型接着一句没人回答的话往下说。
 **已经答出内容 → 保留**：流式吐过、念出过、或终值带正文，三者之一即算答过；后面的环节再坏，说过的话也
 已经进过玩家耳朵，撤掉等于从记忆里抹掉。
 
-**写前落盘**（`AXRecentDialogueSystem.append`）：每一轮在进窗口的同时追加一行到 `raw_turn_checkpoint.jsonl`，
+**写前落盘**（`DubheRecentDialogueSystem.append`）：每一轮在进窗口的同时追加一行到 `raw_turn_checkpoint.jsonl`，
 所以玩家那句话在他开口之后、请求发出之前就已经在盘上。整份重写只在窗口挤掉旧轮次、换世界、回滚、停止时做——
 那一刻文件内容真的变了，不重写就会在下次启动时把淘汰过的原文读回来。
 
 **崩溃清理**（`pruneUnansweredTail`）：崩溃来不及回滚（进程直接没了），但判据仍然是历史本身——完成的轮次总以
 答句或游戏事件结尾，以提问结尾就意味着那一轮没走完，启动时撤掉它。
 
-**失败账本**（`AXRetryLedger`，`worlds/<world>/retry/pending_retries.jsonl`）只记**记忆维护**：它是唯一
+**失败账本**（`DubheRetryLedger`，`worlds/<world>/retry/pending_retries.jsonl`）只记**记忆维护**：它是唯一
 "失败了就白等一轮、而且可以原地重来一次"的后台工作——要压的那批原文还在压缩窗口里，重新触发一次就是全部。
 对话不进账本：问一次没成，玩家自己会再问一次，那才是新的对话；给它一个"重放上一问"的按钮，等于让天枢替
 玩家决定该问什么。
@@ -169,7 +169,7 @@ echo：TTS 合成与播放（播报不调模型）
 新请求。
 
 两处维护须知：窗口的 `applyPolicy` 只换策略、不裁剪，内存要到下一次 append 才收缩（不影响 prompt）；
-每轮解析出的真实预算必须同时交给 `AXRecentDialogueSystem` 与 `AXMemorySystem`——只交前者会让摘要块容量永远
+每轮解析出的真实预算必须同时交给 `DubheRecentDialogueSystem` 与 `DubheMemorySystem`——只交前者会让摘要块容量永远
 停在构造期兜底档（COMPACT，2048）。
 
 ## 3. 前缀缓存友好

@@ -94,7 +94,7 @@
 
 ```text
 simple（角色层）
-  AXTurnOrchestrator · 提示词装配 · 输出/语音 · 在办事项视图
+  DubheTurnOrchestrator · 提示词装配 · 输出/语音 · 在办事项视图
         │  唯一出口：委托（意图，不含专席名）
         ▼
 agent（执行层）
@@ -181,8 +181,8 @@ simple 只认这一份结构，不认识专席差异：
 
 ### 3.7 工具轮次的迁移
 
-现状：`AXToolTurn` / `AXToolRoundHandler` 是"主对话带工具"的实现，但入口
-`AXRunPolicy.simple().toolsAllowed()` 恒为 `false`，因此**从未执行过**；`core/delegate` 里零工具引用。
+现状：`DubheToolTurn` / `DubheToolRoundHandler` 是"主对话带工具"的实现，但入口
+`DubheRunPolicy.simple().toolsAllowed()` 恒为 `false`，因此**从未执行过**；`core/delegate` 里零工具引用。
 
 目标：
 
@@ -477,11 +477,11 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 
 | 文件 | 改动 |
 |---|---|
-| `AXEventPolicy` | 从"基线 + 偏移"改成**查表**：`LEVELS[tierIndex + stateIndex]`，一张 9→5 的常量表 |
-| `AXEventList` | 三态改为 `EMPHASIS / NORMAL / WEAKENED`（旧 whitelist/neutral/blacklist 的语义不变，只换名与值） |
-| `AXEventClass` | 增加 `FOLD`；`appends()` 真、`speaks()` 假 |
-| `AXEventDispatcher` | `FOLD` 交聚合器（聚一行进窗口，标记 transient）；`SILENT` 逐条落历史 |
-| `AXEventAggregator` | 接收 `FOLD`；不足阈值直接丢弃、不退化成逐条；聚合行标记 `transient`，压缩与重置时跳过 |
+| `DubheEventPolicy` | 从"基线 + 偏移"改成**查表**：`LEVELS[tierIndex + stateIndex]`，一张 9→5 的常量表 |
+| `DubheEventList` | 三态改为 `EMPHASIS / NORMAL / WEAKENED`（旧 whitelist/neutral/blacklist 的语义不变，只换名与值） |
+| `DubheEventClass` | 增加 `FOLD`；`appends()` 真、`speaks()` 假 |
+| `DubheEventDispatcher` | `FOLD` 交聚合器（聚一行进窗口，标记 transient）；`SILENT` 逐条落历史 |
+| `DubheEventAggregator` | 接收 `FOLD`；不足阈值直接丢弃、不退化成逐条；聚合行标记 `transient`，压缩与重置时跳过 |
 | 表解析 / 资源 | 读 v2 旧结构（`kinds` + `list`）时按 白→强调、黑→削弱 换算，结果必须与旧行为逐格一致 |
 
 **连带修正**：`AX_事件系统` §4 要整节重写（矩阵、五档、三态改名），在实现这一档时同步（P5 同批）。
@@ -543,7 +543,7 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 |---|---|
 | 构建 | 全仓 `build` 绿 |
 | 测试 | 全量单测绿；模块边界与路径断言全过 |
-| 残留 | `auxilium` / `Auxilium` / `\bAX[A-Z]` / `function\.`（包层）在源码与资源中为 0 |
+| 残留 | `auxilium` / `Dubhe` / `\bAX[A-Z]` / `function\.`（包层）在源码与资源中为 0 |
 | 行为 | 一轮对话的请求哈希与改名一致（改名不得改变行为） |
 | 玩家面 | 设置页、日志、播报文案正常显示（语言键无裸 key） |
 
@@ -577,7 +577,7 @@ B = clamp(0.08 W, 900, 4096)          32k → 2.6k；64k → 4k（封顶）
 
 ### P3 simple 调度（角色层）
 
-1. 删 `AXRunPolicy.toolsAllowed` 布尔与 simple 的工具分支；simple 的工具集恒为 `{delegate}`。
+1. 删 `DubheRunPolicy.toolsAllowed` 布尔与 simple 的工具分支；simple 的工具集恒为 `{delegate}`。
 2. `pending_work` 尾部块：在办事项每轮重建，不进历史、不进压缩。
 3. 人设口径改承诺-兑现（G7）；触发源收敛为"玩家输入 + 事件"（G20）。
 4. 办事失败词表接入（工具被拒 / 权限不足 / 目标不存在 / 上限拦截）。

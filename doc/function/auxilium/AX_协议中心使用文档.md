@@ -22,7 +22,7 @@ AX 是 IA 管理的 dialogue participant，不是可以绕过 IA 直接调用的
 | participantId | `tianshu.AX` |
 | 提问型入口能力 | `AX_DIALOGUE_INPUT`（`DialogueDeliveryPayload`） |
 | 上下文型入口能力 | `AX_CONTEXT_INPUT`（`DialogueContextInputPayload`） |
-| 事件型入口能力 | `AX_EVENT_INPUT`（`AXWorldEventPayload`） |
+| 事件型入口能力 | `AX_EVENT_INPUT`（`DubheWorldEventPayload`） |
 
 注册 / 注销分别使用 `DIALOGUE_PARTICIPANT_REGISTER` / `DIALOGUE_PARTICIPANT_UNREGISTER`，并把自己的路由能力、唤醒词声明与语音触发组一并交给 IA。
 
@@ -97,7 +97,7 @@ AX 在处理前会检查自身就绪状态、会话与轮次、投递时效。�
 |---|---|
 | 能力 | `AX_EVENT_INPUT` |
 | PayloadType | `AX_WORLD_EVENT` |
-| Payload | `AXWorldEventPayload` |
+| Payload | `DubheWorldEventPayload` |
 | PacketType | `COMMAND` |
 | Broker | `BOUNDED_QUEUE` |
 | 完成策略 | `AUTO_COMPLETE_ON_RETURN` |
@@ -112,7 +112,7 @@ AX 在处理前会检查自身就绪状态、会话与轮次、投递时效。�
 | `behavior` | 希望的行为，三选一：`IMMEDIATE` / `DEFERRED` / `SILENT`；`DROP` 不接受——什么都不发生等于不投递 |
 | `text` | 生产方已经渲染好的整句；AX 只做 NFC 归一、剥离尖括号、按边界截断到 120 字符 |
 
-**频率不对外暴露**：`RARE` / `NORMAL` / `FREQUENT` 是 AX 的私有词汇，只有内置采集层知道"这个 kind 多久发生一次"，`AXEventPolicy` 再把它和名单折成下面的行为阶梯。外部只回答"这句要不要开口"，不回答"这类事多久一次"。
+**频率不对外暴露**：`RARE` / `NORMAL` / `FREQUENT` 是 AX 的私有词汇，只有内置采集层知道"这个 kind 多久发生一次"，`DubheEventPolicy` 再把它和名单折成下面的行为阶梯。外部只回答"这句要不要开口"，不回答"这类事多久一次"。
 
 ### 4.2 行为与落地
 
@@ -143,10 +143,10 @@ AX 在处理前会检查自身就绪状态、会话与轮次、投递时效。�
 ### 4.4 投递方式
 
 外部模组对 `tianshu-auxilium` 硬性依赖（`compileOnly` 足够，运行时由天枢提供），用
-`EnvelopeBuilder.commandToCapability(自己的 moduleId, AXProtocolAdapter.EVENT_INPUT_CAPABILITY, PayloadType.of("AX_WORLD_EVENT"), payload)`
+`EnvelopeBuilder.commandToCapability(自己的 moduleId, DubheProtocolAdapter.EVENT_INPUT_CAPABILITY, PayloadType.of("AX_WORLD_EVENT"), payload)`
 建信封，再交给 `TianshuIntegrationApi.submit(envelope)`。
 
-不要从服务注册表取 `AXGameEventService` 去调 `tick` / `flush` / `stop`：那三个方法是本模块自己的生命周期，不属于对外契约。
+不要从服务注册表取 `DubheGameEventService` 去调 `tick` / `flush` / `stop`：那三个方法是本模块自己的生命周期，不属于对外契约。
 
 ## 5. 外部文本如何到达 AX
 
@@ -185,14 +185,14 @@ AX 提交模型请求前会先登记流式片段与结果的处理器，再提�
 
 | 来源 | 用途 |
 |---|---|
-| 世界事件 topic（能映射成事件类型的） | 走**事件层**：写历史，并按档位/名单决定出不出声。当前映射（`AXPresenceEventMapper`）：`advancement_unlocked` → `tianshu:advancement`、`item_crafted` → `tianshu:item_crafted`、`player_death` → `tianshu:death`、`mob_killed` → `tianshu:mob_killed`、`fishing_catch` → `tianshu:fishing_catch`、`tamed` → `tianshu:tamed`、`dimension_changed` → `tianshu:dimension_enter`、`block_broken` → `tianshu:block_break`、`block_placed` → `tianshu:block_place`、`container_open` → `tianshu:container_open`、`mount` / `dismount` → `tianshu:mount` / `tianshu:dismount`、`item_pickup` → `tianshu:pickup`、`damage_taken` → `tianshu:damage_taken`、`effect_gained` / `effect_expired` → `tianshu:effect_gained` / `effect_expired`、`exp_level` → `tianshu:exp_level`、`friend_join` / `friend_leave` → `tianshu:friend_join` / `friend_leave`、`trade` → `tianshu:trade`、`respawn` → `tianshu:respawn`、`boss_engage` → `tianshu:boss_engage` |
+| 世界事件 topic（能映射成事件类型的） | 走**事件层**：写历史，并按档位/名单决定出不出声。当前映射（`DubhePresenceEventMapper`）：`advancement_unlocked` → `tianshu:advancement`、`item_crafted` → `tianshu:item_crafted`、`player_death` → `tianshu:death`、`mob_killed` → `tianshu:mob_killed`、`fishing_catch` → `tianshu:fishing_catch`、`tamed` → `tianshu:tamed`、`dimension_changed` → `tianshu:dimension_enter`、`block_broken` → `tianshu:block_break`、`block_placed` → `tianshu:block_place`、`container_open` → `tianshu:container_open`、`mount` / `dismount` → `tianshu:mount` / `tianshu:dismount`、`item_pickup` → `tianshu:pickup`、`damage_taken` → `tianshu:damage_taken`、`effect_gained` / `effect_expired` → `tianshu:effect_gained` / `effect_expired`、`exp_level` → `tianshu:exp_level`、`friend_join` / `friend_leave` → `tianshu:friend_join` / `friend_leave`、`trade` → `tianshu:trade`、`respawn` → `tianshu:respawn`、`boss_engage` → `tianshu:boss_engage` |
 | 服务端事实（网络包，服务端装了天枢才有） | 客户端收到后转成**同样的世界事件载荷**，因此与上一行同一条路径。服务端只发与本人相关的事实，客户端没装或通道版本不符时服务端不发送 |
 | 世界事件 topic（其余类型） | 作为记忆附件并入当前作用域记忆，不写历史、不出声 |
 | 聊天事件（`chat_message`） | 把聊天写入当前作用域的近期对话（事件角色，带说话人）——聊天是 WorldEvent 的一个类型，不是独立载荷 |
 
 **一条事实只有一个落点**：能映射成事件类型的统一走事件层，不要再同时写进记忆附件；映射不上的才留在记忆里。这张映射表只回答"事件类型对应哪个 kind"，要不要开口仍由档位表与名单决定。
 
-**一个载荷 = 一秒窗口内的多组出现**：映迹把同一 kind 的一秒聚合成一个载荷，每组带计数。AX 把这些组渲染成**一行带数量的事实**（`tianshu.ax.event.batch.entry` 渲染每组、`tianshu.ax.event.batch.join` 连接、最后由该 kind 的句子模板包住），并把总数写进 `AXEventPayload.count`，频率门据此降档。
+**一个载荷 = 一秒窗口内的多组出现**：映迹把同一 kind 的一秒聚合成一个载荷，每组带计数。AX 把这些组渲染成**一行带数量的事实**（`tianshu.ax.event.batch.entry` 渲染每组、`tianshu.ax.event.batch.join` 连接、最后由该 kind 的句子模板包住），并把总数写进 `DubheEventPayload.count`，频率门据此降档。
 
 这些是事件而不是 AX 请求入口。只有对应事实的所有者才应发布；其他模块不得伪造玩家身份、维度或聊天发送者。
 
@@ -277,11 +277,11 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 
 | 符号 | 能力名 | 含义 |
 |---|---|---|
-| `AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY` | `AX.DIALOGUE_INPUT` | 提问型入口：让 AX 就这一轮说话 |
-| `AXProtocolAdapter.CONTEXT_INPUT_CAPABILITY` | `AX.CONTEXT_INPUT` | 上下文型入口：把外部话语送进 AX 的历史 |
-| `AXProtocolAdapter.EVENT_INPUT_CAPABILITY` | `AX.EVENT_INPUT` | 事件型入口：投递一句世界事件 + 一个行为 |
+| `DubheProtocolAdapter.DIALOGUE_INPUT_CAPABILITY` | `AX.DIALOGUE_INPUT` | 提问型入口：让 AX 就这一轮说话 |
+| `DubheProtocolAdapter.CONTEXT_INPUT_CAPABILITY` | `AX.CONTEXT_INPUT` | 上下文型入口：把外部话语送进 AX 的历史 |
+| `DubheProtocolAdapter.EVENT_INPUT_CAPABILITY` | `AX.EVENT_INPUT` | 事件型入口：投递一句世界事件 + 一个行为 |
 
-对应登记值来自 `AxCapabilities`：
+对应登记值来自 `DubheCapabilities`：
 
 | 符号 | 值 |
 |---|---|
@@ -295,7 +295,7 @@ AX 没有面向任意外部模块的同步"请求—回答"能力：所有入口
 |---|---|
 | `DialogueDeliveryPayload` | 提问型入口的载荷（会话/轮次/文本/唤醒词/实体/交互提示/上下文快照） |
 | `DialogueContextInputPayload` | 上下文型入口的载荷（来源与文本、说话人、轮次标识） |
-| `AXWorldEventPayload` | 事件型入口的载荷（命名空间化 kind、行为三选一、已渲染句子） |
+| `DubheWorldEventPayload` | 事件型入口的载荷（命名空间化 kind、行为三选一、已渲染句子） |
 
 ### 13.4 AX 调用的下游能力
 
