@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class CommonDiagnosticTextBoundaryTest {
     @Test
     void functionModuleEnvironmentLogsDoNotEmbedLocalizedSentences() throws Exception {
-        for (String module : List.of("tianshu-intake", "tianshu-echo", "tianshu-weaving", "tianshu-auxilium")) {
+        for (String module : List.of("tianshu-intake", "tianshu-echo", "tianshu-weaving", "tianshu-dubhe")) {
             Path root = WorkspacePaths.require(module + "/src/main/java/com/rheinmetal/tianshu");
             try (var files = Files.walk(root)) {
                 for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {

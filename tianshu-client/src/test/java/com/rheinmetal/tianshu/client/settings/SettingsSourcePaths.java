@@ -34,7 +34,7 @@ final class SettingsSourcePaths {
             case "intake" -> moduleSource("tianshu-intake", "intake/settings").resolve(fileName);
             case "echo" -> moduleSource("tianshu-echo", "echo/settings").resolve(fileName);
             case "weaving" -> moduleSource("tianshu-weaving", "weaving/settings").resolve(fileName);
-            case "auxilium" -> moduleSource("tianshu-auxilium", "auxilium/settings").resolve(fileName);
+            case "dubhe" -> moduleSource("tianshu-dubhe", "dubhe/settings").resolve(fileName);
             default -> throw new IllegalArgumentException("unknown module: " + module);
         };
     }

@@ -18,7 +18,7 @@ class ModuleProtocolUsageDocumentationBoundaryTest {
             WorkspacePaths.doc("function/intake/ASR_协议中心使用文档.md"), "IntakeTopics.INPUT_ASR_FINAL_TEXT",
             WorkspacePaths.doc("function/intake/repair/IR_协议中心使用文档.md"), "IntakeTopics.IR_RESULT",
             WorkspacePaths.doc("function/intake/ia/IA_外部模组仲裁接入说明.md"), "DIALOGUE_PARTICIPANT_REGISTER",
-            WorkspacePaths.doc("function/auxilium/AX_协议中心使用文档.md"), "AXProtocolAdapter.DIALOGUE_INPUT_CAPABILITY",
+            WorkspacePaths.doc("function/auxilium/AX_协议中心使用文档.md"), "DubheProtocolAdapter.DIALOGUE_INPUT_CAPABILITY",
             WorkspacePaths.doc("function/weaving/LLM接口设计.md"), "LLM_REQUEST",
             WorkspacePaths.doc("function/echo/TTS_协议中心使用文档.md"), "TTS_SPEAK"
     );

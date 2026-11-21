@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.protocol;
 /**
  * The ids of the platform's own modules.
  *
- * <p>Feature modules own their ids themselves ({@code AsrProtocolAdapter.MODULE_ID}, {@code AXModule.MODULE_ID},
+ * <p>Feature modules own their ids themselves ({@code AsrProtocolAdapter.MODULE_ID}, {@code DubheModule.MODULE_ID},
  * …): the kernel derives whatever it needs from an id it is handed, so it never has to enumerate them. What is
  * left here are the parts the host itself ships — the native runtime loader and the audio bridge — which are
  * not features and have no module jar of their own.</p>

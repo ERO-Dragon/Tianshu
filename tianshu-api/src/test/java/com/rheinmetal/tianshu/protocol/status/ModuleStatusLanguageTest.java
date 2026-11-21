@@ -65,7 +65,7 @@ class ModuleStatusLanguageTest {
     private static final Map<String, String> MODULE_SHARDS = Map.of(
             "module.asr", "tianshu-intake",
             "module.ia", "tianshu-intake",
-            "module.ax", "tianshu-auxilium",
+            "module.ax", "tianshu-dubhe",
             "module.llm", "tianshu-weaving",
             "module.tts", "tianshu-echo",
             "module.presence", "tianshu-presence");

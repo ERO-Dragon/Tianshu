@@ -20,7 +20,7 @@ final class ModuleSettingsOwnershipTest {
     void productModuleSettingsDoNotContainDiagnosticsControls() throws Exception {
         for (String relativePath : List.of(
                 "intake/IntakeSettingsRegistrySource.java",
-                "auxilium/AuxiliumSettingsRegistrySource.java",
+                "dubhe/DubheSettingsRegistrySource.java",
                 "weaving/WeavingSettingsRegistrySource.java",
                 "echo/EchoSettingsRegistrySource.java",
                 "presence/PresenceSettingsRegistrySource.java"

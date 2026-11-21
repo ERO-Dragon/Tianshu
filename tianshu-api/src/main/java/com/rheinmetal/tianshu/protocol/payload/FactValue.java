@@ -9,7 +9,7 @@ package com.rheinmetal.tianshu.protocol.payload;
  * is a namespaced id, {@link Text} is already-final text supplied by the game (a display name), {@link Flag}
  * is a boolean, and {@link Record} is a repeated structure such as one inventory item or one potion effect.
  *
- * <p>This mirrors the shape the event layer already uses for its wording ({@code AXEventText} with typed
+ * <p>This mirrors the shape the event layer already uses for its wording ({@code DubheEventText} with typed
  * arguments): semantics in the contract, rendering on the consuming side.
  */
 public sealed interface FactValue {

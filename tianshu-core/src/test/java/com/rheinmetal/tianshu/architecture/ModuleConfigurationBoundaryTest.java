@@ -41,21 +41,21 @@ class ModuleConfigurationBoundaryTest {
     @Test
     void modulesMustNotDependOnAnotherModulesConfigurationPort() throws Exception {
         assertNoConfigurationDependency("tianshu-intake",
-                "function.weaving.settings.WeavingConfiguration",
-                "function.echo.settings.EchoConfiguration",
-                "function.auxilium.storage.AuxiliumStorageConfiguration");
+                "weaving.settings.WeavingConfiguration",
+                "echo.settings.EchoConfiguration",
+                "dubhe.storage.DubheStorageConfiguration");
         assertNoConfigurationDependency("tianshu-weaving",
-                "function.intake.settings.IntakeConfiguration",
-                "function.echo.settings.EchoConfiguration",
-                "function.auxilium.storage.AuxiliumStorageConfiguration");
+                "intake.settings.IntakeConfiguration",
+                "echo.settings.EchoConfiguration",
+                "dubhe.storage.DubheStorageConfiguration");
         assertNoConfigurationDependency("tianshu-echo",
-                "function.intake.settings.IntakeConfiguration",
-                "function.weaving.settings.WeavingConfiguration",
-                "function.auxilium.storage.AuxiliumStorageConfiguration");
-        assertNoConfigurationDependency("tianshu-auxilium",
-                "function.intake.settings.IntakeConfiguration",
-                "function.weaving.settings.WeavingConfiguration",
-                "function.echo.settings.EchoConfiguration");
+                "intake.settings.IntakeConfiguration",
+                "weaving.settings.WeavingConfiguration",
+                "dubhe.storage.DubheStorageConfiguration");
+        assertNoConfigurationDependency("tianshu-dubhe",
+                "intake.settings.IntakeConfiguration",
+                "weaving.settings.WeavingConfiguration",
+                "echo.settings.EchoConfiguration");
     }
 
     @Test
@@ -90,7 +90,7 @@ class ModuleConfigurationBoundaryTest {
 
     private static Map<String, Path> functionSources() {
         Map<String, Path> roots = new LinkedHashMap<>();
-        for (String module : List.of("tianshu-intake", "tianshu-echo", "tianshu-weaving", "tianshu-auxilium")) {
+        for (String module : List.of("tianshu-intake", "tianshu-echo", "tianshu-weaving", "tianshu-dubhe")) {
             roots.put(module, REPO_ROOT.resolve(module)
                     .resolve("src/main/java/com/rheinmetal/tianshu"));
         }

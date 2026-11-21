@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.testkit;
 
-import com.rheinmetal.tianshu.auxilium.storage.AuxiliumStorageConfiguration;
+import com.rheinmetal.tianshu.dubhe.storage.DubheStorageConfiguration;
 import com.rheinmetal.tianshu.echo.settings.EchoConfiguration;
 import com.rheinmetal.tianshu.intake.settings.IntakeConfiguration;
 import com.rheinmetal.tianshu.weaving.settings.WeavingConfiguration;
@@ -13,7 +13,7 @@ public final class TestLlmSupport {
     }
 
     public static final class FakeConfig implements IntakeConfiguration, WeavingConfiguration, EchoConfiguration,
-            AuxiliumStorageConfiguration {
+            DubheStorageConfiguration {
         private final Path root;
         private boolean aiEnabled = true;
         private String customLlmName = "test-llm";

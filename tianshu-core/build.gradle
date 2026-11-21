@@ -20,7 +20,7 @@ dependencies {
     testImplementation project(':tianshu-intake')
     testImplementation project(':tianshu-echo')
     testImplementation project(':tianshu-weaving')
-    testImplementation project(':tianshu-auxilium')
+    testImplementation project(':tianshu-dubhe')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testImplementation 'org.apache.commons:commons-compress:1.26.0'
