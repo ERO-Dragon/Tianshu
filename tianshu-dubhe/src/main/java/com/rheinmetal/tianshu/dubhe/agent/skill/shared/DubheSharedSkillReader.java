@@ -37,7 +37,7 @@ public final class DubheSharedSkillReader {
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
         JsonObject properties = new JsonObject();
-        properties.add("id", property("string", "共享技能 id，例如 tianshu:tianshu-tools"));
+        properties.add("id", property("string", "共享技能 id，例如 tianshu:minecraft-tools"));
         properties.add("file", property("string", "技能内的参考路径，例如 references/tiers.md"));
         properties.add("page", property("integer", "长文分页，从 1 开始"));
         schema.add("properties", properties);

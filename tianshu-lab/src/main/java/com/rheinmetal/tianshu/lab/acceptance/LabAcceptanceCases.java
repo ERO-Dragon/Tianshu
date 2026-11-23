@@ -1026,7 +1026,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-CAP-5";
         final String title = "a skill, a resource and a prompt all resolve, and prompt arguments change the text";
         return AcceptanceCase.of(id, title, () -> {
-            String skill = resultText(readCapability("tianshu:tianshu-tools", null));
+            String skill = resultText(readCapability("tianshu:minecraft-tools", null));
             String resource = resultText(readCapability("tianshu:game-basics", null));
             JsonObject twoLines = new JsonObject();
             twoLines.addProperty("lines", "2");

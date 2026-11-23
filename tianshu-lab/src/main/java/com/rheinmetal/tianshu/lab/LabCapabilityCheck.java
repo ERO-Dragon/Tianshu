@@ -53,7 +53,7 @@ public final class LabCapabilityCheck {
                 + " skill=" + counts.getOrDefault(CapabilityKind.SKILL, 0)
                 + " resource=" + counts.getOrDefault(CapabilityKind.RESOURCE, 0)
                 + " prompt=" + counts.getOrDefault(CapabilityKind.PROMPT, 0);
-        String skill = read("skill", CapabilityId.of("tianshu", "tianshu-tools"), new JsonObject(), 200);
+        String skill = read("skill", CapabilityId.of("tianshu", "minecraft-tools"), new JsonObject(), 200);
         String runtimeSkill = runtimeSkill();
         String resource = read("resource", CapabilityId.of("tianshu", "game-basics"), new JsonObject(), 120);
         JsonObject promptArgs = new JsonObject();

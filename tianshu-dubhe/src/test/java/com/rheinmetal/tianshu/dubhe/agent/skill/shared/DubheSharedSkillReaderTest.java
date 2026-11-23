@@ -46,17 +46,17 @@ class DubheSharedSkillReaderTest {
         });
 
         JsonObject args = new JsonObject();
-        args.addProperty("id", "tianshu:tianshu-tools");
+        args.addProperty("id", "tianshu:minecraft-tools");
         JsonObject result = DubheSharedSkillReader.skill().executor().execute(CONTEXT, args).join();
 
         assertEquals("OK", result.get("outcome").getAsString());
-        assertEquals("共享技能：tianshu:tianshu-tools", result.get("text").getAsString());
+        assertEquals("共享技能：tianshu:minecraft-tools", result.get("text").getAsString());
     }
 
     @Test
     void aMissingPlatformToolIsReportedAsFailure() {
         JsonObject args = new JsonObject();
-        args.addProperty("id", "tianshu:tianshu-tools");
+        args.addProperty("id", "tianshu:minecraft-tools");
         JsonObject result = DubheSharedSkillReader.skill().executor().execute(CONTEXT, args).join();
 
         assertEquals("FAILED", result.get("outcome").getAsString());
