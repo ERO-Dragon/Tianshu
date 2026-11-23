@@ -113,7 +113,10 @@ class SkillFileProviderTest {
         provider = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
         CapabilityId id = CapabilityId.of("tianshu", "tianshu-tools");
         assertTrue(CapabilityCatalog.find(id).isPresent(), "the classpath index must list the built-in skill");
-        assertTrue(text(invoke(id, new JsonObject())).contains("天枢工具"));
+        assertTrue(text(invoke(id, new JsonObject())).contains("舟楫工具"));
+        JsonObject reference = new JsonObject();
+        reference.addProperty("file", "references/tiers.md");
+        assertTrue(text(invoke(id, reference)).contains("CONSERVATIVE"), "references are read on demand");
     }
 
     private JsonObject invoke(CapabilityId id, JsonObject args) throws Exception {

@@ -1,25 +1,25 @@
 ---
 name: tianshu-tools
-description: 天枢能查什么、能做什么，以及怎么让天枢调用工具（配方、标签、背包、战利品、方块、容器、合成、熔炉）
+description: 舟楫的公共工具入口：模型怎么调用工具、三档授权意味着什么、什么时候必须先确认、失败怎么说。先读本入口，细节按需读 references。
 ---
-# 天枢工具
+# 舟楫工具（公共）
 
-天枢可以直接查游戏事实，也可以只做生存模式玩家手工能做的操作。
+本技能是**平台级入口**，所有通过舟楫调用工具的 AI 模组共用。它只讲"怎么调、边界在哪"；**什么时候该做**由各模组自己的技能写。
 
-## 查询
+## 入口只给这几件事
 
-- `tianshu:recipe.query`：查某个物品/方块的配方。
-- `tianshu:tag.query`：查方块/物品所属的标签。
-- `tianshu:inventory.inspect`：看玩家背包。
-- `tianshu:loot.query`：查方块或实体的战利品表。
+1. **调工具**：用 `tianshu:<name>` 调用；参数不确定时先调保留调用 `tianshu:tool.catalog` 看 schema，不要猜。
+2. **三档授权**（调用方自持的上限，工具还会各自检查权限/开关/服务端上限）：
+   - `READ_ONLY` 只读事实；
+   - `CONSERVATIVE` 普通生存操作；
+   - `FULL` 作弊类动作，每次先确认。
+3. **读技能/参考**：`tianshu:capability.read`（不带参数列目录；带 `id` 读正文；长文 `page`；附录 `file`）。
+4. **边界**：`body.*` 属于有身体的模组，不是舟楫工具；没有"通用写世界"入口。
+5. **失败**：对玩家说游戏里的原因，错误码只进诊断；没成功就如实说没办成。
 
-## 生存操作（保守档）
+## 按需读
 
-- `tianshu:block.interact`：按按钮、拉杆、开门、活板门、栅栏门。
-- `tianshu:container.transfer`：在容器与背包之间搬物品。
-- `tianshu:craft.recipe`：用背包里的材料合成。
-- `tianshu:block.machine`：给熔炉加燃料/投料/取产物。
+- 三档的完整边界与工具清单：`references/tiers.md`
+- 全权动作清单与注意事项：`references/full-actions.md`
 
-## 读取技能
-
-- `tianshu:capability.read`：不带参数列出可读技能；带 `id` 读正文；长文用 `page`；附录用 `file`。
+不要一次性把 references 全塞进上下文：先判断当前问题属于哪一类，再读对应那一篇。
