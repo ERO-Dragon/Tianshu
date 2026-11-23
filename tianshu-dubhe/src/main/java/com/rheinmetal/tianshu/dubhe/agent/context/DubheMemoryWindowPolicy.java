@@ -149,7 +149,8 @@ public record DubheMemoryWindowPolicy(
      */
     static final int TAIL_RETRIEVAL_TOKENS = 512;
 
-    /** One compression unit: a size, not a ratio, so it is tier-independent (G32 ratio lands in step 26). */
+    /** One compression unit: a size, not a ratio. Switching it to clamp(0.19 W, 2048, 8192) (G32) is the
+     * tracked follow-up; it needs the maintenance fixtures recalculated, so it lands on its own. */
     static final int COMPRESSION_UNIT_TOKENS = 8_192;
 
     /** Text density used when a capacity has to be expressed in characters instead of tokens. */
