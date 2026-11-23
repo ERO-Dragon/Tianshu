@@ -190,6 +190,38 @@ class DubheDelegateServiceTest {
 
     // ---------------------------------------------------------------- fixture
 
+    @Test
+    void agreeingToAFirstUseQuestionConfirmsTheTierAndRetriesTheSameQuestion() {
+        com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent =
+                new com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent(new ConsentStorage());
+        consent.markPending(com.rheinmetal.tianshu.api.tool.ToolAutonomy.CONSERVATIVE);
+        Fixture fixture = new Fixture(consent);
+
+        DubheDelegateTicket first = fixture.service.delegate(DubheScope.unknown(), "session", "让女仆去砍树");
+        DubheDelegateTicket retry = fixture.service.delegate(DubheScope.unknown(), "session", "同意");
+
+        assertEquals("让女仆去砍树", retry.query(), "the agreement re-runs the question that asked for consent");
+        assertEquals(first.taskId(), retry.resumes(), "a consent retry is a continuation, not a new question");
+        assertEquals(false, consent.needsConsent(com.rheinmetal.tianshu.api.tool.ToolAutonomy.CONSERVATIVE));
+        assertEquals(null, consent.pendingTier());
+        assertEquals(2, fixture.pendingRuns.size());
+    }
+
+    private static final class ConsentStorage
+            implements com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent.Storage {
+        private final java.util.Map<String, String> values = new java.util.HashMap<>();
+
+        @Override
+        public String get(String key, String fallback) {
+            return values.getOrDefault(key, fallback);
+        }
+
+        @Override
+        public void set(String key, String value) {
+            values.put(key, value);
+        }
+    }
+
     private static final class Fixture {
         /** 提交器收到的 run（由测试显式驱动，绝不内联跑）。 */
         private final List<Runnable> pendingRuns = new ArrayList<>();
@@ -204,6 +236,10 @@ class DubheDelegateServiceTest {
         private final DubheDelegateService service;
 
         private Fixture() {
+            this(null);
+        }
+
+        private Fixture(com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent) {
             this.service = new DubheDelegateService(
                     (payload, handler, timeout) -> {
                         // Handler first: a reader that sees the request must also see its handler.
@@ -226,7 +262,8 @@ class DubheDelegateServiceTest {
                     },
                     deliveries::add,
                     LogSink.NOOP,
-                    clock::get
+                    clock::get,
+                    consent
             );
         }
 

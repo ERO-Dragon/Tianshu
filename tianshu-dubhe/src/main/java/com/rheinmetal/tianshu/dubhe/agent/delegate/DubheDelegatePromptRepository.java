@@ -32,6 +32,7 @@ public final class DubheDelegatePromptRepository {
     public static final String SOFT_BUDGET = "agent.skill.soft_budget";
     /** 玩家同意续跑的词表（逗号分隔）；它是交互识别，不是模型提示词。 */
     public static final String RESUME_ACCEPT = "agent.resume.accept";
+    public static final String CONSENT_ACCEPT = "agent.consent.accept";
 
     private static final String PLACEHOLDER_PAYLOAD = "{{payload}}";
 
@@ -51,8 +52,12 @@ public final class DubheDelegatePromptRepository {
 
     /** 同意续跑的词；空白表示不做续跑识别。 */
     public java.util.List<String> resumeAcceptWords() {
-        String csv = load(RESUME_ACCEPT, currentLanguage());
-        if (csv.isBlank()) {
+        return wordsFrom(load(RESUME_ACCEPT, currentLanguage()));
+    }
+
+    /** 逗号分隔的词表；资源里留空表示不做识别。 */
+    private static java.util.List<String> wordsFrom(String csv) {
+        if (csv == null || csv.isBlank()) {
             return java.util.List.of();
         }
         java.util.List<String> words = new java.util.ArrayList<>();
@@ -65,6 +70,10 @@ public final class DubheDelegatePromptRepository {
         return java.util.List.copyOf(words);
     }
 
+    /** 玩家同意某个档位首次使用的词表；与续跑词表分开，避免"继续"被当成授权。 */
+    public java.util.List<String> consentAcceptWords() {
+        return wordsFrom(load(CONSENT_ACCEPT, currentLanguage()));
+    }
     public String agentSystemPrompt() {
         return load(AGENT_SYSTEM, currentLanguage());
     }

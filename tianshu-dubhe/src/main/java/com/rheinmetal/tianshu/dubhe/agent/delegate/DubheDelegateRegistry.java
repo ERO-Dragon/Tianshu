@@ -127,6 +127,22 @@ public final class DubheDelegateRegistry {
     }
 
 
+    /** The most recent ticket's question in this session; the consent retry re-runs exactly that question. */
+    public synchronized String lastQuery(String sessionId) {
+        List<DubheDelegateTicket> sessionTickets = ticketsBySession.get(sessionId == null ? "" : sessionId);
+        if (sessionTickets == null || sessionTickets.isEmpty()) {
+            return "";
+        }
+        return sessionTickets.get(sessionTickets.size() - 1).query();
+    }
+    /** The most recent ticket id in this session; a consent retry points at it through {@code resumes}. */
+    public synchronized String lastTaskId(String sessionId) {
+        List<DubheDelegateTicket> sessionTickets = ticketsBySession.get(sessionId == null ? "" : sessionId);
+        if (sessionTickets == null || sessionTickets.isEmpty()) {
+            return "";
+        }
+        return sessionTickets.get(sessionTickets.size() - 1).taskId();
+    }
     /** 记下最近一个暂停任务，覆盖同会话旧值。 */
     public synchronized void pause(DubhePausedTask task) {
         if (task == null) {

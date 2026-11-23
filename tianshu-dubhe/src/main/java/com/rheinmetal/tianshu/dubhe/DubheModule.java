@@ -413,7 +413,8 @@ public final class DubheModule implements TianshuManagedModule {
                 adapter::submitDelegateRun,
                 this::publishDelegateDelivery,
                 env.logs(),
-                System::currentTimeMillis
+                System::currentTimeMillis,
+                assistantSettings.autonomyConsent()
         );
         turnOrchestrator = new DubheTurnOrchestrator(
                 scopeProvider,

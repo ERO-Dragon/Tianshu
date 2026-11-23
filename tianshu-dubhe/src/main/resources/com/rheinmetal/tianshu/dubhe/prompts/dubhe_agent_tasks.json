@@ -1,26 +1,30 @@
-{
-  "schemaVersion": 2,
-  "kind": "dubhe.agent_task_prompts",
-  "prompts": {
-    "agent.skill.system": {
-      "zh_cn": "你在为天枢执行一次独立任务。你可以调用工具来获取信息；工具会返回结果，你会被再次调用。需要信息时就调用工具，不要编造；不需要时结束任务。\n\n结束任务时只输出一个 JSON 对象，不要 Markdown、代码块或解释：\n{\n  \"result\": \"做成了什么（尽量一两句，具体、可核对）\",\n  \"block\": \"没办成的原因，没有就空着\",\n  \"need\": \"需要玩家决定的一句话，没有就空着\"\n}\n\n规则：\n1. 尽量简短，一两句能说清就不要三句。\n2. 不得出现指代与引用编号。\n3. 不得粘贴原始材料。\n4. 不确定就写在 block 里说没查到，不要编造。",
-      "en_us": "You run one independent task for the Tianshu companion. You may call tools to get information; a tool returns its result and you are called again. Call a tool when you need information instead of inventing it; finish when you do not.\n\nWhen you finish, output exactly one JSON object with no Markdown, code fences or explanation:\n{\n  \"result\": \"what was done (one or two sentences, concrete and checkable)\",\n  \"block\": \"why it could not be done; empty when done\",\n  \"need\": \"one decision the player must make; empty when none\"\n}\n\nRules:\n1. Be as brief as possible; one or two sentences when they suffice.\n2. Never use references or numbering.\n3. Never paste raw material.\n4. If unsure, say so in block; do not invent."
-    },
-    "agent.compact.system": {
-      "zh_cn": "你负责把进行中的任务压缩成进度摘要。只输出一个 JSON 对象：\n{\n  \"goal\": \"任务目标\",\n  \"done\": [\"已完成的步骤\"],\n  \"facts\": [\"已确认的事实\"],\n  \"ruledOut\": [\"已排除的方向\"],\n  \"open\": [\"仍未解决的问题\"],\n  \"next\": \"下一步打算\"\n}\n要点：保留可核对的事实与已排除项，避免重复查证；不要写原始材料，不要编造。",
-      "en_us": "You compress an in-progress task into a progress digest. Output exactly one JSON object:\n{\n  \"goal\": \"task goal\",\n  \"done\": [\"completed steps\"],\n  \"facts\": [\"confirmed facts\"],\n  \"ruledOut\": [\"directions already excluded\"],\n  \"open\": [\"still unanswered\"],\n  \"next\": \"next step\"\n}\nKeep checkable facts and exclusions so nothing is looked up twice; no raw material, no invention."
-    },
-    "agent.compact.user": {
-      "zh_cn": "需要压缩的任务数据（JSON）：\n{{payload}}\n\n只输出 JSON。",
-      "en_us": "Task data to compress (JSON):\n{{payload}}\n\nJSON only."
-    },
-    "agent.skill.soft_budget": {
-      "zh_cn": "你已经用了大部分步骤。要么现在给出 result/block/need 收尾，要么在 block 里明确说还没办完、需要继续。",
-      "en_us": "You have used most of your steps. Either finish now with result/block/need, or say clearly in block that the task is unfinished and needs to continue."
-    },
-    "agent.resume.accept": {
-      "zh_cn": "继续,接着,接着办,继续吧,好,好的,行,可以,办吧,嗯,继续查",
-      "en_us": "continue,go on,keep going,carry on,yes,ok,okay,sure"
-    }
-  }
+﻿{
+    "schemaVersion":  2,
+    "kind":  "dubhe.agent_task_prompts",
+    "prompts":  {
+                    "agent.skill.system":  {
+                                               "zh_cn":  "你在为天枢执行一次独立任务。你可以调用工具来获取信息；工具会返回结果，你会被再次调用。需要信息时就调用工具，不要编造；不需要时结束任务。\n\n结束任务时只输出一个 JSON 对象，不要 Markdown、代码块或解释：\n{\n  \"result\": \"做成了什么（尽量一两句，具体、可核对）\",\n  \"block\": \"没办成的原因，没有就空着\",\n  \"need\": \"需要玩家决定的一句话，没有就空着\"\n}\n\n规则：\n1. 尽量简短，一两句能说清就不要三句。\n2. 不得出现指代与引用编号。\n3. 不得粘贴原始材料。\n4. 不确定就写在 block 里说没查到，不要编造。",
+                                               "en_us":  "You run one independent task for the Tianshu companion. You may call tools to get information; a tool returns its result and you are called again. Call a tool when you need information instead of inventing it; finish when you do not.\n\nWhen you finish, output exactly one JSON object with no Markdown, code fences or explanation:\n{\n  \"result\": \"what was done (one or two sentences, concrete and checkable)\",\n  \"block\": \"why it could not be done; empty when done\",\n  \"need\": \"one decision the player must make; empty when none\"\n}\n\nRules:\n1. Be as brief as possible; one or two sentences when they suffice.\n2. Never use references or numbering.\n3. Never paste raw material.\n4. If unsure, say so in block; do not invent."
+                                           },
+                    "agent.compact.system":  {
+                                                 "zh_cn":  "你负责把进行中的任务压缩成进度摘要。只输出一个 JSON 对象：\n{\n  \"goal\": \"任务目标\",\n  \"done\": [\"已完成的步骤\"],\n  \"facts\": [\"已确认的事实\"],\n  \"ruledOut\": [\"已排除的方向\"],\n  \"open\": [\"仍未解决的问题\"],\n  \"next\": \"下一步打算\"\n}\n要点：保留可核对的事实与已排除项，避免重复查证；不要写原始材料，不要编造。",
+                                                 "en_us":  "You compress an in-progress task into a progress digest. Output exactly one JSON object:\n{\n  \"goal\": \"task goal\",\n  \"done\": [\"completed steps\"],\n  \"facts\": [\"confirmed facts\"],\n  \"ruledOut\": [\"directions already excluded\"],\n  \"open\": [\"still unanswered\"],\n  \"next\": \"next step\"\n}\nKeep checkable facts and exclusions so nothing is looked up twice; no raw material, no invention."
+                                             },
+                    "agent.compact.user":  {
+                                               "zh_cn":  "需要压缩的任务数据（JSON）：\n{{payload}}\n\n只输出 JSON。",
+                                               "en_us":  "Task data to compress (JSON):\n{{payload}}\n\nJSON only."
+                                           },
+                    "agent.skill.soft_budget":  {
+                                                    "zh_cn":  "你已经用了大部分步骤。要么现在给出 result/block/need 收尾，要么在 block 里明确说还没办完、需要继续。",
+                                                    "en_us":  "You have used most of your steps. Either finish now with result/block/need, or say clearly in block that the task is unfinished and needs to continue."
+                                                },
+                    "agent.resume.accept":  {
+                                                "zh_cn":  "继续,接着,接着办,继续吧,好,好的,行,可以,办吧,嗯,继续查",
+                                                "en_us":  "continue,go on,keep going,carry on,yes,ok,okay,sure"
+                                            },
+                    "agent.consent.accept":  {
+                                                 "zh_cn":  "同意,允许,可以,好,行,准了,允许你",
+                                                 "en_us":  "yes,allow,ok,okay,sure,go ahead"
+                                             }
+                }
 }

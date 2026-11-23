@@ -55,7 +55,9 @@ public final class DubheDelegateService {
     private final DubheDelegateDeliverySink deliverySink;
     private final LogSink logSink;
     private final Supplier<Long> nowMillis;
+    private final com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent;
 
+    /** 不带授权闸门的构造：测试与无设置的装配。 */
     public DubheDelegateService(
             DubheDelegateRequestSender requestSender,
             DubheDelegateRegistry registry,
@@ -70,6 +72,25 @@ public final class DubheDelegateService {
             LogSink logSink,
             Supplier<Long> nowMillis
     ) {
+        this(requestSender, registry, promptRepository, agentBudget, skills, compactor, eventLedger,
+                historySink, runSubmitter, deliverySink, logSink, nowMillis, null);
+    }
+
+    public DubheDelegateService(
+            DubheDelegateRequestSender requestSender,
+            DubheDelegateRegistry registry,
+            DubheDelegatePromptRepository promptRepository,
+            DubheAgentContextBudget agentBudget,
+            DubheSkillRegistry skills,
+            DubheAgentCompactor compactor,
+            DubheDelegateEventLedger eventLedger,
+            DubheEventHistorySink historySink,
+            DubheDelegateRunSubmitter runSubmitter,
+            DubheDelegateDeliverySink deliverySink,
+            LogSink logSink,
+            Supplier<Long> nowMillis,
+            com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent
+    ) {
         this.requestSender = requestSender;
         this.registry = registry == null ? new DubheDelegateRegistry() : registry;
         this.promptRepository = promptRepository;
@@ -82,6 +103,7 @@ public final class DubheDelegateService {
         this.deliverySink = deliverySink == null ? DubheDelegateDeliverySink.NOOP : deliverySink;
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.nowMillis = nowMillis == null ? System::currentTimeMillis : nowMillis;
+        this.consent = consent;
     }
 
     public DubheDelegateEventLedger eventLedger() {
@@ -94,6 +116,11 @@ public final class DubheDelegateService {
 
     public DubheDelegateTicket delegate(DubheScope scope, String sessionId, String query) {
         long now = nowMillis.get();
+        String consentSource = consentAgreementSource(sessionId, query);
+        if (!consentSource.isEmpty()) {
+            // Re-run the question that triggered the ask; "同意" itself is not a task.
+            query = registry.lastQuery(sessionId);
+        }
         DubhePausedTask paused = registry.paused(sessionId, now);
         if (paused != null && DubheResumeIntent.accepts(query, resumeAcceptWords())) {
             return resume(paused, now);
@@ -102,7 +129,7 @@ public final class DubheDelegateService {
             // 玩家换了话题：旧暂停任务作废，避免下次一句"好"续到不相干的事上。
             registry.clearPaused(sessionId);
         }
-        DubheDelegateRegistry.Reservation reservation = registry.open(scope, sessionId, query, now);
+        DubheDelegateRegistry.Reservation reservation = registry.open(scope, sessionId, query, now, consentSource);
         DubheDelegateTicket ticket = reservation.ticket();
         if (!reservation.created()) {
             logSink.info("dubhe.delegate.replay_hit session=" + ticket.sessionId() + " task=" + ticket.taskId()
@@ -124,6 +151,28 @@ public final class DubheDelegateService {
         return ticket;
     }
 
+    /**
+     * Consent agreement: confirm the pending tier and re-run the question that triggered the ask.
+     *
+     * <p>Deterministic, like the resume words: exact agreement only. The player's "同意" must not be turned into a
+     * task of its own — the delegation it agrees to is the previous question, which is still in the registry.</p>
+     */
+    private String consentAgreementSource(String sessionId, String query) {
+        if (consent == null) {
+            return "";
+        }
+        com.rheinmetal.tianshu.api.tool.ToolAutonomy pending = consent.pendingTier();
+        if (pending == null || !DubheConsentIntent.accepts(query, consentAcceptWords())) {
+            return "";
+        }
+        consent.confirm(pending);
+        consent.clearPending();
+        return registry.lastTaskId(sessionId);
+    }
+
+    private List<String> consentAcceptWords() {
+        return promptRepository == null ? List.of() : promptRepository.consentAcceptWords();
+    }
     private List<String> resumeAcceptWords() {
         return promptRepository == null ? List.of() : promptRepository.resumeAcceptWords();
     }
