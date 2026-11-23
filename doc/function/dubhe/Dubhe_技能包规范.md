@@ -43,7 +43,19 @@ metadata:
 
 **解析是严格子集**：只支持上述标量、`metadata` 下的一层缩进；未知顶层键、缺失必需字段、名字不合规都会在加载时报错。不支持多行折叠/锚点/列表。
 
-## 3. 渐进式披露（三级）
+## 3. 入口内容要求（否则模型读完不会用）
+
+技能的 `SKILL.md` 必须让模型**读完就能写出一次调用**，至少包含：
+
+1. **调用格式**：工具 id + 参数对象，成功/失败的返回形状；
+2. **决策表**：玩家这句话 → 先调哪个工具 → 看返回的哪个字段；
+3. **至少一个完整示例**：真实参数 JSON + 返回字段 + 该说什么；
+4. **失败与确认**：写操作何时先确认、失败怎么说；
+5. **按需参考**：哪类细节去 `references/` 的哪一篇。
+
+只写"有哪些工具/有哪些档位"不够——那是目录，不是可执行的说明。
+
+## 4. 渐进式披露（三级）
 
 | 级 | 内容 | 何时加载 | 代码 |
 |---|---|---|---|
@@ -53,7 +65,7 @@ metadata:
 
 平台实现是 `SkillFileProvider`（共享层 `tianshu-api`）：目录只收元数据，正文与 reference 都按需读；天枢不再有第二份解析器。
 
-## 4. 与内部技能抽象的区别
+## 5. 与内部技能抽象的区别
 
 | | 技能包（本规范） | `DubheSkillSpec`（运行时） |
 |---|---|---|
@@ -64,7 +76,7 @@ metadata:
 
 两者不是替代关系：技能包定义"怎么做"，`DubheSkillSpec` 定义"代理怎么发现、预算多少、报告要什么"。`DubheSkillPackageAdapter` 把包接成技能：目录只给元数据，调用才返回正文，带 `reference` 参数再读参考。模块启动时按 `skills/index.json` 注册内置包；`work` 已按此接入。
 
-## 5. 计划中的技能（内容另定）
+## 6. 计划中的技能（内容另定）
 
 | 技能 | 状态 | 说明 |
 |---|---|---|
@@ -73,11 +85,11 @@ metadata:
 | `memory` | 待建 | 记忆检索与压缩（当前压缩是内部维护服务） |
 | `diplomacy` | 已实现（代码形态，待迁包） | 对外投递与按需查询；`relay` 是它旗下的一类 reference |
 
-## 6. 与平台实现的合并（已完成）
+## 7. 与平台实现的合并（已完成）
 
 `SkillFileProvider`、`FrontMatter`、`TextPages` 已移到共享层 `tianshu-api`（`com.rheinmetal.tianshu.api.capability.skill`），`tianshu-client` 与天枢共用同一份实现。天枢删除了自己的 `DubheSkillFrontmatter` / `DubheSkillDefinitionLoader`，只保留：`skills/index.json` 清单、资源读取、以及 `DubheSkillPackageAdapter`（把包接成代理技能）。
 
-## 7. 共享技能：平台注册、模组运行时读取
+## 8. 共享技能：平台注册、模组运行时读取
 
 三档与工具清单属于**平台公共知识**：舟楫把它注册成 SKILL（`tianshu:tianshu-tools`），任何模组都能读。
 模组不保存副本，运行时通过保留工具 `tianshu:capability.read` 去舟楫取：
@@ -88,7 +100,7 @@ metadata:
 
 天枢把它包成内部技能 `read-shared-skill`；`work` 技能第 0 步先读 `tianshu:tianshu-tools`，再按其中的三档与工具清单操作。平台改了说明，下一次读取即生效。
 
-## 8. 验收
+## 9. 验收
 
 - 7 个加载器用例：元数据/正文/references、无 references 的元数据读取、只扫一层、路径穿越拒绝、frontmatter 非法规避、名字必须等于目录、文本形态校验；
 - 新增技能包不改变代理循环代码（目录扫描 + 注册表），这是 G7 的判据。
