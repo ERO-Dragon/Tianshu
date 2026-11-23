@@ -132,6 +132,51 @@ class DubheDiplomacySkillTest {
                 "the speech layer gets a game-facing reason, never the tool error code");
     }
 
+    @Test
+    void listDiscoversOtherModulesFunctionsAndHidesOurOwn() {
+        com.rheinmetal.tianshu.api.capability.CapabilityId miner =
+                com.rheinmetal.tianshu.api.capability.CapabilityId.of("othermod", "miner");
+        com.rheinmetal.tianshu.api.capability.CapabilityCatalog.register(
+                new com.rheinmetal.tianshu.api.capability.CapabilityDescriptor(
+                        miner,
+                        com.rheinmetal.tianshu.api.capability.CapabilityKind.SKILL,
+                        com.rheinmetal.tianshu.api.capability.CapabilityBinding.LOCAL,
+                        "mines a block for the caller",
+                        com.rheinmetal.tianshu.api.tool.ToolSide.CLIENT,
+                        com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE,
+                        "other.mod",
+                        new JsonObject()),
+                (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
+        com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities.register((payload, handler, timeout) -> {
+            throw new AssertionError("list must not call the model");
+        }, new com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegatePromptRepository(
+                com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider.fixed(
+                        com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage.ZH_CN)));
+        try {
+            DubheSkill skill = new DubheDiplomacySkill(
+                    () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY))
+                    .skill();
+
+            JsonObject listed = call(skill, args("list", "", "", ""));
+
+            assertEquals("OK", listed.get("outcome").getAsString());
+            boolean sawMiner = false;
+            for (com.google.gson.JsonElement element : listed.getAsJsonArray("targets")) {
+                JsonObject row = element.getAsJsonObject();
+                String id = row.get("id").getAsString();
+                assertTrue(!id.startsWith("dubhe:"), "our own functions are not delegation targets: " + id);
+                if ("othermod:miner".equals(id)) {
+                    sawMiner = true;
+                    assertEquals("mines a block for the caller", row.get("description").getAsString());
+                }
+            }
+            assertTrue(sawMiner, "another module function must be discoverable");
+        } finally {
+            com.rheinmetal.tianshu.api.capability.CapabilityCatalog.unregister(miner);
+            com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities.unregister();
+        }
+    }
+
     private static void register(ToolId id, String state) {
         TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
             @Override

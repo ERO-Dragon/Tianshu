@@ -4,10 +4,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilityExposure;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillBudget;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillContext;
@@ -84,12 +86,12 @@ public final class DubheDiplomacySkill {
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
         JsonObject properties = new JsonObject();
-        properties.add("action", property("string", "submit or progress"));
+        properties.add("action", property("string", "list / submit / progress"));
         properties.add("target", property("string", "capability id for submit, read-tool id for progress"));
         properties.add("task", property("string", "what to ask the target module to do"));
         properties.add("taskId", property("string", "the target module's task id, for progress"));
         schema.add("properties", properties);
-        schema.add("required", stringArray("action", "target"));
+        schema.add("required", stringArray("action"));
         return DubheSkillSpec.builder(ID,
                         "hand a task to another known module, or ask it for progress")
                 .inputSchema(schema)
@@ -110,6 +112,9 @@ public final class DubheDiplomacySkill {
             return CompletableFuture.completedFuture(needsConsent(effective.autonomy()));
         }
         String action = text(args, "action").toLowerCase(Locale.ROOT);
+        if ("list".equals(action)) {
+            return CompletableFuture.completedFuture(listTargets());
+        }
         String target = text(args, "target");
         IdRef id = IdRef.parse(target);
         if (id == null) {
@@ -130,6 +135,30 @@ public final class DubheDiplomacySkill {
             return progress(id, taskId);
         }
         return CompletableFuture.completedFuture(failed("INVALID_ACTION"));
+    }
+
+    /** 从舟楫列出其他模块对外的功能（技能/工具），供代理决定把任务交给谁。 */
+    private JsonObject listTargets() {
+        com.google.gson.JsonArray targets = new com.google.gson.JsonArray();
+        int count = 0;
+        for (var descriptor : CapabilityExposure.exposed(effectiveCaller(), ToolSide.CLIENT)) {
+            if ("dubhe".equals(descriptor.provider())) {
+                continue;
+            }
+            if (count >= 50) {
+                break;
+            }
+            JsonObject row = new JsonObject();
+            row.addProperty("id", descriptor.id().toString());
+            row.addProperty("kind", descriptor.kind().value());
+            row.addProperty("description", descriptor.description());
+            targets.add(row);
+            count++;
+        }
+        JsonObject answer = new JsonObject();
+        answer.addProperty("outcome", OUTCOME_OK);
+        answer.add("targets", targets);
+        return answer;
     }
 
     private CompletableFuture<JsonObject> submit(IdRef id, String task) {

@@ -48,6 +48,9 @@ public final class DubheExternalCapabilities {
     private static final String PROVIDER = "dubhe";
     private static final DubheCallerQuota QUOTA = new DubheCallerQuota();
 
+    /** 对外的是功能，不是技能：kind 用一个中性的 function，agent 技能永远不注册成能力。 */
+    private static final CapabilityKind FUNCTION_KIND = CapabilityKind.of("function");
+
     /** The one model call the research capability is allowed to make. */
     @FunctionalInterface
     public interface ResearchLlm {
@@ -79,7 +82,7 @@ public final class DubheExternalCapabilities {
         attributes.addProperty("maxTokens", RESEARCH_MAX_TOKENS);
         return new CapabilityDescriptor(
                 RESEARCH,
-                CapabilityKind.SKILL,
+                FUNCTION_KIND,
                 CapabilityBinding.LOCAL,
                 "bounded read-only fact check: input intent, output conclusion and sources",
                 ToolSide.CLIENT,
@@ -95,7 +98,7 @@ public final class DubheExternalCapabilities {
         attributes.addProperty("forwardsOnly", true);
         return new CapabilityDescriptor(
                 RELAY,
-                CapabilityKind.SKILL,
+                FUNCTION_KIND,
                 CapabilityBinding.LOCAL,
                 "forward a task to another module, or query the state of a forwarded task",
                 ToolSide.CLIENT,

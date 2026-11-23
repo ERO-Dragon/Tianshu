@@ -13,18 +13,17 @@ import java.util.regex.Pattern;
  * <p>A spec is data: the agent's directory is built from these fields, and adding a skill never changes the loop.
  * The description is written for the agent (what it can do), never for the player.</p>
  *
- * <p>Two strong rules are enforced here rather than at the call site: an {@link DubheSkillVisibility#EXTERNAL}
- * skill must declare its {@link ToolAutonomy}, because exposing it to other modules without a risk tier would
- * bypass the permission model (G47); and every skill's report schema must include {@code outcome}, so a failure
- * can never be reported as an empty success.</p>
+ * <p>Two strong rules are enforced here rather than at the call site: skills are always internal（G47 修订：
+ * 技能不对外，对外的是功能）；and every skill's report schema must include {@code outcome}, so a failure can never be
+ * reported as an empty success.</p>
  *
  * @param id            stable identifier, lowercase, used in diagnostics and {@code skillsUsed}
  * @param description   one sentence for the agent directory
  * @param inputSchema   JSON Schema for the arguments the agent fills in
  * @param promptProfile resource key of this skill's own prompt; blank when the skill needs none
  * @param capabilities  capability or tool ids this skill may use
- * @param visibility    internal, or also exposed through 舟楫
- * @param autonomy      risk tier; required for external skills
+ * @param visibility    always internal; kept as an explicit field so a future exposure rule has one place to live
+ * @param autonomy      risk tier declared by the skill; it never widens what 舟楫 allows
  * @param budget        per-invocation ceiling
  * @param reportSchema  report fields this skill fills; must contain {@code outcome}
  * @param retry         whether a failed invocation may be retried
@@ -64,10 +63,6 @@ public record DubheSkillSpec(
         promptProfile = promptProfile == null ? "" : promptProfile.trim();
         capabilities = capabilities == null ? List.of() : List.copyOf(capabilities);
         visibility = visibility == null ? DubheSkillVisibility.INTERNAL : visibility;
-        if (visibility == DubheSkillVisibility.EXTERNAL && autonomy == null) {
-            throw new IllegalArgumentException(
-                    "external skill " + id + " must declare its autonomy; otherwise callers bypass the risk tier");
-        }
         budget = Objects.requireNonNull(budget, "budget");
         reportSchema = reportSchema == null ? List.of() : List.copyOf(reportSchema);
         if (!reportSchema.contains("outcome")) {
@@ -83,11 +78,6 @@ public record DubheSkillSpec(
         return schema;
     }
 
-    public boolean external() {
-        return visibility == DubheSkillVisibility.EXTERNAL;
-    }
-
-    /** Whether this skill may change the world, as declared by its risk tier. */
     public boolean mayWrite() {
         return autonomy != null && autonomy.mayWrite();
     }

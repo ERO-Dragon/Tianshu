@@ -27,7 +27,7 @@ class DubheSkillSpecTest {
 
         assertEquals("research", spec.id());
         assertEquals(List.of("outcome", "facts", "blocked"), spec.reportSchema());
-        assertFalse(spec.external());
+        assertEquals(DubheSkillVisibility.INTERNAL, spec.visibility());
         assertFalse(spec.mayWrite());
         assertEquals(DubheSkillLane.PLAYER, spec.lane());
         assertEquals("object", spec.inputSchema().get("type").getAsString());
@@ -52,16 +52,14 @@ class DubheSkillSpecTest {
     }
 
     @Test
-    void anExternalSkillMustDeclareItsRiskTier() {
-        assertThrows(IllegalArgumentException.class,
-                () -> valid().visibility(DubheSkillVisibility.EXTERNAL).build());
+    void skillsAreAlwaysInternal() {
+        assertEquals(1, DubheSkillVisibility.values().length, "there is no external skill visibility");
+        assertEquals(DubheSkillVisibility.INTERNAL, DubheSkillVisibility.values()[0]);
 
-        DubheSkillSpec exposed = valid()
-                .visibility(DubheSkillVisibility.EXTERNAL)
+        DubheSkillSpec declared = valid()
                 .autonomy(ToolAutonomy.READ_ONLY)
                 .build();
-        assertTrue(exposed.external());
-        assertFalse(exposed.mayWrite());
+        assertFalse(declared.mayWrite(), "autonomy is a declaration, never an exposure switch");
     }
 
     @Test

@@ -49,6 +49,25 @@ class DubheExternalContractTest {
     }
 
     @Test
+    void theExternalRowsAreFunctionsNotAgentSkills() {
+        DubheExternalCapabilities.register((payload, handler, timeout) -> {
+            throw new AssertionError("contract test never calls the model");
+        }, prompts());
+
+        for (var descriptor : CapabilityCatalog.list()) {
+            if (!"dubhe".equals(descriptor.provider())) {
+                continue;
+            }
+            assertEquals("function", descriptor.kind().value(),
+                    "external rows are functions; agent skills are never exposed: " + descriptor.id());
+        }
+        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "diplomacy")).isEmpty(),
+                "the diplomacy skill is internal and must never appear as a capability");
+        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "research")).isPresent());
+        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "relay")).isPresent());
+    }
+
+    @Test
     void noGenericTaskEntryExistsAnywhere() {
         DubheExternalCapabilities.register((payload, handler, timeout) -> {
             throw new AssertionError("contract test never calls the model");
