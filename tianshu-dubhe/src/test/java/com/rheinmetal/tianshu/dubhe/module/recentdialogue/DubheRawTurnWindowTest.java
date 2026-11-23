@@ -142,6 +142,37 @@ class DubheRawTurnWindowTest {
         assertEquals(List.of("u2", "g2"), window.snapshot(scope).stream().map(DubheRawTurn::id).toList());
     }
 
+    @Test
+    void aPauseCutsTheCompressionSegmentAtTheBoundary() {
+        DubheRawTurnWindow window = new DubheRawTurnWindow(
+                policy(30, 20, 10, 20, 10_000, 40, 300_000L, 1));
+        appendRound(window, "u1", "a1", "turn-1", 10);
+        clock += 300_001L;
+        appendRound(window, "u2", "a2", "turn-2", 10);
+        appendRound(window, "u3", "a3", "turn-3", 10);
+
+        DubheRawTurnBatch batch = window.selectCompressionBatch(scope, "");
+
+        assertEquals(List.of("u1", "a1"), batch.turnIds(),
+                "a batch never crosses the pause boundary, even when the unit has room");
+    }
+
+    @Test
+    void aSegmentBelowTheMinimumMergesIntoTheNextSegment() {
+        DubheRawTurnWindow window = new DubheRawTurnWindow(
+                policy(30, 20, 10, 20, 10_000, 40, 300_000L, 15));
+        appendRound(window, "u1", "a1", "turn-1", 2);
+        clock += 300_001L;
+        appendRound(window, "u2", "a2", "turn-2", 10);
+        appendRound(window, "u3", "a3", "turn-3", 10);
+        appendRound(window, "u4", "a4", "turn-4", 10);
+
+        DubheRawTurnBatch batch = window.selectCompressionBatch(scope, "");
+
+        assertEquals(List.of("u1", "a1", "u2", "a2"), batch.turnIds(),
+                "the tiny segment merged forward, and the batch still stops at the next boundary");
+    }
+
     private void appendRound(DubheRawTurnWindow window, String userId, String assistantId, String turnId, int tokens) {
         window.append(scope, turn(userId, "user", "问" + userId, turnId, tokens));
         window.append(scope, turn(assistantId, "assistant", "答" + assistantId, turnId, tokens));
@@ -199,7 +230,19 @@ class DubheRawTurnWindowTest {
                 maxRawTokens,
                 10000,
                 3,
-                60000L
+                60000L,
+                300_000L,
+                2_048
         );
+    }
+
+    private DubheMemoryWindowPolicy policy(
+            int keepMax, int keepTarget, int compressTarget, int compressMax,
+            int maxRawTokens, int compressionUnitTokens, long gapMillis, int minCompressibleTokens) {
+        return new DubheMemoryWindowPolicy(
+                1000, 1000, 0, 1000, 0, 125, 750, 400,
+                keepTarget, keepMax, compressTarget, compressMax, compressionUnitTokens,
+                14_000, 512, 128, maxRawTokens, 10000, 3,
+                60000L, gapMillis, minCompressibleTokens);
     }
 }

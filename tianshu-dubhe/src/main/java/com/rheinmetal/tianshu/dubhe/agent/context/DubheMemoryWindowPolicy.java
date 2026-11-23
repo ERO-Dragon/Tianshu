@@ -93,7 +93,11 @@ public record DubheMemoryWindowPolicy(
         int maxRawTokenCount,
         int maxRawCharacters,
         int shortTermChatBlockLimit,
-        long conversationPauseMillis
+        long conversationPauseMillis,
+        /** A gap longer than this between turns is a compression segment boundary (G32), not a trigger. */
+        long compressionGapMillis,
+        /** A segment below this many tokens merges into the next one before it can be compressed (G32). */
+        int minCompressibleTokens
 ) {
     /** Smallest context total the policy will run on; anything below it is lifted to this floor. */
     static final int MIN_TOTAL_CONTEXT_TOKEN_BUDGET = 1000;
@@ -156,6 +160,10 @@ public record DubheMemoryWindowPolicy(
     /** Text density used when a capacity has to be expressed in characters instead of tokens. */
     static final int CHARS_PER_TOKEN = 4;
 
+    /** Five minutes: long enough to be a pause, short enough to keep sessions together (G32). */
+    static final long DEFAULT_COMPRESSION_GAP_MILLIS = 300_000L;
+    static final int DEFAULT_MIN_COMPRESSIBLE_TOKENS = 2_048;
+
     /**
      * The contract floor: the construction-time fallback policy at the smallest context tier.
      *
@@ -188,6 +196,8 @@ public record DubheMemoryWindowPolicy(
         maxRawCharacters = Math.max(0, maxRawCharacters);
         shortTermChatBlockLimit = Math.max(0, shortTermChatBlockLimit);
         conversationPauseMillis = Math.max(0L, conversationPauseMillis);
+        compressionGapMillis = Math.max(0L, compressionGapMillis);
+        minCompressibleTokens = Math.max(0, minCompressibleTokens);
     }
 
     /**
@@ -261,7 +271,9 @@ public record DubheMemoryWindowPolicy(
                 // The character capacity is the same capacity expressed in the fallback text density.
                 maxRawTokens * CHARS_PER_TOKEN,
                 shortTermChatBlockLimit,
-                conversationPauseMillis
+                conversationPauseMillis,
+                DEFAULT_COMPRESSION_GAP_MILLIS,
+                DEFAULT_MIN_COMPRESSIBLE_TOKENS
         );
     }
 

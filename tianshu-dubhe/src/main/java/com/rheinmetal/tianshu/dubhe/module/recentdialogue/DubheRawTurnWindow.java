@@ -261,12 +261,14 @@ public final class DubheRawTurnWindow {
             List<TurnGroup> groups = turnGroups(new ArrayList<>(turns));
             Set<String> keep = keepWindowTurnIds(scope);
             Set<String> uncovered = uncoveredTurnIds(turns, coveredThroughTurnId);
+            List<TurnGroup> compressibleGroups = new ArrayList<>();
             int availableTokens = 0;
             int availableCharacters = 0;
             for (TurnGroup group : groups) {
                 if (!compressible(group, uncovered, keep)) {
                     continue;
                 }
+                compressibleGroups.add(group);
                 availableTokens += group.compressibleTokens();
                 availableCharacters += group.compressibleCharacters();
             }
@@ -275,26 +277,34 @@ public final class DubheRawTurnWindow {
             if (tokensKnown ? availableTokens < unitBudget : availableCharacters < requiredCharacters) {
                 return DubheRawTurnBatch.empty();
             }
+            // Gaps only cut boundaries (G32): a long pause starts a new segment, and a segment too small to be
+            // worth a unit merges into the next one. Neither decision compresses on its own.
+            int minMeasure = tokensKnown
+                    ? Math.max(activePolicy.minCompressibleTokens(), 1)
+                    : activePolicy.charactersForTokens(activePolicy.minCompressibleTokens());
+            List<List<TurnGroup>> segments = mergeSmallSegments(
+                    segments(compressibleGroups, activePolicy.compressionGapMillis()), minMeasure, tokensKnown);
+
             List<DubheRawTurn> selected = new ArrayList<>();
             int tokens = 0;
             int chars = 0;
-            for (TurnGroup group : groups) {
-                if (!compressible(group, uncovered, keep)) {
-                    continue;
-                }
-                int groupTokens = group.compressibleTokens();
-                int groupCharacters = group.compressibleCharacters();
-                int used = tokensKnown ? tokens : chars;
-                int groupSize = tokensKnown ? groupTokens : groupCharacters;
-                int budget = tokensKnown ? unitBudget : requiredCharacters;
-                if (!selected.isEmpty() && used + groupSize > budget) {
-                    break;
-                }
-                selected.addAll(group.compressibleTurns());
-                tokens += groupTokens;
-                chars += groupCharacters;
-                if ((tokensKnown ? tokens : chars) >= budget) {
-                    break;
+            int budget = tokensKnown ? unitBudget : requiredCharacters;
+            // One batch never crosses a pause boundary, and stops at the unit budget inside the segment.
+            if (!segments.isEmpty()) {
+                for (TurnGroup group : segments.get(0)) {
+                    int groupTokens = group.compressibleTokens();
+                    int groupCharacters = group.compressibleCharacters();
+                    int used = tokensKnown ? tokens : chars;
+                    int groupSize = tokensKnown ? groupTokens : groupCharacters;
+                    if (!selected.isEmpty() && used + groupSize > budget) {
+                        break;
+                    }
+                    selected.addAll(group.compressibleTurns());
+                    tokens += groupTokens;
+                    chars += groupCharacters;
+                    if ((tokensKnown ? tokens : chars) >= budget) {
+                        break;
+                    }
                 }
             }
             return selected.isEmpty() ? DubheRawTurnBatch.empty() : new DubheRawTurnBatch("", selected, 0L, 0L, tokens, chars);
@@ -307,6 +317,57 @@ public final class DubheRawTurnWindow {
      * <p>整组判断：只要组里有任何一轮已覆盖或属于保持窗口，整组都不动——保持窗口与已覆盖的原文
      * 都是不可再压缩的边界，切在组内会让摘要的区间锚对不上。</p>
      */
+    /** Splits consecutive groups wherever the pause between two turns exceeds the configured gap. */
+    private List<List<TurnGroup>> segments(List<TurnGroup> groups, long gapMillis) {
+        List<List<TurnGroup>> segments = new ArrayList<>();
+        List<TurnGroup> current = new ArrayList<>();
+        DubheRawTurn previousLast = null;
+        for (TurnGroup group : groups) {
+            List<DubheRawTurn> groupTurns = group.turns();
+            if (groupTurns.isEmpty()) {
+                continue;
+            }
+            DubheRawTurn first = groupTurns.get(0);
+            DubheRawTurn last = groupTurns.get(groupTurns.size() - 1);
+            if (!current.isEmpty() && previousLast != null && gapMillis > 0L
+                    && first.createdAtMillis() - previousLast.createdAtMillis() > gapMillis) {
+                segments.add(current);
+                current = new ArrayList<>();
+            }
+            current.add(group);
+            previousLast = last;
+        }
+        if (!current.isEmpty()) {
+            segments.add(current);
+        }
+        return segments;
+    }
+
+    /** Merges a segment below the minimum compressible size into the next one; the last one into the previous. */
+    private List<List<TurnGroup>> mergeSmallSegments(List<List<TurnGroup>> segments, int minMeasure,
+                                                     boolean tokensKnown) {
+        List<List<TurnGroup>> merged = new ArrayList<>();
+        List<TurnGroup> pending = new ArrayList<>();
+        for (List<TurnGroup> segment : segments) {
+            pending.addAll(segment);
+            int measure = 0;
+            for (TurnGroup group : pending) {
+                measure += tokensKnown ? group.compressibleTokens() : group.compressibleCharacters();
+            }
+            if (measure >= minMeasure) {
+                merged.add(pending);
+                pending = new ArrayList<>();
+            }
+        }
+        if (!pending.isEmpty()) {
+            if (merged.isEmpty()) {
+                merged.add(pending);
+            } else {
+                merged.get(merged.size() - 1).addAll(pending);
+            }
+        }
+        return merged;
+    }
     private boolean compressible(TurnGroup group, Set<String> uncovered, Set<String> keep) {
         if (group == null || group.compressibleTokens() <= 0) {
             return false;

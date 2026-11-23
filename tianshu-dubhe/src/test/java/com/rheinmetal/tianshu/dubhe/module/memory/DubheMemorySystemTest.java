@@ -352,7 +352,9 @@ class DubheMemorySystemTest {
                 10000,
                 10000,
                 3,
-                60000L
+                60000L,
+                300_000L,
+                2_048
         );
         return new DubheRecentDialogueSystem(policy, (requestId, role, content) -> java.util.OptionalInt.of(4));
     }
