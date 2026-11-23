@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.weaving.settings.LlmBalanceSpec.BalanceWire;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -115,18 +116,32 @@ final class LlmAccountBalanceParser {
             return LlmAccountSnapshot.UNKNOWN_AMOUNT;
         }
         try {
-            BigDecimal amount = new BigDecimal(text);
-            if (amount.signum() < 0) {
-                return LlmAccountSnapshot.UNKNOWN_AMOUNT;
-            }
-            BigDecimal micros = amount.movePointRight(MICRO_DIGITS).setScale(0, RoundingMode.DOWN);
-            if (micros.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) >= 0) {
-                return LlmAccountSnapshot.UNKNOWN_AMOUNT;
-            }
-            return micros.longValue();
+            return microsOf(new BigDecimal(text));
         } catch (NumberFormatException unreadable) {
             return LlmAccountSnapshot.UNKNOWN_AMOUNT;
         }
+    }
+
+    /** One amount in micro units, exactly; see {@link #microsOf(BigDecimal, int)}. */
+    private static long microsOf(BigDecimal amount) {
+        return microsOf(amount, MICRO_DIGITS);
+    }
+
+    /**
+     * An amount shifted into micro units, exactly.
+     *
+     * @param shiftDigits decimals to move right: 6 for a currency unit, 4 for a cent
+     * @return {@link LlmAccountSnapshot#UNKNOWN_AMOUNT} for a negative or out-of-range amount
+     */
+    private static long microsOf(BigDecimal amount, int shiftDigits) {
+        if (amount == null || amount.signum() < 0) {
+            return LlmAccountSnapshot.UNKNOWN_AMOUNT;
+        }
+        BigDecimal micros = amount.movePointRight(shiftDigits).setScale(0, RoundingMode.DOWN);
+        if (micros.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) >= 0) {
+            return LlmAccountSnapshot.UNKNOWN_AMOUNT;
+        }
+        return micros.longValue();
     }
 
     private static Balance toBalance(JsonElement entry) {
@@ -143,6 +158,159 @@ final class LlmAccountBalanceParser {
             return null;
         }
         return new Balance(currency, micros);
+    }
+
+    /**
+ * One provider document read into the two facts the snapshot needs.
+ *
+ * @param amountMicros remaining amount in micro units, or {@link LlmAccountSnapshot#UNKNOWN_AMOUNT}
+ *                     when a valid document carried no figure
+ * @param currencyCode currency the provider stated, empty when it stated none
+ */
+    record DocumentBalance(long amountMicros, String currencyCode) {
+    }
+
+    /**
+     * Reads whichever balance document the entry's wire names.
+     *
+     * <p>This is where every answer shape lives, so the probe stays transport: it decides which
+     * endpoint to call and what a status code means, never how a body is spelled.</p>
+     *
+     * @return {@link Optional#empty()} when the body is not that document at all
+     */
+    static Optional<DocumentBalance> readDocument(BalanceWire wire, String body) {
+        if (wire == null) {
+            return Optional.empty();
+        }
+        return switch (wire) {
+            case DEEPSEEK -> parseBalances(body).map(balances -> preferred(balances)
+                    .map(balance -> new DocumentBalance(balance.totalBalanceMicros(), balance.currencyCode()))
+                    // A valid answer that carried no figure: unknown, not zero.
+                    .orElseGet(() -> new DocumentBalance(LlmAccountSnapshot.UNKNOWN_AMOUNT, "")));
+            case MOONSHOT -> parseAvailableMicros(body)
+                    .map(micros -> new DocumentBalance(micros, USD));
+            case OPENAI_BILLING, NONE -> Optional.empty();
+        };
+    }
+
+    /**
+     * The billing pair read into one figure: the subscription's cap minus the reported spend.
+     *
+     * <p>Two documents for one answer, so neither is a balance on its own and the pair is judged
+     * together: one unreadable half makes the whole remainder unknown rather than guessed. A provider
+     * that spent past its cap reports a negative remainder; that is clamped to zero, which is the
+     * readable form of "nothing left" and never a negative amount.</p>
+     */
+    static Optional<DocumentBalance> readBilling(String subscriptionBody, String usageBody) {
+        Optional<Long> limit = parseBillingLimitMicros(subscriptionBody);
+        Optional<Long> usage = parseBillingUsageMicros(usageBody);
+        if (limit.isEmpty() || usage.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new DocumentBalance(Math.max(0L, limit.get() - usage.get()), USD));
+    }
+
+    // --- other documented answer shapes ------------------------------------------------------------
+
+    private static final String MOONSHOT_DATA_FIELD = "data";
+    private static final String MOONSHOT_AVAILABLE_FIELD = "available_balance";
+    private static final String BILLING_HARD_LIMIT_FIELD = "hard_limit_usd";
+    private static final String BILLING_SYSTEM_LIMIT_FIELD = "system_hard_limit_usd";
+    private static final String BILLING_USAGE_FIELD = "total_usage";
+    /** One cent is 1e-2 of a dollar, i.e. 1e4 micro units. */
+    private static final int CENT_DIGITS = 4;
+    /** The currency of the Moonshot and OpenAI-billing documents; both state USD by documentation. */
+    private static final String USD = "USD";
+
+    /**
+     * Moonshot/Kimi's documented answer: {@code {"data":{"available_balance":49.58894,...}}}.
+     *
+     * <p>The figure is in USD by documentation, so no currency is read from the body — there is none
+     * to read. The available balance already includes the voucher part, which is the number that
+     * matters: it is what the endpoint stops accepting requests at zero.</p>
+     *
+     * @return {@link Optional#empty()} when the body carries no readable amount
+     */
+    static Optional<Long> parseAvailableMicros(String body) {
+        JsonObject root = objectOf(body);
+        if (root == null) {
+            return Optional.empty();
+        }
+        JsonElement data = root.get(MOONSHOT_DATA_FIELD);
+        if (data == null || !data.isJsonObject()) {
+            return Optional.empty();
+        }
+        return decimalOf(data.getAsJsonObject(), MOONSHOT_AVAILABLE_FIELD)
+                .map(LlmAccountBalanceParser::microsOf)
+                .filter(micros -> micros != LlmAccountSnapshot.UNKNOWN_AMOUNT);
+    }
+
+    /**
+     * The OpenAI billing subscription document, which states the account's cap in dollars.
+     *
+     * <p>{@code hard_limit_usd} is the documented field; relays that only state the system default
+     * send {@code system_hard_limit_usd}. Either is the cap the remaining amount is measured against.</p>
+     *
+     * @return {@link Optional#empty()} when neither field carries an amount
+     */
+    static Optional<Long> parseBillingLimitMicros(String body) {
+        JsonObject root = objectOf(body);
+        if (root == null) {
+            return Optional.empty();
+        }
+        Optional<BigDecimal> limit = decimalOf(root, BILLING_HARD_LIMIT_FIELD);
+        if (limit.isEmpty()) {
+            limit = decimalOf(root, BILLING_SYSTEM_LIMIT_FIELD);
+        }
+        return limit.map(LlmAccountBalanceParser::microsOf)
+                .filter(micros -> micros != LlmAccountSnapshot.UNKNOWN_AMOUNT);
+    }
+
+    /**
+     * The OpenAI billing usage document, which states the spend in <em>cents</em>.
+     *
+     * <p>The unit is the trap in this pair: the field is {@code total_usage} and it is cents, not
+     * dollars, which is why the conversion is its own named constant rather than a copy of the
+     * six-digit rule used for dollar amounts.</p>
+     *
+     * @return {@link Optional#empty()} when the body carries no readable amount
+     */
+    static Optional<Long> parseBillingUsageMicros(String body) {
+        JsonObject root = objectOf(body);
+        if (root == null) {
+            return Optional.empty();
+        }
+        return decimalOf(root, BILLING_USAGE_FIELD)
+                .map(cents -> microsOf(cents, CENT_DIGITS))
+                .filter(micros -> micros != LlmAccountSnapshot.UNKNOWN_AMOUNT);
+    }
+
+    private static JsonObject objectOf(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            JsonElement root = JsonParser.parseString(body);
+            return root != null && root.isJsonObject() ? root.getAsJsonObject() : null;
+        } catch (JsonParseException unreadable) {
+            return null;
+        }
+    }
+
+    /**
+     * A decimal field of any JSON shape: a number as sent by most providers, or a numeric string as
+     * DeepSeek sends its amounts.
+     */
+    private static Optional<BigDecimal> decimalOf(JsonObject object, String name) {
+        JsonElement element = object.get(name);
+        if (element == null || !element.isJsonPrimitive()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(element.getAsBigDecimal());
+        } catch (RuntimeException unreadable) {
+            return Optional.empty();
+        }
     }
 
     private static String stringField(JsonObject object, String name) {

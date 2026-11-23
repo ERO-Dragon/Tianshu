@@ -9,7 +9,6 @@ import com.rheinmetal.tianshu.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
-import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
@@ -79,7 +78,7 @@ class OpenAiCompatibleInferenceClientTest {
                 "data: [DONE]");
         OpenAiCompatibleInferenceClient client = client(transport, "sk-test");
 
-        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
                 messages(), sampling(), 0, false, null, token -> { }, null, null, null);
 
         ExecutionException failure = assertThrows(ExecutionException.class, () -> streamed.get(5, TimeUnit.SECONDS));
@@ -244,7 +243,7 @@ class OpenAiCompatibleInferenceClientTest {
         OpenAiCompatibleInferenceClient client = client(transport, "sk-test", diagnostics::add);
         List<String> tokens = new ArrayList<>();
 
-        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
                 messages(), sampling(), 0, false, null, tokens::add, null, null, null);
 
         assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).text());
@@ -299,7 +298,7 @@ class OpenAiCompatibleInferenceClientTest {
         List<String> diagnostics = new ArrayList<>();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test", diagnostics::add);
 
-        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
                 messages(), sampling(), 0, false, null, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
@@ -338,7 +337,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = clientWithDeadline(stub(200, () -> blocking), "sk-test", scheduler);
 
-        CompletableFuture<LlmGenerationResult> streamed = client.chatStream(
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
                 messages(), sampling(), 0, false, null, token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader must be blocked on the body");
         assertNotNull(armed.get(), "the request must arm its deadline");
@@ -349,6 +348,64 @@ class OpenAiCompatibleInferenceClientTest {
         assertTrue(failure.getCause().getMessage().contains("REMOTE_LLM_STREAM_TIMEOUT"),
                 "a deadline hit is a timeout, not a cancellation: " + failure.getCause().getMessage());
         assertTrue(blocking.awaitClosed(AWAIT), "the deadline must close the response stream");
+    }
+
+    @Test
+    void theProviderErrorCodeTravelsWithTheHttpStatusAndTheBody() {
+        StubHttpClient transport = stub(400,
+                "{\"error\":{\"message\":\"model not found\",\"type\":\"invalid_request_error\","
+                        + "\"code\":\"model_not_found\"}}");
+        OpenAiCompatibleInferenceClient client = client(transport, "sk-test");
+
+        Exception failure = assertThrows(
+                Exception.class,
+                () -> client.chat(messages(), sampling(), 0, false, null, null)
+        );
+
+        assertTrue(failure.getMessage().contains("status=400"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("code=model_not_found"), failure.getMessage());
+    }
+
+    @Test
+    void aBareTopLevelCodeIsReadWhenTheGatewayUsesThatShape() {
+        StubHttpClient transport = stub(429, "{\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}");
+        OpenAiCompatibleInferenceClient client = client(transport, "sk-test");
+
+        Exception failure = assertThrows(
+                Exception.class,
+                () -> client.chat(messages(), sampling(), 0, false, null, null)
+        );
+
+        assertTrue(failure.getMessage().contains("code=rate_limit_exceeded"), failure.getMessage());
+    }
+
+    /**
+     * A completion that stopped at the cap is usable, so its text stays; what may not happen is
+     * handing a cut answer to a caller who cannot tell it from a whole one.
+     */
+    @Test
+    void aLengthFinishIsReportedOnTheResultInsteadOfOnlyInALog() throws Exception {
+        String[] lines = {
+                "data: {\"choices\":[{\"delta\":{\"content\":\"half an answer\"},\"finish_reason\":\"length\"}]}",
+                "data: [DONE]"
+        };
+        OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
+
+        LlmInferenceResult result = client.chat(messages(), sampling(), 64, false, null, null);
+
+        assertEquals("half an answer", result.text(), "the partial text is still the answer");
+        assertTrue(result.truncated(), "the caller has to be able to tell this from a whole answer");
+    }
+
+    @Test
+    void anOrdinaryCompletionIsNotMarkedTruncated() throws Exception {
+        String[] lines = {
+                "data: {\"choices\":[{\"delta\":{\"content\":\"whole answer\"},\"finish_reason\":\"stop\"}]}",
+                "data: [DONE]"
+        };
+        OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
+
+        assertFalse(client.chat(messages(), sampling(), 64, false, null, null).truncated());
     }
 
     // --- fixtures -----------------------------------------------------------------------------

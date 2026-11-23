@@ -46,6 +46,16 @@ public interface WeavingSettingsAccess extends WeavingConfiguration {
     /** The compatibility stored for one entry, or {@code null} when that entry inherits it. */
     LlmWireCompat getLlmWireCompat(String entryId);
 
+    /**
+     * Stores where one entry's balance is read from, or removes the override when {@code spec} is null
+     * so the provider profile applies again. Endpoint data, so it lives in its own key like the
+     * credential, the ladder and the request-field compatibility.
+     */
+    void setLlmBalanceSpec(String entryId, LlmBalanceSpec spec);
+
+    /** The balance endpoint stored for one entry, or {@code null} when that entry inherits it. */
+    LlmBalanceSpec getLlmBalanceSpec(String entryId);
+
     /*
      * Embedding position. The same model runs either on the card or on the CPU, so this is one value
      * rather than a model property; the read side stays on the configuration port.

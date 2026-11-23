@@ -5,6 +5,12 @@ import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 /**
  * Terminal result of one inference request: what the provider answered, why it failed, and what it
  * billed. {@code text} is always the visible answer; reasoning text travels separately.
+ *
+ * <p>{@code truncated} states that a <em>completed</em> answer stopped at the provider's completion
+ * cap rather than at its end. The text is still usable, which is why the status stays
+ * {@code COMPLETED}; what the flag removes is the ambiguity — a caller that needs a whole answer has
+ * to be able to tell. A cancelled or failed call is never truncated: its text is a prefix of an
+ * interrupted call, and the status already says so.</p>
  */
 public record LLMPromptResultPayload(
         String requestId,
@@ -13,7 +19,8 @@ public record LLMPromptResultPayload(
         String thinkingContent,
         String errorCode,
         String errorMessage,
-        TokenUsagePayload usage
+        TokenUsagePayload usage,
+        boolean truncated
 ) implements ITianshuPayload {
 
     public LLMPromptResultPayload {
@@ -24,6 +31,9 @@ public record LLMPromptResultPayload(
         errorCode = blankToNull(errorCode);
         errorMessage = blankToNull(errorMessage);
         usage = usage == null ? TokenUsagePayload.empty() : usage;
+        // Truncation only means something for an answer the provider completed; a cancelled or failed
+        // call carries a prefix, which its status already states.
+        truncated = truncated && "COMPLETED".equals(status);
     }
 
     private static String normalize(String value) {
@@ -43,7 +53,7 @@ public record LLMPromptResultPayload(
     }
 
     public static LLMPromptResultPayload completed(String requestId, String text) {
-        return completed(requestId, text, "", TokenUsagePayload.empty());
+        return completed(requestId, text, "", TokenUsagePayload.empty(), false);
     }
 
     public static LLMPromptResultPayload completed(
@@ -52,7 +62,18 @@ public record LLMPromptResultPayload(
             String thinkingContent,
             TokenUsagePayload usage
     ) {
-        return new LLMPromptResultPayload(requestId, "COMPLETED", text, thinkingContent, null, null, usage);
+        return completed(requestId, text, thinkingContent, usage, false);
+    }
+
+    /** A completed answer, marked when the provider stopped it at its completion cap. */
+    public static LLMPromptResultPayload completed(
+            String requestId,
+            String text,
+            String thinkingContent,
+            TokenUsagePayload usage,
+            boolean truncated
+    ) {
+        return new LLMPromptResultPayload(requestId, "COMPLETED", text, thinkingContent, null, null, usage, truncated);
     }
 
     public static LLMPromptResultPayload cancelled(String requestId, String text) {
@@ -65,7 +86,7 @@ public record LLMPromptResultPayload(
             String thinkingContent,
             TokenUsagePayload usage
     ) {
-        return new LLMPromptResultPayload(requestId, "CANCELLED", text, thinkingContent, null, null, usage);
+        return new LLMPromptResultPayload(requestId, "CANCELLED", text, thinkingContent, null, null, usage, false);
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage) {
@@ -87,7 +108,8 @@ public record LLMPromptResultPayload(
                 thinkingContent,
                 errorCode,
                 errorMessage,
-                usage
+                usage,
+                false
         );
     }
 

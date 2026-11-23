@@ -11,13 +11,13 @@ import com.rheinmetal.tianshu.weaving.protocol.LlmCapabilities;
 import com.rheinmetal.tianshu.weaving.service.EmbeddingRuntime;
 import com.rheinmetal.tianshu.weaving.service.LLMService;
 import com.rheinmetal.tianshu.weaving.service.LlmInferenceClient;
+import com.rheinmetal.tianshu.weaving.service.LlmInferenceResult;
 import com.rheinmetal.tianshu.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.weaving.service.RagPersistenceScheduler;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.weaving.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
-import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
@@ -389,7 +389,7 @@ class LlmProtocolAdapterTest {
         private int countCalls;
 
         @Override
-        public LlmGenerationResult chat(
+        public LlmInferenceResult chat(
                 List<ChatMessage> messages,
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
@@ -399,11 +399,11 @@ class LlmProtocolAdapterTest {
         ) {
             chatCalls++;
             reportCache(cacheSink);
-            return new LlmGenerationResult(text, usage, captureThinkingContent ? thinking : "");
+            return new LlmInferenceResult(text, usage, captureThinkingContent ? thinking : "", false);
         }
 
         @Override
-        public CompletableFuture<LlmGenerationResult> chatStream(
+        public CompletableFuture<LlmInferenceResult> chatStream(
                 List<ChatMessage> messages,
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
@@ -429,7 +429,7 @@ class LlmProtocolAdapterTest {
             }
             reportCache(cacheSink);
             return CompletableFuture.completedFuture(
-                    new LlmGenerationResult(text, usage, captureThinkingContent ? thinking : ""));
+                    new LlmInferenceResult(text, usage, captureThinkingContent ? thinking : "", false));
         }
 
         @Override

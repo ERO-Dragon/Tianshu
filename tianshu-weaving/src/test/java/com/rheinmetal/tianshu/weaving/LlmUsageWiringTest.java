@@ -5,13 +5,13 @@ import com.rheinmetal.tianshu.weaving.protocol.LlmCapabilities;
 import com.rheinmetal.tianshu.weaving.service.EmbeddingRuntime;
 import com.rheinmetal.tianshu.weaving.service.LLMService;
 import com.rheinmetal.tianshu.weaving.service.LlmInferenceClient;
+import com.rheinmetal.tianshu.weaving.service.LlmInferenceResult;
 import com.rheinmetal.tianshu.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.weaving.usage.LlmPricing;
 import com.rheinmetal.tianshu.weaving.usage.LlmUsageLedger;
 import com.rheinmetal.tianshu.weaving.usage.LlmUsageSnapshot;
 import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
-import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
@@ -190,7 +190,7 @@ class LlmUsageWiringTest {
         }
 
         @Override
-        public LlmGenerationResult chat(
+        public LlmInferenceResult chat(
                 List<ChatMessage> messages,
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
@@ -201,11 +201,11 @@ class LlmUsageWiringTest {
             if (cacheSink != null && cacheUsage.known()) {
                 cacheSink.accept(cacheUsage);
             }
-            return new LlmGenerationResult("done", usage);
+            return new LlmInferenceResult("done", usage, "", false);
         }
 
         @Override
-        public CompletableFuture<LlmGenerationResult> chatStream(
+        public CompletableFuture<LlmInferenceResult> chatStream(
                 List<ChatMessage> messages,
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
@@ -222,7 +222,7 @@ class LlmUsageWiringTest {
             if (onFinish != null) {
                 onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, usage, null));
             }
-            return CompletableFuture.completedFuture(new LlmGenerationResult("done", usage));
+            return CompletableFuture.completedFuture(new LlmInferenceResult("done", usage, "", false));
         }
 
         @Override

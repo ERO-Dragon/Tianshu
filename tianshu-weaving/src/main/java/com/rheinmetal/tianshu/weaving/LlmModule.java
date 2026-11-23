@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.weaving;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
-import com.rheinmetal.tianshu.weaving.account.DeepSeekBalanceProbe;
+import com.rheinmetal.tianshu.weaving.account.ProviderBalanceProbe;
 import com.rheinmetal.tianshu.weaving.catalog.OpenAiCompatibleModelCatalogClient;
 import com.rheinmetal.tianshu.weaving.settings.LlmBuiltinProviders;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningProfile;
@@ -186,7 +186,7 @@ public final class LlmModule implements TianshuManagedModule {
         moduleService.bindModelCatalogClient(new OpenAiCompatibleModelCatalogClient(env::warn));
         // The balance endpoint is the provider's account API. Same rule: the page and the HUD read a
         // snapshot, this module owns the request, and tests can replace the probe the same way.
-        moduleService.bindAccountProbe(new DeepSeekBalanceProbe(config, env::warn));
+        moduleService.bindAccountProbe(new ProviderBalanceProbe(config, env::warn));
         modelService = new LlmModelService(env, config, runtime, this::publishModuleStatus);
         if (serviceRegistry != null) {
             serviceRegistry.register(LlmModuleService.class, moduleService);

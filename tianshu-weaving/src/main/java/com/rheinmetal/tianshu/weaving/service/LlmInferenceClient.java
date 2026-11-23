@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.weaving.service;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
-import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 
 import java.util.List;
@@ -16,10 +15,14 @@ import java.util.function.Consumer;
  *
  * <p>Embedding and retrieval are deliberately absent: the cloud endpoint cannot embed, and both
  * live behind the local {@link EmbeddingRuntime} / RAG storage instead.</p>
+ *
+ * <p>The result is {@link LlmInferenceResult} rather than the foundry's generation result, because
+ * this seam is where "the provider stopped at the completion cap" is known and where it has to be
+ * handed on: the foundry type carries text and usage, not the finish reason.</p>
  */
 public interface LlmInferenceClient {
 
-    LlmGenerationResult chat(
+    LlmInferenceResult chat(
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
@@ -28,7 +31,7 @@ public interface LlmInferenceClient {
             Consumer<LlmPromptCacheUsage> cacheSink
     ) throws Exception;
 
-    CompletableFuture<LlmGenerationResult> chatStream(
+    CompletableFuture<LlmInferenceResult> chatStream(
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,

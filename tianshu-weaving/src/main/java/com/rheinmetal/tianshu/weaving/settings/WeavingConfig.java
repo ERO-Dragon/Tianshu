@@ -33,6 +33,8 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     private static final String KEY_REASONING_PROFILES = "reasoningProfiles";
     /** One line per entry that overrides its provider's wire compatibility: {@code id=encoded}. */
     private static final String KEY_WIRE_COMPAT = "wireCompat";
+    /** One line per entry that overrides where its balance is read from: {@code id=encoded}. */
+    private static final String KEY_BALANCE = "balance";
     private static final char ENTRY_SEPARATOR = '=';
     private static final String KEY_EMBEDDING_GPU_LAYERS = "embeddingGpuLayers";
     private static final String KEY_EMBEDDING_CONTEXT_SIZE = "embeddingContextSize";
@@ -272,6 +274,34 @@ public final class WeavingConfig implements WeavingConfiguration, WeavingSetting
     @Override
     public void setLlmWireCompat(String entryId, LlmWireCompat compat) {
         writeEntryOverride(KEY_WIRE_COMPAT, entryId, compat == null ? null : compat.encode());
+    }
+
+    // --- balance endpoint -------------------------------------------------------------------------
+
+    /**
+     * Where the active entry's remaining balance is read from: its configured override, else the
+     * shipped provider profile, which is {@link LlmBalanceSpec#NONE} for a provider that publishes
+     * no balance API.
+     */
+    @Override
+    public LlmBalanceSpec getLlmBalanceSpec() {
+        LlmBalanceSpec configured = getLlmBalanceSpec(getLlmActiveModelId());
+        if (configured != null) {
+            return configured;
+        }
+        LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(getLlmProviderId());
+        return provider == null ? LlmBalanceSpec.NONE : provider.balance();
+    }
+
+    /** The balance endpoint explicitly configured for one entry, or {@code null} when it inherits it. */
+    @Override
+    public LlmBalanceSpec getLlmBalanceSpec(String entryId) {
+        return LlmBalanceSpec.decode(readEntryOverride(KEY_BALANCE, entryId));
+    }
+
+    @Override
+    public void setLlmBalanceSpec(String entryId, LlmBalanceSpec spec) {
+        writeEntryOverride(KEY_BALANCE, entryId, spec == null ? null : spec.encode());
     }
 
     // --- entry override storage -------------------------------------------------------------------

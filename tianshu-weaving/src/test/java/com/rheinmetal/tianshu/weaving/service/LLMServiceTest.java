@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.weaving.contract.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.weaving.runtime.LlmContextBudget;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
-import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
@@ -243,7 +242,7 @@ class LLMServiceTest {
         private RuntimeException streamFailure;
 
         @Override
-        public LlmGenerationResult chat(
+        public LlmInferenceResult chat(
                 List<ChatMessage> messages,
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
@@ -255,11 +254,11 @@ class LLMServiceTest {
             lastMessages = messages.stream().map(message -> message.role + ":" + message.content).toList();
             lastCaptureThinking = captureThinkingContent;
             lastReasoningTier = reasoningTier;
-            return new LlmGenerationResult(text, usage, captureThinkingContent ? thinking : "");
+            return new LlmInferenceResult(text, usage, captureThinkingContent ? thinking : "", false);
         }
 
         @Override
-        public CompletableFuture<LlmGenerationResult> chatStream(
+        public CompletableFuture<LlmInferenceResult> chatStream(
                 List<ChatMessage> messages,
                 LLMPromptRequestPayload.SamplingPayload sampling,
                 int maxTokens,
@@ -286,8 +285,8 @@ class LLMServiceTest {
                 onFinish.accept(new LlmStreamFinish(
                         StreamFinishType.COMPLETED, usage, null, captureThinkingContent ? thinking : ""));
             }
-            return CompletableFuture.completedFuture(new LlmGenerationResult(
-                    String.join("", tokens), usage, captureThinkingContent ? thinking : ""));
+            return CompletableFuture.completedFuture(new LlmInferenceResult(
+                    String.join("", tokens), usage, captureThinkingContent ? thinking : "", false));
         }
 
         @Override

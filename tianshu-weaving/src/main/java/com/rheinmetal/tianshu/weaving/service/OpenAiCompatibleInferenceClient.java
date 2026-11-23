@@ -3,7 +3,9 @@ package com.rheinmetal.tianshu.weaving.service;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.runtime.LlmHttpTransport;
 import com.rheinmetal.tianshu.weaving.runtime.LlmTokenEstimator;
@@ -12,7 +14,6 @@ import com.rheinmetal.tianshu.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
-import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
@@ -62,6 +63,8 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     private static final String STREAM_MEDIA_TYPE = "text/event-stream";
     private static final String REDACTED = "<redacted>";
     private static final int MAX_ERROR_BODY_CHARS = 512;
+    /** Bound on the provider's own error code; it is provider text, so it is bounded like the body. */
+    private static final int MAX_ERROR_CODE_CHARS = 64;
     /** Below this prompt size the cache ratio is noise: the first turns of a session are all misses. */
     private static final int CACHE_RATIO_MIN_PROMPT_TOKENS = 1_024;
     /** A steady-state prompt should mostly hit the prefix cache; below this the prefix is drifting. */
@@ -230,7 +233,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     }
 
     @Override
-    public LlmGenerationResult chat(
+    public LlmInferenceResult chat(
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
@@ -244,7 +247,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     }
 
     @Override
-    public CompletableFuture<LlmGenerationResult> chatStream(
+    public CompletableFuture<LlmInferenceResult> chatStream(
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
@@ -279,7 +282,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
 
     // --- streaming -------------------------------------------------------------------------------
 
-    private CompletableFuture<LlmGenerationResult> startStream(
+    private CompletableFuture<LlmInferenceResult> startStream(
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
@@ -290,7 +293,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             Consumer<LlmStreamFinish> onFinish,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) {
-        CompletableFuture<LlmGenerationResult> future = new CompletableFuture<>();
+        CompletableFuture<LlmInferenceResult> future = new CompletableFuture<>();
         RemoteStream stream = new RemoteStream();
         activeStreams.add(stream);
         // Cancelling the returned future must abort the HTTP exchange instead of leaving a reader
@@ -308,7 +311,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         try {
             executor.execute(() -> {
                 try {
-                    LlmGenerationResult result = streamChat(
+                    LlmInferenceResult result = streamChat(
                             messages, sampling, maxTokens, reasoningTier, tokenSink, thinkingSink, stream, cacheSink
                     );
                     notifyFinish(onFinish, result, null);
@@ -361,7 +364,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
     }
 
-    private LlmGenerationResult streamChat(
+    private LlmInferenceResult streamChat(
             List<ChatMessage> messages,
             LLMPromptRequestPayload.SamplingPayload sampling,
             int maxTokens,
@@ -395,7 +398,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                 if (status < 200 || status >= 300) {
                     throw new IllegalStateException("REMOTE_LLM_HTTP_STATUS status=" + status + errorDetail(readErrorBody(body)));
                 }
-                LlmGenerationResult result = readStream(body, onToken, onThinking, stream, cacheSink);
+                LlmInferenceResult result = readStream(body, onToken, onThinking, stream, cacheSink);
                 calibrateUsage(messages, result);
                 return result;
             } catch (IOException failure) {
@@ -410,7 +413,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
     }
 
-    private LlmGenerationResult readStream(
+    private LlmInferenceResult readStream(
             InputStream body,
             Consumer<String> onToken,
             Consumer<String> onThinking,
@@ -425,6 +428,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         int cacheHitTokens = -1;
         int cacheMissTokens = -1;
         String finishReason = "";
+        boolean truncated = false;
         BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
         String line;
         while ((line = reader.readLine()) != null) {
@@ -475,9 +479,16 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             // here would hand an empty or partial reply to the caller as if it were a full one.
             throw new IllegalStateException("REMOTE_LLM_CONTENT_FILTERED");
         }
+        if ("length".equalsIgnoreCase(finishReason)) {
+            // The provider stopped at the completion cap rather than at the end of the answer. The text
+            // it produced is usable, so the result stays COMPLETED — but it travels marked, because a
+            // caller that treats a capped answer as a whole one is the failure this flag prevents.
+            truncated = true;
+        }
         reportCacheHitRatio(promptTokens, cacheHitTokens, cacheMissTokens);
         reportPromptCacheUsage(cacheSink, cacheHitTokens, cacheMissTokens);
-        return new LlmGenerationResult(text.toString(), new LlmTokenUsage(promptTokens, completionTokens), thinking.toString());
+        return new LlmInferenceResult(text.toString(), new LlmTokenUsage(promptTokens, completionTokens),
+                thinking.toString(), truncated);
     }
 
     // --- request construction --------------------------------------------------------------------
@@ -729,7 +740,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
      * Feeds the provider's reported prompt size back into the estimator. The endpoint ships no
      * tokenizer, so this is the only way the estimate converges on the real number.
      */
-    private void calibrateUsage(List<ChatMessage> messages, LlmGenerationResult result) {
+    private void calibrateUsage(List<ChatMessage> messages, LlmInferenceResult result) {
         if (result == null || result.usage() == null || messages == null) {
             return;
         }
@@ -766,10 +777,57 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             return "";
         }
         String scrubbed = scrub(errorBody.trim());
+        String code = errorCode(scrubbed);
         String bounded = scrubbed.length() > MAX_ERROR_BODY_CHARS
                 ? scrubbed.substring(0, MAX_ERROR_BODY_CHARS) + "..."
                 : scrubbed;
-        return " body=" + bounded;
+        return (code.isEmpty() ? "" : " code=" + code) + " body=" + bounded;
+    }
+
+    /**
+     * The provider's own error code, when its body carries one.
+     *
+     * <p>Gateways disagree on where it lives: the OpenAI shape puts it at {@code error.code}, several
+     * Chinese gateways put a bare {@code code} at the top level, and some only state a {@code type}.
+     * The first one present wins; a body that is not JSON at all simply has no code. The value is
+     * provider text, so it is scrubbed and bounded exactly like the body it came from.</p>
+     *
+     * @return empty when the body said nothing structured
+     */
+    private String errorCode(String body) {
+        String code;
+        try {
+            JsonElement root = JsonParser.parseString(body);
+            if (root == null || !root.isJsonObject()) {
+                return "";
+            }
+            JsonObject object = root.getAsJsonObject();
+            code = primitiveText(object.get("code"));
+            if (code.isEmpty()) {
+                JsonElement error = object.get("error");
+                if (error != null && error.isJsonObject()) {
+                    JsonObject errorObject = error.getAsJsonObject();
+                    code = primitiveText(errorObject.get("code"));
+                    if (code.isEmpty()) {
+                        code = primitiveText(errorObject.get("type"));
+                    }
+                }
+            }
+        } catch (RuntimeException unreadable) {
+            return "";
+        }
+        String scrubbed = scrub(code);
+        return scrubbed.length() > MAX_ERROR_CODE_CHARS
+                ? scrubbed.substring(0, MAX_ERROR_CODE_CHARS) + "..."
+                : scrubbed;
+    }
+
+    private static String primitiveText(JsonElement element) {
+        if (element == null || !element.isJsonPrimitive()) {
+            return "";
+        }
+        String text = element.getAsString();
+        return text == null ? "" : text.trim();
     }
 
     private static String readErrorBody(InputStream body) {
@@ -782,7 +840,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
     }
 
-    private static void notifyFinish(Consumer<LlmStreamFinish> onFinish, LlmGenerationResult result, Throwable failure) {
+    private static void notifyFinish(Consumer<LlmStreamFinish> onFinish, LlmInferenceResult result, Throwable failure) {
         if (onFinish == null) {
             return;
         }

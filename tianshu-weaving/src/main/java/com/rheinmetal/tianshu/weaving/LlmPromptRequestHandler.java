@@ -56,11 +56,12 @@ final class LlmPromptRequestHandler {
         // The transport cancels its future on interrupt, which closes the response body; registering
         // that bridge here is what turns the protocol's cancellation into a stopped provider stream.
         AtomicBoolean finished = new AtomicBoolean(false);
+        LlmCancelInterrupt cancelInterrupt = new LlmCancelInterrupt();
         if (context != null) {
             Thread worker = Thread.currentThread();
             context.onCancel(envelope.envelopeId(), ignored -> {
                 if (finished.compareAndSet(false, true)) {
-                    worker.interrupt();
+                    cancelInterrupt.raise(worker);
                 }
             });
         }
@@ -78,6 +79,8 @@ final class LlmPromptRequestHandler {
             reject(envelope, payload, context, "LLM_REQUEST_FAILED", failureMessage(exception), exception);
         } finally {
             finished.set(true);
+            // The worker thread goes back to the lane; the flag this request raised may not follow it.
+            cancelInterrupt.clearIfRaised();
         }
     }
 
@@ -96,7 +99,8 @@ final class LlmPromptRequestHandler {
                     payload.requestId(),
                     result.text(),
                     result.thinkingContent(),
-                    result.usage()
+                    result.usage(),
+                    result.truncated()
             ));
             complete(context, envelope);
         } catch (Exception exception) {
@@ -145,7 +149,7 @@ final class LlmPromptRequestHandler {
                     failureMessage(finish.error()),
                     terminal.thinkingContent()
             );
-            adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish));
+            adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish, result.truncated()));
             complete(context, envelope);
         } catch (Exception exception) {
             Throwable cause = unwrapCompletion(exception);
@@ -273,7 +277,8 @@ final class LlmPromptRequestHandler {
     private static LLMPromptResultPayload terminalResult(
             String requestId,
             LlmStreamState.TerminalSnapshot terminal,
-            LLMService.LLMStreamFinish finish
+            LLMService.LLMStreamFinish finish,
+            boolean truncated
     ) {
         String type = finish == null || finish.type() == null ? "COMPLETED" : finish.type().trim().toUpperCase();
         LLMPromptResultPayload.TokenUsagePayload usage = finish == null
@@ -295,7 +300,7 @@ final class LlmPromptRequestHandler {
             );
         }
         return LLMPromptResultPayload.completed(
-                requestId, terminal.visibleText(), terminal.thinkingContent(), usage
+                requestId, terminal.visibleText(), terminal.thinkingContent(), usage, truncated
         );
     }
 

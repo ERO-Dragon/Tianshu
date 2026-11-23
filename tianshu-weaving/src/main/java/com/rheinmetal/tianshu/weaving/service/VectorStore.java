@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.foundry.rag.RagSearchResult;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -15,7 +16,15 @@ final class VectorStore {
     private static final double BM25_WEIGHT = 0.30D;
 
     private final String uid;
-    private final List<Entry> entries = new ArrayList<>();
+    /**
+     * Entries by id, in insertion order.
+     *
+     * <p>A map rather than a list with a linear search: an import writes every entry of a library, so
+     * a scan per write made that import quadratic in the library size. Lookup is what happens on every
+     * write, patch and read, so it has to be the cheap side; the iteration order callers see is the
+     * same insertion order a list gave.</p>
+     */
+    private final Map<String, Entry> entries = new LinkedHashMap<>();
     private final Bm25Index bm25Index = new Bm25Index(DefaultRagTextAnalyzer.INSTANCE);
 
     VectorStore(String uid) {
@@ -28,17 +37,16 @@ final class VectorStore {
             return false;
         }
         Entry next = new Entry(id, normalizeContent(content), copyVector(vector));
-        int index = indexOfEntryId(id);
-        if (index >= 0) {
-            Entry existing = entries.get(index);
+        Entry existing = entries.get(id);
+        if (existing != null) {
             if (existing.equals(next)) {
                 return false;
             }
-            entries.set(index, next);
+            entries.put(id, next);
             bm25Index.upsert(next.entryId(), next.content());
             return true;
         }
-        entries.add(next);
+        entries.put(id, next);
         bm25Index.upsert(next.entryId(), next.content());
         return true;
     }
@@ -48,11 +56,10 @@ final class VectorStore {
         if (id.isBlank()) {
             return false;
         }
-        int index = indexOfEntryId(id);
-        if (index < 0) {
+        Entry existing = entries.get(id);
+        if (existing == null) {
             return upsert(id, updateContent ? content : "", updateVector ? vector : null);
         }
-        Entry existing = entries.get(index);
         Entry next = new Entry(
                 existing.entryId(),
                 updateContent ? normalizeContent(content) : existing.content(),
@@ -61,7 +68,7 @@ final class VectorStore {
         if (existing.equals(next)) {
             return false;
         }
-        entries.set(index, next);
+        entries.put(id, next);
         if (updateContent) {
             bm25Index.upsert(next.entryId(), next.content());
         }
@@ -70,7 +77,7 @@ final class VectorStore {
 
     synchronized boolean deleteEntry(String entryId) {
         String id = normalizeEntryId(entryId);
-        boolean removed = !id.isBlank() && entries.removeIf(entry -> entry.entryId().equals(id));
+        boolean removed = !id.isBlank() && entries.remove(id) != null;
         if (removed) {
             bm25Index.delete(id);
         }
@@ -78,15 +85,19 @@ final class VectorStore {
     }
 
     synchronized boolean hasEntry(String entryId) {
-        return indexOfEntryId(entryId) >= 0;
+        String id = normalizeEntryId(entryId);
+        return !id.isBlank() && entries.containsKey(id);
     }
 
     synchronized EntrySnapshot getEntry(String entryId) {
-        int index = indexOfEntryId(entryId);
-        if (index < 0) {
+        String id = normalizeEntryId(entryId);
+        if (id.isBlank()) {
             return null;
         }
-        Entry entry = entries.get(index);
+        Entry entry = entries.get(id);
+        if (entry == null) {
+            return null;
+        }
         return new EntrySnapshot(entry.entryId(), entry.content(), copyVector(entry.vector()));
     }
 
@@ -135,7 +146,7 @@ final class VectorStore {
     }
 
     synchronized List<EntrySnapshot> getEntries() {
-        return entries.stream()
+        return entries.values().stream()
                 .map(entry -> new EntrySnapshot(entry.entryId(), entry.content(), copyVector(entry.vector())))
                 .toList();
     }
@@ -145,17 +156,7 @@ final class VectorStore {
     }
 
     private synchronized List<Entry> snapshot() {
-        return new ArrayList<>(entries);
-    }
-
-    private int indexOfEntryId(String entryId) {
-        String id = normalizeEntryId(entryId);
-        for (int i = 0; i < entries.size(); i++) {
-            if (entries.get(i).entryId().equals(id)) {
-                return i;
-            }
-        }
-        return -1;
+        return new ArrayList<>(entries.values());
     }
 
     private static String normalizeEntryId(String entryId) {

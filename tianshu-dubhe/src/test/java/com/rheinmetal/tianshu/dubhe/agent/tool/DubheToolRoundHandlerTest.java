@@ -128,7 +128,7 @@ class DubheToolRoundHandlerTest {
         DubheToolRoundHandler handler = DubheToolRoundHandler.prepare(base(), delivery, (payload, h) -> { }, () -> { });
         assertNotNull(handler);
 
-        LLMPromptResultPayload failure = new LLMPromptResultPayload("req", "FAILED", "", "", "e", "boom", null);
+        LLMPromptResultPayload failure = LLMPromptResultPayload.failed("req", "e", "boom");
         handler.onResult(failure);
         assertEquals("FAILED", delivered.get().status());
     }

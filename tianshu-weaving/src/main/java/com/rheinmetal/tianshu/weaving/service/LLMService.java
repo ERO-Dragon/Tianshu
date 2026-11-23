@@ -14,7 +14,6 @@ import com.rheinmetal.tianshu.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
-import com.rheinmetal.tianshu.foundry.llm.LlmGenerationResult;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 
@@ -64,7 +63,7 @@ public final class LLMService {
     public LLMResult chat(LlmPrompt prompt, Consumer<LlmPromptCacheUsage> cacheSink) {
         LlmPrompt effective = requirePrompt(prompt);
         try {
-            LlmGenerationResult result = inferenceClient.chat(
+            LlmInferenceResult result = inferenceClient.chat(
                     effective.messages(),
                     effective.sampling(),
                     effective.maxTokens(),
@@ -75,7 +74,8 @@ public final class LLMService {
             LLMResult response = new LLMResult(
                     result == null ? "" : result.text(),
                     result == null ? "" : result.thinkingContent(),
-                    toUsagePayload(result == null ? null : result.usage())
+                    toUsagePayload(result == null ? null : result.usage()),
+                    result != null && result.truncated()
             );
             publishDialogueDiagnostic("CHAT_COMPLETED", effective, response.text());
             return response;
@@ -98,7 +98,7 @@ public final class LLMService {
         LlmPrompt effective = requirePrompt(prompt);
         try {
             LlmStreamFinishHolder finishHolder = new LlmStreamFinishHolder();
-            CompletableFuture<LlmGenerationResult> future = inferenceClient.chatStream(
+            CompletableFuture<LlmInferenceResult> future = inferenceClient.chatStream(
                     effective.messages(),
                     effective.sampling(),
                     effective.maxTokens(),
@@ -109,12 +109,13 @@ public final class LLMService {
                     finishHolder::set,
                     cacheSink
             );
-            LlmGenerationResult result = awaitCompletion(future);
+            LlmInferenceResult result = awaitCompletion(future);
             String text = result == null ? "" : result.text();
             publishDialogueDiagnostic("STREAM_COMPLETED", effective, text);
             return new LLMStreamResult(
                     text,
-                    toStreamFinish(finishHolder.finish(), result == null ? null : result.thinkingContent())
+                    toStreamFinish(finishHolder.finish(), result == null ? null : result.thinkingContent()),
+                    result != null && result.truncated()
             );
         } catch (CancellationException cancelled) {
             throw cancelled;
@@ -340,7 +341,8 @@ public final class LLMService {
     public record LLMResult(
             String text,
             String thinkingContent,
-            LLMPromptResultPayload.TokenUsagePayload usage
+            LLMPromptResultPayload.TokenUsagePayload usage,
+            boolean truncated
     ) {
         public LLMResult {
             text = text == null ? "" : text;
@@ -349,7 +351,15 @@ public final class LLMService {
         }
     }
 
-    public record LLMStreamResult(String text, LLMStreamFinish finish) {
+    /**
+     * One streamed answer: the text that arrived, how its stream ended, and whether the provider cut
+     * it at the completion cap.
+     *
+     * @param truncated whether the answer stopped at the cap rather than at its end; a stream that
+     *                  failed or was cancelled is never marked truncated, because its text is a prefix
+     *                  of an interrupted call — a fact {@code finish.type()} already states
+     */
+    public record LLMStreamResult(String text, LLMStreamFinish finish, boolean truncated) {
         public LLMStreamResult {
             text = text == null ? "" : text;
             finish = finish == null

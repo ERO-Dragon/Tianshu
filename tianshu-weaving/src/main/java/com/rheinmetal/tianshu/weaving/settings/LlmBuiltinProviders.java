@@ -176,8 +176,9 @@ public final class LlmBuiltinProviders {
                         + "\" defaults to a model its catalog does not list: " + defaultModelId));
         LlmReasoningProfile reasoning = parseReasoning(object, id, source);
         LlmWireCompat wireCompat = parseWireCompat(object, id, source);
+        LlmBalanceSpec balance = parseBalance(object, id, source);
         return new Provider(id, labelKey, baseUrl, defaultModelId, defaultModel.contextWindowTokens(),
-                reasoning, wireCompat, models);
+                reasoning, wireCompat, balance, models);
     }
 
     private static List<WeavingModelSpec> parseModels(JsonObject provider, String providerId, String source) {
@@ -255,6 +256,26 @@ public final class LlmBuiltinProviders {
                 : enumValue(LlmWireCompat.MaxTokensField.class, fieldText, source,
                         "provider \"" + providerId + "\" wireCompat.maxTokensField");
         return new LlmWireCompat(includeStreamUsage, field);
+    }
+
+    private static LlmBalanceSpec parseBalance(JsonObject provider, String providerId, String source) {
+        JsonElement element = provider.get("balance");
+        if (element == null || element.isJsonNull()) {
+            // No balance API: a real answer for most providers, not a missing field.
+            return LlmBalanceSpec.NONE;
+        }
+        if (!element.isJsonObject()) {
+            throw invalid(source + ": provider \"" + providerId + "\" has a non-object balance profile");
+        }
+        JsonObject balance = element.getAsJsonObject();
+        String wireText = requiredString(balance, "wire", source);
+        LlmBalanceSpec.BalanceWire wire = enumValue(LlmBalanceSpec.BalanceWire.class, wireText, source,
+                "provider \"" + providerId + "\" balance.wire");
+        String path = optionalString(balance, "path", source);
+        if (!LlmBalanceSpec.isValidPath(path)) {
+            throw invalid(source + ": provider \"" + providerId + "\" balance.path must be a path starting with \"/\"");
+        }
+        return new LlmBalanceSpec(wire, path);
     }
 
     // --- field helpers ----------------------------------------------------------------------------
@@ -354,6 +375,7 @@ public final class LlmBuiltinProviders {
      * @param contextWindowTokens declared context window of that model
      * @param reasoning          the reasoning ladder this endpoint offers
      * @param wireCompat         the optional request fields this endpoint accepts
+     * @param balance            where the provider publishes the remaining balance; {@link LlmBalanceSpec#NONE} when it publishes none
      * @param catalog            the models the form starts with; non-empty and always contains the default
      */
     public record Provider(
@@ -364,6 +386,7 @@ public final class LlmBuiltinProviders {
             int contextWindowTokens,
             LlmReasoningProfile reasoning,
             LlmWireCompat wireCompat,
+            LlmBalanceSpec balance,
             List<WeavingModelSpec> catalog
     ) {
         public Provider {
@@ -376,6 +399,7 @@ public final class LlmBuiltinProviders {
                     : WeavingConfiguration.DEFAULT_LLM_CONTEXT_WINDOW_TOKENS;
             reasoning = reasoning == null ? LlmReasoningProfile.NONE : reasoning;
             wireCompat = wireCompat == null ? LlmWireCompat.DEFAULT : wireCompat;
+            balance = balance == null ? LlmBalanceSpec.NONE : balance;
             catalog = normalizeCatalog(catalog, defaultModelId, contextWindowTokens);
         }
 

@@ -166,6 +166,15 @@ public interface WeavingConfiguration {
         return LlmWireCompat.DEFAULT;
     }
 
+    /**
+     * Where the active entry's remaining balance is read from, as configured for that entry or
+     * inherited from its provider profile. The default is "this provider publishes none", because a
+     * bare port (tests, tooling) has no profile to read.
+     */
+    default LlmBalanceSpec getLlmBalanceSpec() {
+        return LlmBalanceSpec.NONE;
+    }
+
     default String getLlmEmbeddingModelName() {
         return "";
     }

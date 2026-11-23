@@ -388,6 +388,43 @@ class WeavingBlackBoxChatTest {
         }
     }
 
+    /**
+     * A provider that stops at its completion cap answered, but not in full. The contract has to say
+     * so, otherwise a caller that needs a whole answer cannot tell the two apart.
+     */
+    @Test
+    void anAnswerStoppedAtTheCompletionCapIsMarkedTruncated() throws Exception {
+        try (FakeOpenAiEndpoint endpoint = FakeOpenAiEndpoint.start((body, exchange) ->
+                FakeOpenAiEndpoint.sse(exchange,
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"half\"},\"finish_reason\":\"length\"}]}",
+                        "data: [DONE]"))) {
+            try (BlackBoxDriver driver = BlackBoxDriver.start(new BlackBoxConfig(tempDir, endpoint.baseUrl()))) {
+                BlackBoxDriver.Response response = driver.prompt(payload("req-truncated", false));
+
+                assertEquals("COMPLETED", response.result().status(), "a capped answer is still an answer");
+                assertEquals("half", response.result().text(), "what arrived is handed on");
+                assertTrue(response.result().truncated(), "the result has to carry the fact that it was cut");
+            }
+        }
+    }
+
+    @Test
+    void aStreamedAnswerStoppedAtTheCompletionCapIsMarkedTruncatedToo() throws Exception {
+        try (FakeOpenAiEndpoint endpoint = FakeOpenAiEndpoint.start((body, exchange) ->
+                FakeOpenAiEndpoint.sse(exchange,
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"half\"}}]}",
+                        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}",
+                        "data: [DONE]"))) {
+            try (BlackBoxDriver driver = BlackBoxDriver.start(new BlackBoxConfig(tempDir, endpoint.baseUrl()))) {
+                BlackBoxDriver.Response response = driver.prompt(payload("req-truncated-stream", true));
+
+                assertEquals("COMPLETED", response.result().status());
+                assertEquals("half", response.result().text());
+                assertTrue(response.result().truncated(), "the streamed path reports the same fact");
+            }
+        }
+    }
+
     private static String[] completion(String content, int promptTokens, int completionTokens,
                                        String thinkingField, String thinking) {
         List<String> frames = FakeOpenAiEndpoint.completion(content, promptTokens, completionTokens,

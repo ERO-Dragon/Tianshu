@@ -249,6 +249,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         private final Map<String, LlmReasoningProfile> pendingReasoning = new LinkedHashMap<>();
         /** Wire compatibility staged by the form, keyed by entry id; {@code null} value = inherit it. */
         private final Map<String, LlmWireCompat> pendingWireCompat = new LinkedHashMap<>();
+        /** Where an entry's balance is read from; a {@code null} value means "inherit the provider profile". */
+        private final Map<String, LlmBalanceSpec> pendingBalance = new LinkedHashMap<>();
         /** Credentials of deleted models, cleared on save so no orphan secret stays behind. */
         private final Set<String> retiredApiKeyIds = new LinkedHashSet<>();
         private final AtomicBoolean downloadRefreshQueued = new AtomicBoolean(false);
@@ -392,6 +394,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             // A deleted entry takes its staged ladder with it, so no override outlives the entry.
             pendingReasoning.put(entry.id(), null);
             pendingWireCompat.put(entry.id(), null);
+            pendingBalance.put(entry.id(), null);
             if (entry.id().equals(activeModelId.get())) {
                 activeModelId.set(next.get(0).id());
             }
@@ -419,7 +422,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     : EditorMode.CUSTOM;
             modelEditor = new ModelEditorBuffer(entry.id(), mode, entry.providerId(), entry.displayName(),
                     entry.baseUrl(), entry.models(), entry.activeModelId(), "",
-                    reasoningFor(entry), wireCompatFor(entry));
+                    reasoningFor(entry), wireCompatFor(entry), balanceFor(entry));
             refreshSettingsScreen();
         }
 
@@ -443,6 +446,16 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return provider == null ? LlmWireCompat.DEFAULT : provider.wireCompat();
         }
 
+        /** Where the entry's balance is read from today: its override, else its provider's. */
+        private LlmBalanceSpec balanceFor(WeavingModelEntry entry) {
+            LlmBalanceSpec stored = config.getLlmBalanceSpec(entry.id());
+            if (stored != null) {
+                return stored;
+            }
+            LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.find(entry.providerId());
+            return provider == null ? LlmBalanceSpec.NONE : provider.balance();
+        }
+
         /** A new entry starts from the shipped default provider; custom API is one switch away. */
         private void startNewProvider() {
             if (modelEditor != null) {
@@ -451,7 +464,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             LlmBuiltinProviders.Provider provider = LlmBuiltinProviders.defaultProvider();
             modelEditor = new ModelEditorBuffer(null, EditorMode.BUILTIN, provider.id(), provider.id(),
                     provider.baseUrl(), provider.defaultCatalog(), provider.defaultModelId(), "",
-                    provider.reasoning(), provider.wireCompat());
+                    provider.reasoning(), provider.wireCompat(), provider.balance());
             refreshSettingsScreen();
         }
 
@@ -561,6 +574,17 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                             List.of(LlmWireCompat.MaxTokensField.values()),
                             editor::maxTokensField, this::maxTokensFieldLabel,
                             editor::setMaxTokensField, () -> true, editor::customMode)
+                    // Where a custom endpoint's balance is read from. The shipped profiles carry their
+                    // provider's documented endpoint, so a relay that answers one of those shapes names
+                    // it here instead of the balance row staying "unknown" for want of an endpoint.
+                    .select("llm.editor.balance_wire", llm("option.balance_wire"),
+                            List.of(LlmBalanceSpec.BalanceWire.values()),
+                            editor::balanceWire, this::balanceWireLabel,
+                            editor::setBalanceWire, () -> true, editor::customMode)
+                    // Only meaningful once a shape is chosen; the shape's documented path is the default.
+                    .text("llm.editor.balance_path", llm("option.balance_path"),
+                            editor::balancePath, editor::setBalancePath,
+                            editor::balanceHasQuery, editor::customMode)
                     // Last and write-only. The widget is always empty: only the fact that a credential is
                     // stored is read back, so a blank field keeps the key and a typed value replaces it.
                     .text("llm.editor.api_key", apiKeyLabel, editor::apiKey, editor::setApiKey);
@@ -609,6 +633,15 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             return switch (field == null ? LlmWireCompat.MaxTokensField.MAX_TOKENS : field) {
                 case MAX_TOKENS -> llm("option.max_tokens_field.max_tokens");
                 case MAX_COMPLETION_TOKENS -> llm("option.max_tokens_field.max_completion_tokens");
+            };
+        }
+
+        private UiText balanceWireLabel(LlmBalanceSpec.BalanceWire wire) {
+            return switch (wire == null ? LlmBalanceSpec.BalanceWire.NONE : wire) {
+                case NONE -> llm("option.balance_wire.none");
+                case DEEPSEEK -> llm("option.balance_wire.deepseek");
+                case MOONSHOT -> llm("option.balance_wire.moonshot");
+                case OPENAI_BILLING -> llm("option.balance_wire.openai_billing");
             };
         }
 
@@ -700,6 +733,12 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             if (!catalog.applicable()) {
                 return EditorPlan.rejected(catalog.failure());
             }
+            // Only the override is validated: an inherited spec is valid by construction, and the
+            // stored document keeps the path as it was written, so a half-typed path cannot land.
+            LlmBalanceSpec balance = balancePlan(editor, providerId);
+            if (balance != null && !LlmBalanceSpec.isValidPath(balance.path())) {
+                return EditorPlan.rejected(llm("validation.balance_path"));
+            }
             return EditorPlan.applied(new WeavingModelEntry(
                     editor.entryId() == null ? nextModelId() : editor.entryId(),
                     displayName,
@@ -707,7 +746,19 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     baseUrl,
                     catalog.specs(),
                     editor.activeModelId()
-            ), trimmed(editor.apiKey()), reasoningPlan(editor, providerId), wireCompatPlan(editor, providerId));
+            ), trimmed(editor.apiKey()), reasoningPlan(editor, providerId), wireCompatPlan(editor, providerId),
+                    balance);
+        }
+
+        /**
+         * Where the form says the balance is read from, or {@code null} when the entry should inherit
+         * its provider profile: an untouched form never writes an override that restates the profile.
+         */
+        private LlmBalanceSpec balancePlan(ModelEditorBuffer editor, String providerId) {
+            LlmBalanceSpec spec = editor.balanceSpec();
+            LlmBuiltinProviders.Provider profile = LlmBuiltinProviders.find(providerId);
+            LlmBalanceSpec inherited = profile == null ? LlmBalanceSpec.NONE : profile.balance();
+            return spec.equals(inherited) ? null : spec;
         }
 
         /**
@@ -763,6 +814,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             // override instead of leaving a stale ladder behind.
             pendingReasoning.put(entry.id(), plan.reasoning());
             pendingWireCompat.put(entry.id(), plan.wireCompat());
+            pendingBalance.put(entry.id(), plan.balance());
             // A closed form has no catalog to pick from, so any window on it ends with the form.
             modelEditor = null;
             modelPicker = null;
@@ -1188,7 +1240,8 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                     || !pendingApiKeys.isEmpty()
                     || !retiredApiKeyIds.isEmpty()
                     || !pendingReasoning.isEmpty()
-                    || !pendingWireCompat.isEmpty();
+                    || !pendingWireCompat.isEmpty()
+                    || !pendingBalance.isEmpty();
         }
 
         @Override
@@ -1310,6 +1363,12 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 transaction.write(() -> config.getLlmWireCompat(entryId),
                         value -> config.setLlmWireCompat(entryId, value), compat);
             }
+            for (Map.Entry<String, LlmBalanceSpec> pending : pendingBalance.entrySet()) {
+                String entryId = pending.getKey();
+                LlmBalanceSpec spec = pending.getValue();
+                transaction.write(() -> config.getLlmBalanceSpec(entryId),
+                        value -> config.setLlmBalanceSpec(entryId, value), spec);
+            }
             transaction.commit(config::save);
             // Accepted only after persistence succeeded: a failed save keeps the staged position so the
             // player can retry it instead of finding the button silently back at the stored value.
@@ -1318,6 +1377,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             retiredApiKeyIds.clear();
             pendingReasoning.clear();
             pendingWireCompat.clear();
+            pendingBalance.clear();
             if (!enabled.get()) {
                 moduleService.unload();
             } else if (cloudSettingsChanged || embeddingPositionChanged) {
@@ -1337,6 +1397,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             retiredApiKeyIds.clear();
             pendingReasoning.clear();
             pendingWireCompat.clear();
+            pendingBalance.clear();
             modelEditor = null;
             modelPicker = null;
             catalogFetching = false;
@@ -1621,6 +1682,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
          * @param apiKey  credential typed into the form, empty when none was typed
          * @param reasoning the ladder to store, {@code null} when the entry inherits the profile
          * @param wireCompat the compatibility to store, {@code null} when the entry inherits it
+         * @param balance where this entry's balance is read from, {@code null} when the entry inherits it
          * @param failure why the form cannot be applied, {@code null} when it can
          */
         private record EditorPlan(
@@ -1628,19 +1690,21 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
                 String apiKey,
                 LlmReasoningProfile reasoning,
                 LlmWireCompat wireCompat,
+                LlmBalanceSpec balance,
                 UiText failure
         ) {
             private static EditorPlan applied(
                     WeavingModelEntry entry,
                     String apiKey,
                     LlmReasoningProfile reasoning,
-                    LlmWireCompat wireCompat
+                    LlmWireCompat wireCompat,
+                    LlmBalanceSpec balance
             ) {
-                return new EditorPlan(entry, apiKey == null ? "" : apiKey, reasoning, wireCompat, null);
+                return new EditorPlan(entry, apiKey == null ? "" : apiKey, reasoning, wireCompat, balance, null);
             }
 
             private static EditorPlan rejected(UiText failure) {
-                return new EditorPlan(null, "", null, null, failure);
+                return new EditorPlan(null, "", null, null, null, failure);
             }
 
             private boolean applicable() {
@@ -1740,10 +1804,13 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
         /** Optional request fields as the form shows them. */
         private boolean includeStreamUsage;
         private LlmWireCompat.MaxTokensField maxTokensField;
+        /** Where this entry's balance is read from, as the form shows it. */
+        private LlmBalanceSpec.BalanceWire balanceWire;
+        private String balancePath;
 
         private ModelEditorBuffer(String entryId, EditorMode mode, String providerId, String displayName,
                                   String baseUrl, List<WeavingModelSpec> models, String activeModelId, String apiKey,
-                                  LlmReasoningProfile reasoning, LlmWireCompat wireCompat) {
+                                  LlmReasoningProfile reasoning, LlmWireCompat wireCompat, LlmBalanceSpec balance) {
             this.entryId = entryId;
             this.mode = mode == null ? EditorMode.BUILTIN : mode;
             this.providerId = providerId;
@@ -1755,6 +1822,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             syncWindowChoice();
             applyReasoning(reasoning);
             applyWireCompat(wireCompat);
+            applyBalance(balance);
         }
 
         private static List<CatalogRowBuffer> catalogRowsOf(List<WeavingModelSpec> models) {
@@ -1826,6 +1894,7 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
             syncWindowChoice();
             applyReasoning(provider.reasoning());
             applyWireCompat(provider.wireCompat());
+            applyBalance(provider.balance());
         }
 
         // --- reasoning ladder -------------------------------------------------------------------
@@ -1909,6 +1978,40 @@ public final class WeavingSettingsRegistrySource implements TianshuSettingsRegis
 
         private LlmWireCompat wireCompat() {
             return new LlmWireCompat(includeStreamUsage, maxTokensField);
+        }
+
+        // --- balance endpoint -------------------------------------------------------------------
+
+        private void applyBalance(LlmBalanceSpec balance) {
+            LlmBalanceSpec effective = balance == null ? LlmBalanceSpec.NONE : balance;
+            this.balanceWire = effective.wire();
+            this.balancePath = effective.path();
+        }
+
+        private LlmBalanceSpec.BalanceWire balanceWire() {
+            return balanceWire;
+        }
+
+        private void setBalanceWire(LlmBalanceSpec.BalanceWire balanceWire) {
+            this.balanceWire = balanceWire == null ? LlmBalanceSpec.BalanceWire.NONE : balanceWire;
+        }
+
+        private String balancePath() {
+            return balancePath;
+        }
+
+        private void setBalancePath(String balancePath) {
+            this.balancePath = balancePath;
+        }
+
+        /** Whether a shape is selected at all; the path row is meaningless without one. */
+        private boolean balanceHasQuery() {
+            return balanceWire != LlmBalanceSpec.BalanceWire.NONE;
+        }
+
+        /** The endpoint the form describes, in the shape the configuration stores. */
+        private LlmBalanceSpec balanceSpec() {
+            return new LlmBalanceSpec(balanceWire, balanceHasQuery() ? balancePath : "");
         }
 
         private String providerId() {

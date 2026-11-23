@@ -24,7 +24,9 @@ public enum LlmAccountFailure {
     /** The answer was not the documented balance document. */
     MALFORMED_RESPONSE("tianshu.gui.llm.balance.malformed", "malformed_response"),
     /** The request never produced an answer: DNS, proxy, TLS or timeout. */
-    NETWORK_ERROR("tianshu.gui.llm.balance.network_error", "network_error");
+    NETWORK_ERROR("tianshu.gui.llm.balance.network_error", "network_error"),
+    /** This provider publishes no balance endpoint, so there is nothing to ask. */
+    UNSUPPORTED("tianshu.gui.llm.balance.unsupported", "unsupported");
 
     private final String messageKey;
     private final String token;

@@ -20,9 +20,7 @@ class DubheLlmRetryPolicyTest {
     @Test
     void aFailureWithNothingToClassifyIsRetried() {
         assertTrue(DubheLlmRetryPolicy.isRetryable(failure("LLM request failed")));
-        assertTrue(DubheLlmRetryPolicy.isRetryable(new LLMPromptResultPayload(
-                "request", "FAILED", "", "", null, null, null
-        )));
+        assertTrue(DubheLlmRetryPolicy.isRetryable(LLMPromptResultPayload.failed("request", "", "")));
     }
 
     @Test

@@ -356,9 +356,10 @@ final class LlmProviderEditorPanelTest {
                             "llm.editor.context_window_custom",
                             "llm.editor.reasoning_wire", "llm.editor.reasoning_no_thinking",
                             "llm.editor.reasoning_levels", "llm.editor.stream_usage",
-                            "llm.editor.max_tokens_field", "llm.editor.api_key"), optionIds,
-                    "the editor holds the endpoint form, the model's own capacity, ladder and wire compatibility: "
-                            + optionIds);
+                            "llm.editor.max_tokens_field", "llm.editor.balance_wire",
+                            "llm.editor.balance_path", "llm.editor.api_key"), optionIds,
+                    "the editor holds the endpoint form, the model's own capacity, ladder, wire compatibility "
+                            + "and the balance endpoint: " + optionIds);
 
             List<String> actionIds = harness.editor().actions().stream()
                     .map(SettingsTemplateModel.ActionEntry::id)
@@ -1088,6 +1089,7 @@ final class LlmProviderEditorPanelTest {
         private final Map<String, String> apiKeys = new LinkedHashMap<>();
         private final Map<String, LlmReasoningProfile> reasoningProfiles = new LinkedHashMap<>();
         private final Map<String, LlmWireCompat> wireCompat = new LinkedHashMap<>();
+        private final Map<String, LlmBalanceSpec> balanceSpecs = new LinkedHashMap<>();
         private boolean enabled = true;
         private String customName = "";
         private List<WeavingModelEntry> models;
@@ -1208,6 +1210,20 @@ final class LlmProviderEditorPanelTest {
                 wireCompat.remove(entryId);
             } else {
                 wireCompat.put(entryId, compat);
+            }
+        }
+
+        @Override
+        public LlmBalanceSpec getLlmBalanceSpec(String entryId) {
+            return balanceSpecs.get(entryId);
+        }
+
+        @Override
+        public void setLlmBalanceSpec(String entryId, LlmBalanceSpec spec) {
+            if (spec == null) {
+                balanceSpecs.remove(entryId);
+            } else {
+                balanceSpecs.put(entryId, spec);
             }
         }
 

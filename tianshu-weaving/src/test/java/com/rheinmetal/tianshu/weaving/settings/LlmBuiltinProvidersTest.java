@@ -92,4 +92,32 @@ class LlmBuiltinProvidersTest {
         assertEquals(openai.defaultCatalog().get(0).modelId(), openai.defaultModelId(),
                 "the default model is the one the form opens on");
     }
+
+    /**
+     * The balance shape is profile data, so which providers ship one is a fact about the data file, not
+     * about the probe: a provider that publishes no balance API must stay {@code NONE} rather than
+     * inherit somebody else's endpoint.
+     */
+    @Test
+    void onlyProvidersWithADocumentedBalanceApiShipAShape() {
+        assertEquals(LlmBalanceSpec.BalanceWire.DEEPSEEK, LlmBuiltinProviders.find("deepseek").balance().wire());
+        assertEquals(LlmBalanceSpec.BalanceWire.MOONSHOT, LlmBuiltinProviders.find("moonshot").balance().wire());
+        for (String id : List.of("openai", "xai", "google", "qwen", "zai")) {
+            assertEquals(LlmBalanceSpec.NONE, LlmBuiltinProviders.find(id).balance(),
+                    id + " publishes no balance API, so it must not claim one");
+        }
+    }
+
+    @Test
+    void aBalanceShapeWithAnUnusablePathIsRefusedAtLoadTime() {
+        String catalog = """
+                [{"id":"deepseek","labelKey":"tianshu.gui.llm.provider.deepseek",
+                  "baseUrl":"https://api.deepseek.com/v1","defaultModelId":"m",
+                  "balance":{"wire":"DEEPSEEK","path":"https://elsewhere.example/balance"},
+                  "models":[{"modelId":"m","contextWindowTokens":100000}]}]""";
+
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> LlmBuiltinProviders.parseProviders(catalog));
+        assertTrue(refused.getMessage().contains("balance.path"), refused.getMessage());
+    }
 }
