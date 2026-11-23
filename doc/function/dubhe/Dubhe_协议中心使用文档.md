@@ -1,16 +1,9 @@
 # Dubhe 协议中心
 
-> **施工中口径变更（2026-11-21）**：以下几条将取代本篇现有结论，细节见《Dubhe_改造方案》：
-> - 对外能力收缩：只保留 `DUBHE.RESEARCH`（有界查证、只读）与 `DUBHE.RELAY`（转达 / 查进度）；`AGENT_TASK` 一类通用入口取消（G10、方案 §3.8）。
-> - 能力 id 前缀 `AX.*` → `DUBHE.*`，随 P1 改名一起落地。
-> - 下游调用配额：并发 1 + 排队 4，超限回报"配额已满"（G23）。
-> - **进度查询不是新协议字段**，而是对方注册的**读工具**（`TianshuTools`，`taskId` → `RUNNING` / `DONE` / `UNKNOWN`）（G28）。
-> - 入站三入口（提问 / 上下文 / 事件）保持不变。
->
-> 本篇其余内容仍描述当前实现；实施完成后按新口径重写。
+> **本次改造后的现状（2026-11-23）**：对外只有 `dubhe:research`（只读）与 `dubhe:relay`（转发 / 查进度）；无通用任务入口（契约测试守门）；下游按调用方限并发 1 + 排队 4（`QUOTA_EXCEEDED`）；进度查询是对方注册的读工具（`taskId` → `RUNNING/DONE/UNKNOWN`）；入站三入口不变。
 
 
-AX（天枢）通过协议中心参加天枢对话链路。本文说明 天枢 对外暴露什么、订阅什么、调用什么，以及其他模块应当如何与它协作。以当前代码为准。
+天枢通过协议中心参加天枢对话链路。本文说明 天枢 对外暴露什么、订阅什么、调用什么，以及其他模块应当如何与它协作。以当前代码为准。
 
 天枢 是 IA 管理的 dialogue participant，不是可以绕过 IA 直接调用的公共聊天或 LLM 服务。
 
@@ -18,15 +11,15 @@ AX（天枢）通过协议中心参加天枢对话链路。本文说明 天枢 �
 
 | 项 | 值 |
 |---|---|
-| moduleId | `module.ax` |
-| participantId | `tianshu.AX` |
+| moduleId | `module.dubhe` |
+| participantId | `tianshu.dubhe` |
 | 提问型入口能力 | `Dubhe_DIALOGUE_INPUT`（`DialogueDeliveryPayload`） |
 | 上下文型入口能力 | `Dubhe_CONTEXT_INPUT`（`DialogueContextInputPayload`） |
 | 事件型入口能力 | `Dubhe_EVENT_INPUT`（`DubheWorldEventPayload`） |
 
 注册 / 注销分别使用 `DIALOGUE_PARTICIPANT_REGISTER` / `DIALOGUE_PARTICIPANT_UNREGISTER`，并把自己的路由能力、唤醒词声明与语音触发组一并交给 IA。
 
-**唤醒词**：天枢 没有内置默认唤醒词。空唤醒词不改变"是否参加仲裁"：天枢 照常注册 participant，只是不登记 wakeword、不产生 IA 的唤醒硬 claim；它是**出厂默认承接者**（声明 `DEFAULT_OWNER` + `factoryDefaultOwner`），没有任何硬 claim、也没有别的中标人租期时才轮到它——玩家可以在听澜设置里把它改成"无"或换成其他第三方，改完之后该轮就更少/更多地落到它身上。玩家配置非空词后才额外多一条 wakeword claim。其他模块不得冒用 `module.ax` / `tianshu.AX` 注册、注销或提交请求。
+**唤醒词**：天枢 没有内置默认唤醒词。空唤醒词不改变"是否参加仲裁"：天枢 照常注册 participant，只是不登记 wakeword、不产生 IA 的唤醒硬 claim；它是**出厂默认承接者**（声明 `DEFAULT_OWNER` + `factoryDefaultOwner`），没有任何硬 claim、也没有别的中标人租期时才轮到它——玩家可以在听澜设置里把它改成"无"或换成其他第三方，改完之后该轮就更少/更多地落到它身上。玩家配置非空词后才额外多一条 wakeword claim。其他模块不得冒用 `module.dubhe` / `tianshu.dubhe` 注册、注销或提交请求。
 
 接入前提：调用方应作为天枢托管模块完成装配，在装配阶段通过模块运行时创建一个自己的协议 adapter。不要从核心管理器取完整协议运行时，也不要直接持有 天枢 的编排、记忆或提示词实现。
 
@@ -102,7 +95,7 @@ AX（天枢）通过协议中心参加天枢对话链路。本文说明 天枢 �
 | Broker | `BOUNDED_QUEUE` |
 | 完成策略 | `AUTO_COMPLETE_ON_RETURN` |
 
-外部模组把"自己世界里刚发生的一件事"交给 AX：一句它自己已经渲染好的话，加一个它希望的行为。天枢 不渲染、不改写措辞，只做清洗，随后走与内置事件完全相同的判定路径。
+外部模组把"自己世界里刚发生的一件事"交给 天枢：一句它自己已经渲染好的话，加一个它希望的行为。天枢 不渲染、不改写措辞，只做清洗，随后走与内置事件完全相同的判定路径。
 
 ### 4.1 载荷字段
 
@@ -112,11 +105,11 @@ AX（天枢）通过协议中心参加天枢对话链路。本文说明 天枢 �
 | `behavior` | 希望的行为，三选一：`IMMEDIATE` / `DEFERRED` / `SILENT`；`DROP` 不接受——什么都不发生等于不投递 |
 | `text` | 生产方已经渲染好的整句；天枢 只做 NFC 归一、剥离尖括号、按边界截断到 120 字符 |
 
-**频率不对外暴露**：`RARE` / `NORMAL` / `FREQUENT` 是 天枢 的私有词汇，只有内置采集层知道"这个 kind 多久发生一次"，`DubheEventPolicy` 再把它和名单折成下面的行为阶梯。外部只回答"这句要不要开口"，不回答"这类事多久一次"。
+**频率不对外暴露**：`RARE` / `NORMAL` / `FREQUENT` 是 天枢 的私有词汇，只有内置采集层知道"这个 kind 多久发生一次"，`DubheEventPolicy` 再把它和状态映射成下面的九格处置。外部只回答"这句要不要开口"，不回答"这类事多久一次"。
 
 ### 4.2 行为与落地
 
-四条阶梯回答同一个问题：**要不要主动开口**。
+九格固定映射回答同一个问题：**要不要主动开口**。
 
 | 行为 | 落地 | 玩家感知 | 模型可见 |
 |---|---|---|---|
@@ -148,7 +141,7 @@ AX（天枢）通过协议中心参加天枢对话链路。本文说明 天枢 �
 
 不要从服务注册表取 `DubheGameEventService` 去调 `tick` / `flush` / `stop`：那三个方法是本模块自己的生命周期，不属于对外契约。
 
-## 5. 外部文本如何到达 AX
+## 5. 外部文本如何到达 天枢
 
 标准玩家语音链路：
 
@@ -161,7 +154,7 @@ ASR 发布最终文本
   → 天枢 处理本轮，并通过会话控制完成或释放
 ```
 
-不要直接投递提问型入口，也不要伪造 ASR/IR topic。希望自己成为 owner 的模组应按 IA 的接入说明注册 participant，而不是把内容塞给 AX。
+不要直接投递提问型入口，也不要伪造 ASR/IR topic。希望自己成为 owner 的模组应按 IA 的接入说明注册 participant，而不是把内容塞给 天枢。
 
 不需要回答、只需进入上下文的内容走上下文型入口；这条路径不经过 IR 与 IA 是有意的——IR 与 IA 服务于"玩家说了什么、这轮该谁回答"，而上下文型输入不产生回合所有权问题。
 
@@ -192,7 +185,7 @@ ASR 发布最终文本
 
 **一条事实只有一个落点**：能映射成事件类型的统一走事件层，不要再同时写进记忆附件；映射不上的才留在记忆里。这张映射表只回答"事件类型对应哪个 kind"，要不要开口仍由档位表与名单决定。
 
-**一个载荷 = 一秒窗口内的多组出现**：映迹把同一 kind 的一秒聚合成一个载荷，每组带计数。天枢 把这些组渲染成**一行带数量的事实**（`tianshu.ax.event.batch.entry` 渲染每组、`tianshu.ax.event.batch.join` 连接、最后由该 kind 的句子模板包住），并把总数写进 `DubheEventPayload.count`，频率门据此降档。
+**一个载荷 = 一秒窗口内的多组出现**：映迹把同一 kind 的一秒聚合成一个载荷，每组带计数。天枢 把这些组渲染成**一行带数量的事实**（`tianshu.dubhe.event.batch.entry` 渲染每组、`tianshu.dubhe.event.batch.join` 连接、最后由该 kind 的句子模板包住），并把总数写进 `DubheEventPayload.count`，频率门据此降档。
 
 这些是事件而不是 天枢 请求入口。只有对应事实的所有者才应发布；其他模块不得伪造玩家身份、维度或聊天发送者。
 
@@ -200,7 +193,7 @@ ASR 发布最终文本
 
 天枢 不订阅 ASR 活动状态：ASR 活动由输入链路自行消费，不能直接改变 天枢 的回合生命周期。
 
-天枢 会向模块状态 topic 发布 `module.ax` 的健康与诊断状态；订阅者必须按 moduleId 过滤，并通过客户端语言资源解析消息键（状态本身不携带兜底文本）。该 topic 不驱动任何产品状态。
+天枢 会向模块状态 topic 发布 `module.dubhe` 的健康与诊断状态；订阅者必须按 moduleId 过滤，并通过客户端语言资源解析消息键（状态本身不携带兜底文本）。该 topic 不驱动任何产品状态。
 
 ## 8. 打断语义
 
@@ -221,8 +214,8 @@ ASR 活动状态不参与上述任何决策。
 
 | 活动 id | 类型 | 含义 |
 |---|---|---|
-| `ax.chat.<sessionId>.<轮次标识>` | `THINKING` → `RESPONDING` | 一轮对话：上下文获取、检索、提示词装配与首段生成属于思考阶段；首次可见输出出现时原子切换到回答阶段。完成、失败、取消、打断、模块停止都会结束活动 |
-| `ax.memory.maintenance.<世界标识>` | `PROCESSING_TASK` | 记忆维护等真实后台工作；只有任务被接受并真正执行后才开始，终态统一结束 |
+| `dubhe.chat.<sessionId>.<轮次标识>` | `THINKING` → `RESPONDING` | 一轮对话：上下文获取、检索、提示词装配与首段生成属于思考阶段；首次可见输出出现时原子切换到回答阶段。完成、失败、取消、打断、模块停止都会结束活动 |
+| `dubhe.memory.maintenance.<世界标识>` | `PROCESSING_TASK` | 记忆维护等真实后台工作；只有任务被接受并真正执行后才开始，终态统一结束 |
 
 诊断延迟阶段（仅在调试记录开启时发布，无正文）：投递 → 提示词就绪 → 模型已提交 → 首 token → 首句 → 语音已提交。每阶段最多发布一次，只用于诊断，不改变思考、回复、打断或会话释放逻辑。
 
@@ -245,8 +238,8 @@ ASR 活动状态不参与上述任何决策。
 | 自己成为对话 owner | IA participant 注册 |
 | 直接调用模型 | LLM 公共能力，并带本轮对话身份用于关联 |
 | 播放或合成语音 | TTS 公共能力 |
-| 观察 天枢 健康与诊断 | 模块状态 topic，过滤 `module.ax` |
-| 观察玩家可感知的 天枢 活动 | 活动 topic；思考/回答类型只接受 `module.ax` |
+| 观察 天枢 健康与诊断 | 模块状态 topic，过滤 `module.dubhe` |
+| 观察玩家可感知的 天枢 活动 | 活动 topic；思考/回答类型只接受 `module.dubhe` |
 
 不要新增"天枢 聊天请求""天枢 模型结果"或公开的记忆 topic 来绕过现有的 owner、响应关联与隐私边界。
 
@@ -255,7 +248,7 @@ ASR 活动状态不参与上述任何决策。
 - [ ] 不直接发送提问型入口。
 - [ ] 上下文注入只使用上下文型入口，不伪造 ASR/IR 事件。
 - [ ] 空唤醒词时不假定 天枢 已注册。
-- [ ] 不冒用 `module.ax` / `tianshu.AX` 身份。
+- [ ] 不冒用 `module.dubhe` / `tianshu.dubhe` 身份。
 - [ ] 模型、语音、会话请求分别遵循对应模块文档。
 - [ ] 不发布伪造的事实或活动事件。
 - [ ] 不在处理器或游戏主线程执行阻塞任务。
@@ -273,7 +266,7 @@ ASR 活动状态不参与上述任何决策。
 | `TianshuModuleAssemblyContext.moduleRuntime()` | 模块装配时取得运行时访问器的唯一入口 |
 | `ModuleRuntimeAccess` | 运行时访问器：提交请求、订阅、登记活动所用 |
 
-### 13.2 天枢 自身的能力（别人调用 AX）
+### 13.2 天枢 自身的能力（别人调用 天枢）
 
 | 符号 | 能力名 | 含义 |
 |---|---|---|
@@ -320,26 +313,26 @@ ASR 活动状态不参与上述任何决策。
 | `PresenceTopics.WORLD_EVENT` | `PRESENCE.WORLD_EVENT` | 世界事件（统一渲染为 `<event>`） |
 | `PresenceWorldEventPayload.EVENT_CHAT_MESSAGE` | `PresenceWorldEventPayload.eventType` | 公屏聊天：世界事件的一个类型（同样进 `<event>`，带说话人） |
 
-发布（别人听 AX）：
+发布（别人听 天枢）：
 
 | 符号 | 值/来源 | 用途 |
 |---|---|---|
-| `ProtocolTopics.MODULE_STATUS` | `MODULE.STATUS` | 天枢 自身的健康与诊断状态；订阅方按 `module.ax` 过滤 |
+| `ProtocolTopics.MODULE_STATUS` | `MODULE.STATUS` | 天枢 自身的健康与诊断状态；订阅方按 `module.dubhe` 过滤 |
 | `PresenceTopics.ACTIVITY` | `PRESENCE.ACTIVITY` | 准备中/起不来 + 思考/回答与记忆维护活动，不含正文 |
 
 `PRESENCE.ACTIVITY` 上的三条活动，语义各不相同：
 
 | 活动 id | 类型 | 什么时候发 | 什么时候收 |
 |---|---|---|---|
-| `ax.module.load` | `LOADING` | 模块开始装配（`prepare` 入口） | 装配结束就收起（成功与失败都收，`finally` 里收） |
+| `dubhe.module.load` | `LOADING` | 模块开始装配（`prepare` 入口） | 装配结束就收起（成功与失败都收，`finally` 里收） |
 | `<activityId>` | `THINKING` / `RESPONDING` | 收到一轮投递 / 收到模型第一个可播分片 | 该轮结束、被打断或失败 |
-| `ax.memory.maintenance.*` | `PROCESSING_TASK` | 记忆维护开始 | 维护结束 |
+| `dubhe.memory.maintenance.*` | `PROCESSING_TASK` | 记忆维护开始 | 维护结束 |
 
 `LOADING` 只表示"天枢还没装配完，现在叫不应"，**不表示在加载模型**——模型是织言的，它自己发 `llm.model.load`。
 天枢装配是同步构造，这条活动通常一闪而过，它的价值在于"装配结束时一定被收起"，而不是提示时长。
 
 **装配失败不发 `PRESENCE.ACTIVITY`**，只发模块状态（`runtime.lifecycle`，`CRITICAL`，键
-`tianshu.runtime.module.ax.startup_failed`）。三条理由：映迹的 `ERROR` 只有一句"检查 API Key、服务地址或
+`tianshu.runtime.module.dubhe.startup_failed`）。三条理由：映迹的 `ERROR` 只有一句"检查 API Key、服务地址或
 向量模型文件"，天枢装配失败与它们无关，会把玩家指向无关的东西；装配抛异常的模块不会进"已准备"列表，
 运行时不会对它调 `stop()` / `destroy()`，那条提示收不回来，只能等 TTL；而且装配失败不是玩家能操作的事，
 不该占用"需要你动手"的 ERROR 位。

@@ -1,14 +1,6 @@
 # Dubhe 事件系统
 
-> **施工中口径变更（2026-11-21）**：以下几条将取代本篇现有结论，细节见《Dubhe_改造方案》：
-> - 五档：`IMMEDIATE / DEFERRED / SILENT / FOLD / DROP`；**新增 `FOLD` = 仅当前窗口**（聚合一行进窗口，压缩时丢弃）（G14、G38）。
-> - 三态改名：白/中性/黑 → **强调 / 常规 / 削弱**；删掉"推一格 / 两端截断"，处置由 9 格 → 5 处置的**固定映射表**查得（G15、方案 §4.6）。
-> - 每条事件在**可达的每一行**各占一格（每行独立三态）；频率门只换行，不改行内处置。
-> - 不变量：**H1 高频事件不得主动开口**、**H2 事件不插在一轮对话中间**。
-> - 进 raw 规则：前三档每次一条；`FOLD` 达阈值写一行、不足**直接丢弃**；`DROP` 不写（G38）。
-> - 计数：40 → 删 5 条噪音 → 补 2 条 → **37 条在册**，其中 6 条"未接通"。
->
-> 本篇其余内容仍描述当前实现；实施完成后按新口径重写。
+> **本次改造后的现状（2026-11-23）**：五档 `IMMEDIATE / DEFERRED / SILENT / FOLD / DROP`；三态 `强调 / 常规 / 削弱`；处置由 9 格固定映射查得；频率门只换行；H1/H2 成立；内置表 40 条（schemaVersion 5）；`SILENT` 每次一条、`FOLD` 达阈值一条 `transient`、`DROP` 不写；文案全部来自资源。
 
 
 事件的完整链路：模组提交 → 定档与名单 → 频率修正 → 类别 → 落地（立即播报 / 冷却缓冲 / 融合进历史 / 丢弃）。本文以当前代码为准，不描述未实现的能力。
@@ -22,10 +14,10 @@
 | 1 | 事件与状态的分界、两者的落点 | §2 |
 | 2 | 对外契约：`DubheEventDescriptor` 字段、`kind` 规则、文本清洗 | §3 |
 | 3 | 档位（频率）与 40 条内置映射 | §4 |
-| 4 | 名单三态与生产者的 `highlight` | §5 |
+| 4 | 状态三态与生产者的 `highlight` / `suppress` | §5 |
 | 5 | 频率修正（档位层） | §6 |
-| 6 | 类别 = 纯函数（阶梯矩阵） | §7 |
-| 7 | 四类的落地行为、两种缓冲、用户先开口的合并 | §8 |
+| 6 | 处置 = 九格固定映射 | §7 |
+| 7 | 五档的落地行为、两种缓冲、用户先开口的合并 | §8 |
 | 8 | SILENT 的融合规则 | §9 |
 | 9 | 与压缩链路的关系 | §10 |
 | 10 | 参数、观测、验收门禁、禁止事项 | §11–§14 |
@@ -114,8 +106,8 @@ Prompt 里的历史轮次只有一种包裹：`<event>…</event>`。所有非�
 |---|---|---|---|
 | `kind` | 是 | string | 命名空间化事件类型：`tianshu:death`、`mymod:ritual_complete` |
 | `tier` | 否 | enum | `RARE` / `NORMAL` / `FREQUENT`；省略则查内置表，查不到按 `FREQUENT` |
-| `suppress` | 否 | bool | 生产者逐次声明"不要出声"：等价于黑名单 |
-| `highlight` | 否 | bool | 生产者逐次声明"这次值得说"：**等价于白名单，且优先于静态名单** |
+| `suppress` | 否 | bool | 生产者逐次声明"不要出声"：等价于该次用 `weakened` |
+| `highlight` | 否 | bool | 生产者逐次声明"这次值得说"：**等价于该次用 `emphasis`，且优先于静态状态** |
 | `payload` | 是 | 对象 | `count`（≥1，默认 1）、`magnitude`（可选整数，语义由 kind 定义） |
 | `text` | 是 | 值对象 | 语言键 + 参数（`DubheEventText`），由接收侧渲染一次 |
 | `fold` | 否 | enum | `NONE` / `COUNT` / `RANGE`，SILENT 融合时用哪种句式；默认 `NONE` |
@@ -232,28 +224,28 @@ Prompt 里的历史轮次只有一种包裹：`<event>…</event>`。所有非�
 
 第三方 namespace 的 kind 也不在这张表里，而且不该在：它们的频率是外部事实，天枢 不替它定档。外部模组通过事件型入口只声明**行为**（`IMMEDIATE` / `DEFERRED` / `SILENT`），由 `DubheEventPolicy` 翻译成档位声明，见《Dubhe_协议中心》§4。
 
-## 5. 名单：三态
+## 5. 状态：三态（强调 / 常规 / 削弱）
 
-名单与档位是两个独立维度：档位说"多久发生一次"，名单说"玩家是否额外想听"。
+状态与档位是两个独立维度：档位说"多久发生一次"（行），状态说"这一行希望被怎么对待"。每个 kind 在它**可达的每一行**各声明一个状态，频率门只换行，不改行内状态。
 
 | 取值 | 含义 |
 |---|---|
-| `whitelist` | 值得比基线更主动一步 |
-| 中性（未列出） | 按档位基线 |
-| `blacklist` | 不值得打断 |
+| `emphasis` | 强调：这一行希望被更主动地对待 |
+| `normal` | 常规：按矩阵的常规列处理 |
+| `weakened` | 削弱：这一行不希望被打扰 |
 
-当前分布：白名单 5、黑名单 14、中性 21。
+当前分布（按声明行统计）：强调 5、削弱 14、常规 21。
 
-| 白名单 | 理由 |
+| 强调 | 理由 |
 |---|---|
 | `death` / `health_critical` / `drowning` / `on_fire` | 可行动警告：晚几秒说就没有意义 |
 | `boss_engage` | 危险 + 里程碑 |
 
-### 5.1 `highlight`：生产者的动态白名单
+### 5.1 `highlight` 与 `suppress`：逐次三态
 
-`highlight=true` 等价于白名单，**优先于静态名单**：模组自己最清楚这次值不值得说。它与 `suppress` 同时为真时 `highlight` 胜出。
+`highlight=true` 让这一次 occurrence 用 **强调** 列；`suppress=true` 用 **削弱** 列；两者都优先于表里的静态状态。同时为真时 `highlight` 胜出。
 
-动态白名单**不豁免频率修正**（§6）：否则一个"总标 highlight"的模组会把 天枢 变成复读机。
+逐次状态**不豁免频率修正**（§6）：否则一个"总标 highlight"的模组会把 天枢 变成复读机——它的行会被推到高频，而高频行没有说话的处置。
 
 ## 6. 频率修正：发生在档位层
 
@@ -271,34 +263,27 @@ FREQUENT 不再降
 
 ## 7. 类别：纯函数
 
-`DubheEventPolicy.classFor(修正后档位, 名单)`。实现是"阶梯 + 一步升降 + 两端截断"，不是九格硬编码：
+`DubheEventPolicy.classFor(修正后的行, 该行的状态)`。它是**九格固定映射**，没有阶梯、没有偏移、没有两端截断：
 
-```text
-阶梯：   IMMEDIATE > DEFERRED > SILENT > DROP
-基线：   RARE → DEFERRED    NORMAL → SILENT    FREQUENT → DROP
-规则：   白名单 = 上一档    中性 = 基线        黑名单 = 下一档（两端截断）
-```
-
-展开：
-
-| 档位 | 白名单 | 中性 | 黑名单 |
+| 行 | 强调 | 常规 | 削弱 |
 |---|---|---|---|
 | RARE | IMMEDIATE | DEFERRED | SILENT |
-| NORMAL | DEFERRED | SILENT | DROP |
-| FREQUENT | SILENT | DROP | DROP |
+| NORMAL | DEFERRED | SILENT | FOLD |
+| FREQUENT | SILENT | FOLD | DROP |
 
 两个推论值得单独说：
 
-- **RARE + 黑 = SILENT，不是 DROP**：罕见但被标记为"不要打断"的事，攒到空闲期再说，不丢弃。
-- **FREQUENT + 白 = SILENT**：白名单只把高频事件抬到"进历史"，不会让它出声。
+- **NORMAL + 削弱 = FOLD，不是 DROP**：常态但被削弱的事，进当前窗口、不进长期记忆。
+- **FREQUENT 行没有任何说话处置**（H1）：强调只到 SILENT，常规与削弱分别是 FOLD / DROP。
 
-## 8. 落地：四类的行为
+## 8. 落地：五档的行为
 
 | 类别 | 是否出声 | 是否进历史 | 时机 |
 |---|---|---|---|
 | `IMMEDIATE` | 是 | 是 | 到达即出声；被"忙且不允许打断"挡住时排队，本轮结束时合并出声 |
 | `DEFERRED` | 是 | 是 | 冷却窗口到期，合并成一轮主动对话 |
-| `SILENT` | 否 | 是（融合后） | 窗口到期或用户先开口 |
+| `SILENT` | 否 | 是，**每次一条** | 到达即追加 |
+| `FOLD` | 否 | 仅当前窗口（`transient`） | 达阈值写一行；不足阈值直接丢弃 |
 | `DROP` | 否 | 否 | 什么都不发生，不记日志 |
 
 ### 8.1 IMMEDIATE 与"忙"
@@ -381,11 +366,11 @@ FREQUENT 不再降
 
 | 日志键 | 触发 |
 |---|---|
-| `ax.event.speech_pending` | 一条事件即将出声（含 kind、reason、文本） |
-| `ax.event.queued` | 忙且不打断，进入立即队列（含当前队列长度） |
-| `ax.event.deferred` | 进入冷却缓冲（含当前缓冲长度） |
-| `ax.event.voluntary_turn` | 冷却到期，合并成一轮主动对话（含合并条数） |
-| `ax.event.text.unresolved` | 模板无法渲染，回退为 kind 码（含 key 与原因：缺键/参数） |
+| `dubhe.shared.event.speech_pending` | 一条事件即将出声（含 kind、reason、文本） |
+| `dubhe.shared.event.queued` | 忙且不打断，进入立即队列（含当前队列长度） |
+| `dubhe.shared.event.deferred` | 进入冷却缓冲（含当前缓冲长度） |
+| `dubhe.shared.event.voluntary_turn` | 冷却到期，合并成一轮主动对话（含合并条数） |
+| `dubhe.shared.event.text.unresolved` | 模板无法渲染，回退为 kind 码（含 key 与原因：缺键/参数） |
 
 `DROP` 不产生任何日志：没有发生任何事。回退为 kind 码是刻意的——空行会占掉一个历史槽位却什么都没说，比一个裸 kind 码更糟。
 
@@ -395,7 +380,7 @@ FREQUENT 不再降
 
 1. 策略矩阵九格（档位 × 名单）与两端截断。
 2. 频率修正在第 3 次（RARE→NORMAL）、第 6 次（NORMAL→FREQUENT）生效；旧命中移出窗口后恢复原档位；计数按 kind 隔离。
-3. 白名单 kind 的完整衰减链：`IMMEDIATE → DEFERRED → SILENT`（以 `death` 验证）。
+3. 强调 kind 的完整衰减链：`IMMEDIATE → DEFERRED → SILENT`（以 `death` 验证）。
 4. 忙且不打断 → 不出声、入队；用户开口 → 按到达序变历史并清空；不忙 → 立即出声且写历史。
 5. 冷却窗口在 `[120s, 180s)` 且每次重抽；未到期不出声；到期合并为一轮；期间用户开口 → 并入历史并清空。
 6. 融合：同主体折叠成带计数的一条；不同主体分开计数。
