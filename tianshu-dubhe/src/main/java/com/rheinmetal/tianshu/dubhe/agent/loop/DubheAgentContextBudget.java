@@ -50,6 +50,7 @@ public record DubheAgentContextBudget(int windowTokens) {
     }
 
     public int toolResultTokens() {
-        return TOOL_RESULT_TOKENS;
+        // A small window must clamp harder, otherwise one result could exceed the compaction point alone.
+        return Math.min(TOOL_RESULT_TOKENS, Math.max(512, budgetTokens() / 3));
     }
 }
