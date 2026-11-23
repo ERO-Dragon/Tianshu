@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
+import com.rheinmetal.tianshu.api.capability.CapabilityContext;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -45,6 +46,7 @@ public final class DubheExternalCapabilities {
     private static final int RESEARCH_MAX_TOKENS = 512;
     private static final Duration RESEARCH_TIMEOUT = Duration.ofSeconds(30);
     private static final String PROVIDER = "dubhe";
+    private static final DubheCallerQuota QUOTA = new DubheCallerQuota();
 
     /** The one model call the research capability is allowed to make. */
     @FunctionalInterface
@@ -58,8 +60,10 @@ public final class DubheExternalCapabilities {
     public static void register(ResearchLlm llm, DubheDelegatePromptRepository prompts) {
         // Replace on re-registration: the module can be prepared again in the same process (tests, reload).
         unregister();
-        CapabilityCatalog.register(researchDescriptor(), (context, args) -> research(llm, prompts, args));
-        CapabilityCatalog.register(relayDescriptor(), (context, args) -> relay(context.caller(), args));
+        CapabilityCatalog.register(researchDescriptor(), (context, args) ->
+                QUOTA.submit(quotaKey(context, RESEARCH), () -> research(llm, prompts, args)));
+        CapabilityCatalog.register(relayDescriptor(), (context, args) ->
+                QUOTA.submit(quotaKey(context, RELAY), () -> relay(context.caller(), args)));
     }
 
     /** Removes both rows; called when the module stops so a stopped module is not callable. */
@@ -99,6 +103,10 @@ public final class DubheExternalCapabilities {
                 PROVIDER,
                 attributes
         );
+    }
+
+    private static String quotaKey(CapabilityContext context, CapabilityId id) {
+        return context.caller().kind() + ":" + context.caller().id() + "|" + id;
     }
 
     private static CompletableFuture<JsonObject> research(ResearchLlm llm, DubheDelegatePromptRepository prompts,
