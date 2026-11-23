@@ -177,6 +177,41 @@ class DubheDiplomacySkillTest {
         }
     }
 
+    @Test
+    void describeFetchesTheReferenceOnlyForAChosenTarget() {
+        com.rheinmetal.tianshu.api.capability.CapabilityId miner =
+                com.rheinmetal.tianshu.api.capability.CapabilityId.of("othermod", "miner");
+        JsonObject attributes = new JsonObject();
+        attributes.addProperty("schemaVersion", 1);
+        attributes.addProperty("inputs", "block position + face");
+        com.rheinmetal.tianshu.api.capability.CapabilityCatalog.register(
+                new com.rheinmetal.tianshu.api.capability.CapabilityDescriptor(
+                        miner,
+                        com.rheinmetal.tianshu.api.capability.CapabilityKind.SKILL,
+                        com.rheinmetal.tianshu.api.capability.CapabilityBinding.LOCAL,
+                        "mines a block for the caller",
+                        com.rheinmetal.tianshu.api.tool.ToolSide.CLIENT,
+                        com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE,
+                        "other.mod",
+                        attributes),
+                (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
+        try {
+            DubheSkill skill = new DubheDiplomacySkill(
+                    () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY))
+                    .skill();
+
+            JsonObject described = call(skill, args("describe", "othermod:miner", "", ""));
+            assertEquals("OK", described.get("outcome").getAsString());
+            assertEquals("block position + face",
+                    described.getAsJsonObject("attributes").get("inputs").getAsString());
+
+            JsonObject unknown = call(skill, args("describe", "othermod:ghost", "", ""));
+            assertEquals("TARGET_UNKNOWN", unknown.get("reason").getAsString());
+        } finally {
+            com.rheinmetal.tianshu.api.capability.CapabilityCatalog.unregister(miner);
+        }
+    }
+
     private static void register(ToolId id, String state) {
         TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
             @Override

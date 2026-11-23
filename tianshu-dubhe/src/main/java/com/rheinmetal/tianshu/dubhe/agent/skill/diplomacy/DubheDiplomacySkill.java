@@ -86,7 +86,7 @@ public final class DubheDiplomacySkill {
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
         JsonObject properties = new JsonObject();
-        properties.add("action", property("string", "list / submit / progress"));
+        properties.add("action", property("string", "list / describe / submit / progress"));
         properties.add("target", property("string", "capability id for submit, read-tool id for progress"));
         properties.add("task", property("string", "what to ask the target module to do"));
         properties.add("taskId", property("string", "the target module's task id, for progress"));
@@ -112,6 +112,9 @@ public final class DubheDiplomacySkill {
             return CompletableFuture.completedFuture(needsConsent(effective.autonomy()));
         }
         String action = text(args, "action").toLowerCase(Locale.ROOT);
+        if ("describe".equals(action)) {
+            return CompletableFuture.completedFuture(describeTarget(text(args, "target")));
+        }
         if ("list".equals(action)) {
             return CompletableFuture.completedFuture(listTargets());
         }
@@ -138,6 +141,27 @@ public final class DubheDiplomacySkill {
     }
 
     /** 从舟楫列出其他模块对外的功能（技能/工具），供代理决定把任务交给谁。 */
+    /** 渐进式披露的第二跳：选中一个目标后，才取它的完整描述与属性（参考）。 */
+    private JsonObject describeTarget(String target) {
+        IdRef id = IdRef.parse(target);
+        if (id == null) {
+            return failed("INVALID_TARGET", DubheActionFailure.TARGET_UNKNOWN, "");
+        }
+        for (var descriptor : CapabilityExposure.exposed(effectiveCaller(), ToolSide.CLIENT)) {
+            if (!descriptor.id().equals(id.capabilityId())) {
+                continue;
+            }
+            JsonObject answer = new JsonObject();
+            answer.addProperty("outcome", OUTCOME_OK);
+            answer.addProperty("id", descriptor.id().toString());
+            answer.addProperty("kind", descriptor.kind().value());
+            answer.addProperty("description", descriptor.description());
+            answer.add("attributes", descriptor.attributes());
+            return answer;
+        }
+        return failed("TARGET_UNKNOWN", DubheActionFailure.TARGET_UNKNOWN, "");
+    }
+
     private JsonObject listTargets() {
         com.google.gson.JsonArray targets = new com.google.gson.JsonArray();
         int count = 0;
