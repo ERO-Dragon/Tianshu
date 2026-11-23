@@ -38,10 +38,24 @@ public final class DubheConfig implements DubheAssistantSettings, DubheSettingsA
     private static final ToolAutonomy DEFAULT_AUTONOMY = ToolAutonomy.READ_ONLY;
 
     private final ModuleConfigStore store;
+    private final DubheAutonomyConsent autonomyConsent;
     private final Path storageRoot;
 
     public DubheConfig(ModuleConfigStore store, Path moduleDirectory) {
         this.store = Objects.requireNonNull(store, "store");
+        this.autonomyConsent = new DubheAutonomyConsent(new DubheAutonomyConsent.Storage() {
+            @Override
+            public String get(String key, String fallback) {
+                return this.store.getString(key, fallback);
+            }
+
+            @Override
+            public void set(String key, String value) {
+                this.store.setString(key, value);
+            }
+
+            private final ModuleConfigStore store = DubheConfig.this.store;
+        });
         this.storageRoot = Objects.requireNonNull(moduleDirectory, "moduleDirectory")
                 .toAbsolutePath()
                 .normalize()

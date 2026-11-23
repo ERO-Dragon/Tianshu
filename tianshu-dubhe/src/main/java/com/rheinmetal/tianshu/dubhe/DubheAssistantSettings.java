@@ -41,4 +41,11 @@ public interface DubheAssistantSettings {
     default ToolAutonomy autonomy() {
         return ToolAutonomy.READ_ONLY;
     }
+
+    /**
+     * 每档首次使用的授权记录；{@code null} 表示这个实现没有持久化（例如测试替身），此时不拦。
+     */
+    default com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent autonomyConsent() {
+        return null;
+    }
 }

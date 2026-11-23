@@ -70,6 +70,51 @@ class DubheDiplomacySkillTest {
         }
     }
 
+    @Test
+    void anUnconfirmedTierAsksFirstAndCallsNothing() {
+        ToolId id = ToolId.of("mymod", "consent_task");
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
+            @Override public ToolId id() { return id; }
+            @Override public ToolCategory category() { return ToolCategory.LOCAL; }
+            @Override public String description() { return "consent test reader"; }
+            @Override public Type argsType() { return JsonObject.class; }
+            @Override public Type resultType() { return JsonObject.class; }
+            @Override public CompletableFuture<JsonObject> invoke(ToolContext context, JsonObject args) {
+                calls.incrementAndGet();
+                JsonObject result = new JsonObject();
+                result.addProperty("state", "DONE");
+                return CompletableFuture.completedFuture(result);
+            }
+        });
+        try {
+            com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent =
+                    new com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent(
+                            new com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent.Storage() {
+                                private final java.util.Map<String, String> values = new java.util.HashMap<>();
+                                @Override public String get(String key, String fallback) {
+                                    return values.getOrDefault(key, fallback);
+                                }
+                                @Override public void set(String key, String value) { values.put(key, value); }
+                            });
+            DubheSkill skill = new DubheDiplomacySkill(
+                    () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY),
+                    consent).skill();
+
+            JsonObject pending = call(skill, args("progress", "mymod:consent_task", "", "t-1"));
+            assertEquals("NEEDS_CONSENT", pending.get("outcome").getAsString());
+            assertEquals("READ_ONLY", pending.get("tier").getAsString());
+            assertEquals(0, calls.get(), "nothing may leave the module before the player agrees");
+
+            consent.confirm(com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY);
+            JsonObject allowed = call(skill, args("progress", "mymod:consent_task", "", "t-1"));
+            assertEquals("OK", allowed.get("outcome").getAsString());
+            assertEquals(1, calls.get(), "after confirmation the call goes through");
+        } finally {
+            TianshuTools.unregister(id);
+        }
+    }
+
     private static void register(ToolId id, String state) {
         TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
             @Override

@@ -49,9 +49,19 @@ public final class DubheDiplomacySkill {
     private static final String STATE_UNKNOWN = "UNKNOWN";
 
     private final Supplier<ToolCaller> caller;
+    private final com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent;
 
     public DubheDiplomacySkill(Supplier<ToolCaller> caller) {
+        this(caller, null);
+    }
+
+    /**
+     * @param consent first-use gate; {@code null} disables the gate (tests and callers without settings)
+     */
+    public DubheDiplomacySkill(Supplier<ToolCaller> caller,
+                               com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent) {
         this.caller = caller;
+        this.consent = consent;
     }
 
     public DubheSkill skill() {
@@ -81,6 +91,12 @@ public final class DubheDiplomacySkill {
     }
 
     private CompletableFuture<JsonObject> execute(DubheSkillContext context, JsonObject args) {
+        ToolCaller effective = effectiveCaller();
+        if (consent != null && consent.needsConsent(effective.autonomy())) {
+            // First use of this tier: ask the player once. Nothing leaves the module until the player agrees.
+            consent.markPending(effective.autonomy());
+            return CompletableFuture.completedFuture(needsConsent(effective.autonomy()));
+        }
         String action = text(args, "action").toLowerCase(Locale.ROOT);
         String target = text(args, "target");
         IdRef id = IdRef.parse(target);
@@ -158,6 +174,13 @@ public final class DubheDiplomacySkill {
         result.addProperty("outcome", OUTCOME_OK);
         result.addProperty("taskId", taskId);
         result.addProperty("progress", progress);
+        return result;
+    }
+
+    private static JsonObject needsConsent(ToolAutonomy tier) {
+        JsonObject result = new JsonObject();
+        result.addProperty("outcome", "NEEDS_CONSENT");
+        result.addProperty("tier", tier == null ? ToolAutonomy.READ_ONLY.name() : tier.name());
         return result;
     }
 

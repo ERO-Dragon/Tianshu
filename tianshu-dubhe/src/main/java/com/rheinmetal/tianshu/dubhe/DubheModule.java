@@ -397,7 +397,8 @@ public final class DubheModule implements TianshuManagedModule {
         DubheDelegatePromptRepository delegatePrompts = new DubheDelegatePromptRepository(promptLanguageProvider);
         DubheSkillRegistry skillRegistry = new DubheSkillRegistry();
         skillRegistry.register(new DubheDiplomacySkill(
-                () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy())).skill());
+                () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy()),
+                assistantSettings.autonomyConsent()).skill());
         DubheAgentContextBudget agentBudget = DubheAgentContextBudget.forWindow(constructionFallbackPolicy.tier().maxTokens());
         DubheAgentCompactor agentCompactor = new DubheLlmAgentCompactor(llmClient::submitDetached, delegatePrompts);
         delegateService = new DubheDelegateService(
