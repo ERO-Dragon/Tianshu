@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The agent task's transcript: brief, skill rounds, and one progress digest.
+ * The agent task's transcript: brief, assistant turns with their tool calls, tool results, and one digest.
  *
  * <p>Three behaviours live here so the loop stays simple:</p>
  * <ul>
@@ -17,7 +17,8 @@ import java.util.List;
  *       the transcript also refuses to report success when it is still over the limit afterwards.</li>
  * </ul>
  *
- * <p>Nothing here touches the network, so every rule is unit-testable.</p>
+ * <p>A round starts at an assistant entry that requests tool calls; its tool results follow. Compaction only cuts
+ * whole rounds, so the replayed conversation stays valid for the provider.</p>
  */
 public final class DubheAgentTranscript {
 
@@ -48,10 +49,13 @@ public final class DubheAgentTranscript {
             throw new IllegalArgumentException(
                     "the brief and the digest are managed by the transcript, not appended: " + entry.kind());
         }
+        if (entry.kind() == DubheAgentEntry.Kind.TOOL_RESULT && entry.toolCallId().isBlank()) {
+            throw new IllegalArgumentException("a tool result must name the call it answers");
+        }
         String text = entry.kind() == DubheAgentEntry.Kind.TOOL_RESULT
                 ? clamp(entry.text(), budget.toolResultTokens())
                 : entry.text();
-        entries.add(new DubheAgentEntry(entry.kind(), text));
+        entries.add(new DubheAgentEntry(entry.kind(), text, entry.toolCallId(), entry.toolCalls()));
     }
 
     public synchronized int estimatedTokens() {
@@ -141,25 +145,26 @@ public final class DubheAgentTranscript {
     /**
      * Index of the first kept entry: everything before it is evicted.
      *
-     * <p>Keeps the newest complete tool rounds verbatim. When the transcript is over its limit but has fewer rounds
-     * than the keep count, the last two entries stay so the agent still sees its latest exchange.</p>
+     * <p>A round begins at an assistant entry that requests tool calls; keeping the newest complete rounds keeps
+     * every replayed assistant/tool pair together.</p>
      */
     private int keepBoundary() {
-        int callsKept = 0;
-        int firstKeptCall = -1;
+        int roundsKept = 0;
+        int firstKeptRound = -1;
         for (int index = entries.size() - 1; index >= 1; index--) {
-            if (entries.get(index).kind() != DubheAgentEntry.Kind.TOOL_CALL) {
+            DubheAgentEntry entry = entries.get(index);
+            if (!entry.hasToolCalls()) {
                 continue;
             }
-            callsKept++;
-            if (callsKept == DubheAgentContextBudget.KEEP_RECENT_ROUNDS) {
-                firstKeptCall = index;
-            } else if (callsKept > DubheAgentContextBudget.KEEP_RECENT_ROUNDS) {
-                return firstKeptCall;
+            roundsKept++;
+            if (roundsKept == DubheAgentContextBudget.KEEP_RECENT_ROUNDS) {
+                firstKeptRound = index;
+            } else if (roundsKept > DubheAgentContextBudget.KEEP_RECENT_ROUNDS) {
+                return firstKeptRound;
             }
         }
-        if (firstKeptCall > 0) {
-            return firstKeptCall;
+        if (firstKeptRound > 0) {
+            return firstKeptRound;
         }
         return Math.max(1, entries.size() - 2);
     }

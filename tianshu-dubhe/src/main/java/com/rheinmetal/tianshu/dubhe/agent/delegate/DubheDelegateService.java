@@ -1,27 +1,23 @@
 package com.rheinmetal.tianshu.dubhe.agent.delegate;
 
 import com.rheinmetal.tianshu.api.LogSink;
-import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentAnswer;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentLoop;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentModel;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentTurn;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunCancellation;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunExpiry;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunOutcome;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunPolicy;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunTermination;
-import com.rheinmetal.tianshu.dubhe.agent.loop.DubheStepContext;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheStepFailure;
-import com.rheinmetal.tianshu.dubhe.agent.loop.DubheStepOutcome;
-import com.rheinmetal.tianshu.dubhe.agent.loop.DubheStepSignal;
-import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRequestHandler;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventAppend;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventHistorySink;
 import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
-import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
-import com.rheinmetal.tianshu.weaving.contract.LLMPromptResultPayload;
-import com.rheinmetal.tianshu.weaving.contract.LLMPromptStreamChunkPayload;
 
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -41,20 +37,14 @@ import java.util.function.Supplier;
  */
 public final class DubheDelegateService {
 
-    /** 结论 JSON 的生成 token 上限与结论渲染上限同值（§5.6 约束 3）。 */
-    public static final int DELEGATE_MAX_TOKENS = DubheDelegateConclusionParser.MAX_CONCLUSION_TOKENS;
-
-    /** 结论要的是"抄结论"不是"创作"，因此低温度（与压缩任务同为确定性输出）。 */
-    public static final float DELEGATE_TEMPERATURE = 0.2F;
-
-    private static final String REQUEST_ID_PREFIX = "dubhe.delegate.";
-    private static final String REASON_RESULT_FAILED = "delegate.result_failed";
-    private static final String REASON_NO_REPAIR = "delegate.no_repair_defined";
 
     private final DubheDelegateRequestSender requestSender;
     private final DubheDelegateRegistry registry;
     private final DubheDelegatePromptRepository promptRepository;
     private final DubheDelegateConclusionParser conclusionParser;
+    private final DubheAgentContextBudget agentBudget;
+    private final DubheSkillRegistry skills;
+    private final DubheAgentCompactor compactor;
     private final DubheDelegateEventLedger eventLedger;
     private final DubheEventHistorySink historySink;
     private final DubheDelegateRunSubmitter runSubmitter;
@@ -67,6 +57,9 @@ public final class DubheDelegateService {
             DubheDelegateRegistry registry,
             DubheDelegatePromptRepository promptRepository,
             DubheDelegateConclusionParser conclusionParser,
+            DubheAgentContextBudget agentBudget,
+            DubheSkillRegistry skills,
+            DubheAgentCompactor compactor,
             DubheDelegateEventLedger eventLedger,
             DubheEventHistorySink historySink,
             DubheDelegateRunSubmitter runSubmitter,
@@ -78,6 +71,9 @@ public final class DubheDelegateService {
         this.registry = registry == null ? new DubheDelegateRegistry() : registry;
         this.promptRepository = promptRepository;
         this.conclusionParser = conclusionParser == null ? new DubheDelegateConclusionParser() : conclusionParser;
+        this.agentBudget = agentBudget == null ? DubheAgentContextBudget.forWindow(32_768) : agentBudget;
+        this.skills = skills == null ? new DubheSkillRegistry() : skills;
+        this.compactor = compactor;
         this.eventLedger = eventLedger == null ? new DubheDelegateEventLedger() : eventLedger;
         this.historySink = historySink;
         this.runSubmitter = runSubmitter;
@@ -124,55 +120,35 @@ public final class DubheDelegateService {
         return ticket;
     }
 
-    /** Complex run 本体：同一个循环，策略 {@code complex()}。 */
+    /** Complex run 本体：同一个循环，策略 {@code complex()}；每一步都可能调用技能。 */
     private void runComplex(DubheDelegateTicket ticket) {
-        DubheStepSignal<DubheDelegateConclusion> step = new DubheStepSignal<>();
-        DubheAgentLoop loop = new DubheAgentLoop(DubheRunPolicy.complex());
-        DubheRunOutcome<DubheDelegateConclusion> outcome = loop.run(
-                context -> nextStep(ticket, step, new DelegateResultHandler(step), context),
-                // 本片不接取消（§5.3 的本地取消属元能力片）：「只读」探针即可，循环仍按挂钟兜底。
-                DubheRunCancellation.none()
-        );
-        deliver(ticket, outcome);
-    }
-
-    private DubheStepOutcome<DubheDelegateConclusion> nextStep(
-            DubheDelegateTicket ticket,
-            DubheStepSignal<DubheDelegateConclusion> step,
-            DubheLlmRequestHandler handler,
-            DubheStepContext context
-    ) throws Exception {
-        if (context.stepIndex() > 0) {
-            // 单步契约：没有工具，也没有"输出不合契约就重问"的修复动作（§6 的裁剪已在本地完成），
-            // 因此第二步没有可做的事。真走到这里说明契约变了，按内部错误收尾而不是空转。
-            throw new DubheStepFailure(REASON_NO_REPAIR);
-        }
-        requestSender.send(delegateRequest(ticket), handler, Duration.ofMillis(context.remainingMillis()));
-        return step.await(context.remainingMillis(), context.cancellation());
+        DubheAgentModel model = new DubheDelegateAgentModel(requestSender, promptRepository);
+        DubheAgentTurn turn = new DubheAgentTurn(
+                ticket.taskId(), ticket.query(), ticket.scope(), skills, agentBudget, compactor, model);
+        DubheRunOutcome<DubheAgentAnswer> outcome = new DubheAgentLoop(DubheRunPolicy.complex())
+                .run(turn, DubheRunCancellation.none());
+        deliver(ticket, toConclusionOutcome(outcome));
     }
 
     /**
-     * Complex 的请求：自包含的 system 规则 + 一句 query（§5.5 明确不复用主链前缀，因此这里没有五段装配）。
+     * 把代理的终态换成投递契约：只有完成态才解析结论；解析失败是预期内失败，仍按 FAILED 投递（A4）。
      */
-    private LLMPromptRequestPayload delegateRequest(DubheDelegateTicket ticket) {
-        List<LLMPromptRequestPayload.MessageItemPayload> messages = new ArrayList<>();
-        String system = promptRepository == null ? "" : promptRepository.delegateSystemPrompt();
-        if (!system.isBlank()) {
-            messages.add(LLMPromptRequestPayload.MessageItemPayload.system(system));
+    private DubheRunOutcome<DubheDelegateConclusion> toConclusionOutcome(DubheRunOutcome<DubheAgentAnswer> outcome) {
+        if (outcome.termination() != DubheRunTermination.COMPLETED) {
+            return new DubheRunOutcome<>(outcome.termination(), outcome.steps(), outcome.elapsedMillis(),
+                    null, outcome.cancellation(), outcome.failure(), outcome.expiry());
         }
-        String instruction = promptRepository == null ? "" : promptRepository.delegateInstruction(ticket.query());
-        messages.add(LLMPromptRequestPayload.MessageItemPayload.user(instruction.isBlank()
-                ? ticket.query()
-                : instruction));
-        return new LLMPromptRequestPayload(
-                REQUEST_ID_PREFIX + ticket.taskId(),
-                messages,
-                false,
-                false,
-                DELEGATE_MAX_TOKENS,
-                2,
-                new LLMPromptRequestPayload.SamplingPayload(DELEGATE_TEMPERATURE, null, null, null)
-        );
+        DubheDelegateConclusion conclusion;
+        try {
+            conclusion = conclusionParser.parse(outcome.result().text());
+        } catch (RuntimeException unusable) {
+            return new DubheRunOutcome<>(DubheRunTermination.FAILED, outcome.steps(), outcome.elapsedMillis(),
+                    null, null,
+                    new DubheStepFailure(DubheDelegateConclusionParser.REASON_MISSING, unusable),
+                    DubheRunExpiry.NONE);
+        }
+        return new DubheRunOutcome<>(DubheRunTermination.COMPLETED, outcome.steps(), outcome.elapsedMillis(),
+                conclusion, null, null, DubheRunExpiry.NONE);
     }
 
     /**
@@ -251,46 +227,4 @@ public final class DubheDelegateService {
         return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 
-    /** 一次 Complex 步的回调：把模型结果转成步信号。 */
-    private final class DelegateResultHandler implements DubheLlmRequestHandler {
-        private final DubheStepSignal<DubheDelegateConclusion> step;
-
-        private DelegateResultHandler(DubheStepSignal<DubheDelegateConclusion> step) {
-            this.step = step;
-        }
-
-        @Override
-        public void onStreamChunk(LLMPromptStreamChunkPayload payload) {
-            // 结论只取终态结果：流式片段不进投递（§5.6 只回传 conclusion）。
-        }
-
-        @Override
-        public void onResult(LLMPromptResultPayload payload) {
-            if (payload == null || !payload.isCompleted()) {
-                step.complete(new DubheStepOutcome.Rejected<>(new DubheStepFailure(REASON_RESULT_FAILED)));
-                return;
-            }
-            DubheDelegateConclusion conclusion;
-            try {
-                conclusion = conclusionParser.parse(payload.text());
-            } catch (RuntimeException unusable) {
-                step.complete(new DubheStepOutcome.Rejected<>(new DubheStepFailure(
-                        DubheDelegateConclusionParser.REASON_MISSING, unusable)));
-                return;
-            }
-            step.complete(new DubheStepOutcome.Finished<>(conclusion));
-        }
-
-        @Override
-        public void onCancelled(DubheTurnCancellation cancellation) {
-            step.complete(new DubheStepOutcome.Aborted<>(
-                    cancellation == null ? DubheTurnCancellation.playerInterrupted("delegate cancelled") : cancellation,
-                    DubheRunExpiry.NONE));
-        }
-
-        @Override
-        public void onCancellationResult(LLMPromptResultPayload payload) {
-            step.complete(new DubheStepOutcome.Rejected<>(new DubheStepFailure(REASON_RESULT_FAILED)));
-        }
-    }
 }

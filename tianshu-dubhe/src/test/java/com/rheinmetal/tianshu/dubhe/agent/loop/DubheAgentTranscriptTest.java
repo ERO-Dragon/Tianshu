@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.agent.loop;
 
+import com.rheinmetal.tianshu.weaving.contract.LLMToolCallPayload;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,6 +20,10 @@ class DubheAgentTranscriptTest {
         return "中".repeat(length);
     }
 
+    private static DubheAgentEntry call(String id) {
+        return DubheAgentEntry.assistant("", List.of(new LLMToolCallPayload(id, "skill", "{}")));
+    }
+
     private static DubheAgentCompactor digestWriter() {
         return (goal, previous, evicted) -> new DubheAgentDigest(
                 goal, List.of("evicted=" + evicted.size()), List.of("fact"), List.of(), List.of(), "next");
@@ -27,7 +32,7 @@ class DubheAgentTranscriptTest {
     @Test
     void aToolResultIsClampedOnTheWayIn() {
         DubheAgentTranscript transcript = new DubheAgentTranscript(BUDGET, "问题");
-        transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_RESULT, text(20_000)));
+        transcript.append(DubheAgentEntry.toolResult("call-1", text(20_000)));
 
         DubheAgentEntry stored = transcript.entries().get(transcript.entries().size() - 1);
         assertTrue(stored.tokens() <= BUDGET.toolResultTokens(), "clamped to " + stored.tokens());
@@ -45,9 +50,17 @@ class DubheAgentTranscriptTest {
     }
 
     @Test
+    void aToolResultMustNameTheCallItAnswers() {
+        DubheAgentTranscript transcript = new DubheAgentTranscript(BUDGET, "问题");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_RESULT, "结果")));
+    }
+
+    @Test
     void compactionDoesNothingWhileUnderTheLimit() {
         DubheAgentTranscript transcript = new DubheAgentTranscript(BUDGET, "问题");
-        transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.ASSISTANT, "短句"));
+        transcript.append(DubheAgentEntry.assistant("短句"));
         AtomicInteger calls = new AtomicInteger();
 
         DubheAgentDigest result = transcript.compact((goal, previous, evicted) -> {
@@ -64,9 +77,9 @@ class DubheAgentTranscriptTest {
     void compactionReplacesTheOldestRoundsWithOneDigest() {
         DubheAgentTranscript transcript = new DubheAgentTranscript(BUDGET, "暮色森林怎么进");
         for (int round = 0; round < 6; round++) {
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_CALL, "call-" + round));
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_RESULT, text(5_000)));
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.ASSISTANT, "step-" + round));
+            transcript.append(call("call-" + round));
+            transcript.append(DubheAgentEntry.toolResult("call-" + round, text(5_000)));
+            transcript.append(DubheAgentEntry.assistant("step-" + round));
         }
         assertTrue(transcript.needsCompaction());
 
@@ -77,9 +90,8 @@ class DubheAgentTranscriptTest {
         assertEquals(DubheAgentEntry.Kind.BRIEF, transcript.entries().get(0).kind());
         assertEquals(DubheAgentEntry.Kind.DIGEST, transcript.entries().get(1).kind());
         assertTrue(transcript.estimatedTokens() <= transcript.limitTokens());
-        long keptCalls = transcript.entries().stream()
-                .filter(entry -> entry.kind() == DubheAgentEntry.Kind.TOOL_CALL).count();
-        assertEquals(DubheAgentContextBudget.KEEP_RECENT_ROUNDS, keptCalls);
+        long keptRounds = transcript.entries().stream().filter(DubheAgentEntry::hasToolCalls).count();
+        assertEquals(DubheAgentContextBudget.KEEP_RECENT_ROUNDS, keptRounds);
     }
 
     @Test
@@ -92,15 +104,15 @@ class DubheAgentTranscriptTest {
         };
 
         for (int round = 0; round < 6; round++) {
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_CALL, "call"));
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_RESULT, text(5_000)));
+            transcript.append(call("call-" + round));
+            transcript.append(DubheAgentEntry.toolResult("call-" + round, text(5_000)));
         }
         transcript.compact(compactor);
         assertNull(seenPrevious.get());
 
-        for (int round = 0; round < 5; round++) {
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_CALL, "call"));
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_RESULT, text(5_000)));
+        for (int round = 6; round < 11; round++) {
+            transcript.append(call("call-" + round));
+            transcript.append(DubheAgentEntry.toolResult("call-" + round, text(5_000)));
         }
         transcript.compact(compactor);
 
@@ -112,8 +124,8 @@ class DubheAgentTranscriptTest {
     void anOversizedDigestIsRejectedRatherThanSilentlyAccepted() {
         DubheAgentTranscript transcript = new DubheAgentTranscript(BUDGET, "问题");
         for (int round = 0; round < 6; round++) {
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_CALL, "call"));
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_RESULT, text(5_000)));
+            transcript.append(call("call-" + round));
+            transcript.append(DubheAgentEntry.toolResult("call-" + round, text(5_000)));
         }
 
         DubheAgentCompactor bloated = (goal, previous, evicted) -> new DubheAgentDigest(
@@ -126,7 +138,7 @@ class DubheAgentTranscriptTest {
     void anOverLimitTranscriptWithoutEvictableRoundsIsReported() {
         DubheAgentTranscript transcript = new DubheAgentTranscript(
                 DubheAgentContextBudget.forWindow(8_192), "问题");
-        transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.ASSISTANT, text(4_000)));
+        transcript.append(DubheAgentEntry.assistant(text(4_000)));
 
         assertThrows(IllegalStateException.class, () -> transcript.compact(digestWriter()));
     }

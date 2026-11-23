@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.agent.loop;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonObject;
 
 import java.util.List;
@@ -51,6 +53,35 @@ public record DubheAgentDigest(
 
     public int tokens() {
         return DubheAgentTokenEstimator.estimate(toJson());
+    }
+
+    /** Parses a digest produced by the compaction prompt; malformed input throws. */
+    public static DubheAgentDigest fromJson(String json) {
+        JsonObject body = JsonParser.parseString(json).getAsJsonObject();
+        return new DubheAgentDigest(
+                string(body, "goal"),
+                strings(body, "done"),
+                strings(body, "facts"),
+                strings(body, "ruledOut"),
+                strings(body, "open"),
+                string(body, "next"));
+    }
+
+    private static String string(JsonObject body, String key) {
+        JsonElement value = body.get(key);
+        return value == null || value.isJsonNull() ? "" : value.getAsString();
+    }
+
+    private static List<String> strings(JsonObject body, String key) {
+        JsonElement value = body.get(key);
+        if (value == null || !value.isJsonArray()) {
+            return List.of();
+        }
+        List<String> result = new java.util.ArrayList<>();
+        for (JsonElement element : value.getAsJsonArray()) {
+            result.add(element.getAsString());
+        }
+        return List.copyOf(result);
     }
 
     private static void addStrings(JsonObject body, String key, List<String> values) {

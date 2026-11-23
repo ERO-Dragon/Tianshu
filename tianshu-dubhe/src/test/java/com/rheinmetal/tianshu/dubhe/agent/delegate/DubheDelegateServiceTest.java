@@ -55,10 +55,10 @@ class DubheDelegateServiceTest {
         fixture.awaitRequest();
 
         LLMPromptRequestPayload request = fixture.lastRequest();
-        assertEquals(DubheDelegateService.DELEGATE_TEMPERATURE, request.sampling().temperature(),
+        assertEquals(DubheDelegateAgentModel.TEMPERATURE, request.sampling().temperature(),
                 "Complex 请求自带采样温度（§3.2）");
-        assertEquals(DubheDelegateConclusionParser.MAX_CONCLUSION_TOKENS, request.maxTokens());
-        assertTrue(request.requestId().startsWith("dubhe.delegate."));
+        assertEquals(DubheDelegateAgentModel.MAX_TOKENS, request.maxTokens());
+        assertTrue(request.requestId().startsWith("dubhe.agent."));
         assertEquals(ticket.taskId(), fixture.taskOf(request.requestId()));
 
         fixture.answer("{\"conclusion\":\"铁砧可以修复工具。\"}");
@@ -194,6 +194,9 @@ class DubheDelegateServiceTest {
                     new DubheDelegateRegistry(),
                     null,
                     new DubheDelegateConclusionParser(String::length),
+                    null,
+                    null,
+                    null,
                     ledger,
                     append -> appends.add(append),
                     (taskId, task) -> {
@@ -267,7 +270,9 @@ class DubheDelegateServiceTest {
         }
 
         private String taskOf(String requestId) {
-            return requestId.substring("dubhe.delegate.".length());
+            String rest = requestId.substring("dubhe.agent.".length());
+            int stepSeparator = rest.lastIndexOf('.');
+            return stepSeparator < 0 ? rest : rest.substring(0, stepSeparator);
         }
     }
 

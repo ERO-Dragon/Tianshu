@@ -8,8 +8,11 @@ import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillContext;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillSpec;
 import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolCallPayload;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -20,15 +23,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * One step of an agent task: compact if needed, ask the model, then run the skill it called.
+ * One step of an agent task: compact if needed, ask the model, then run the skills it called.
  *
  * <p>It is a {@link DubheStepSource}, so {@link DubheAgentLoop} keeps owning step/time limits, cancellation and
  * no-progress detection. This class owns only what is specific to a skill task: the transcript, the directory and
- * the call execution.</p>
+ * call execution.</p>
  *
- * <p>Skill failures are data, not exceptions: a timeout or a thrown executor becomes a tool result the model can
- * read, so it may pick another skill or finish with {@code blocked} facts. Only an interrupted wait aborts the
- * step.</p>
+ * <p>Tool calls arrive through native tool calling; the assistant message and its tool messages are replayed into
+ * the transcript so the next request is a valid provider conversation. Skill failures are data, not exceptions: a
+ * timeout or a thrown executor becomes a tool result the model can read, so it may pick another skill or finish
+ * with a blocked fact. Only an interrupted wait aborts the step.</p>
  */
 public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
 
@@ -75,15 +79,20 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
             transcript.compact(compactor);
         }
 
-        DubheAgentModelReply reply = model.next(
-                new DubheAgentRequest(taskId, question, transcript.entries(), directory()));
-        if (!reply.text().isBlank()) {
-            transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.ASSISTANT, reply.text()));
+        DubheStepOutcome<DubheAgentModelReply> modelStep = model.next(new DubheAgentRequest(
+                taskId, question, transcript.entries(), directory(),
+                context.remainingMillis(), context.cancellation()));
+
+        if (modelStep instanceof DubheStepOutcome.Finished<?> finished) {
+            return handleReply((DubheAgentModelReply) finished.result(), context);
         }
-        if (reply.finished()) {
-            return new DubheStepOutcome.Finished<>(new DubheAgentAnswer(transcriptText(), List.copyOf(usedSkills)));
+        if (modelStep instanceof DubheStepOutcome.Aborted<?> aborted) {
+            return new DubheStepOutcome.Aborted<>(aborted.cancellation(), aborted.expiry());
         }
-        return invoke(reply.call(), context);
+        if (modelStep instanceof DubheStepOutcome.Rejected<?> rejected) {
+            return new DubheStepOutcome.Rejected<>(rejected.failure());
+        }
+        throw new IllegalStateException("unknown model step outcome: " + modelStep);
     }
 
     public DubheAgentTranscript transcript() {
@@ -94,15 +103,40 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
         return transcript.entries();
     }
 
-    private DubheStepOutcome<DubheAgentAnswer> invoke(DubheSkillCall call, DubheStepContext step) {
-        String canonical = canonical(call.arguments());
-        transcript.append(new DubheAgentEntry(DubheAgentEntry.Kind.TOOL_CALL, call.skillId() + " " + canonical));
+    private DubheStepOutcome<DubheAgentAnswer> handleReply(DubheAgentModelReply reply, DubheStepContext context) {
+        List<DubheSkillCall> calls = normalizedCalls(reply.calls());
+        List<LLMToolCallPayload> replay = calls.stream()
+                .map(call -> new LLMToolCallPayload(call.id(), call.skillId(), call.arguments().toString()))
+                .toList();
+        if (!reply.text().isBlank() || !replay.isEmpty()) {
+            transcript.append(DubheAgentEntry.assistant(reply.text(), replay));
+        }
+        if (calls.isEmpty()) {
+            return new DubheStepOutcome.Finished<>(new DubheAgentAnswer(transcriptText(), List.copyOf(usedSkills)));
+        }
+        return invokeAll(calls, context);
+    }
 
+    private DubheStepOutcome<DubheAgentAnswer> invokeAll(List<DubheSkillCall> calls, DubheStepContext step) {
+        List<String> names = new ArrayList<>(calls.size());
+        List<String> canonicals = new ArrayList<>(calls.size());
+        for (DubheSkillCall call : calls) {
+            names.add(call.skillId());
+            canonicals.add(canonical(call.arguments()));
+            DubheStepOutcome<DubheAgentAnswer> aborted = invoke(call, step);
+            if (aborted != null) {
+                return aborted;
+            }
+        }
+        return new DubheStepOutcome.Continue<>(String.join(",", names), String.join("|", canonicals));
+    }
+
+    /** Runs one call; returns an aborted outcome when the wait was interrupted, otherwise {@code null}. */
+    private DubheStepOutcome<DubheAgentAnswer> invoke(DubheSkillCall call, DubheStepContext step) {
         Optional<DubheSkill> found = registry.find(call.skillId());
         if (found.isEmpty()) {
-            transcript.append(new DubheAgentEntry(
-                    DubheAgentEntry.Kind.TOOL_RESULT, "unknown skill: " + call.skillId()));
-            return new DubheStepOutcome.Continue<>(call.skillId(), canonical);
+            transcript.append(DubheAgentEntry.toolResult(call.id(), "unknown skill: " + call.skillId()));
+            return null;
         }
 
         DubheSkill skill = found.get();
@@ -111,24 +145,33 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
             JsonObject result = skill.executor()
                     .execute(new DubheSkillContext(taskId, question, scope), call.arguments())
                     .get(timeout, TimeUnit.MILLISECONDS);
-            transcript.append(new DubheAgentEntry(
-                    DubheAgentEntry.Kind.TOOL_RESULT, result == null ? "{}" : result.toString()));
+            transcript.append(DubheAgentEntry.toolResult(
+                    call.id(), result == null ? "{}" : result.toString()));
             usedSkills.add(skill.id());
         } catch (TimeoutException timeoutException) {
-            transcript.append(new DubheAgentEntry(
-                    DubheAgentEntry.Kind.TOOL_RESULT, "timeout after " + timeout + "ms"));
+            transcript.append(DubheAgentEntry.toolResult(call.id(), "timeout after " + timeout + "ms"));
         } catch (ExecutionException executionException) {
-            transcript.append(new DubheAgentEntry(
-                    DubheAgentEntry.Kind.TOOL_RESULT, "failed: " + messageOf(executionException.getCause())));
+            transcript.append(DubheAgentEntry.toolResult(
+                    call.id(), "failed: " + messageOf(executionException.getCause())));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             return new DubheStepOutcome.Aborted<>(
                     DubheTurnCancellation.expired("skill wait interrupted"), DubheRunExpiry.NONE);
         }
-        return new DubheStepOutcome.Continue<>(skill.id(), canonical);
+        return null;
     }
 
-    private List<com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillSpec> directory() {
+    private List<DubheSkillCall> normalizedCalls(List<DubheSkillCall> calls) {
+        List<DubheSkillCall> normalized = new ArrayList<>(calls.size());
+        for (int index = 0; index < calls.size(); index++) {
+            DubheSkillCall call = calls.get(index);
+            String id = call.id().isBlank() ? "call-" + index : call.id();
+            normalized.add(new DubheSkillCall(id, call.skillId(), call.arguments()));
+        }
+        return normalized;
+    }
+
+    private List<DubheSkillSpec> directory() {
         return registry.all().stream().map(DubheSkill::spec).toList();
     }
 

@@ -12,24 +12,24 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 委派任务的提示词目录（{@code dubhe_agent_tasks.json}）。
+ * 代理任务的提示词目录（{@code dubhe_agent_tasks.json}）。
  *
  * <p>与记忆维护任务同一个模式：文案全在资源里，代码里不出现规则文本，也不出现语言片段。</p>
  *
- * <p>Complex run 的上下文是<b>独立</b>的（§5.5：不复用主链前缀、不共享缓存），因此这里给的是自包含的
- * 任务提示词：system 规则 + 一句待检索的 query。</p>
+ * <p>代理的上下文是<b>独立</b>的（§5.5：不复用主链前缀、不共享缓存），因此这里给的是自包含的任务提示词：
+ * 带原生工具调用的 system 规则，以及任务内压缩的规则与模板。</p>
  */
 public final class DubheDelegatePromptRepository {
 
     private static final String BUILTIN_RESOURCE = "/com/rheinmetal/tianshu/dubhe/prompts/dubhe_agent_tasks.json";
 
-    /** Complex run 的 system：检索任务规则 + 结论 JSON schema（§5.6 的三条约束写在提示词里）。 */
-    public static final String DELEGATE_SYSTEM = "agent.delegate.system";
+    /** 带工具调用的代理任务 system；技能目录走原生 tools[]，不拼进文本。 */
+    public static final String AGENT_SYSTEM = "agent.skill.system";
+    /** 任务内压缩：system 规则与携带待压缩数据的 user 模板。 */
+    public static final String COMPACT_SYSTEM = "agent.compact.system";
+    public static final String COMPACT_INSTRUCTION = "agent.compact.user";
 
-    /** Complex run 的指令后缀：只描述本次 query，并重申只输出 JSON。 */
-    public static final String DELEGATE_INSTRUCTION = "agent.delegate.user";
-
-    private static final String PLACEHOLDER_QUERY = "{{query}}";
+    private static final String PLACEHOLDER_PAYLOAD = "{{payload}}";
 
     private final DubhePromptLanguageProvider languageProvider;
     private final JsonObject catalog;
@@ -41,16 +41,20 @@ public final class DubheDelegatePromptRepository {
         this.catalog = readBuiltinCatalog();
     }
 
-    public String delegateSystemPrompt() {
-        return load(DELEGATE_SYSTEM, currentLanguage());
+    public String agentSystemPrompt() {
+        return load(AGENT_SYSTEM, currentLanguage());
     }
 
-    public String delegateInstruction(String query) {
-        String template = load(DELEGATE_INSTRUCTION, currentLanguage());
+    public String compactionSystemPrompt() {
+        return load(COMPACT_SYSTEM, currentLanguage());
+    }
+
+    public String compactionInstruction(String payloadJson) {
+        String template = load(COMPACT_INSTRUCTION, currentLanguage());
         if (template.isBlank()) {
             return "";
         }
-        return template.replace(PLACEHOLDER_QUERY, query == null ? "" : query.trim()).trim();
+        return template.replace(PLACEHOLDER_PAYLOAD, payloadJson == null ? "" : payloadJson).trim();
     }
 
     private DubhePromptLanguage currentLanguage() {

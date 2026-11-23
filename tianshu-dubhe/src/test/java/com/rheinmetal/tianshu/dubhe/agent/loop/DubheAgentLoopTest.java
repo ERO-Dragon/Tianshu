@@ -152,13 +152,13 @@ class DubheAgentLoopTest {
     @Test
     void degeneratePolicyAndOutcomeAreRejectedAtConstruction() {
         assertThrows(IllegalArgumentException.class,
-                () -> new DubheRunPolicy(" ", 3, 10_000L, false, false, CancellationScope.SELF_ONLY));
+                () -> new DubheRunPolicy(" ", 3, 10_000L, false, CancellationScope.SELF_ONLY));
         assertThrows(IllegalArgumentException.class,
-                () -> new DubheRunPolicy(DubheRunPolicy.SIMPLE_ID, 0, 10_000L, false, false, CancellationScope.SELF_ONLY));
+                () -> new DubheRunPolicy(DubheRunPolicy.SIMPLE_ID, 0, 10_000L, false, CancellationScope.SELF_ONLY));
         assertThrows(IllegalArgumentException.class,
-                () -> new DubheRunPolicy(DubheRunPolicy.SIMPLE_ID, 3, 0L, false, false, CancellationScope.SELF_ONLY));
+                () -> new DubheRunPolicy(DubheRunPolicy.SIMPLE_ID, 3, 0L, false, CancellationScope.SELF_ONLY));
         assertThrows(IllegalArgumentException.class,
-                () -> new DubheRunPolicy(DubheRunPolicy.SIMPLE_ID, 3, 10_000L, false, false, null));
+                () -> new DubheRunPolicy(DubheRunPolicy.SIMPLE_ID, 3, 10_000L, false, null));
 
         assertThrows(IllegalArgumentException.class,
                 () -> new DubheStepOutcome.Continue<String>("", "q=1"));

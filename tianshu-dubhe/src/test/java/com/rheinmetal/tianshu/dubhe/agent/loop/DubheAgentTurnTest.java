@@ -1,12 +1,11 @@
 package com.rheinmetal.tianshu.dubhe.agent.loop;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillBudget;
-import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillExecutor;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillSpec;
 import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
+import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
@@ -22,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DubheAgentTurnTest {
 
     private static final DubheScope SCOPE =
-            new DubheScope("player-1", "overworld", "玩家", com.rheinmetal.tianshu.dubhe.shared.scope.DubheScopeKind.LOCAL_WORLD, true);
+            new DubheScope("player-1", "overworld", "玩家", DubheScopeKind.LOCAL_WORLD, true);
 
     private static DubheSkillSpec spec(String id, long timeoutMillis) {
         return DubheSkillSpec.builder(id, "测试技能 " + id)
@@ -30,8 +29,18 @@ class DubheAgentTurnTest {
                 .build();
     }
 
-    private static DubheAgentModel scripted(DubheAgentModelReply... replies) {
-        Deque<DubheAgentModelReply> queue = new ArrayDeque<>(List.of(replies));
+    private static DubheStepOutcome<DubheAgentModelReply> answer(String text) {
+        return new DubheStepOutcome.Finished<>(DubheAgentModelReply.answer(text));
+    }
+
+    private static DubheStepOutcome<DubheAgentModelReply> call(String id, String skill) {
+        return new DubheStepOutcome.Finished<>(DubheAgentModelReply.calls(
+                List.of(new DubheSkillCall(id, skill, new JsonObject()))));
+    }
+
+    @SafeVarargs
+    private static DubheAgentModel scripted(DubheStepOutcome<DubheAgentModelReply>... steps) {
+        Deque<DubheStepOutcome<DubheAgentModelReply>> queue = new ArrayDeque<>(List.of(steps));
         return request -> {
             if (queue.isEmpty()) {
                 throw new IllegalStateException("scripted model ran out of replies");
@@ -51,8 +60,7 @@ class DubheAgentTurnTest {
 
     @Test
     void withoutAnySkillTheAgentAnswersOnItsOwn() {
-        DubheRunOutcome<DubheAgentAnswer> outcome = run(turn(new DubheSkillRegistry(),
-                scripted(DubheAgentModelReply.answer("我直接答"))));
+        DubheRunOutcome<DubheAgentAnswer> outcome = run(turn(new DubheSkillRegistry(), scripted(answer("我直接答"))));
 
         assertEquals(DubheRunTermination.COMPLETED, outcome.termination());
         assertEquals("我直接答", outcome.result().text());
@@ -69,9 +77,7 @@ class DubheAgentTurnTest {
         });
 
         List<DubheAgentRequest> seen = new ArrayList<>();
-        DubheAgentModelReply first = DubheAgentModelReply.call(
-                new DubheSkillCall("echo", new JsonObject()));
-        DubheAgentModel scripted = scripted(first, DubheAgentModelReply.answer("结论"));
+        DubheAgentModel scripted = scripted(call("c1", "echo"), answer("结论"));
         DubheAgentModel recording = request -> {
             seen.add(request);
             return scripted.next(request);
@@ -84,13 +90,15 @@ class DubheAgentTurnTest {
         assertEquals(List.of("echo"), seen.get(0).directory().stream().map(DubheSkillSpec::id).toList());
         assertTrue(seen.get(1).transcript().stream()
                 .anyMatch(entry -> entry.text().contains("铁的熔点")), "the result reached the next request");
+        assertTrue(seen.get(1).transcript().stream()
+                .anyMatch(entry -> entry.kind() == DubheAgentEntry.Kind.TOOL_RESULT
+                        && entry.toolCallId().equals("c1")), "the tool message answers the call id");
     }
 
     @Test
     void anUnknownSkillBecomesAReadableFactInsteadOfACrash() {
-        DubheAgentTurn turn = turn(new DubheSkillRegistry(), scripted(
-                DubheAgentModelReply.call(new DubheSkillCall("nope", new JsonObject())),
-                DubheAgentModelReply.answer("换个办法")));
+        DubheAgentTurn turn = turn(new DubheSkillRegistry(),
+                scripted(call("c1", "nope"), answer("换个办法")));
 
         DubheRunOutcome<DubheAgentAnswer> outcome = run(turn);
 
@@ -104,9 +112,7 @@ class DubheAgentTurnTest {
     void aSkillTimeoutIsReportedToTheModelNotThrown() {
         DubheSkillRegistry registry = new DubheSkillRegistry();
         registry.register(spec("slow", 30L), (context, args) -> new CompletableFuture<>());
-        DubheAgentTurn turn = turn(registry, scripted(
-                DubheAgentModelReply.call(new DubheSkillCall("slow", new JsonObject())),
-                DubheAgentModelReply.answer("没查到")));
+        DubheAgentTurn turn = turn(registry, scripted(call("c1", "slow"), answer("没查到")));
 
         DubheRunOutcome<DubheAgentAnswer> outcome = run(turn);
 
@@ -120,9 +126,7 @@ class DubheAgentTurnTest {
         DubheSkillRegistry registry = new DubheSkillRegistry();
         registry.register(spec("broken", 1_000L),
                 (context, args) -> CompletableFuture.failedFuture(new IllegalStateException("boom")));
-        DubheAgentTurn turn = turn(registry, scripted(
-                DubheAgentModelReply.call(new DubheSkillCall("broken", new JsonObject())),
-                DubheAgentModelReply.answer("失败了")));
+        DubheAgentTurn turn = turn(registry, scripted(call("c1", "broken"), answer("失败了")));
 
         DubheRunOutcome<DubheAgentAnswer> outcome = run(turn);
 
@@ -136,10 +140,7 @@ class DubheAgentTurnTest {
         registry.register(spec("echo", 1_000L),
                 (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
 
-        JsonObject args = new JsonObject();
-        args.addProperty("q", "same");
-        DubheAgentModel alwaysSame = request ->
-                DubheAgentModelReply.call(new DubheSkillCall("echo", args));
+        DubheAgentModel alwaysSame = request -> call("c1", "echo");
         DubheAgentTurn turn = new DubheAgentTurn("task-1", "问题", SCOPE, registry,
                 DubheAgentContextBudget.forWindow(32_768), null, alwaysSame);
 
@@ -164,9 +165,9 @@ class DubheAgentTurnTest {
         };
         DubheAgentTurn turn = new DubheAgentTurn("task-1", "问题", SCOPE, registry,
                 DubheAgentContextBudget.forWindow(16_384), compactor, scripted(
-                        DubheAgentModelReply.call(new DubheSkillCall("bulk", new JsonObject())),
-                        DubheAgentModelReply.call(new DubheSkillCall("bulk", new JsonObject())),
-                        DubheAgentModelReply.answer("收尾")));
+                        call("c1", "bulk"),
+                        call("c2", "bulk"),
+                        answer("收尾")));
 
         DubheRunOutcome<DubheAgentAnswer> outcome = run(turn);
 

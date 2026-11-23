@@ -35,6 +35,11 @@ import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateDeliverySink;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateEventLedger;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegatePromptRepository;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateRegistry;
+import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegatePromptRepository;
+import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheLlmAgentCompactor;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
 import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnOrchestrator;import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnStatusPublisher;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventAppend;
@@ -387,11 +392,18 @@ public final class DubheModule implements TianshuManagedModule {
         DubheOutputProcessor outputProcessor = new DubheOutputProcessor(
                 adapter, outputSettings, chatOutputSink, new DubheReplyTextRepository(promptLanguageProvider),
                 speechSink);
+        DubheDelegatePromptRepository delegatePrompts = new DubheDelegatePromptRepository(promptLanguageProvider);
+        DubheSkillRegistry skillRegistry = new DubheSkillRegistry();
+        DubheAgentContextBudget agentBudget = DubheAgentContextBudget.forWindow(constructionFallbackPolicy.tier().maxTokens());
+        DubheAgentCompactor agentCompactor = new DubheLlmAgentCompactor(llmClient::submitDetached, delegatePrompts);
         delegateService = new DubheDelegateService(
                 llmClient::submitDetached,
                 delegateRegistry,
-                new DubheDelegatePromptRepository(promptLanguageProvider),
+                delegatePrompts,
                 null,
+                agentBudget,
+                skillRegistry,
+                agentCompactor,
                 new DubheDelegateEventLedger(),
                 this::appendHistoryEvent,
                 adapter::submitDelegateRun,
