@@ -28,7 +28,9 @@
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `requestId` | `"llm.request"` | 调用方生成的请求标识，用于响应关联与日志 |
-| `messages` | 空 | 要发送的消息，**按顺序原样发送**；角色只接受 `system` / `user` / `assistant`，未知角色降级为 `user` |
+| `messages` | 空 | 要发送的消息，**按顺序原样发送**；角色接受 `system` / `user` / `assistant` / `tool`，未知角色降级为 `user`。字段见下文 |
+| `tools` | 空 | 调用方提供的工具目录（`name` / `description` / `parametersJson`）；**空 = 不提供工具**，此时请求体与没有工具传输时完全一致 |
+| `toolChoice` | `null` | 原样下发的 `tool_choice`（`auto` / `none` / `required` 或指定函数）；`null` 不发该字段，让端点用自己的默认 |
 | `stream` | `false` | `true` 时先返回分片与结束帧，再返回终态结果；两种模式内部都走同一条 HTTP 流 |
 | `captureThinkingContent` | `false` | 要求把供应商的 reasoning 文本放到独立通道；正文永不混入 |
 | `maxTokens` | `0` | 最大生成 token；`0` 表示不额外限制 |
@@ -36,6 +38,17 @@
 | `sampling` | 空 | 采样覆盖项，见 2.3 |
 
 空消息列表会在发出请求前被拒绝，错误码 `LLM_EMPTY_MESSAGES`。
+
+**工具是传输，不是编排**：目录、授权、执行、结果裁剪、轮次上限都由调用方决定；织言只负责把 `tools` 按供应商协议下发、把模型返回的 `tool_calls` 结构化上交、并把调用方回填的 `tool` 消息原样发回去。消息字段如下：
+
+| 字段 | 说明 |
+|---|---|
+| `role` | 见上表；`tool` 是工具结果消息 |
+| `content` | 可见文本；工具调用轮次里通常为空 |
+| `toolCallId` | `tool` 消息所回答的调用 id（`tool_call_id`） |
+| `toolCalls` | `assistant` 消息回放的调用列表（provider 要求在结果之前先看到它） |
+
+调用方的两轮写法：先发 `tools` 拿到带 `toolCalls` 的终态结果 → 执行 → 下一轮把 `assistant`（带 `toolCalls`）+ `tool`（带 `toolCallId`）追加进消息里再发。
 
 两个可选请求字段由“条目兼容开关”决定（`wireCompat`，设置页自定义模式可编辑）：
 
@@ -88,6 +101,7 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 - 供应商以 `finish_reason=content_filter` 结束流时按失败处理：终态 `FAILED`、`errorCode=LLM_INFERENCE_FAILED`、消息含 `REMOTE_LLM_CONTENT_FILTERED`。被过滤机制截断的回复不能当作完整回答交给调用方。
 - 供应商以 `finish_reason=length` 结束（达成长度上限）时，已生成的部分仍是可用文本，终态保持 `COMPLETED`，并把 `truncated` 置为 `true`。截断只对**已完成**的回答成立：`CANCELLED` / `FAILED` 的文本是被中断请求的前缀，状态本身已经说明，`truncated` 恒为 `false`。流式请求的结束帧语义不变（仍是 `COMPLETED` + 已发送文本），截断事实随其后必到的终态结果交给调用方——**一种信息只有一个落点**。
 - 非 2xx 时错误体里的供应商错误码被提取进消息：`REMOTE_LLM_HTTP_STATUS status=400 code=model_not_found body=…`。读 `error.code`，其次顶层 `code`，再次 `error.type`；错误码按供应商原文截断后进入消息，仍未脱敏之外的任何字段都不外泄。
+- 工具调用**不产生分片**：供应商把 `tool_calls` 按 `index` 分帧下发（`id` / `name` 通常只在首帧，`arguments` 被切开），织言在传输层按 `index` 累积成完整调用，只随终态结果一次交出。调用方拿到的 `toolCalls` 永远是可以直接执行的（`argumentsJson` 已拼完整），不需要自己拼 JSON；代价是界面上看不到"正在生成调用"的过程。
 
 ### 2.5 终态结果
 
@@ -98,6 +112,7 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 | `text` | 可见正文 |
 | `thinkingContent` | 结构化 reasoning；不混入 `text` |
 | `errorCode` / `errorMessage` | 失败原因 |
+| `toolCalls` | 模型请求的调用（`id` / `name` / `argumentsJson`）；空 = 这次回答不调工具。工具调用轮次的 `text` 通常为空——**"没有正文"不等于"没有回答"** |
 | `truncated` | 已完成但被供应商的长度上限截断（`true` 时 `text` 不是完整回答）；只有 `COMPLETED` 可能为 `true` |
 | `usage` | `promptTokens` / `completionTokens` / `thinkingTokens` / `outputTokens` / `totalTokens` |
 
@@ -207,10 +222,12 @@ record LLMRuntimeSnapshotPayload(
 
 - 提示词组装、system 合并、RAG 文本注入、编号与上下文裁剪；
 - 记忆、人格、对话所有权；
-- 工具定义、工具调用与结果回填；
+- **工具编排**：工具目录归谁、谁能调用、授权档位、执行、结果裁剪与渲染、轮次上限与重试；
 - 任务调度、优先级、抢占或本地队列。
 
-这些属于调用方。织言只负责把调用方给的消息发出去、把流收回来，并提供向量与检索的数据面。
+**工具传输归织言**：`tools` / `toolChoice` 下发、`tool_calls` 上交、`assistant` + `tool` 消息回放。这不是编排——织言不知道一个工具做什么，也不决定调哪个；它只保证这段三方协议（调用方 ↔ 模型 ↔ 供应商）按供应商的形状搬运不出错。
+
+这些属于调用方。织言只负责把调用方给的消息（含工具调用与其结果）发出去、把流和结构化调用收回来，并提供向量与检索的数据面。
 
 ## 7. 用量与余额
 
