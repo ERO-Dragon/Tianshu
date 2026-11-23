@@ -107,7 +107,7 @@ class DubheMemoryMaintenanceServiceTest {
             DubheRecentDialogueSystem recentDialogueSystem = recentDialogue();
             appendWindow(recentDialogueSystem, scope);
             DubheRawTurnBatch batch = select(memorySystem, recentDialogueSystem, scope);
-            assertEquals(4, batch.turns().size(), "单元 = 最旧的两轮对话；保持窗口那一组不动");
+            assertEquals(2, batch.turns().size(), "单元 = 最旧的一组对话（0.19W）；保持窗口那一组不动");
             RecordingLlmModule llm = new RecordingLlmModule(COMPACT_JSON);
             registerLlm(runtime, llm);
             registerPrimitive(runtime);
@@ -128,7 +128,7 @@ class DubheMemoryMaintenanceServiceTest {
             assertEquals("system", messages.get(0).role());
             assertTrue(messages.get(0).content().contains("schemaVersion"));
             assertTrue(messages.get(1).content().contains("[1] user:"), messages.get(1).content());
-            assertTrue(messages.get(2).content().contains("4"), messages.get(2).content());
+            assertTrue(messages.get(2).content().contains("2"), messages.get(2).content());
 
             DubheStmBlock stm = memorySystem.stmBlocks().loadAll(scope).get(0);
             assertEquals("玩家在调试资源重载日志，并关注缓存和模块加载。", stm.content());
@@ -230,6 +230,7 @@ class DubheMemoryMaintenanceServiceTest {
             DubheMemorySystem memorySystem = new DubheMemorySystem(layout, jsonStore(), policy());
             DubheRecentDialogueSystem recentDialogueSystem = recentDialogue();
             appendWindow(recentDialogueSystem, scope);
+            DubheRawTurnBatch firstUnit = select(memorySystem, recentDialogueSystem, scope);
             int rawBefore = recentDialogueSystem.rawTokenCount(scope);
             List<DubheRawTurn> keepBefore = recentDialogueSystem.snapshot(scope).turns();
             RecordingLlmModule llm = new RecordingLlmModule(COMPACT_JSON);
@@ -245,8 +246,11 @@ class DubheMemoryMaintenanceServiceTest {
             assertTrue(memorySystem.summaryBlock(scope).isEmpty(), "没换代就不进摘要块");
             assertEquals(0, recentDialogueSystem.generation(scope));
             assertTrue(memorySystem.summaries().loadGenerations(scope).isEmpty());
-            assertTrue(select(memorySystem, recentDialogueSystem, scope).isEmpty(),
-                    "覆盖游标之后的原文不够一个单元：不重复压缩同一段");
+            DubheRawTurnBatch next = select(memorySystem, recentDialogueSystem, scope);
+            java.util.Set<String> covered = new java.util.HashSet<>(firstUnit.turnIds());
+            assertTrue(next.turnIds().stream().noneMatch(covered::contains),
+                    "覆盖游标之前的轮次不得再次进入选批");
+            assertFalse(next.turns().isEmpty(), "更小的单元仍会留下下一段可压的原文");
         } finally {
             runtime.close();
         }

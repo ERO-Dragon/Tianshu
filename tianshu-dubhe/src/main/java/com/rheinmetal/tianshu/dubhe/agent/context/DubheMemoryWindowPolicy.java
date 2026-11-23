@@ -32,7 +32,7 @@ package com.rheinmetal.tianshu.dubhe.agent.context;
  *   WATERMARK       = 0.80 x W                                  reset trigger level
  *   COMPRESS_MAX    = max(1, WATERMARK - SB - KEEP_MAX - TAIL)  compression window capacity
  *   COMPRESS_TARGET = round(0.8 x COMPRESS_MAX)                 stop compressing below this
- *   UNIT            = min(8192, COMPRESS_MAX)                   one compression unit
+ *   UNIT            = min(clamp(0.19 x W, 2048, 8192), COMPRESS_MAX)   one compression unit
  *   MAX_RAW_TOKENS  = KEEP_MAX + COMPRESS_MAX
  *   MAX_RAW_CHARS   = round(MAX_RAW_TOKENS x CHARS_PER_TOKEN)
  * </pre>
@@ -153,9 +153,10 @@ public record DubheMemoryWindowPolicy(
      */
     static final int TAIL_RETRIEVAL_TOKENS = 512;
 
-    /** One compression unit: a size, not a ratio. Switching it to clamp(0.19 W, 2048, 8192) (G32) is the
-     * tracked follow-up; it needs the maintenance fixtures recalculated, so it lands on its own. */
-    static final int COMPRESSION_UNIT_TOKENS = 8_192;
+    /** One compression unit: a ratio of the window, clamped so a small window still gets a usable unit (G32). */
+    static final double RATIO_COMPRESSION_UNIT = 0.19;
+    static final int MIN_COMPRESSION_UNIT_TOKENS = 2_048;
+    static final int MAX_COMPRESSION_UNIT_TOKENS = 8_192;
 
     /** Text density used when a capacity has to be expressed in characters instead of tokens. */
     static final int CHARS_PER_TOKEN = 4;
@@ -241,7 +242,9 @@ public record DubheMemoryWindowPolicy(
         int compressBudgetMax = Math.max(1,
                 watermarkBudget - summaryBlockBudget - keepBudgetMax - TAIL_TOKEN_BUDGET);
         // One unit has to fit inside the compression window, otherwise a unit could never be closed.
-        int compressionUnitBudget = Math.max(1, Math.min(COMPRESSION_UNIT_TOKENS, compressBudgetMax));
+        int compressionUnitBudget = Math.max(1, Math.min(
+                shareOf(totalBudget, RATIO_COMPRESSION_UNIT, MIN_COMPRESSION_UNIT_TOKENS, MAX_COMPRESSION_UNIT_TOKENS),
+                compressBudgetMax));
         int maxRawTokens = keepBudgetMax + compressBudgetMax;
 
         // The prompt input ceiling is the watermark itself. The watermark is already "the size the

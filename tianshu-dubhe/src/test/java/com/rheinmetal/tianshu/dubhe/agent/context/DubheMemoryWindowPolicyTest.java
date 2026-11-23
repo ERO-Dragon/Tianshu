@@ -159,7 +159,7 @@ class DubheMemoryWindowPolicyTest {
         assertTrue(compact.compressionWatermarkTokenBudget() < standard.compressionWatermarkTokenBudget());
         assertTrue(compact.maxRawTokenCount() < standard.maxRawTokenCount());
         // The unit is a size, not a ratio; it only shrinks when the window is too narrow to hold it.
-        assertEquals(8_192, compact.compressionUnitTokenBudget());
+        assertEquals(6_226, compact.compressionUnitTokenBudget());
         assertEquals(8_192, standard.compressionUnitTokenBudget());
         // The tail is the same size at both tiers.
         assertEquals(compact.tailRetrievalTokenBudget(), standard.tailRetrievalTokenBudget());
@@ -187,7 +187,7 @@ class DubheMemoryWindowPolicyTest {
         assertEquals(26_214, p.compressionWatermarkTokenBudget());
         assertEquals(19_334, p.shortTermCompressTokenMax());
         assertEquals(15_467, p.shortTermCompressTokenTarget());
-        assertEquals(8_192, p.compressionUnitTokenBudget());
+        assertEquals(6_226, p.compressionUnitTokenBudget());
         assertEquals(23_266, p.maxRawTokenCount());
         assertEquals(93_064, p.maxRawCharacters());
         assertEquals(3, p.shortTermChatBlockLimit());

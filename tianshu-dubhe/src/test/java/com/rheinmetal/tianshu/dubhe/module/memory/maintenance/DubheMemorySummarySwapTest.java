@@ -120,7 +120,7 @@ class DubheMemorySummarySwapTest {
             appendRounds(recentDialogueSystem, scope, 6, 2_000);
             appendRounds(recentDialogueSystem, scope, 1, 300);
             DubheRawTurnBatch batch = select(memorySystem, recentDialogueSystem, scope);
-            assertEquals(4, batch.turns().size(), "单元只装得下最旧的两组对话");
+            assertEquals(2, batch.turns().size(), "单元只装得下最旧的一组对话（0.19W）");
             int rawBefore = recentDialogueSystem.rawTokenCount(scope);
             assertTrue(recentDialogueSystem.shouldSwapGeneration(scope), "测试前提：压缩窗口已经装满");
             List<DubheRawTurn> keepBefore = recentDialogueSystem.snapshot(scope).turns();
