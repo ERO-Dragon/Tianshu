@@ -153,6 +153,34 @@ public final class DubheMemorySystem {
      * <p>晋升顺序 = 新→旧（{@code sourceToMillis} 降序）：块里越靠前的越靠近 system，也越靠近当下。</p>
      */
     public int promoteSummaryGeneration(DubheScope scope) {
+        return promoteSummaryGeneration(scope, null);
+    }
+
+    /** Units not yet promoted; ordering is oldest first, which is the window order they came from. */
+    public java.util.List<DubheStmBlock> pendingStmBlocks(DubheScope scope) {
+        DubheScope effectiveScope = scope == null ? DubheScope.unknown() : scope;
+        if (!effectiveScope.writable()) {
+            return java.util.List.of();
+        }
+        java.util.Set<String> promoted = new java.util.LinkedHashSet<>();
+        for (DubheMemorySummaryGeneration generation : summaryBlockStore.loadGenerations(effectiveScope)) {
+            promoted.addAll(generation.stmIds());
+        }
+        return stmBlockStore.loadAll(effectiveScope).stream()
+                .filter(block -> block != null && !block.isEmpty() && !promoted.contains(block.id()))
+                .sorted(java.util.Comparator
+                        .comparingLong(DubheStmBlock::sourceToMillis)
+                        .thenComparingLong(DubheStmBlock::createdAtMillis))
+                .toList();
+    }
+
+    /**
+     * Promotes pending units, optionally limited to the ones whose raw has left the window.
+     *
+     * <p>{@code allowedStmIds == null} means every pending unit; the aligned reset passes the subset the keep window
+     * did not retain, so the summary block never duplicates raw text that is still in the prompt (G36).</p>
+     */
+    public int promoteSummaryGeneration(DubheScope scope, java.util.Set<String> allowedStmIds) {
         if (!storageReadyForWrite(scope)) {
             return 0;
         }
@@ -162,6 +190,7 @@ public final class DubheMemorySystem {
         }
         List<String> pending = stmBlockStore.loadAll(scope).stream()
                 .filter(block -> block != null && !block.isEmpty() && !promoted.contains(block.id()))
+                .filter(block -> allowedStmIds == null || allowedStmIds.contains(block.id()))
                 .sorted(java.util.Comparator
                         .comparingLong(DubheStmBlock::sourceToMillis)
                         .thenComparingLong(DubheStmBlock::createdAtMillis)

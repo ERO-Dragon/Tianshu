@@ -135,6 +135,24 @@ public final class DubheRawTurnWindow {
         }
     }
 
+    /** 窗口里的全部轮次（快照）：保留区对齐需要"整段"而不是只取最近几轮。 */
+    public List<DubheRawTurn> all(DubheScope scope) {
+        if (!writable(scope)) {
+            return List.of();
+        }
+        Deque<DubheRawTurn> turns = turnsByWorld.get(scope.worldId());
+        if (turns == null) {
+            return List.of();
+        }
+        synchronized (turns) {
+            return List.copyOf(turns);
+        }
+    }
+
+    /** 保持窗口内的轮次 id；重置对齐以它为"预算内"的基准集合。 */
+    public Set<String> keepTurnIds(DubheScope scope) {
+        return keepWindowTurnIds(scope);
+    }
     public List<DubheRawTurn> recent(DubheScope scope) {
         DubheMemoryWindowPolicy activePolicy = policy;
         if (!writable(scope) || activePolicy.recentRawKeepTokenMax() <= 0) {
@@ -386,6 +404,14 @@ public final class DubheRawTurnWindow {
      * @return 实际移出的轮次数
      */
     public int dropCompressedTurns(DubheScope scope, String coveredThroughTurnId) {
+        return dropCompressedTurns(scope, coveredThroughTurnId, Set.of());
+    }
+
+    /**
+     * Same drop, plus whole units the alignment decided to keep verbatim. Their summaries stay pending, so the
+     * summary block only ever holds units whose raw left the window (G36).
+     */
+    public int dropCompressedTurns(DubheScope scope, String coveredThroughTurnId, Set<String> forcedKeepTurnIds) {
         if (!writable(scope) || coveredThroughTurnId == null || coveredThroughTurnId.isBlank()) {
             return 0;
         }
@@ -393,7 +419,10 @@ public final class DubheRawTurnWindow {
         if (turns == null) {
             return 0;
         }
-        Set<String> keep = keepWindowTurnIds(scope);
+        Set<String> keep = new LinkedHashSet<>(keepWindowTurnIds(scope));
+        if (forcedKeepTurnIds != null) {
+            keep.addAll(forcedKeepTurnIds);
+        }
         synchronized (turns) {
             List<DubheRawTurn> snapshot = new ArrayList<>(turns);
             int boundaryIndex = -1;

@@ -171,6 +171,17 @@ public final class DubheRecentDialogueSystem {
      *
      * @return 实际移出的轮次数
      */
+    /** 窗口里的全部轮次：保留区对齐要用整段判断，而不是只看最近几轮。 */
+    public java.util.List<DubheRawTurn> allRawTurns(DubheScope scope) {
+        restoreIfNeeded(scope);
+        return rawTurnWindow.all(scope);
+    }
+
+    /** 预算内的保持窗口轮次 id；对齐的"多数在保留区"以它为准。 */
+    public java.util.Set<String> keepTurnIds(DubheScope scope) {
+        restoreIfNeeded(scope);
+        return rawTurnWindow.keepTurnIds(scope);
+    }
     public int dropCoveredRaw(DubheScope scope, String coveredThroughTurnId) {
         if (scope == null) {
             return 0;
@@ -197,10 +208,19 @@ public final class DubheRecentDialogueSystem {
      * @return 实际移出窗口的 raw 轮次数
      */
     public int swapGeneration(DubheScope scope, int generation, String coveredThroughTurnId) {
+        return swapGeneration(scope, generation, coveredThroughTurnId, java.util.Set.of());
+    }
+
+    /**
+     * Reset with unit alignment: whole units the keep window covers by majority stay verbatim, and their
+     * summaries are not promoted (their raw still occupies the window).
+     */
+    public int swapGeneration(
+            DubheScope scope, int generation, String coveredThroughTurnId, java.util.Set<String> forcedKeepTurnIds) {
         if (scope == null) {
             return 0;
         }
-        int removed = rawTurnWindow.dropCompressedTurns(scope, coveredThroughTurnId);
+        int removed = rawTurnWindow.dropCompressedTurns(scope, coveredThroughTurnId, forcedKeepTurnIds);
         rawTurnWindow.clearCapacityReached(scope);
         if (generation > 0) {
             generationByWorld.merge(worldKey(scope), generation, Math::max);

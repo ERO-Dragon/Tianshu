@@ -374,11 +374,17 @@ public final class DubheMemoryMaintenanceService {
         if (recentDialogueSystem == null || !recentDialogueSystem.shouldSwapGeneration(scope)) {
             return false;
         }
-        int generation = memorySystem.promoteSummaryGeneration(scope);
+        DubheKeepWindowAlignment.Decision decision = DubheKeepWindowAlignment.decide(
+                memorySystem.pendingStmBlocks(scope),
+                recentDialogueSystem.allRawTurns(scope),
+                recentDialogueSystem.keepTurnIds(scope),
+                memorySystem.stmCoveredThroughTurnId(scope));
+        int generation = memorySystem.promoteSummaryGeneration(scope, decision.promotableStmIds());
         if (generation <= 0) {
             return false;
         }
-        recentDialogueSystem.swapGeneration(scope, generation, memorySystem.stmCoveredThroughTurnId(scope));
+        recentDialogueSystem.swapGeneration(
+                scope, generation, decision.dropThroughTurnId(), decision.forcedKeepTurnIds());
         return true;
     }
 
