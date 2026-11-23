@@ -5,6 +5,42 @@
     "reply.empty_answer": {
       "zh_cn": "我没太听明白，能再说一次吗？",
       "en_us": "I did not quite follow that. Could you say it again?"
+    },
+    "action.failure.not_allowed": {
+      "zh_cn": "这事我这边办不了，没有这个权限。",
+      "en_us": "I am not allowed to do that."
+    },
+    "action.failure.target_unknown": {
+      "zh_cn": "没找到能办这事的对象。",
+      "en_us": "I could not find anything that can do that."
+    },
+    "action.failure.target_off": {
+      "zh_cn": "那个功能现在是关着的。",
+      "en_us": "That feature is switched off right now."
+    },
+    "action.failure.target_busy": {
+      "zh_cn": "对方正忙，等一下再说。",
+      "en_us": "It is busy right now; try again in a moment."
+    },
+    "action.failure.time_limit": {
+      "zh_cn": "等太久没办成。",
+      "en_us": "It took too long and did not finish."
+    },
+    "action.failure.too_often": {
+      "zh_cn": "说得太勤了，缓一缓再试。",
+      "en_us": "That was too fast; give it a moment."
+    },
+    "action.failure.server_limit": {
+      "zh_cn": "服务器没允许这一步。",
+      "en_us": "The server did not allow that step."
+    },
+    "action.failure.cancelled": {
+      "zh_cn": "这事已经停了。",
+      "en_us": "That was stopped."
+    },
+    "action.failure.failed": {
+      "zh_cn": "没办成。",
+      "en_us": "It did not work."
     }
   }
 }

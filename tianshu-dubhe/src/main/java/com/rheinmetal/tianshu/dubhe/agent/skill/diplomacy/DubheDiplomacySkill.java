@@ -14,6 +14,7 @@ import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillContext;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillLane;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillSpec;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillVisibility;
+import com.rheinmetal.tianshu.dubhe.shared.failure.DubheActionFailure;
 
 import java.util.List;
 import java.util.Locale;
@@ -50,9 +51,10 @@ public final class DubheDiplomacySkill {
 
     private final Supplier<ToolCaller> caller;
     private final com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent;
+    private final com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository texts;
 
     public DubheDiplomacySkill(Supplier<ToolCaller> caller) {
-        this(caller, null);
+        this(caller, null, null);
     }
 
     /**
@@ -60,8 +62,18 @@ public final class DubheDiplomacySkill {
      */
     public DubheDiplomacySkill(Supplier<ToolCaller> caller,
                                com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent) {
+        this(caller, consent, null);
+    }
+
+    /**
+     * @param texts resolves the player-facing sentence of an action failure; {@code null} leaves {@code block} out
+     */
+    public DubheDiplomacySkill(Supplier<ToolCaller> caller,
+                               com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent,
+                               com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository texts) {
         this.caller = caller;
         this.consent = consent;
+        this.texts = texts;
     }
 
     public DubheSkill skill() {
@@ -126,11 +138,11 @@ public final class DubheDiplomacySkill {
         return CapabilityCatalog.invoke(id.capabilityId(), payload, effectiveCaller(), side())
                 .handle((result, error) -> {
                     if (error != null || result == null) {
-                        return failed("CALL_FAILED");
+                        return failed("CALL_FAILED", DubheActionFailure.FAILED, "");
                     }
                     String taskId = text(result, "taskId");
                     if (taskId.isBlank()) {
-                        return failed("NO_TASK_ID");
+                        return failed("NO_TASK_ID", DubheActionFailure.TARGET_UNKNOWN, "");
                     }
                     return ok(taskId, STATE_RUNNING);
                 });
@@ -142,10 +154,14 @@ public final class DubheDiplomacySkill {
         return TianshuTools.callJson(id.toolId(), payload, effectiveCaller())
                 .handle((envelope, error) -> {
                     if (error != null || envelope == null) {
-                        return failed("CALL_FAILED");
+                        return failed("CALL_FAILED", DubheActionFailure.FAILED, "");
                     }
                     if (envelope.has("ok") && !envelope.get("ok").getAsBoolean()) {
-                        return failed("CALL_REFUSED");
+                        JsonObject errorPayload = envelope.has("error") && envelope.get("error").isJsonObject()
+                                ? envelope.getAsJsonObject("error") : envelope;
+                        String code = text(errorPayload, "code");
+                        String message = text(errorPayload, "message");
+                        return failed("CALL_REFUSED", DubheActionFailure.fromToolError(code, message), message);
                     }
                     JsonElement result = envelope.has("result") ? envelope.get("result") : envelope;
                     String state = (result != null && result.isJsonObject()
@@ -184,10 +200,21 @@ public final class DubheDiplomacySkill {
         return result;
     }
 
-    private static JsonObject failed(String reason) {
+    private JsonObject failed(String reason) {
+        return failed(reason, DubheActionFailure.FAILED, "");
+    }
+
+    private JsonObject failed(String reason, DubheActionFailure cause, String gameReason) {
         JsonObject result = new JsonObject();
         result.addProperty("outcome", OUTCOME_FAILED);
         result.addProperty("reason", reason);
+        if (texts != null) {
+            String block = texts.actionFailure(cause, gameReason);
+            if (!block.isBlank()) {
+                // The agent copies this into its report's block; wording stays in the resource catalogue.
+                result.addProperty("block", block);
+            }
+        }
         return result;
     }
 

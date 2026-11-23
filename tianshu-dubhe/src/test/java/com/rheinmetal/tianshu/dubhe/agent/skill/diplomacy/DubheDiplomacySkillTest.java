@@ -115,6 +115,23 @@ class DubheDiplomacySkillTest {
         }
     }
 
+    @Test
+    void aRefusedCallCarriesThePlayerFacingReason() {
+        com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository texts =
+                new com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository(
+                        com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider.fixed(
+                                com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage.ZH_CN));
+        DubheSkill skill = new DubheDiplomacySkill(
+                () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY),
+                null, texts).skill();
+
+        JsonObject result = call(skill, args("progress", "mymod:ghost", "", "t-1"));
+
+        assertEquals("CALL_REFUSED", result.get("reason").getAsString());
+        assertEquals("没找到能办这事的对象。", result.get("block").getAsString(),
+                "the speech layer gets a game-facing reason, never the tool error code");
+    }
+
     private static void register(ToolId id, String state) {
         TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
             @Override

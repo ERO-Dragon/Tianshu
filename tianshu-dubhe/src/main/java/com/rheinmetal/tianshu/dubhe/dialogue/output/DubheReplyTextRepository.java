@@ -59,6 +59,26 @@ public final class DubheReplyTextRepository {
                 : readCatalog(catalog, key, DubhePromptLanguage.EN_US);
     }
 
+    /**
+     * The player-facing sentence for an action failure (G?：办事失败词表).
+     *
+     * <p>A game-provided reason is relayed after whitespace and length cleaning; everything else comes from the
+     * resource catalogue, so an API error code never reaches the voice channel.</p>
+     */
+    public String actionFailure(com.rheinmetal.tianshu.dubhe.shared.failure.DubheActionFailure cause,
+                                String gameReason) {
+        com.rheinmetal.tianshu.dubhe.shared.failure.DubheActionFailure effective =
+                cause == null ? com.rheinmetal.tianshu.dubhe.shared.failure.DubheActionFailure.FAILED : cause;
+        if (effective == com.rheinmetal.tianshu.dubhe.shared.failure.DubheActionFailure.GAME_REASON
+                && gameReason != null && !gameReason.isBlank()) {
+            String cleaned = gameReason.replaceAll("\\s+", " ").trim();
+            return cleaned.length() <= 120 ? cleaned : cleaned.substring(0, 120);
+        }
+        if (effective == com.rheinmetal.tianshu.dubhe.shared.failure.DubheActionFailure.GAME_REASON) {
+            effective = com.rheinmetal.tianshu.dubhe.shared.failure.DubheActionFailure.FAILED;
+        }
+        return text(effective.resourceKey());
+    }
     private static String readCatalog(JsonObject catalog, String key, DubhePromptLanguage language) {
         if (catalog == null || key == null || language == null) {
             return "";

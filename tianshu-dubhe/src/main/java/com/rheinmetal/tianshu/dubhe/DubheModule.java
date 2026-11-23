@@ -391,14 +391,14 @@ public final class DubheModule implements TianshuManagedModule {
         DubheSessionController sessionController = new DubheSessionController(dialogueChannel);
         // The output layer resolves the player-visible wording of its own fallback sentences, so it gets
         // the same language source as the prompt side (both live in resources, never in Java).
+        DubheReplyTextRepository replyTexts = new DubheReplyTextRepository(promptLanguageProvider);
         DubheOutputProcessor outputProcessor = new DubheOutputProcessor(
-                adapter, outputSettings, chatOutputSink, new DubheReplyTextRepository(promptLanguageProvider),
-                speechSink);
+                adapter, outputSettings, chatOutputSink, replyTexts, speechSink);
         DubheDelegatePromptRepository delegatePrompts = new DubheDelegatePromptRepository(promptLanguageProvider);
         DubheSkillRegistry skillRegistry = new DubheSkillRegistry();
         skillRegistry.register(new DubheDiplomacySkill(
                 () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy()),
-                assistantSettings.autonomyConsent()).skill());
+                assistantSettings.autonomyConsent(), replyTexts).skill());
         DubheAgentContextBudget agentBudget = DubheAgentContextBudget.forWindow(constructionFallbackPolicy.tier().maxTokens());
         DubheAgentCompactor agentCompactor = new DubheLlmAgentCompactor(llmClient::submitDetached, delegatePrompts);
         delegateService = new DubheDelegateService(
