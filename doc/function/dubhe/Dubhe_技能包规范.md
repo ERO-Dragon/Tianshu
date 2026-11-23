@@ -77,7 +77,18 @@ metadata:
 
 `SkillFileProvider`、`FrontMatter`、`TextPages` 已移到共享层 `tianshu-api`（`com.rheinmetal.tianshu.api.capability.skill`），`tianshu-client` 与天枢共用同一份实现。天枢删除了自己的 `DubheSkillFrontmatter` / `DubheSkillDefinitionLoader`，只保留：`skills/index.json` 清单、资源读取、以及 `DubheSkillPackageAdapter`（把包接成代理技能）。
 
-## 7. 验收
+## 7. 共享技能：平台注册、模组运行时读取
+
+三档与工具清单属于**平台公共知识**：舟楫把它注册成 SKILL（`tianshu:tianshu-tools`），任何模组都能读。
+模组不保存副本，运行时通过保留工具 `tianshu:capability.read` 去舟楫取：
+
+- 列可用技能：不带 `id`；
+- 读正文：带 `id`；
+- 读参考：带 `id` + `file`（如 `references/tiers.md`）；长文用 `page`。
+
+天枢把它包成内部技能 `read-shared-skill`；`work` 技能第 0 步先读 `tianshu:tianshu-tools`，再按其中的三档与工具清单操作。平台改了说明，下一次读取即生效。
+
+## 8. 验收
 
 - 7 个加载器用例：元数据/正文/references、无 references 的元数据读取、只扫一层、路径穿越拒绝、frontmatter 非法规避、名字必须等于目录、文本形态校验；
 - 新增技能包不改变代理循环代码（目录扫描 + 注册表），这是 G7 的判据。
