@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -238,5 +239,60 @@ class ProtocolExecutorManagerTest {
             Thread.sleep(10L);
         }
         assertEquals(expected, handle.state());
+    }
+    @Test
+    void aCancelledBlockedTaskKeepsItsSlotUntilItsBodyExits() throws Exception {
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean secondStarted = new AtomicBoolean(false);
+
+        // Not interruptible: the point of the fix is that a task which ignores the interrupt still owns its slot.
+        ProtocolTaskSpec stubborn = ProtocolTaskSpec.builder()
+                .moduleId("test")
+                .lane(ExecutionLane.CPU)
+                .concurrencyKey("serial")
+                .priority(Priority.NORMAL)
+                .maxConcurrency(1)
+                .queueCapacity(2)
+                .interruptible(false)
+                .build();
+        ProtocolTaskHandle first = executors.submit(stubborn, () -> {
+            firstStarted.countDown();
+            release.await(2, TimeUnit.SECONDS);
+            return null;
+        });
+        assertTrue(firstStarted.await(2, TimeUnit.SECONDS));
+
+        first.cancel("superseded");
+        executors.submit(stubborn, () -> secondStarted.set(true));
+
+        Thread.sleep(150);
+        assertFalse(secondStarted.get(),
+                "the cancelled task's body is still running, so a serial group must not admit the next one yet");
+
+        release.countDown();
+        awaitTrue(secondStarted);
+    }
+
+    @Test
+    void aTimerCancelledBeforeItFiresReleasesItsHandle() throws Exception {
+        ProtocolTaskHandle first = executors.schedule(spec("timers", Priority.NORMAL, 1, 4), () -> { },
+                java.time.Duration.ofMinutes(1));
+        ProtocolTaskHandle second = executors.schedule(spec("timers", Priority.NORMAL, 1, 4), () -> { },
+                java.time.Duration.ofMinutes(1));
+
+        first.cancel("cancelled");
+        second.cancel("cancelled");
+
+        assertEquals(0, executors.activeTaskCount(),
+                "a cancelled timer never runs, so nothing else would ever let go of its handle");
+    }
+
+    private static void awaitTrue(AtomicBoolean flag) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!flag.get() && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertTrue(flag.get(), "the second task never ran after the first one exited");
     }
 }

@@ -61,13 +61,35 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         return submit(spec, () -> {
             task.run();
             return null;
-        });
+        }, null);
     }
 
     public <T> ProtocolTaskHandle submit(ProtocolTaskSpec spec, Callable<T> task) {
+        return submit(spec, task, null);
+    }
+
+    /** A void task with a settlement callback; the value-returning overload cannot express a {@code Runnable}. */
+    public ProtocolTaskHandle submit(ProtocolTaskSpec spec, Runnable task, Runnable onSettled) {
+        Objects.requireNonNull(task, "task");
+        return submit(spec, () -> {
+            task.run();
+            return null;
+        }, onSettled);
+    }
+
+    /**
+     * Submits a task and reports exactly once when the manager is done with it.
+     *
+     * <p>{@code onSettled} runs whether the body ran, the task was cancelled before it started, or the submission was
+     * rejected. Callers hang their own bookkeeping on it instead of guessing from the handle's state: a task cancelled
+     * while queued never enters its body, so a {@code finally} inside the body is not a reliable release point.</p>
+     */
+    public <T> ProtocolTaskHandle submit(ProtocolTaskSpec spec, Callable<T> task, Runnable onSettled) {
         ProtocolTaskSpec effective = Objects.requireNonNull(spec, "spec");
         Callable<T> effectiveTask = Objects.requireNonNull(task, "task");
         ManagedTaskHandle handle = new ManagedTaskHandle(effective);
+        handle.setOnSettled(onSettled);
+        handle.setOnPrevented(() -> settle(handle));
         if (closed.get()) {
             rejectClosed(handle);
             return handle;
@@ -75,27 +97,36 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         if (effective.lane() == ExecutionLane.MAIN) {
             activeHandles.add(handle);
             handle.setState(ProtocolTaskState.QUEUED);
-            mainThreadExecutor.execute(() -> runManaged(handle, effectiveTask, null));
+            mainThreadExecutor.execute(() -> runManaged(handle, effectiveTask));
             return handle;
         }
         if (effective.lane() == ExecutionLane.SCHEDULED) {
-            handle.setFailureCause(new RejectedExecutionException("SCHEDULED lane submit is not supported; use schedule"));
+            handle.setFailureCause(new RejectedExecutionException(
+                    "SCHEDULED lane submit is not supported; use schedule"));
             handle.setState(ProtocolTaskState.REJECTED);
+            settle(handle);
             return handle;
         }
         activeHandles.add(handle);
         TaskGroup group = taskGroups.computeIfAbsent(effective.concurrencyKey(), TaskGroup::new);
         if (!group.offer(new QueuedTask<>(handle, effectiveTask))) {
-            activeHandles.remove(handle);
             handle.setState(ProtocolTaskState.REJECTED);
+            settle(handle);
         }
         return handle;
     }
 
     public ProtocolTaskHandle schedule(ProtocolTaskSpec spec, Runnable task, Duration delay) {
+        return schedule(spec, task, delay, null);
+    }
+
+    /** Schedules a timer and reports exactly once when the manager is done with it. */
+    public ProtocolTaskHandle schedule(ProtocolTaskSpec spec, Runnable task, Duration delay, Runnable onSettled) {
         Objects.requireNonNull(task, "task");
         ProtocolTaskSpec effective = Objects.requireNonNull(spec, "spec");
         ManagedTaskHandle handle = new ManagedTaskHandle(effective);
+        handle.setOnSettled(onSettled);
+        handle.setOnPrevented(() -> settle(handle));
         if (closed.get()) {
             rejectClosed(handle);
             return handle;
@@ -105,7 +136,7 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         Runnable wrapped = () -> runManaged(handle, () -> {
             task.run();
             return null;
-        }, null);
+        });
         try {
             handle.setState(ProtocolTaskState.QUEUED);
             ScheduledFuture<?> future = scheduledExecutor.schedule(wrapped, delayMillis, TimeUnit.MILLISECONDS);
@@ -114,13 +145,44 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         } catch (RejectedExecutionException exception) {
             handle.setFailureCause(exception);
             handle.setState(ProtocolTaskState.REJECTED);
+            settle(handle);
             return handle;
+        }
+    }
+
+    /**
+     * Ends one handle's life here, exactly once.
+     *
+     * <p>Every path that can leave a task behind calls this: the body's exit, a cancel that prevented the body, and a
+     * rejected submission. One place is what makes "the manager let go and the caller was told" true regardless of
+     * which of those happened.</p>
+     */
+    private void settle(ManagedTaskHandle handle) {
+        if (!handle.settled.compareAndSet(false, true)) {
+            return;
+        }
+        activeHandles.remove(handle);
+        Runnable action = handle.onSettled;
+        if (action != null) {
+            action.run();
         }
     }
 
     private void rejectClosed(ManagedTaskHandle handle) {
         handle.setFailureCause(new RejectedExecutionException("Protocol executor manager is closed"));
         handle.setState(ProtocolTaskState.REJECTED);
+        settle(handle);
+    }
+
+    /**
+     * How many task handles this manager is currently holding.
+     *
+     * <p>Exposed because "the queue drained but the manager still holds three handles" was invisible from outside: a
+     * scheduled task cancelled before it fires keeps its handle unless something drops it, and every diagnostic of that
+     * leak needed a heap dump. This counter is the cheap version.</p>
+     */
+    public int activeTaskCount() {
+        return activeHandles.size();
     }
 
     public ProtocolExecutorSnapshot snapshot() {
@@ -141,11 +203,9 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         return new ProtocolExecutorSnapshot(lanes, running, queued);
     }
 
-    private <T> void runManaged(ManagedTaskHandle handle, Callable<T> task, Runnable onFinish) {
+    private <T> void runManaged(ManagedTaskHandle handle, Callable<T> task) {
         if (handle.state() == ProtocolTaskState.CANCELLED) {
-            if (onFinish != null) {
-                onFinish.run();
-            }
+            settle(handle);
             return;
         }
         handle.setState(ProtocolTaskState.RUNNING);
@@ -165,10 +225,7 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
                 throw error;
             }
         } finally {
-            activeHandles.remove(handle);
-            if (onFinish != null) {
-                onFinish.run();
-            }
+            settle(handle);
         }
     }
 
@@ -244,7 +301,6 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
                 while (true) {
                     QueuedTask<?> task;
                     synchronized (this) {
-                        forgetFinished();
                         task = queue.peek();
                         if (task == null || inFlight.size() >= task.handle.spec.maxConcurrency()) {
                             break;
@@ -258,7 +314,6 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
                 draining.set(false);
                 boolean shouldDrainAgain;
                 synchronized (this) {
-                    forgetFinished();
                     shouldDrainAgain = !queue.isEmpty() && inFlight.size() < queue.peek().handle.spec.maxConcurrency();
                     if (inFlight.isEmpty() && queue.isEmpty()) {
                         taskGroups.remove(key, this);
@@ -270,20 +325,18 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
             }
         }
 
-        /** Drops handles that finished (or were cancelled) without their wrapper ever reporting back. */
-        private void forgetFinished() {
-            inFlight.removeIf(ProtocolTaskHandle::isDone);
-        }
-
         private <T> void submitToLane(QueuedTask<T> task) {
             ThreadPoolExecutor executor = executorFor(task.handle.spec.lane());
+            // The slot comes back through settlement: the body exit, a cancel that prevented it, or a rejection.
+            task.handle.setOnSettled(() -> finishOne(task.handle));
+            task.handle.setOnPrevented(() -> settle(task.handle));
             try {
-                Future<?> future = executor.submit(() -> runManaged(task.handle, task.callable, () -> finishOne(task.handle)));
+                Future<?> future = executor.submit(() -> runManaged(task.handle, task.callable));
                 task.handle.setFuture(future);
             } catch (RejectedExecutionException exception) {
                 task.handle.setFailureCause(exception);
                 task.handle.setState(ProtocolTaskState.REJECTED);
-                finishOne(task.handle);
+                settle(task.handle);
             }
         }
 
@@ -375,6 +428,19 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         private final AtomicReference<ProtocolTaskState> state = new AtomicReference<>(ProtocolTaskState.ACCEPTED);
         private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
         private volatile Future<?> future;
+        /** Set once by {@code settle}: the handle's life ends exactly one way, whoever gets there first. */
+        private final AtomicBoolean settled = new AtomicBoolean();
+        /** The caller's bookkeeping, run by {@code settle}. */
+        private volatile Runnable onSettled;
+        /**
+         * Runs when a cancel prevents the work from ever starting.
+         *
+         * <p>A cancelled task that never entered its body never reaches the {@code finally} that would give back its
+         * slot or drop it from the active set, so the cancel itself has to. A task that was already running is
+         * different: its body exits through that {@code finally}, which is what keeps a serial group serial — the
+         * caller seeing CANCELLED must not mean the worker has stopped touching shared state.</p>
+         */
+        private volatile Runnable onPrevented;
 
         private ManagedTaskHandle(ProtocolTaskSpec spec) {
             this.spec = spec;
@@ -382,6 +448,14 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
 
         private void setFuture(Future<?> future) {
             this.future = future;
+        }
+
+        private void setOnPrevented(Runnable action) {
+            this.onPrevented = action;
+        }
+
+        private void setOnSettled(Runnable action) {
+            this.onSettled = action;
         }
 
         private void setState(ProtocolTaskState state) {
@@ -424,9 +498,17 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
 
         @Override
         public boolean cancel(String reason) {
+            boolean wasRunning = state.get() == ProtocolTaskState.RUNNING;
             setState(ProtocolTaskState.CANCELLED);
             Future<?> current = future;
-            return current != null && current.cancel(spec.interruptible());
+            boolean cancelled = current != null && current.cancel(spec.interruptible());
+            if (!wasRunning) {
+                Runnable action = onPrevented;
+                if (action != null) {
+                    action.run();
+                }
+            }
+            return cancelled;
         }
 
         @Override

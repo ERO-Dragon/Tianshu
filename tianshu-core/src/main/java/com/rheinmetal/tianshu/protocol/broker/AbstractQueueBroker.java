@@ -27,8 +27,15 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
     protected final ProtocolExecutorManager executorManager;
     protected final ProtocolExecutionPolicy executionPolicy;
     protected final AtomicBoolean draining = new AtomicBoolean(false);
-    /** The executor handle of each dispatch, so a cancel can reach the thread instead of only the status table. */
-    private final Map<String, ProtocolTaskHandle> handles = new ConcurrentHashMap<>();
+    /**
+     * The executor handle of each dispatch, so a cancel can reach the thread instead of only the status table.
+     *
+     * <p>The holder goes in before the task is submitted and is filled right after: a task that settles synchronously
+     * — a rejection, or a body that finishes before {@code submit} returns — must not leave a stale entry behind, and
+     * the cancel path must never read a half-published handle.</p>
+     */
+    private final Map<String, java.util.concurrent.atomic.AtomicReference<ProtocolTaskHandle>> handles =
+            new ConcurrentHashMap<>();
 
     protected AbstractQueueBroker(String brokerId, int queueCapacity, int maxConcurrency, ProtocolExecutorManager executorManager, ProtocolExecutionPolicy executionPolicy) {
         this.brokerId = brokerId;
@@ -85,12 +92,20 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
                 if (task == null) break;
                 running.put(task.envelope().envelopeId(), task);
                 task.runtime().lifecycle().transition(task.envelope().envelopeId(), EnvelopeStatus.DISPATCHED, "DISPATCHED", brokerId);
-                ProtocolTaskHandle handle = executorManager.submit(taskSpec(task), () -> runTask(task));
+                java.util.concurrent.atomic.AtomicReference<ProtocolTaskHandle> holder =
+                        new java.util.concurrent.atomic.AtomicReference<>();
+                String envelopeId = task.envelope().envelopeId();
+                handles.put(envelopeId, holder);
+                ProtocolTaskHandle handle = executorManager.submit(taskSpec(task), () -> runTask(task),
+                        () -> {
+                            handles.remove(envelopeId, holder);
+                            running.remove(envelopeId);
+                            drain();
+                        });
+                holder.set(handle);
                 if (handle.state() == ProtocolTaskState.REJECTED) {
-                    // Nothing will ever call runTask, so the slot has to come back here. Without this a
-                    // rejection left a phantom "running" entry that permanently ate one concurrency slot,
-                    // and enough of them stopped the broker for the rest of the session without a log line.
-                    running.remove(task.envelope().envelopeId());
+                    // The submission never ran, so settlement already gave the slot back; the caller still has to be
+                    // told why nothing happened.
                     task.runtime().handleFailure(
                             task.envelope(),
                             "BROKER_EXECUTOR_REJECTED",
@@ -98,8 +113,6 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
                                     + handle.failureCause().map(Throwable::getMessage).orElse(""),
                             handle.failureCause().orElse(null)
                     );
-                } else {
-                    handles.put(task.envelope().envelopeId(), handle);
                 }
             }
         } finally {
@@ -143,10 +156,6 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
             if (failure instanceof Error fatal) {
                 throw fatal;
             }
-        } finally {
-            handles.remove(envelope.envelopeId());
-            running.remove(envelope.envelopeId());
-            drain();
         }
     }
 
@@ -162,7 +171,8 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
             runningTask.runtime().cancellation().cancelSelf(envelopeId, reasonCode, message);
         }
         queue.removeIf(task -> task.envelope().envelopeId().equals(envelopeId));
-        ProtocolTaskHandle handle = handles.get(envelopeId);
+        java.util.concurrent.atomic.AtomicReference<ProtocolTaskHandle> holder = handles.get(envelopeId);
+        ProtocolTaskHandle handle = holder == null ? null : holder.get();
         if (handle != null && interruptsRunningTasks()) {
             // Only the broker that promises interruption interrupts; for the others the cancelled status above is the
             // contract, and an interrupt would reach into a handler that never agreed to be stopped.
