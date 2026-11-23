@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.capability.skill.FrontMatter;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill;
 
 import java.io.InputStream;
@@ -18,19 +19,15 @@ import java.util.Map;
 /**
  * 从资源目录加载内置技能包（classpath）。
  *
- * <p>jar 里不能列目录，所以用一份清单声明有哪些包、每个包有哪些 references：</p>
- * <pre>
- * skills/index.json
- * { "schemaVersion": 1, "skills": [ { "name": "work", "references": ["references/tiers.md"] } ] }
- * </pre>
- *
- * <p>加载后经 {@link DubheSkillPackageAdapter} 变成可注册的技能：目录只给元数据，调用才读正文/reference。</p>
+ * <p>解析复用舟楫的 {@link FrontMatter}（SKILL.md 的唯一实现）；本类只负责天枢自己的两件事：
+ * 读 `skills/index.json` 清单、把包经 {@link DubheSkillPackageAdapter} 接成代理技能。</p>
  */
 public final class DubheSkillPackageResourceLoader {
 
     private static final String ROOT = "/com/rheinmetal/tianshu/dubhe/skills/";
     private static final String INDEX = ROOT + "index.json";
     private static final int SCHEMA_VERSION = 1;
+    private static final int MAX_DESCRIPTION = 200;
 
     private DubheSkillPackageResourceLoader() {
     }
@@ -68,12 +65,27 @@ public final class DubheSkillPackageResourceLoader {
 
     public static DubheSkillDefinition load(String name, List<String> references) {
         String document = readText(ROOT + name + "/SKILL.md");
+        FrontMatter front = FrontMatter.parse(document);
+        String declaredName = front.get("name");
+        if (declaredName == null || !declaredName.strip().equals(name)) {
+            throw new IllegalArgumentException("skill name '" + declaredName + "' must match its directory '" + name + "'");
+        }
+        String description = front.get("description");
+        if (description == null || description.isBlank() || description.strip().length() > MAX_DESCRIPTION) {
+            throw new IllegalArgumentException("skill " + name + " needs a description of 1-" + MAX_DESCRIPTION + " characters");
+        }
+        String allowed = front.get("allowed-tools");
+        List<String> allowedTools = allowed == null || allowed.isBlank()
+                ? List.of() : List.of(allowed.strip().split("\\s+"));
         Map<String, String> contents = new LinkedHashMap<>();
         for (String reference : references) {
-            String path = ROOT + name + "/" + reference;
-            contents.put(reference, readText(path));
+            contents.put(reference, readText(ROOT + name + "/" + reference));
         }
-        return DubheSkillDefinitionLoader.loadText(document, name, contents);
+        return new DubheSkillDefinition(
+                new DubheSkillMetadata(name, description.strip(), allowedTools),
+                FrontMatter.body(document).strip(),
+                contents
+        );
     }
 
     private static JsonObject readJson(String resource) {

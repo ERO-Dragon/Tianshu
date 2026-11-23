@@ -1,31 +1,22 @@
 package com.rheinmetal.tianshu.dubhe.agent.skill.definition;
 
 import java.util.List;
-import java.util.Map;
 
 /**
- * SKILL.md 的 frontmatter（Agent Skills 规范的子集）。
+ * SKILL.md 里天枢用得到的元数据。
  *
- * @param name         技能名：小写字母/数字/连字符，1–64，不能以连字符开头或结尾、不能双连字符
- * @param description  何时用这个技能，1–1024
- * @param license      可选
- * @param compatibility 可选，环境要求
- * @param allowedTools 可选，预先允许的工具（空格分隔）
- * @param metadata     额外的键值对（一层）
+ * <p>解析统一走舟楫的 {@link com.rheinmetal.tianshu.api.capability.skill.FrontMatter}；这里只保留代理目录需要的字段，
+ * 不再复制一份 YAML 解析器。</p>
  */
 public record DubheSkillMetadata(
         String name,
         String description,
-        String license,
-        String compatibility,
-        List<String> allowedTools,
-        Map<String, String> metadata
+        List<String> allowedTools
 ) {
 
     public DubheSkillMetadata {
-        license = license == null ? "" : license.trim();
-        compatibility = compatibility == null ? "" : compatibility.trim();
+        name = name == null ? "" : name.trim();
+        description = description == null ? "" : description.trim();
         allowedTools = allowedTools == null ? List.of() : List.copyOf(allowedTools);
-        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 }
