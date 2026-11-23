@@ -1,0 +1,210 @@
+package com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillBudget;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillContext;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillLane;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillSpec;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillVisibility;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
+
+/**
+ * 天枢的外交技能：把一件事交给另一个已知模组去办，或按需查询它的进度（G28）。
+ *
+ * <p>天枢没有实体，因此这个技能<b>不执行任何世界动作</b>：它只向对方已注册的 capability 投递任务，
+ * 再在玩家问起时调用对方注册的读工具查询。对方的权限边界仍留在对方那边。</p>
+ *
+ * <p>两种动作：</p>
+ * <ul>
+ *   <li>{@code submit} — {@code target} 是 {@code namespace:name} 形式的 capability，参数带 {@code task}；
+ *       要求对方返回 {@code taskId}，否则按失败处理（没有 taskId 就无法查询进度）。</li>
+ *   <li>{@code progress} — {@code target} 是对方注册的读工具，参数带 {@code taskId}；只映射
+ *       {@code RUNNING} / {@code DONE} / {@code UNKNOWN} 三态，不认识的返回值一律 {@code UNKNOWN}，
+ *       不许把"没说"当成"完成"。</li>
+ * </ul>
+ *
+ * <p>调用方的档位由注册时注入的 {@link ToolCaller} 决定；舟楫会用它自己的自治度判定是否放行，
+ * 本技能不自行放大权限。</p>
+ */
+public final class DubheDiplomacySkill {
+
+    public static final String ID = "diplomacy";
+    private static final long TIMEOUT_MILLIS = 30_000L;
+    private static final String OUTCOME_OK = "OK";
+    private static final String OUTCOME_FAILED = "FAILED";
+    private static final String STATE_RUNNING = "RUNNING";
+    private static final String STATE_DONE = "DONE";
+    private static final String STATE_UNKNOWN = "UNKNOWN";
+
+    private final Supplier<ToolCaller> caller;
+
+    public DubheDiplomacySkill(Supplier<ToolCaller> caller) {
+        this.caller = caller;
+    }
+
+    public DubheSkill skill() {
+        return new DubheSkill(spec(), this::execute);
+    }
+
+    public static DubheSkillSpec spec() {
+        JsonObject schema = new JsonObject();
+        schema.addProperty("type", "object");
+        JsonObject properties = new JsonObject();
+        properties.add("action", property("string", "submit or progress"));
+        properties.add("target", property("string", "capability id for submit, read-tool id for progress"));
+        properties.add("task", property("string", "what to ask the target module to do"));
+        properties.add("taskId", property("string", "the target module's task id, for progress"));
+        schema.add("properties", properties);
+        schema.add("required", stringArray("action", "target"));
+        return DubheSkillSpec.builder(ID,
+                        "hand a task to another known module, or ask it for progress")
+                .inputSchema(schema)
+                .visibility(DubheSkillVisibility.INTERNAL)
+                .autonomy(ToolAutonomy.CONSERVATIVE)
+                .budget(DubheSkillBudget.of(TIMEOUT_MILLIS, 1))
+                .reportSchema(List.of("outcome", "taskId", "progress"))
+                .retry(true)
+                .lane(DubheSkillLane.PLAYER)
+                .build();
+    }
+
+    private CompletableFuture<JsonObject> execute(DubheSkillContext context, JsonObject args) {
+        String action = text(args, "action").toLowerCase(Locale.ROOT);
+        String target = text(args, "target");
+        IdRef id = IdRef.parse(target);
+        if (id == null) {
+            return CompletableFuture.completedFuture(failed("INVALID_TARGET"));
+        }
+        if ("submit".equals(action)) {
+            String task = text(args, "task");
+            if (task.isBlank()) {
+                return CompletableFuture.completedFuture(failed("INVALID_ARGS"));
+            }
+            return submit(id, task);
+        }
+        if ("progress".equals(action)) {
+            String taskId = text(args, "taskId");
+            if (taskId.isBlank()) {
+                return CompletableFuture.completedFuture(failed("INVALID_ARGS"));
+            }
+            return progress(id, taskId);
+        }
+        return CompletableFuture.completedFuture(failed("INVALID_ACTION"));
+    }
+
+    private CompletableFuture<JsonObject> submit(IdRef id, String task) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("task", task);
+        return CapabilityCatalog.invoke(id.capabilityId(), payload, effectiveCaller(), side())
+                .handle((result, error) -> {
+                    if (error != null || result == null) {
+                        return failed("CALL_FAILED");
+                    }
+                    String taskId = text(result, "taskId");
+                    if (taskId.isBlank()) {
+                        return failed("NO_TASK_ID");
+                    }
+                    return ok(taskId, STATE_RUNNING);
+                });
+    }
+
+    private CompletableFuture<JsonObject> progress(IdRef id, String taskId) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("taskId", taskId);
+        return TianshuTools.callJson(id.toolId(), payload, effectiveCaller())
+                .handle((envelope, error) -> {
+                    if (error != null || envelope == null) {
+                        return failed("CALL_FAILED");
+                    }
+                    if (envelope.has("ok") && !envelope.get("ok").getAsBoolean()) {
+                        return failed("CALL_REFUSED");
+                    }
+                    JsonElement result = envelope.has("result") ? envelope.get("result") : envelope;
+                    String state = (result != null && result.isJsonObject()
+                            ? text(result.getAsJsonObject(), "state") : "").toUpperCase(Locale.ROOT);
+                    String progress = switch (state) {
+                        case STATE_RUNNING, STATE_DONE, STATE_UNKNOWN -> state;
+                        default -> STATE_UNKNOWN;
+                    };
+                    return ok(taskId, progress);
+                });
+    }
+
+    private ToolCaller effectiveCaller() {
+        ToolCaller effective = caller == null ? null : caller.get();
+        return effective != null
+                ? effective
+                : ToolCaller.agent("dubhe", false, ToolAutonomy.READ_ONLY);
+    }
+
+    private static com.rheinmetal.tianshu.api.tool.ToolSide side() {
+        return com.rheinmetal.tianshu.api.tool.ToolSide.CLIENT;
+    }
+
+    private static JsonObject ok(String taskId, String progress) {
+        JsonObject result = new JsonObject();
+        result.addProperty("outcome", OUTCOME_OK);
+        result.addProperty("taskId", taskId);
+        result.addProperty("progress", progress);
+        return result;
+    }
+
+    private static JsonObject failed(String reason) {
+        JsonObject result = new JsonObject();
+        result.addProperty("outcome", OUTCOME_FAILED);
+        result.addProperty("reason", reason);
+        return result;
+    }
+
+    private static String text(JsonObject object, String name) {
+        JsonElement value = object == null ? null : object.get(name);
+        return value == null || value.isJsonNull() ? "" : value.getAsString().trim();
+    }
+
+    private static JsonObject property(String type, String description) {
+        JsonObject property = new JsonObject();
+        property.addProperty("type", type);
+        property.addProperty("description", description);
+        return property;
+    }
+
+    private static com.google.gson.JsonArray stringArray(String... values) {
+        com.google.gson.JsonArray array = new com.google.gson.JsonArray();
+        for (String value : values) {
+            array.add(value);
+        }
+        return array;
+    }
+
+    /** {@code namespace:name}, the shape both capability ids and tool ids use. */
+    private record IdRef(String namespace, String name) {
+
+        static IdRef parse(String value) {
+            int separator = value == null ? -1 : value.indexOf(':');
+            if (separator <= 0 || separator >= value.length() - 1) {
+                return null;
+            }
+            return new IdRef(value.substring(0, separator), value.substring(separator + 1));
+        }
+
+        CapabilityId capabilityId() {
+            return CapabilityId.of(namespace, name);
+        }
+
+        ToolId toolId() {
+            return ToolId.of(namespace, name);
+        }
+    }
+}

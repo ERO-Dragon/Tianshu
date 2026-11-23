@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.dubhe.settings;
 
 import com.rheinmetal.tianshu.api.config.ModuleConfigStore;
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.dubhe.DubheAssistantSettings;
 import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputMode;
 import com.rheinmetal.tianshu.dubhe.dialogue.output.DubheOutputSettings;
@@ -25,6 +26,7 @@ public final class DubheConfig implements DubheAssistantSettings, DubheSettingsA
     private static final String KEY_CHAT_THINKING = "chatThinkingEnabled";
     private static final String KEY_ALLOW_INTERRUPTION = "allowInterruption";
     private static final String KEY_TEXT_INPUT = "textInputEnabled";
+    private static final String KEY_AUTONOMY = "autonomy";
 
     private static final boolean DEFAULT_ENABLED = true;
     private static final String DEFAULT_WAKE_WORD = "";
@@ -32,6 +34,8 @@ public final class DubheConfig implements DubheAssistantSettings, DubheSettingsA
     private static final boolean DEFAULT_CHAT_THINKING = false;
     private static final boolean DEFAULT_ALLOW_INTERRUPTION = true;
     private static final boolean DEFAULT_TEXT_INPUT = true;
+    /** Safe by default: a companion that has not been told it may act should read only (DEC-1). */
+    private static final ToolAutonomy DEFAULT_AUTONOMY = ToolAutonomy.READ_ONLY;
 
     private final ModuleConfigStore store;
     private final Path storageRoot;
@@ -96,6 +100,16 @@ public final class DubheConfig implements DubheAssistantSettings, DubheSettingsA
         store.setBoolean(KEY_ALLOW_INTERRUPTION, enabled);
     }
 
+    @Override
+    public ToolAutonomy autonomy() {
+        return ToolAutonomy.parse(store.getString(KEY_AUTONOMY, DEFAULT_AUTONOMY.name()), DEFAULT_AUTONOMY);
+    }
+
+    @Override
+    public void setAxAutonomy(ToolAutonomy autonomy) {
+        ToolAutonomy effective = autonomy == null ? DEFAULT_AUTONOMY : autonomy;
+        store.setString(KEY_AUTONOMY, effective.name());
+    }
     @Override
     public boolean textInputEnabled() {
         return store.getBoolean(KEY_TEXT_INPUT, DEFAULT_TEXT_INPUT);

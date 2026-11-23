@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.dubhe;
 
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
+
 public interface DubheAssistantSettings {
     String DEFAULT_WAKE_WORD = "";
 
@@ -28,5 +30,15 @@ public interface DubheAssistantSettings {
      */
     default boolean textInputEnabled() {
         return true;
+    }
+
+    /**
+     * The tier this module allows itself (DEC-1): it is passed into every {@code ToolCaller} this module builds,
+     * and it can only narrow what 舟楫 offers, never widen it.
+     *
+     * <p>Defaults to {@link ToolAutonomy#READ_ONLY}: a companion that has not been told it may act should not.
+     */
+    default ToolAutonomy autonomy() {
+        return ToolAutonomy.READ_ONLY;
     }
 }

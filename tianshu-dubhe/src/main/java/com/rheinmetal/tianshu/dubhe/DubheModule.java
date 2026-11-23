@@ -40,6 +40,8 @@ import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheLlmAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
+import com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy.DubheDiplomacySkill;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
 import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnOrchestrator;import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnStatusPublisher;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventAppend;
@@ -394,6 +396,8 @@ public final class DubheModule implements TianshuManagedModule {
                 speechSink);
         DubheDelegatePromptRepository delegatePrompts = new DubheDelegatePromptRepository(promptLanguageProvider);
         DubheSkillRegistry skillRegistry = new DubheSkillRegistry();
+        skillRegistry.register(new DubheDiplomacySkill(
+                () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy())).skill());
         DubheAgentContextBudget agentBudget = DubheAgentContextBudget.forWindow(constructionFallbackPolicy.tier().maxTokens());
         DubheAgentCompactor agentCompactor = new DubheLlmAgentCompactor(llmClient::submitDetached, delegatePrompts);
         delegateService = new DubheDelegateService(
