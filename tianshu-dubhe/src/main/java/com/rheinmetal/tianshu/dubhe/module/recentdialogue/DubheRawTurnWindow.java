@@ -332,7 +332,26 @@ public final class DubheRawTurnWindow {
         return ids;
     }
 
-    /** 窗口当前保留的 raw token 总数（换代判据用它，而不是提示词水位）。 */
+    /**
+     * Whether the whole prompt would reach the watermark: the summary block and the permanent tail are paid
+     * alongside the raw window, so the trigger counts all three (G35).
+     */
+    public boolean promptWatermarkReached(DubheScope scope) {
+        DubheMemoryWindowPolicy activePolicy = policy;
+        int watermark = activePolicy.compressionWatermarkTokenBudget();
+        if (watermark <= 0) {
+            return false;
+        }
+        int tail = activePolicy.tailRetrievalTokenBudget()
+                + activePolicy.tailCurrentInputTokenBudget()
+                + TAIL_STATE_TOKENS;
+        return rawTokenCount(scope) + activePolicy.summaryBlockTokenBudget() + tail >= watermark;
+    }
+
+    /** The current-facts snapshot inside the tail; a size, not a ratio (see the policy layout). */
+    private static final int TAIL_STATE_TOKENS = 256;
+
+    /** 窗口当前保留的 raw token 总数（观测与硬上限用，不是换代判据）。 */
     public int rawTokenCount(DubheScope scope) {
         if (!writable(scope)) {
             return 0;

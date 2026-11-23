@@ -150,7 +150,8 @@ public final class DubheRecentDialogueSystem {
     }
 
     public boolean shouldSwapGeneration(DubheScope scope) {
-        return rawTurnWindow.capacityReached(scope);
+        // The watermark is the trigger; the hard capacity is a safety net for a window whose tail alone is huge.
+        return rawTurnWindow.promptWatermarkReached(scope) || rawTurnWindow.capacityReached(scope);
     }
 
     /** 当前世界的压缩代次；换代时推进，用于区分"正常轮次"与"换代引发的全 miss"。 */

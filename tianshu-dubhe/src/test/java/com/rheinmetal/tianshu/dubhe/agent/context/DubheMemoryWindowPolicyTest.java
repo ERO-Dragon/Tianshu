@@ -31,15 +31,15 @@ class DubheMemoryWindowPolicyTest {
         // Input is the watermark (0.70 x W), not a share of its own: the watermark already is "the
         // prompt size the compression trigger fires at", so a second share would be a second ladder.
         assertEquals(W_100K, p.totalContextTokenBudget());
-        assertEquals(71_680, p.compressionWatermarkTokenBudget());
-        assertEquals(71_680, p.chatInputTokenBudget());
-        assertEquals(30_720, p.chatOutputReserveTokenBudget());
+        assertEquals(81_920, p.compressionWatermarkTokenBudget());
+        assertEquals(81_920, p.chatInputTokenBudget());
+        assertEquals(20_480, p.chatOutputReserveTokenBudget());
 
         // TASK keeps its own instruction/payload split, but off that same input ceiling.
-        assertEquals(71_680, p.taskInputTokenBudget());
-        assertEquals(30_720, p.taskOutputReserveTokenBudget());
-        assertEquals(8_960, p.taskInstructionTokenBudget());
-        assertEquals(53_760, p.taskPayloadTokenBudget());
+        assertEquals(81_920, p.taskInputTokenBudget());
+        assertEquals(20_480, p.taskOutputReserveTokenBudget());
+        assertEquals(10_240, p.taskInstructionTokenBudget());
+        assertEquals(61_440, p.taskPayloadTokenBudget());
 
         // The tail is a size, not a ratio: every tier pays exactly these three parts.
         assertEquals(900, DubheMemoryWindowPolicy.TAIL_TOKEN_BUDGET);
@@ -65,19 +65,19 @@ class DubheMemoryWindowPolicyTest {
         // SB = clamp(0.05 x W, 2048, 24576)
         assertEquals(5_120, p.summaryBlockTokenBudget());
         // KEEP_MAX = clamp(0.10 x W, 2048, 49152); KEEP_TARGET = round(0.8 x KEEP_MAX)
-        assertEquals(10_240, p.recentRawKeepTokenMax());
-        assertEquals(8_192, p.recentRawKeepTokenTarget());
+        assertEquals(12_288, p.recentRawKeepTokenMax());
+        assertEquals(9_830, p.recentRawKeepTokenTarget());
         // WATERMARK = 0.70 x W
-        assertEquals(71_680, p.compressionWatermarkTokenBudget());
+        assertEquals(81_920, p.compressionWatermarkTokenBudget());
         // COMPRESS_MAX = WATERMARK - SB - KEEP_MAX - TAIL  (the derived remainder, not a knob)
-        assertEquals(55_420, p.shortTermCompressTokenMax());
+        assertEquals(63_612, p.shortTermCompressTokenMax());
         // COMPRESS_TARGET = round(0.8 x COMPRESS_MAX)
-        assertEquals(44_336, p.shortTermCompressTokenTarget());
+        assertEquals(50_890, p.shortTermCompressTokenTarget());
         // UNIT = min(8192, COMPRESS_MAX): the unit fits inside the compression window
         assertEquals(8_192, p.compressionUnitTokenBudget());
         // MAX_RAW_TOKENS = KEEP_MAX + COMPRESS_MAX; MAX_RAW_CHARS = MAX_RAW_TOKENS x CHARS_PER_TOKEN
-        assertEquals(65_660, p.maxRawTokenCount());
-        assertEquals(262_640, p.maxRawCharacters());
+        assertEquals(75_900, p.maxRawTokenCount());
+        assertEquals(303_600, p.maxRawCharacters());
     }
 
     @Test
@@ -111,7 +111,7 @@ class DubheMemoryWindowPolicyTest {
         assertEquals(2_048, p.summaryBlockTokenBudget());
         assertEquals(2_048, p.recentRawKeepTokenMax());
         assertEquals(1_638, p.recentRawKeepTokenTarget());
-        assertEquals(2_100, p.compressionWatermarkTokenBudget());
+        assertEquals(2_400, p.compressionWatermarkTokenBudget());
         // 2100 - 2048 - 2048 - 900 is negative: the remainder collapses to the explicit floor of 1
         // rather than escaping as a negative budget. Such a window cannot run AX usefully; the
         // smallest supported tier is DubheContextTier.COMPACT.
@@ -120,8 +120,8 @@ class DubheMemoryWindowPolicyTest {
         assertEquals(1, p.compressionUnitTokenBudget());
         assertEquals(2_049, p.maxRawTokenCount());
         // The input ceiling follows the watermark, so it is not floored at 1000 here.
-        assertEquals(2_100, p.chatInputTokenBudget());
-        assertEquals(900, p.chatOutputReserveTokenBudget());
+        assertEquals(2_400, p.chatInputTokenBudget());
+        assertEquals(600, p.chatOutputReserveTokenBudget());
     }
 
     @Test
@@ -129,10 +129,10 @@ class DubheMemoryWindowPolicyTest {
         DubheMemoryWindowPolicy p = DubheMemoryWindowPolicy.fromBudget(W_500K, 3, 60000L);
 
         // 0.05 x 512000 = 25600 and 0.10 x 512000 = 51200 both exceed their ceilings.
-        assertEquals(24_576, p.summaryBlockTokenBudget());
+        assertEquals(8_192, p.summaryBlockTokenBudget());
         assertEquals(49_152, p.recentRawKeepTokenMax());
-        assertEquals(358_400, p.compressionWatermarkTokenBudget());
-        assertEquals(283_772, p.shortTermCompressTokenMax());
+        assertEquals(409_600, p.compressionWatermarkTokenBudget());
+        assertEquals(351_356, p.shortTermCompressTokenMax());
         assertEquals(8_192, p.compressionUnitTokenBudget());
         // The tail does not grow with the window at any tier.
         assertEquals(512, p.tailRetrievalTokenBudget());
@@ -180,16 +180,16 @@ class DubheMemoryWindowPolicyTest {
         // The fallback is the conservative end of the ladder, built by the same formula as any turn.
         assertEquals(DubheContextTier.COMPACT.maxTokens(), p.totalContextTokenBudget());
         assertEquals(DubheContextTier.COMPACT, p.tier());
-        assertEquals(22_938, p.chatInputTokenBudget());
+        assertEquals(26_214, p.chatInputTokenBudget());
         assertEquals(2_048, p.summaryBlockTokenBudget());
-        assertEquals(3_277, p.recentRawKeepTokenMax());
-        assertEquals(2_622, p.recentRawKeepTokenTarget());
-        assertEquals(22_938, p.compressionWatermarkTokenBudget());
-        assertEquals(16_713, p.shortTermCompressTokenMax());
-        assertEquals(13_370, p.shortTermCompressTokenTarget());
+        assertEquals(3_932, p.recentRawKeepTokenMax());
+        assertEquals(3_146, p.recentRawKeepTokenTarget());
+        assertEquals(26_214, p.compressionWatermarkTokenBudget());
+        assertEquals(19_334, p.shortTermCompressTokenMax());
+        assertEquals(15_467, p.shortTermCompressTokenTarget());
         assertEquals(8_192, p.compressionUnitTokenBudget());
-        assertEquals(19_990, p.maxRawTokenCount());
-        assertEquals(79_960, p.maxRawCharacters());
+        assertEquals(23_266, p.maxRawTokenCount());
+        assertEquals(93_064, p.maxRawCharacters());
         assertEquals(3, p.shortTermChatBlockLimit());
         assertEquals(60000L, p.conversationPauseMillis());
     }
@@ -224,12 +224,12 @@ class DubheMemoryWindowPolicyTest {
     void keptWindowTurnsFollowTheWindowBecauseTheSegmentDoes() {
         // KEEP is 0.10 x W, so the turn count is the one count that scales; 130 tokens per turn is
         // the same density the cost model uses.
-        assertEquals(25, DubheContextBudget.fromPolicy(
+        assertEquals(30, DubheContextBudget.fromPolicy(
                 DubheMemoryWindowPolicy.fromBudget(DubheContextTier.COMPACT.maxTokens(), 3, 60000L))
                 .maxRecentRawDialogueTurns());
-        assertEquals(78, DubheContextBudget.fromPolicy(
+        assertEquals(94, DubheContextBudget.fromPolicy(
                 DubheMemoryWindowPolicy.fromBudget(W_100K, 3, 60000L)).maxRecentRawDialogueTurns());
-        assertEquals(157, DubheContextBudget.fromPolicy(
+        assertEquals(189, DubheContextBudget.fromPolicy(
                 DubheMemoryWindowPolicy.fromBudget(W_200K, 3, 60000L)).maxRecentRawDialogueTurns());
         // 49152 / 130 = 378 at the 500K ceiling, which is the largest kept window the design allows.
         assertEquals(378, DubheContextBudget.fromPolicy(

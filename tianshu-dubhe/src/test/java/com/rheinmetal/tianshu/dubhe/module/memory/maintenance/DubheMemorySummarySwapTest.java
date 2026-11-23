@@ -117,7 +117,7 @@ class DubheMemorySummarySwapTest {
             DubheMemoryWindowPolicy policy = compactPolicy();
             DubheMemorySystem memorySystem = new DubheMemorySystem(layout(), jsonStore(), policy);
             DubheRecentDialogueSystem recentDialogueSystem = recentDialogue(policy);
-            appendRounds(recentDialogueSystem, scope, 5, 2_000);
+            appendRounds(recentDialogueSystem, scope, 6, 2_000);
             appendRounds(recentDialogueSystem, scope, 1, 300);
             DubheRawTurnBatch batch = select(memorySystem, recentDialogueSystem, scope);
             assertEquals(4, batch.turns().size(), "单元只装得下最旧的两组对话");
@@ -157,7 +157,7 @@ class DubheMemorySummarySwapTest {
             DubheMemoryWindowPolicy policy = compactPolicy();
             DubheMemorySystem memorySystem = new DubheMemorySystem(layout(), jsonStore(), policy);
             DubheRecentDialogueSystem recentDialogueSystem = recentDialogue(policy);
-            appendRounds(recentDialogueSystem, scope, 5, 2_000);
+            appendRounds(recentDialogueSystem, scope, 6, 2_000);
             appendRounds(recentDialogueSystem, scope, 1, 300);
             registerLlm(runtime);
             registerPrimitive(runtime);

@@ -26,10 +26,10 @@ package com.rheinmetal.tianshu.dubhe.agent.context;
  * before overflow. Each segment is stated directly as a fraction of {@code W}, clamped to an
  * absolute range that stays sane at both ends:</p>
  * <pre>
- *   SB              = clamp(0.05 x W, 2048, 24576)              summary block capacity
- *   KEEP_MAX        = clamp(0.10 x W, 2048, 49152)              verbatim kept window
+ *   SB              = clamp(0.05 x W, 2048, 8192)                summary block capacity
+ *   KEEP_MAX        = clamp(0.12 x W, 2048, 49152)              verbatim kept window
  *   KEEP_TARGET     = round(0.8 x KEEP_MAX)                     trim target (hysteresis)
- *   WATERMARK       = 0.70 x W                                  compression trigger level
+ *   WATERMARK       = 0.80 x W                                  reset trigger level
  *   COMPRESS_MAX    = max(1, WATERMARK - SB - KEEP_MAX - TAIL)  compression window capacity
  *   COMPRESS_TARGET = round(0.8 x COMPRESS_MAX)                 stop compressing below this
  *   UNIT            = min(8192, COMPRESS_MAX)                   one compression unit
@@ -110,10 +110,10 @@ public record DubheMemoryWindowPolicy(
      */
     static final double RATIO_SUMMARY_BLOCK = 0.05;
     static final int MIN_SUMMARY_BLOCK_TOKENS = 2048;
-    static final int MAX_SUMMARY_BLOCK_TOKENS = 24_576;
+    static final int MAX_SUMMARY_BLOCK_TOKENS = 8_192;
 
     /** Kept window ({@code KEEP_MAX}) as a fraction of the window, clamped like the summary block. */
-    static final double RATIO_KEEP_WINDOW = 0.10;
+    static final double RATIO_KEEP_WINDOW = 0.12;
     static final int MIN_KEEP_WINDOW_TOKENS = 2048;
     static final int MAX_KEEP_WINDOW_TOKENS = 49_152;
 
@@ -129,7 +129,7 @@ public record DubheMemoryWindowPolicy(
      * the window. It is the budget the memory segments have to fit into together, so it is the input
      * the compression window is derived from — not a quantity that can be set independently.
      */
-    static final double RATIO_WATERMARK = 0.70;
+    static final double RATIO_WATERMARK = 0.80;
 
     /** Whole tail reservation: state snapshot + retrieval + current input. Re-sent every turn. */
     static final int TAIL_TOKEN_BUDGET = 900;
@@ -149,7 +149,7 @@ public record DubheMemoryWindowPolicy(
      */
     static final int TAIL_RETRIEVAL_TOKENS = 512;
 
-    /** Raw history covered by one compression unit. A size, not a ratio, so it is tier-independent. */
+    /** One compression unit: a size, not a ratio, so it is tier-independent (G32 ratio lands in step 26). */
     static final int COMPRESSION_UNIT_TOKENS = 8_192;
 
     /** Text density used when a capacity has to be expressed in characters instead of tokens. */
