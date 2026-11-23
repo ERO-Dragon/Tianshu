@@ -404,13 +404,20 @@ public final class DubheTurnOrchestrator implements DubheTurnPipeline {
         if (statusPublisher != null) {
             statusPublisher.active(execution, "MEMORY_RETRIEVING", allowInterruption);
         }
+        long windowFromMillis = recentDialogueSystem == null
+                ? 0L
+                : recentDialogueSystem.allRawTurns(scope).stream()
+                        .mapToLong(com.rheinmetal.tianshu.dubhe.module.recentdialogue.DubheRawTurn::createdAtMillis)
+                        .min()
+                        .orElse(0L);
         memoryRetriever.retrieve(
                 new DubheMemoryRetrievalRequest(
                         scope,
                         request,
                         budget.contextBudget().maxRetrievedMemoryItems(),
                         budget.contextBudget().memoryRetrievalTokenBudget(),
-                        budget.memoryPolicy().tier()
+                        budget.memoryPolicy().tier(),
+                        windowFromMillis
                 ),
                 memory -> submitLlmTurn(execution, deliveryEnvelope, delivery, scope, request, dynamicFacts, memory, budget.contextBudget())
         );

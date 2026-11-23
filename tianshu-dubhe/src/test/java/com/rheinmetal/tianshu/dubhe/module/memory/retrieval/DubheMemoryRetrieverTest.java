@@ -306,6 +306,46 @@ class DubheMemoryRetrieverTest {
         );
     }
 
+    @Test
+    void blocksWhoseSourceIsStillInTheRawWindowAreNotInjected() {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        DubheMemoryRagTestProvider.register(runtime);
+        DubheLlmRagClient ragClient = new DubheLlmRagClient(new DubheProtocolAdapter(runtime), 2_000L);
+        DubheMemorySystem memorySystem = new DubheMemorySystem(
+                new DubheStorageLayout(new TestLlmSupport.FakeConfig(tempDir.resolve("module"))),
+                new DubheJsonStore(new FakeGameEnvironment())
+        );
+        DubheScope scope = new DubheScope("player", "save:Test", "Test", DubheScopeKind.LOCAL_WORLD, true);
+        DubheStmBlock inWindow = blockAt(scope, "inwindow", 1_500L, 2_000L, "玩家把钻石镐放进末影箱。");
+        DubheStmBlock cold = blockAt(scope, "cold", 100L, 500L, "玩家把钻石镐放进末影箱。");
+        memorySystem.appendStmBlock(scope, inWindow);
+        memorySystem.appendStmBlock(scope, cold);
+        DubheMemoryEvent recentEvent = event(scope, inWindow, "玩家把钻石镐放进末影箱。");
+        DubheMemoryEvent coldEvent = event(scope, cold, "玩家把钻石镐放进末影箱。");
+        memorySystem.events().appendAll(scope, List.of(recentEvent, coldEvent));
+        memorySystem.vectors().appendAll(scope, List.of(
+                vector(recentEvent, new float[]{1.0F, 0.0F}),
+                vector(coldEvent, new float[]{1.0F, 0.0F})
+        ));
+        new DubheMemoryRagProjectionService(memorySystem, ragClient).project(scope, "test-embed:v1").join();
+        DubheMemoryRetriever retriever = new DubheMemoryRetriever(memorySystem, ragClient);
+        AtomicReference<DubheMemoryRetrievalResult> result = new AtomicReference<>();
+
+        retriever.retrieve(new DubheMemoryRetrievalRequest(
+                scope, new DubheRequest("query", "钻石镐在哪里？", ""), 5, 1000,
+                DubheContextTier.COMPACT, 1_000L), result::set);
+
+        await(() -> result.get() != null);
+        assertEquals(1, result.get().blocks().size(), "the window copy is already in the prompt");
+        assertEquals(cold.id(), result.get().blocks().get(0).block().id());
+    }
+
+    private static DubheStmBlock blockAt(DubheScope scope, String seed, long fromMillis, long toMillis, String content) {
+        return new DubheStmBlock(
+                "stm_" + seed, "", scope.worldId(), System.currentTimeMillis(),
+                fromMillis, toMillis, "", "", 1, 0, content, List.of());
+    }
+
     private static DubheStmBlock block(DubheScope scope, String seed, String content) {
         return new DubheStmBlock(
                 "stm_" + seed,

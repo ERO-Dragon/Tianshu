@@ -193,6 +193,22 @@ public final class DubheMemoryRetriever {
             return DubheMemoryRetrievalResult.empty();
         }
         List<DubheStmBlock> allBlocks = memorySystem.stmBlocks().loadAll(request.scope());
+        if (request.windowFromMillis() > 0L) {
+            // Facts whose source turns are still verbatim in the prompt are already in the model's context;
+            // injecting their summaries again would say the same history twice (G36 / M7).
+            Set<String> excluded = allBlocks.stream()
+                    .filter(block -> block.sourceToMillis() >= request.windowFromMillis())
+                    .map(DubheStmBlock::id)
+                    .collect(java.util.stream.Collectors.toSet());
+            if (!excluded.isEmpty()) {
+                contributions.keySet().removeAll(excluded);
+                subColdStmIds.removeAll(excluded);
+                allBlocks = allBlocks.stream().filter(block -> !excluded.contains(block.id())).toList();
+                if (contributions.isEmpty()) {
+                    return DubheMemoryRetrievalResult.empty();
+                }
+            }
+        }
         Map<String, DubheStmBlock> blocksById = new LinkedHashMap<>();
         Map<String, Integer> blockOrder = new HashMap<>();
         int order = 0;
