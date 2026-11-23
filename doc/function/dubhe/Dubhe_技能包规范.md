@@ -51,7 +51,7 @@ metadata:
 | 2 | `SKILL.md` 正文 | 模型决定激活该技能时 | `DubheSkillDefinitionLoader.load(dir).body()` |
 | 3 | `references/*.md` | 需要具体细节时按相对路径读 | `definition.reference("references/xxx.md")` |
 
-`loadMetadata` 不读 references，也不要求它存在；`reference` 拒绝 `..` 与绝对路径；references 只扫一层，不递归。
+平台实现是 `SkillFileProvider`（共享层 `tianshu-api`）：目录只收元数据，正文与 reference 都按需读；天枢不再有第二份解析器。
 
 ## 4. 与内部技能抽象的区别
 
