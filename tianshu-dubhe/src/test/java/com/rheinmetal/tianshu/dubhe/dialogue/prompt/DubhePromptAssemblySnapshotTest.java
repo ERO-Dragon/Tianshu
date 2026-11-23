@@ -101,6 +101,9 @@ class DubhePromptAssemblySnapshotTest {
         // system 段内顺序：system_prompt → game_context → player_memory（recent_dialogue 已展开为对话流）
         assertOrdered(joined, "<system_prompt>", "<memory_summary>", "<game_context>", "<player_memory>", "当前输入：这个怎么修？");
         assertTrue(joined.contains("一到三句"));
+        assertTrue(joined.contains("我让人去办"), "承诺-兑现人设必须在 system 里（G7）");
+        assertTrue(joined.contains("没有真的派出就只给建议"), "没有真实委派时不得空口承诺");
+        assertTrue(!joined.contains("涉及游戏动作只给建议"), "旧口径（只给建议）已移除");
         assertTrue(joined.contains("玩家准星指向 minecraft:anvil"));
         assertTrue(joined.contains("minecraft:anvil | 铁砧可以修复工具。"));
         assertTrue(joined.contains("你记得此前与玩家发生过这些事情"));
