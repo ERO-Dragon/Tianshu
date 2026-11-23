@@ -4,8 +4,6 @@
     {
       "name": "work",
       "references": [
-        "references/tiers.md",
-        "references/tools.md",
         "references/boundaries.md"
       ]
     }

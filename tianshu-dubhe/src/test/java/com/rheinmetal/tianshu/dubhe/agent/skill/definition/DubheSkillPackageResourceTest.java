@@ -27,10 +27,11 @@ class DubheSkillPackageResourceTest {
         assertEquals(1, definitions.size());
         DubheSkillDefinition work = definitions.get(0);
         assertEquals("work", work.metadata().name());
-        assertTrue(work.metadata().description().contains("替玩家干活"));
-        assertTrue(work.body().contains("references/tiers.md"), "the entry points at references");
-        assertEquals(3, work.references().size());
-        assertTrue(work.reference("references/tiers.md").contains("CONSERVATIVE"));
+        assertTrue(work.metadata().description().contains("tianshu:tianshu-tools"));
+        assertTrue(work.body().contains("references/boundaries.md"), "the entry points at references");
+        assertEquals(1, work.references().size());
+        assertTrue(work.reference("references/boundaries.md").contains("失败"));
+        assertTrue(work.body().contains("tianshu:tianshu-tools"), "tool usage lives in the platform skill");
     }
 
     @Test
@@ -45,10 +46,10 @@ class DubheSkillPackageResourceTest {
         assertTrue(body.get("body").getAsString().contains("决策顺序"));
 
         JsonObject args = new JsonObject();
-        args.addProperty("reference", "references/tools.md");
+        args.addProperty("reference", "references/boundaries.md");
         JsonObject reference = skill.executor().execute(CONTEXT, args).join();
         assertEquals("OK", reference.get("outcome").getAsString());
-        assertTrue(reference.get("body").getAsString().contains("craft.recipe"));
+        assertTrue(reference.get("body").getAsString().contains("游戏里的原因"));
 
         JsonObject missing = new JsonObject();
         missing.addProperty("reference", "references/nope.md");
