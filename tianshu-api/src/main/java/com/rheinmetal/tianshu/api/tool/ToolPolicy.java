@@ -26,8 +26,6 @@ public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, lo
         return switch (category) {
             case LOCAL, SERVER_READ -> new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
             case SERVER_WRITE -> new ToolPolicy(false, ToolPermission.OPERATOR, DEFAULT_TIMEOUT_MILLIS);
-            // What a survival player may do by hand: off until an operator opts in, but no operator needed to call it.
-            case PLAYER_WRITE -> new ToolPolicy(false, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
             // A body's own action: off by default like any world change, but no operator — ownership decides.
             case BODY_WRITE -> new ToolPolicy(false, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
         };

@@ -38,7 +38,14 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.PLAYER_WRITE;
+        return ToolCategory.SERVER_WRITE;
+    }
+
+    @Override
+    public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
+        // Any survival player may do this by hand; the server switch and their own rights still bound it.
+        return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(ToolCategory.SERVER_WRITE)
+                .withPermission(com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE);
     }
 
     @Override

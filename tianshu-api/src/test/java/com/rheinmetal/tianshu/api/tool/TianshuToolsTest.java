@@ -94,26 +94,6 @@ class TianshuToolsTest {
         assertTrue(ToolPolicy.forCategory(ToolCategory.SERVER_READ).enabledByDefault());
         assertFalse(ToolPolicy.forCategory(ToolCategory.SERVER_WRITE).enabledByDefault());
         assertEquals(ToolPermission.OPERATOR, ToolPolicy.forCategory(ToolCategory.SERVER_WRITE).permission());
-        // What a survival player may do by hand: still off by default, but calling it must not require an operator.
-        assertFalse(ToolPolicy.forCategory(ToolCategory.PLAYER_WRITE).enabledByDefault());
-        assertEquals(ToolPermission.EVERYONE, ToolPolicy.forCategory(ToolCategory.PLAYER_WRITE).permission());
-    }
-
-    @Test
-    void aPlayerWriteToolIsCallableByAnOrdinaryPlayerOnceEnabled() throws Exception {
-        ToolId craft = ToolId.of("test", "craft");
-        TianshuTools.register(new FixedResultTool(craft, ToolCategory.PLAYER_WRITE, "crafted"));
-        ToolHandle<Query, Answer> handle = TianshuTools.handle(craft, Query.class, Answer.class);
-        try {
-            TianshuTools.setEnabled(craft, true);
-
-            Answer answer = handle.call(new Query("x", 1), ToolCaller.player("p1", false), ToolSide.SERVER)
-                    .get(2, TimeUnit.SECONDS);
-
-            assertEquals("crafted", answer.text);
-        } finally {
-            TianshuTools.unregister(craft);
-        }
     }
 
     @Test
