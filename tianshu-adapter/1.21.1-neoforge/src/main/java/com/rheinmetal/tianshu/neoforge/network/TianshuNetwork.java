@@ -37,7 +37,11 @@ public final class TianshuNetwork {
 
     public static void register(RegisterPayloadHandlersEvent event,
                                 ToolCallClient tools) {
-        PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION);
+        // Optional: every channel here degrades. A vanilla peer never negotiated them, and NeoForge disconnects the
+        // whole connection when a required channel is missing — which made a modded client unable to join a vanilla
+        // server at all. With them optional the server simply never announces a catalogue, and the tool channel stays
+        // closed by the existing availability gate.
+        PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION).optional();
         // One enqueue keeps a batch atomic with respect to other client work: consumers see the facts in the
         // order the server produced them, not interleaved with another packet.
         registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC, (packet, context) -> {
