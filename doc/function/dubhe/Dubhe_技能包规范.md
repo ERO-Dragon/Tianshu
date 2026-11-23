@@ -100,7 +100,16 @@ metadata:
 
 天枢把它包成内部技能 `read-shared-skill`；`work` 技能第 0 步先读 `tianshu:minecraft-tools`，再按其中的三档与工具清单操作。平台改了说明，下一次读取即生效。
 
-## 9. 验收
+## 9. 宿主工具接进代理（已完成）
+
+代理目录 = 内部技能 + 宿主工具。`DubheHostToolSkills` 把 `TianshuTools.catalog(caller)` 的每个条目适配成一个带 schema 的代理工具：
+
+- 工具名：`tianshu:recipe.query` → `tianshu_recipe_query`（provider 只接受字母/数字/下划线）；
+- 描述与 `argsSchema` 原样进入目录；调用转发给 `TianshuTools.callJson`，返回 envelope 原样交给模型；
+- 目录按 caller 档位过滤（只看得到不高于自己档位的工具）；**关闭的工具、`body.*` 不进目录**；
+- 每次委派重新取目录，改档位不需要重启。
+
+## 10. 验收
 
 - 7 个加载器用例：元数据/正文/references、无 references 的元数据读取、只扫一层、路径穿越拒绝、frontmatter 非法规避、名字必须等于目录、文本形态校验；
 - 新增技能包不改变代理循环代码（目录扫描 + 注册表），这是 G7 的判据。
