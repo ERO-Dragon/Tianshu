@@ -27,6 +27,20 @@ public final class WorldIdentityCapture {
         facts = capture();
     }
 
+    /**
+     * Re-samples and keeps the result only when something about the world changed.
+     *
+     * <p>Cheap enough to call every tick: the sample reads the level, the player and the server entry, and a dimension
+     * change is a change of {@code dimensionId} — which a "refresh only while unavailable" rule never noticed, so a
+     * player who walked through a portal kept reporting the overworld until they rejoined.</p>
+     */
+    public void refreshIfChanged() {
+        WorldFacts next = capture();
+        if (!next.equals(facts)) {
+            facts = next;
+        }
+    }
+
     public void clear() {
         facts = WorldFacts.UNKNOWN;
     }
@@ -64,10 +78,27 @@ public final class WorldIdentityCapture {
     private String localSaveId(Minecraft minecraft) {
         try {
             if (minecraft.getSingleplayerServer() != null) {
+                // The save folder is the stable part. Asking for LevelResource.ROOT returns "<save>/." on 1.21.1 —
+                // getFileName() then yields "." for every world, which collapsed two saves onto one identity. The
+                // level.dat's parent is the folder itself, whatever the resource name happens to expand to.
+                Path levelData = minecraft.getSingleplayerServer()
+                        .getWorldPath(net.minecraft.world.level.storage.LevelResource.LEVEL_DATA_FILE);
+                if (levelData != null) {
+                    Path folder = levelData.toAbsolutePath().normalize().getParent();
+                    if (folder != null && folder.getFileName() != null) {
+                        return folder.getFileName().toString().trim();
+                    }
+                }
                 Path worldPath = minecraft.getSingleplayerServer()
                         .getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
-                if (worldPath != null && worldPath.getFileName() != null) {
-                    return worldPath.getFileName().toString().trim();
+                if (worldPath != null) {
+                    Path folder = worldPath.toAbsolutePath().normalize();
+                    if (folder.getFileName() != null) {
+                        String name = folder.getFileName().toString().trim();
+                        if (!name.isEmpty() && !name.equals(".")) {
+                            return name;
+                        }
+                    }
                 }
             }
         } catch (RuntimeException ignored) {

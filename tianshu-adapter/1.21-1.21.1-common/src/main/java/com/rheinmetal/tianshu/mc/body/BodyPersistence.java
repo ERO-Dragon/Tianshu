@@ -43,6 +43,8 @@ public final class BodyPersistence {
     private static final int MAIN_SLOTS = 36;
 
     private static int ticks;
+    /** Set when the file could not be read: until a read succeeds, this process must not overwrite it. */
+    private static boolean loadFailed;
 
     private BodyPersistence() {
     }
@@ -56,18 +58,26 @@ public final class BodyPersistence {
     }
 
     public static void save(MinecraftServer server, BodyRegistry bodies) {
+        if (loadFailed) {
+            // A read failure means the registry does not know what the file held; writing now would replace a good
+            // snapshot with a partial one. The file stays as it is until a read succeeds.
+            LOGGER.warn("skipping the body save: the previous read failed, so this registry cannot be trusted as the full set");
+            return;
+        }
         CompoundTag root = new CompoundTag();
         root.putInt("version", VERSION);
         ListTag saved = new ListTag();
         for (BodyRegistry.BodyState state : bodies.states()) {
-            if (state.entity().isRemoved()) {
-                continue;
-            }
             CompoundTag tag = new CompoundTag();
             tag.putUUID("id", state.id());
             tag.putString("kind", state.kind().token());
             tag.putUUID("owner", state.owner());
             tag.putBoolean("operator", state.operator());
+            // Where the body is, not only which entity carries it: an unloaded carrier still has a home.
+            tag.putString("dimension", state.dimensionId());
+            tag.putDouble("x", state.position().x);
+            tag.putDouble("y", state.position().y);
+            tag.putDouble("z", state.position().z);
             tag.putInt("activeSlot", bodies.activeSlot(state.id().toString()));
             tag.putString("access", bodies.access(state.id().toString()).name());
             ListTag trusted = new ListTag();
@@ -104,12 +114,24 @@ public final class BodyPersistence {
             saved.add(tag);
         }
         root.put("bodies", saved);
+        Path path = server.getWorldPath(LevelResource.ROOT).resolve(FILE);
+        Path temporary = path.resolveSibling(FILE + ".tmp");
         try {
-            Path path = server.getWorldPath(LevelResource.ROOT).resolve(FILE);
             Files.createDirectories(path.getParent());
-            NbtIo.writeCompressed(root, path);
+            // Write beside the real file, then swap: a crash mid-write must never leave a half file where a good one was.
+            NbtIo.writeCompressed(root, temporary);
+            replaceAtomically(temporary, path);
         } catch (IOException failure) {
             LOGGER.warn("could not save agent bodies", failure);
+        }
+    }
+
+    private static void replaceAtomically(Path temporary, Path target) throws IOException {
+        try {
+            Files.move(temporary, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException notAtomic) {
+            Files.move(temporary, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -128,9 +150,13 @@ public final class BodyPersistence {
                     restored++;
                 }
             }
+            loadFailed = false;
             LOGGER.info("restored {} of {} agent bodies", restored, saved.size());
-        } catch (IOException failure) {
-            LOGGER.warn("could not read agent bodies", failure);
+        } catch (IOException | RuntimeException failure) {
+            // Remembered, not just logged: a save on top of an unreadable file would replace whatever the file still
+            // held with the partial set this process happened to see.
+            loadFailed = true;
+            LOGGER.warn("could not read agent bodies; saving is disabled until the file can be read", failure);
         }
     }
 
@@ -144,7 +170,7 @@ public final class BodyPersistence {
             return false;
         }
         Entity entity = find(server, id);
-        if (entity == null || !matches(kind.get(), entity)) {
+        if (entity != null && !matches(kind.get(), entity)) {
             return false;
         }
         Container inventory = kind.get() == BodyKind.MARKER ? null : new SimpleContainer(MAIN_SLOTS);
@@ -158,8 +184,14 @@ public final class BodyPersistence {
             Optional<ItemStack> stack = ItemStack.parse(server.registryAccess(), item.get("item"));
             stack.ifPresent(value -> inventory.setItem(slot, value));
         }
+        String dimension = tag.contains("dimension")
+                ? tag.getString("dimension")
+                : (entity == null ? "" : entity.level().dimension().location().toString());
+        net.minecraft.world.phys.Vec3 position = tag.contains("x")
+                ? new net.minecraft.world.phys.Vec3(tag.getDouble("x"), tag.getDouble("y"), tag.getDouble("z"))
+                : (entity == null ? net.minecraft.world.phys.Vec3.ZERO : entity.position());
         bodies.restore(bodies.restored(id, kind.get(), inventory, tag.getUUID("owner"),
-                tag.getBoolean("operator"), entity), tag.getInt("activeSlot"));
+                tag.getBoolean("operator"), entity, dimension, position), tag.getInt("activeSlot"));
         ListTag equipment = tag.getList("equipment", Tag.TAG_COMPOUND);
         for (int index = 0; index < equipment.size(); index++) {
             CompoundTag item = equipment.getCompound(index);

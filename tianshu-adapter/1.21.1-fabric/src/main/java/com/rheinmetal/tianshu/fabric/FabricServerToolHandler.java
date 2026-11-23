@@ -154,7 +154,11 @@ public final class FabricServerToolHandler {
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             ServerTicks.INSTANCE.fire();
-            BodyRuntime.current().ifPresent(registry -> BodyPersistence.tick(server, registry));
+            BodyRuntime.current().ifPresent(registry -> {
+                // Rebind unloaded carriers before the timer can save a registry that lost them.
+                registry.refreshCarriers(server);
+                BodyPersistence.tick(server, registry);
+            });
         });
         CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) ->
                 BodyCommands.register(dispatcher));

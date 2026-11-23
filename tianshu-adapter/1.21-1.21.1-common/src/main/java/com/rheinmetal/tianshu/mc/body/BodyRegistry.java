@@ -216,18 +216,21 @@ public final class BodyRegistry implements EntityProvider {
         level.addFreshEntity(entity);
         Container inventory = kind == BodyKind.MARKER ? null : new SimpleContainer(INVENTORY_SIZE);
         BodyState state = new BodyState(entity.getUUID(), kind, inventory, owner.getUUID(),
-                owner.hasPermissions(2), entity, identity);
+                owner.hasPermissions(2), entity, identity, level.dimension().location().toString(), entity.position());
         bodies.put(state.id(), state);
         return view(state);
     }
 
     /** Removes the carrier from the world; returns false when the id is not a live body. */
     public boolean despawn(String bodyId) {
-        BodyState state = state(bodyId).orElse(null);
+        UUID id = parse(bodyId);
+        BodyState state = id == null ? null : bodies.get(id);
         if (state == null) {
             return false;
         }
-        state.entity().discard();
+        if (state.loaded()) {
+            state.entity().discard();
+        }
         bodies.remove(state.id());
         activeSlots.remove(state.id());
         accessPolicies.remove(state.id());
@@ -240,16 +243,61 @@ public final class BodyRegistry implements EntityProvider {
     public List<EntityActor> all() {
         List<EntityActor> views = new ArrayList<>();
         for (BodyState state : bodies.values()) {
-            if (!state.entity().isRemoved()) {
+            if (state.loaded()) {
                 views.add(view(state));
             }
         }
         return List.copyOf(views);
     }
 
-    /** Every live body's full state; the persistence layer reads inventories from here. */
+    /** Every body's full state, loaded or not; the persistence layer reads inventories from here. */
     public List<BodyState> states() {
         return List.copyOf(bodies.values());
+    }
+
+    /**
+     * Reconciles the records with the world once per server tick.
+     *
+     * <p>Two transitions matter and neither has a reliable event across loaders: a carrier whose chunk unloads keeps
+     * its record but must not keep the entity alive, and a carrier whose chunk comes back has to find its record again.
+     * Clearing and rebinding here is what makes a body survive a walk out of the loaded area without losing its owner,
+     * inventory or equipment.</p>
+     */
+    public void refreshCarriers(MinecraftServer server) {
+        for (BodyState state : List.copyOf(bodies.values())) {
+            if (state.loaded()) {
+                Entity carrier = state.entity();
+                if (carrier == null || carrier.level().isClientSide()) {
+                    state.detach();
+                }
+                continue;
+            }
+            state.detach();
+            Entity found = findCarrier(server, state);
+            if (found != null) {
+                state.attach(found);
+                applyEquipment(state);
+            }
+        }
+    }
+
+    /** The carrier for an unloaded record: same level, same uuid, still the shape the record says. */
+    private static Entity findCarrier(MinecraftServer server, BodyState state) {
+        if (server == null || state.dimensionId().isBlank()) {
+            return null;
+        }
+        net.minecraft.resources.ResourceLocation key =
+                net.minecraft.resources.ResourceLocation.tryParse(state.dimensionId());
+        if (key == null) {
+            return null;
+        }
+        ServerLevel level = server.getLevel(
+                net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION, key));
+        if (level == null) {
+            return null;
+        }
+        Entity found = level.getEntity(state.id());
+        return found != null && !found.isRemoved() ? found : null;
     }
 
     /** Puts a body back after a restart; its entity already exists in the world. */
@@ -426,7 +474,7 @@ public final class BodyRegistry implements EntityProvider {
             return Optional.empty();
         }
         BodyState state = bodies.get(id);
-        if (state == null || state.entity().isRemoved()) {
+        if (state == null || !state.loaded()) {
             return Optional.empty();
         }
         return Optional.of(state);
@@ -478,21 +526,127 @@ public final class BodyRegistry implements EntityProvider {
      *
      * <p>Restored bodies come back with the ordinary, borrowed identity: a player-backed identity lives only as long as
      * its player, and a saved body has none. Persistence therefore stores shapes and inventories, not identities.</p>
+     *
+     * <p>{@code entity} may be null: a body whose carrier is in an unloaded chunk is still a body, with an owner, an
+     * inventory and a set of permissions. Dropping that record because the entity was not there yet is how a body's
+     * belongings disappeared on the next save.</p>
      */
-    public BodyState restored(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity) {
-        return new BodyState(id, kind, inventory, owner, operator, entity, BodyIdentity.borrowed(actionPlayers));
+    public BodyState restored(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity,
+                              String dimensionId, Vec3 position) {
+        return new BodyState(id, kind, inventory, owner, operator, entity, BodyIdentity.borrowed(actionPlayers),
+                dimensionId, position);
     }
 
-    /** A carrier plus the state the ports act on; the entity is live, so position and level are read through it. */
-    public record BodyState(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity,
-                            BodyIdentity identity) {
+    /**
+     * A body's platform data, plus its carrier while that carrier is loaded.
+     *
+     * <p>The data outlives the entity on purpose. Minecraft unloads an entity with its chunk and marks it removed on
+     * death; neither means the body stopped existing, and the difference is exactly what the save file has to remember.
+     * {@link #loaded()} is the one question a port asks before touching the carrier.</p>
+     */
+    public static final class BodyState {
 
-        public ServerLevel level() {
-            return (ServerLevel) entity.level();
+        private final UUID id;
+        private final BodyKind kind;
+        private final Container inventory;
+        private final UUID owner;
+        private final boolean operator;
+        private final BodyIdentity identity;
+        private volatile Entity entity;
+        private volatile String dimensionId;
+        private volatile Vec3 lastPosition;
+
+        BodyState(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity,
+                  BodyIdentity identity, String dimensionId, Vec3 position) {
+            this.id = id;
+            this.kind = kind;
+            this.inventory = inventory;
+            this.owner = owner;
+            this.operator = operator;
+            this.identity = identity;
+            this.dimensionId = dimensionId == null ? "" : dimensionId;
+            this.lastPosition = position == null ? Vec3.ZERO : position;
+            attachIfPresent(entity);
         }
 
+        public UUID id() {
+            return id;
+        }
+
+        public BodyKind kind() {
+            return kind;
+        }
+
+        public Container inventory() {
+            return inventory;
+        }
+
+        public UUID owner() {
+            return owner;
+        }
+
+        public boolean operator() {
+            return operator;
+        }
+
+        public BodyIdentity identity() {
+            return identity;
+        }
+
+        /** The carrier, or null while it is unloaded. Ports must ask {@link #loaded()} before using it. */
+        public Entity entity() {
+            return entity;
+        }
+
+        public boolean loaded() {
+            Entity current = entity;
+            return current != null && !current.isRemoved();
+        }
+
+        /** Where the body is; while unloaded this is where it was when its chunk let go. */
         public Vec3 position() {
-            return entity.position();
+            Entity current = entity;
+            return current == null ? lastPosition : current.position();
+        }
+
+        public String dimensionId() {
+            Entity current = entity;
+            if (current != null) {
+                return current.level().dimension().location().toString();
+            }
+            return dimensionId;
+        }
+
+        public ServerLevel level() {
+            Entity current = entity;
+            if (current == null) {
+                throw new IllegalStateException("body " + id + " has no loaded carrier");
+            }
+            return (ServerLevel) current.level();
+        }
+
+        private void attachIfPresent(Entity candidate) {
+            if (candidate == null) {
+                return;
+            }
+            this.entity = candidate;
+            this.dimensionId = candidate.level().dimension().location().toString();
+            this.lastPosition = candidate.position();
+        }
+
+        void attach(Entity candidate) {
+            attachIfPresent(candidate);
+        }
+
+        /** Keeps where the body was, then lets go of the carrier so an unloaded chunk cannot pin it. */
+        void detach() {
+            Entity current = entity;
+            if (current == null) {
+                return;
+            }
+            lastPosition = current.position();
+            dimensionId = current.level().dimension().location().toString();
+            entity = null;
         }
     }
 }

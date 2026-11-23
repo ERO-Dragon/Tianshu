@@ -119,9 +119,9 @@ public final class ClientEvents {
             sessionSummaryLogged = true;
             logSessionSummary();
         }
-        if (!worldIdentityCapture.isAvailable()) {
-            worldIdentityCapture.refresh();
-        }
+        // Keeps the snapshot honest across a dimension change, not only after a join: the sample is cheap and the
+        // write only happens when the world or dimension actually differs.
+        worldIdentityCapture.refreshIfChanged();
         // The event layer owns two time-based doors (the deferred window and the immediate queue); this is the clock
         // that opens them. Modules that need a per-tick clock subscribe to it themselves.
         TickSignals.publish(TickSignals.TICK, System.currentTimeMillis());

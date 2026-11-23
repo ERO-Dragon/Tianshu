@@ -189,7 +189,11 @@ public final class ServerToolHandler {
 
     private static void onServerTick(ServerTickEvent.Post event) {
         ServerTicks.INSTANCE.fire();
-        BodyRuntime.current().ifPresent(registry -> BodyPersistence.tick(event.getServer(), registry));
+        BodyRuntime.current().ifPresent(registry -> {
+                // Rebind unloaded carriers before the timer can save a registry that lost them.
+                registry.refreshCarriers(event.getServer());
+                BodyPersistence.tick(event.getServer(), registry);
+            });
     }
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {
