@@ -1,4 +1,4 @@
-# 天枢对外接入（DUBHE.RESEARCH / DUBHE.RELAY）
+# 天枢对外接入（DUBHE.SEARCH / DUBHE.RELAY）
 
 > 面向其他模组：如何调用天枢、能调什么、返回什么、失败怎么读。
 > 状态：施工基准（P8）。代码位置 `com.rheinmetal.tianshu.dubhe.external`。
@@ -9,13 +9,13 @@
 
 | 对外名 | 注册 id | 性质 |
 |---|---|---|
-| `DUBHE.RESEARCH` | `dubhe:research` | **只读**查证：入 `intent`，出结论 + 来源 |
+| `DUBHE.SEARCH` | `dubhe:search` | **只读**搜索：入 `intent`，出结论 + 来源 |
 | `DUBHE.RELAY` | `dubhe:relay` | **只转发**：把一句话交给指定模组，或查询已投递任务的状态 |
 
 两者都是 `CapabilityKind.of("function")`、`CapabilityBinding.LOCAL`、`ToolSide.CLIENT`、`ToolPermission.EVERYONE`，
 由 `dubhe` 提供。**代理的技能目录不对外**：`diplomacy` 等技能只在本地，外部看不到也调不到；对外的是功能。
 
-## 2. DUBHE.RESEARCH
+## 2. DUBHE.SEARCH
 
 ### 入参
 
@@ -72,11 +72,11 @@
 ## 5. 最小调用示例
 
 ```java
-CapabilityId research = CapabilityId.of("dubhe", "research");
+CapabilityId search = CapabilityId.of("dubhe", "search");
 JsonObject args = new JsonObject();
 args.addProperty("intent", "萤石怎么获得");
 
-CapabilityCatalog.invoke(research, args, ToolCaller.mod("your.mod.id"), ToolSide.CLIENT)
+CapabilityCatalog.invoke(search, args, ToolCaller.mod("your.mod.id"), ToolSide.CLIENT)
         .thenAccept(result -> {
             if (result.has("ok") && !result.get("ok").getAsBoolean()) {
                 // 结构化失败：读 code / message
@@ -86,7 +86,7 @@ CapabilityCatalog.invoke(research, args, ToolCaller.mod("your.mod.id"), ToolSide
         });
 ```
 
-## 6. 渐进式披露\n\n外部只看得到功能的描述与 `attributes`；更细的用法按需查本文档。代理侧的发现同理：先 `list` 拿摘要，选中目标后才 `describe` 取参考，最后才 `submit`。\n\n## 7. 代理技能与外部功能的分工\n\n- 代理的技能（`diplomacy` 等）只在本地：它们通过舟楫目录发现其他模块的功能、投递任务、按需查进度。\n- 外部看到的只有 `DUBHE.RESEARCH` / `DUBHE.RELAY` 两个功能，没有技能目录，也没有“提交任务给我规划”的入口。\n\n## 8. 不要做的事
+## 6. 渐进式披露\n\n外部只看得到功能的描述与 `attributes`；更细的用法按需查本文档。代理侧的发现同理：先 `list` 拿摘要，选中目标后才 `describe` 取参考，最后才 `submit`。\n\n## 7. 代理技能与外部功能的分工\n\n- 代理的技能（`diplomacy` 等）只在本地：它们通过舟楫目录发现其他模块的功能、投递任务、按需查进度。\n- 外部看到的只有 `DUBHE.SEARCH` / `DUBHE.RELAY` 两个功能，没有技能目录，也没有“提交任务给我规划”的入口。\n\n## 8. 不要做的事
 
 - 不要用天枢驱动实体动作（放置、破坏、攻击、跟随）：天枢没有实体，这些能力不存在。
 - 不要寻找 `AGENT_TASK` 一类的通用入口：已永久取消，契约测试会守住这条边界。
