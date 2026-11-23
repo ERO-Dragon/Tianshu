@@ -20,6 +20,8 @@ import java.util.List;
 public record LLMPromptRequestPayload(
         String requestId,
         List<MessageItemPayload> messages,
+        List<LLMToolSpecPayload> tools,
+        String toolChoice,
         Boolean stream,
         Boolean captureThinkingContent,
         Integer maxTokens,
@@ -28,17 +30,37 @@ public record LLMPromptRequestPayload(
 ) implements ITianshuPayload {
 
     public static final LLMPromptRequestPayload EMPTY = new LLMPromptRequestPayload(
-            "llm.request", List.of(), false, false, 0, null, SamplingPayload.empty()
+            "llm.request", List.of(), List.of(), null, false, false, 0, null, SamplingPayload.empty()
     );
 
     public LLMPromptRequestPayload {
         requestId = normalizeRequestId(requestId);
         messages = messages == null ? List.of() : List.copyOf(messages);
+        // The catalogue is the caller's: an empty list means "no tools offered", which is also what
+        // every caller that predates tool transport sends.
+        tools = tools == null ? List.of() : List.copyOf(tools);
+        toolChoice = toolChoice == null || toolChoice.isBlank() ? null : toolChoice.trim();
         stream = stream != null && stream;
         captureThinkingContent = captureThinkingContent != null && captureThinkingContent;
         maxTokens = maxTokens != null && maxTokens > 0 ? maxTokens : 0;
         reasoningTier = reasoningTier != null && reasoningTier >= 0 ? reasoningTier : null;
         sampling = sampling == null ? SamplingPayload.empty() : sampling;
+    }
+
+    /**
+     * A request without tools, in the field order this payload had before tool transport existed.
+     * Kept so callers that only chat do not have to name two fields they do not use.
+     */
+    public LLMPromptRequestPayload(
+            String requestId,
+            List<MessageItemPayload> messages,
+            Boolean stream,
+            Boolean captureThinkingContent,
+            Integer maxTokens,
+            Integer reasoningTier,
+            SamplingPayload sampling
+    ) {
+        this(requestId, messages, List.of(), null, stream, captureThinkingContent, maxTokens, reasoningTier, sampling);
     }
 
     /** Same request without a reasoning override: follow whatever the endpoint does by default. */
@@ -50,11 +72,16 @@ public record LLMPromptRequestPayload(
             Integer maxTokens,
             SamplingPayload sampling
     ) {
-        this(requestId, messages, stream, captureThinkingContent, maxTokens, null, sampling);
+        this(requestId, messages, List.of(), null, stream, captureThinkingContent, maxTokens, null, sampling);
     }
 
     public boolean hasReasoningOverride() {
         return reasoningTier != null;
+    }
+
+    /** Whether the caller offered any tool for this request. */
+    public boolean offersTools() {
+        return !tools.isEmpty();
     }
 
     /**
@@ -84,13 +111,34 @@ public record LLMPromptRequestPayload(
         }
     }
 
+    /**
+     * One message of the conversation.
+     *
+     * <p>Plain text needs only {@code role} and {@code content}. The two tool fields exist because a
+     * tool-using conversation cannot be expressed without them: the assistant turn that asked for a
+     * call must be replayed with that call (providers require it before a result may follow), and a
+     * result message is a {@code tool} message that names the call it answers. Weaving forwards all of
+     * it; it never decides that a call exists.</p>
+     *
+     * @param toolCallId id of the call a {@code tool} message answers; empty on other roles
+     * @param toolCalls  calls an {@code assistant} message is replaying; empty on other roles
+     */
     public record MessageItemPayload(
             String role,
-            String content
+            String content,
+            String toolCallId,
+            List<LLMToolCallPayload> toolCalls
     ) implements ITianshuPayload {
         public MessageItemPayload {
             role = normalizeRole(role);
             content = content == null ? "" : content;
+            toolCallId = toolCallId == null ? "" : toolCallId.trim();
+            toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
+        }
+
+        /** A message with no tool involvement, which is what most of a conversation is. */
+        public MessageItemPayload(String role, String content) {
+            this(role, content, "", List.of());
         }
 
         public static MessageItemPayload of(String role, String content) {
@@ -108,6 +156,21 @@ public record LLMPromptRequestPayload(
         public static MessageItemPayload assistant(String content) {
             return new MessageItemPayload("assistant", content);
         }
+
+        /** The assistant turn that asked for calls; it must precede their results. */
+        public static MessageItemPayload assistantToolCalls(String content, List<LLMToolCallPayload> calls) {
+            return new MessageItemPayload("assistant", content, "", calls);
+        }
+
+        /** The result of one call, as a {@code tool} message. */
+        public static MessageItemPayload toolResult(String toolCallId, String content) {
+            return new MessageItemPayload("tool", content, toolCallId, List.of());
+        }
+
+        /** Whether this message carries anything only a tool-using conversation has. */
+        public boolean hasToolContent() {
+            return !toolCallId.isEmpty() || !toolCalls.isEmpty();
+        }
     }
 
     private static String normalizeRequestId(String value) {
@@ -115,15 +178,17 @@ public record LLMPromptRequestPayload(
     }
 
     /**
-     * The three roles an OpenAI-compatible endpoint accepts. Anything else degrades to {@code user}
-     * instead of failing the request, which keeps a malformed caller from taking the lane down.
+     * The roles an OpenAI-compatible endpoint accepts. {@code tool} is a result message and is the
+     * only role besides {@code assistant} that carries a tool reference. Anything else degrades to
+     * {@code user} instead of failing the request, which keeps a malformed caller from taking the lane
+     * down.
      */
     private static String normalizeRole(String role) {
         if (role == null) {
             return "user";
         }
         return switch (role.trim().toLowerCase()) {
-            case "system", "assistant", "user" -> role.trim().toLowerCase();
+            case "system", "assistant", "user", "tool" -> role.trim().toLowerCase();
             default -> "user";
         };
     }

@@ -13,12 +13,12 @@ import com.rheinmetal.tianshu.weaving.protocol.LlmCapabilities;
 import com.rheinmetal.tianshu.weaving.protocol.LlmModuleId;
 import com.rheinmetal.tianshu.weaving.runtime.LlmFailureText;
 import com.rheinmetal.tianshu.weaving.service.LLMService;
+import com.rheinmetal.tianshu.weaving.service.LlmChatMessage;
 import com.rheinmetal.tianshu.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.weaving.service.RagCacheManager;
 import com.rheinmetal.tianshu.weaving.service.RagLibraryRegistry;
 import com.rheinmetal.tianshu.weaving.usage.LlmUsageLedger;
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
@@ -439,14 +439,14 @@ public final class LlmProtocolAdapter extends AbstractProtocolAdapter {
         return LLMRuntimeSnapshotPayload.unavailable();
     }
 
-    private static List<ChatMessage> toChatMessages(LLMPrimitiveQueryPayload payload) {
-        List<ChatMessage> messages = new ArrayList<>();
+    private static List<LlmChatMessage> toChatMessages(LLMPrimitiveQueryPayload payload) {
+        List<LlmChatMessage> messages = new ArrayList<>();
         if (payload.text() != null && !payload.text().isBlank()) {
-            messages.add(new ChatMessage("user", payload.text()));
+            messages.add(LlmChatMessage.of("user", payload.text()));
         }
         for (LLMPrimitiveQueryPayload.MessageItemPayload item : payload.messages()) {
             if (item != null) {
-                messages.add(new ChatMessage(item.role(), item.content()));
+                messages.add(LlmChatMessage.of(item.role(), item.content()));
             }
         }
         return messages;

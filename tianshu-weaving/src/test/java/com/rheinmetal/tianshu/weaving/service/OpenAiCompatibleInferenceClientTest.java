@@ -4,11 +4,12 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolCallPayload;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolSpecPayload;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.weaving.settings.WeavingConfiguration;
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
@@ -78,8 +79,7 @@ class OpenAiCompatibleInferenceClientTest {
                 "data: [DONE]");
         OpenAiCompatibleInferenceClient client = client(transport, "sk-test");
 
-        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, null, token -> { }, null, null, null);
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(prompt(0), token -> { }, null, null, null);
 
         ExecutionException failure = assertThrows(ExecutionException.class, () -> streamed.get(5, TimeUnit.SECONDS));
         assertTrue(failure.getCause().getMessage().contains("REMOTE_LLM_CONTENT_FILTERED"),
@@ -93,11 +93,8 @@ class OpenAiCompatibleInferenceClientTest {
 
         String body = OpenAiCompatibleInferenceClient.buildChatRequestBody(
                 MODEL,
-                List.of(ChatMessage.user("hi")),
-                sampling,
-                64,
+                prompt(List.of(LlmChatMessage.user("hi")), sampling, 64, null),
                 LlmReasoningProfile.NONE,
-                null,
                 new LlmWireCompat(false, LlmWireCompat.MaxTokensField.MAX_COMPLETION_TOKENS)
         );
 
@@ -114,11 +111,9 @@ class OpenAiCompatibleInferenceClientTest {
 
         String body = OpenAiCompatibleInferenceClient.buildChatRequestBody(
                 MODEL,
-                List.of(ChatMessage.system("sys"), ChatMessage.user("hi"), ChatMessage.assistant("hello")),
-                sampling,
-                128,
-                LlmReasoningProfile.NONE,
-                null
+                prompt(List.of(LlmChatMessage.system("sys"), LlmChatMessage.user("hi"),
+                        LlmChatMessage.assistant("hello")), sampling, 128, null),
+                LlmReasoningProfile.NONE
         );
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
 
@@ -202,8 +197,115 @@ class OpenAiCompatibleInferenceClientTest {
 
     private static JsonObject body(LlmReasoningProfile profile, Integer tier) {
         return JsonParser.parseString(OpenAiCompatibleInferenceClient.buildChatRequestBody(
-                MODEL, messages(), sampling(), 0, profile, tier
+                MODEL, prompt(messages(), sampling(), 0, tier), profile
         )).getAsJsonObject();
+    }
+
+    // --- tool transport ---------------------------------------------------------------------------
+
+    @Test
+    void aToolCatalogueAndItsChoiceAreSentOnlyWhenTheCallerOfferedThem() {
+        LlmPrompt prompt = new LlmPrompt(
+                List.of(LlmChatMessage.user("place it")),
+                List.of(new LLMToolSpecPayload("block.place", "place a block",
+                        "{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"integer\"}}}")),
+                "auto",
+                sampling(),
+                0,
+                false,
+                null
+        );
+        JsonObject withTools = JsonParser.parseString(
+                OpenAiCompatibleInferenceClient.buildChatRequestBody(MODEL, prompt, LlmReasoningProfile.NONE)
+        ).getAsJsonObject();
+
+        JsonArray tools = withTools.getAsJsonArray("tools");
+        assertEquals(1, tools.size());
+        JsonObject entry = tools.get(0).getAsJsonObject();
+        assertEquals("function", entry.get("type").getAsString());
+        assertEquals("block.place", entry.getAsJsonObject("function").get("name").getAsString());
+        assertEquals("place a block", entry.getAsJsonObject("function").get("description").getAsString());
+        assertEquals("object", entry.getAsJsonObject("function").getAsJsonObject("parameters")
+                .get("type").getAsString(), "the caller's schema is forwarded, not rebuilt");
+        assertEquals("auto", withTools.get("tool_choice").getAsString());
+
+        JsonObject withoutTools = body(LlmReasoningProfile.NONE, null);
+        assertFalse(withoutTools.has("tools"), "a plain chat must send exactly the body it always did");
+        assertFalse(withoutTools.has("tool_choice"));
+    }
+
+    @Test
+    void aToolConversationReplaysCallsAndNamesTheCallEachResultAnswers() {
+        LlmPrompt prompt = new LlmPrompt(
+                List.of(
+                        LlmChatMessage.user("place it"),
+                        LlmChatMessage.assistantToolCalls("", List.of(
+                                new LLMToolCallPayload("call-1", "block.place", "{\"x\":1}"))),
+                        LlmChatMessage.toolResult("call-1", "placed")
+                ),
+                sampling(),
+                0,
+                false,
+                null
+        );
+        JsonArray messages = JsonParser.parseString(
+                OpenAiCompatibleInferenceClient.buildChatRequestBody(MODEL, prompt, LlmReasoningProfile.NONE)
+        ).getAsJsonObject().getAsJsonArray("messages");
+
+        JsonObject assistant = messages.get(1).getAsJsonObject();
+        assertEquals("assistant", assistant.get("role").getAsString());
+        JsonObject call = assistant.getAsJsonArray("tool_calls").get(0).getAsJsonObject();
+        assertEquals("call-1", call.get("id").getAsString());
+        assertEquals("block.place", call.getAsJsonObject("function").get("name").getAsString());
+        assertEquals("{\"x\":1}", call.getAsJsonObject("function").get("arguments").getAsString());
+
+        JsonObject result = messages.get(2).getAsJsonObject();
+        assertEquals("tool", result.get("role").getAsString());
+        assertEquals("call-1", result.get("tool_call_id").getAsString());
+    }
+
+    /**
+     * The provider streams a call in fragments: the id and name ride the first frame and the
+     * arguments arrive split. The caller gets the joined call, never the fragments.
+     */
+    @Test
+    void aToolCallStreamedInFragmentsIsHandedOverComplete() throws Exception {
+        String[] lines = {
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"type\":\"function\","
+                        + "\"function\":{\"name\":\"block.place\",\"arguments\":\"\"}}]}}]}",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"x\\\":\"}}]}}]}",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1}\"}}]}}]}",
+                "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}",
+                "data: [DONE]"
+        };
+        OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
+
+        LlmInferenceResult result = client.chat(prompt(64), null);
+
+        assertEquals(1, result.toolCalls().size());
+        LLMToolCallPayload call = result.toolCalls().get(0);
+        assertEquals("call-1", call.id());
+        assertEquals("block.place", call.name());
+        assertEquals("{\"x\":1}", call.argumentsJson(), "the fragments are joined, not re-encoded");
+        assertEquals("", result.text(), "a tool-only answer has no visible text");
+    }
+
+    @Test
+    void twoCallsInOneAnswerKeepTheProviderOrder() throws Exception {
+        String[] lines = {
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c0\",\"type\":\"function\","
+                        + "\"function\":{\"name\":\"first\",\"arguments\":\"{}\"}}]}}]}",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c1\",\"type\":\"function\","
+                        + "\"function\":{\"name\":\"second\",\"arguments\":\"{}\"}}]}}]}",
+                "data: [DONE]"
+        };
+        OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
+
+        LlmInferenceResult result = client.chat(prompt(64), null);
+
+        assertEquals(2, result.toolCalls().size());
+        assertEquals("first", result.toolCalls().get(0).name());
+        assertEquals("second", result.toolCalls().get(1).name());
     }
 
     @Test
@@ -243,8 +345,7 @@ class OpenAiCompatibleInferenceClientTest {
         OpenAiCompatibleInferenceClient client = client(transport, "sk-test", diagnostics::add);
         List<String> tokens = new ArrayList<>();
 
-        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, null, tokens::add, null, null, null);
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(prompt(0), tokens::add, null, null, null);
 
         assertEquals("Hello", streamed.get(AWAIT.toMillis(), TimeUnit.MILLISECONDS).text());
         assertEquals(List.of("Hel", "lo"), tokens);
@@ -259,7 +360,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
 
-        assertEquals("answer", client.chat(messages(), sampling(), 64, false, null, null).text());
+        assertEquals("answer", client.chat(prompt(64), null).text());
     }
 
     @Test
@@ -274,7 +375,7 @@ class OpenAiCompatibleInferenceClientTest {
 
         Exception failure = assertThrows(
                 Exception.class,
-                () -> client.chat(messages(), sampling(), 0, false, null, null)
+                () -> client.chat(prompt(0), null)
         );
 
         assertTrue(failure.getMessage().contains("status=401"), failure.getMessage());
@@ -298,8 +399,7 @@ class OpenAiCompatibleInferenceClientTest {
         List<String> diagnostics = new ArrayList<>();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test", diagnostics::add);
 
-        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, null, token -> { }, null, null, null);
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(prompt(0), token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         assertTrue(streamed.cancel(true));
@@ -313,7 +413,7 @@ class OpenAiCompatibleInferenceClientTest {
         BlockingSseStream blocking = new BlockingSseStream();
         OpenAiCompatibleInferenceClient client = client(stub(200, () -> blocking), "sk-test");
 
-        client.chatStream(messages(), sampling(), 0, false, null, token -> { }, null, null, null);
+        client.chatStream(prompt(0), token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader thread must start consuming the stream");
 
         client.shutdown();
@@ -337,8 +437,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = clientWithDeadline(stub(200, () -> blocking), "sk-test", scheduler);
 
-        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(
-                messages(), sampling(), 0, false, null, token -> { }, null, null, null);
+        CompletableFuture<LlmInferenceResult> streamed = client.chatStream(prompt(0), token -> { }, null, null, null);
         assertTrue(blocking.awaitReading(AWAIT), "the reader must be blocked on the body");
         assertNotNull(armed.get(), "the request must arm its deadline");
 
@@ -359,7 +458,7 @@ class OpenAiCompatibleInferenceClientTest {
 
         Exception failure = assertThrows(
                 Exception.class,
-                () -> client.chat(messages(), sampling(), 0, false, null, null)
+                () -> client.chat(prompt(0), null)
         );
 
         assertTrue(failure.getMessage().contains("status=400"), failure.getMessage());
@@ -373,7 +472,7 @@ class OpenAiCompatibleInferenceClientTest {
 
         Exception failure = assertThrows(
                 Exception.class,
-                () -> client.chat(messages(), sampling(), 0, false, null, null)
+                () -> client.chat(prompt(0), null)
         );
 
         assertTrue(failure.getMessage().contains("code=rate_limit_exceeded"), failure.getMessage());
@@ -391,7 +490,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
 
-        LlmInferenceResult result = client.chat(messages(), sampling(), 64, false, null, null);
+        LlmInferenceResult result = client.chat(prompt(64), null);
 
         assertEquals("half an answer", result.text(), "the partial text is still the answer");
         assertTrue(result.truncated(), "the caller has to be able to tell this from a whole answer");
@@ -405,7 +504,7 @@ class OpenAiCompatibleInferenceClientTest {
         };
         OpenAiCompatibleInferenceClient client = client(stub(200, lines), "sk-test");
 
-        assertFalse(client.chat(messages(), sampling(), 64, false, null, null).truncated());
+        assertFalse(client.chat(prompt(64), null).truncated());
     }
 
     // --- fixtures -----------------------------------------------------------------------------
@@ -469,8 +568,19 @@ class OpenAiCompatibleInferenceClientTest {
         return new StubHttpClient(status, body);
     }
 
-    private static List<ChatMessage> messages() {
-        return List.of(ChatMessage.system("sys"), ChatMessage.user("hi"));
+    private static LlmPrompt prompt(int maxTokens) {
+        return prompt(messages(), sampling(), maxTokens, null);
+    }
+
+    private static LlmPrompt prompt(List<LlmChatMessage> messages,
+                                    LLMPromptRequestPayload.SamplingPayload sampling,
+                                    int maxTokens,
+                                    Integer reasoningTier) {
+        return new LlmPrompt(messages, List.of(), null, sampling, maxTokens, false, reasoningTier);
+    }
+
+    private static List<LlmChatMessage> messages() {
+        return List.of(LlmChatMessage.system("sys"), LlmChatMessage.user("hi"));
     }
 
     private static LLMPromptRequestPayload.SamplingPayload sampling() {

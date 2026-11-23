@@ -4,8 +4,10 @@ import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.protocol.LlmCapabilities;
 import com.rheinmetal.tianshu.weaving.service.EmbeddingRuntime;
 import com.rheinmetal.tianshu.weaving.service.LLMService;
+import com.rheinmetal.tianshu.weaving.service.LlmChatMessage;
 import com.rheinmetal.tianshu.weaving.service.LlmInferenceClient;
 import com.rheinmetal.tianshu.weaving.service.LlmInferenceResult;
+import com.rheinmetal.tianshu.weaving.service.LlmPrompt;
 import com.rheinmetal.tianshu.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.weaving.usage.LlmPricing;
@@ -190,27 +192,16 @@ class LlmUsageWiringTest {
         }
 
         @Override
-        public LlmInferenceResult chat(
-                List<ChatMessage> messages,
-                LLMPromptRequestPayload.SamplingPayload sampling,
-                int maxTokens,
-                boolean captureThinkingContent,
-                Integer reasoningTier,
-                Consumer<LlmPromptCacheUsage> cacheSink
-        ) {
+        public LlmInferenceResult chat(LlmPrompt prompt, Consumer<LlmPromptCacheUsage> cacheSink) {
             if (cacheSink != null && cacheUsage.known()) {
                 cacheSink.accept(cacheUsage);
             }
-            return new LlmInferenceResult("done", usage, "", false);
+            return new LlmInferenceResult("done", usage, "", List.of(), false);
         }
 
         @Override
         public CompletableFuture<LlmInferenceResult> chatStream(
-                List<ChatMessage> messages,
-                LLMPromptRequestPayload.SamplingPayload sampling,
-                int maxTokens,
-                boolean captureThinkingContent,
-                Integer reasoningTier,
+                LlmPrompt prompt,
                 Consumer<String> onToken,
                 Consumer<String> onThinking,
                 Consumer<LlmStreamFinish> onFinish,
@@ -222,11 +213,11 @@ class LlmUsageWiringTest {
             if (onFinish != null) {
                 onFinish.accept(new LlmStreamFinish(StreamFinishType.COMPLETED, usage, null));
             }
-            return CompletableFuture.completedFuture(new LlmInferenceResult("done", usage, "", false));
+            return CompletableFuture.completedFuture(new LlmInferenceResult("done", usage, "", List.of(), false));
         }
 
         @Override
-        public int countChatPromptTokens(List<ChatMessage> messages) {
+        public int countChatPromptTokens(List<LlmChatMessage> messages) {
             return PROMPT_TOKENS;
         }
 

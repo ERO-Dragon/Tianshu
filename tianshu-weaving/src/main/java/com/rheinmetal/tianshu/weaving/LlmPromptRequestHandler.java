@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.weaving;
 
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptResultPayload;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolCallPayload;
 import com.rheinmetal.tianshu.weaving.service.LLMService;
 import com.rheinmetal.tianshu.weaving.service.LlmPrompt;
 import com.rheinmetal.tianshu.weaving.service.LlmPromptFactory;
@@ -100,6 +101,7 @@ final class LlmPromptRequestHandler {
                     result.text(),
                     result.thinkingContent(),
                     result.usage(),
+                    result.toolCalls(),
                     result.truncated()
             ));
             complete(context, envelope);
@@ -149,7 +151,8 @@ final class LlmPromptRequestHandler {
                     failureMessage(finish.error()),
                     terminal.thinkingContent()
             );
-            adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish, result.truncated()));
+            adapter.respondLLMPromptResult(envelope, terminalResult(payload.requestId(), terminal, finish,
+                    result.toolCalls(), result.truncated()));
             complete(context, envelope);
         } catch (Exception exception) {
             Throwable cause = unwrapCompletion(exception);
@@ -278,6 +281,7 @@ final class LlmPromptRequestHandler {
             String requestId,
             LlmStreamState.TerminalSnapshot terminal,
             LLMService.LLMStreamFinish finish,
+            java.util.List<LLMToolCallPayload> toolCalls,
             boolean truncated
     ) {
         String type = finish == null || finish.type() == null ? "COMPLETED" : finish.type().trim().toUpperCase();
@@ -300,7 +304,7 @@ final class LlmPromptRequestHandler {
             );
         }
         return LLMPromptResultPayload.completed(
-                requestId, terminal.visibleText(), terminal.thinkingContent(), usage, truncated
+                requestId, terminal.visibleText(), terminal.thinkingContent(), usage, toolCalls, truncated
         );
     }
 

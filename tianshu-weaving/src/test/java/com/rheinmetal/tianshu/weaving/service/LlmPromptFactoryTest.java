@@ -55,9 +55,9 @@ class LlmPromptFactoryTest {
         LlmPrompt prompt = factory.create(payload);
 
         assertEquals(List.of("sys", "hi", "hello"),
-                prompt.messages().stream().map(message -> message.content).toList());
+                prompt.messages().stream().map(LlmChatMessage::content).toList());
         assertEquals(List.of("system", "user", "assistant"),
-                prompt.messages().stream().map(message -> message.role).toList());
+                prompt.messages().stream().map(LlmChatMessage::role).toList());
         assertEquals(256, prompt.maxTokens());
         assertTrue(prompt.captureThinkingContent());
     }

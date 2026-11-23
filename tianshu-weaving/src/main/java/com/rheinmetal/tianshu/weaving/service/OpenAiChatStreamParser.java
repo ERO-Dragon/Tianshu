@@ -46,6 +46,7 @@ final class OpenAiChatStreamParser {
     record Event(
             String text,
             String thinking,
+            List<ToolCallDelta> toolCalls,
             boolean done,
             Integer promptTokens,
             Integer completionTokens,
@@ -56,11 +57,30 @@ final class OpenAiChatStreamParser {
         Event {
             text = text == null ? "" : text;
             thinking = thinking == null ? "" : thinking;
+            toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
             finishReason = finishReason == null ? "" : finishReason;
         }
 
         static Event endOfStream() {
-            return new Event("", "", true, null, null, null, null, "");
+            return new Event("", "", List.of(), true, null, null, null, null, "");
+        }
+    }
+
+    /**
+     * One incremental piece of a tool call: the provider streams a call in fragments, keyed by
+     * {@code index}. The id and the name usually arrive in the first fragment and the arguments are
+     * concatenated across the rest, so a consumer must accumulate by index rather than per frame.
+     *
+     * @param index             position of the call in the provider's list, 0-based
+     * @param id                provider call id; empty unless this fragment carried it
+     * @param name              function name; empty unless this fragment carried it
+     * @param argumentsFragment fragment of the arguments JSON; never {@code null}
+     */
+    record ToolCallDelta(int index, String id, String name, String argumentsFragment) {
+        ToolCallDelta {
+            id = id == null ? "" : id;
+            name = name == null ? "" : name;
+            argumentsFragment = argumentsFragment == null ? "" : argumentsFragment;
         }
     }
 
@@ -104,6 +124,7 @@ final class OpenAiChatStreamParser {
         return new Event(
                 content(frame, CONTENT_FIELD),
                 firstNonEmptyContent(frame, REASONING_FIELDS),
+                toolCallDeltas(frame),
                 false,
                 promptTokens,
                 intField(usage, "completion_tokens"),
@@ -111,6 +132,62 @@ final class OpenAiChatStreamParser {
                 cacheMissTokens,
                 choiceField(frame, "finish_reason")
         );
+    }
+
+    /**
+     * The tool-call fragments of this frame's delta, in provider order.
+     *
+     * <p>Field names follow the wire rather than this build: {@code index} / {@code id} / {@code type}
+     * sit on the delta, {@code name} and {@code arguments} inside its {@code function} object. A
+     * fragment missing any of them is still delivered — the arguments arrive split across frames, and
+     * dropping a fragment would corrupt the JSON the model is building.</p>
+     */
+    private static List<ToolCallDelta> toolCallDeltas(JsonObject frame) {
+        JsonObject delta = delta(frame);
+        if (delta == null) {
+            return List.of();
+        }
+        JsonElement calls = delta.get("tool_calls");
+        if (calls == null || !calls.isJsonArray()) {
+            return List.of();
+        }
+        List<ToolCallDelta> fragments = new java.util.ArrayList<>();
+        JsonArray array = calls.getAsJsonArray();
+        for (int position = 0; position < array.size(); position++) {
+            JsonElement element = array.get(position);
+            if (element == null || !element.isJsonObject()) {
+                continue;
+            }
+            JsonObject call = element.getAsJsonObject();
+            JsonObject function = call.get("function") != null && call.get("function").isJsonObject()
+                    ? call.getAsJsonObject("function")
+                    : null;
+            fragments.add(new ToolCallDelta(
+                    indexOf(call, position),
+                    stringField(call, "id"),
+                    stringField(function, "name"),
+                    stringField(function, "arguments")
+            ));
+        }
+        return List.copyOf(fragments);
+    }
+
+    /** The provider's {@code index}; a fragment that omits it keeps its position in the frame. */
+    private static int indexOf(JsonObject call, int position) {
+        JsonElement index = call.get("index");
+        return index != null && index.isJsonPrimitive() && index.getAsJsonPrimitive().isNumber()
+                ? Math.max(0, index.getAsInt())
+                : position;
+    }
+
+    private static String stringField(JsonObject object, String field) {
+        if (object == null || field == null) {
+            return "";
+        }
+        JsonElement value = object.get(field);
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
+                ? value.getAsString()
+                : "";
     }
 
     private static JsonObject parseObject(String payload) {

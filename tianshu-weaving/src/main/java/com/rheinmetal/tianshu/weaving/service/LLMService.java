@@ -8,12 +8,12 @@ import com.rheinmetal.tianshu.weaving.contract.LLMPrimitiveQueryPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMPrimitiveResultPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMRuntimeSnapshotPayload;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolCallPayload;
 import com.rheinmetal.tianshu.weaving.protocol.LlmModuleId;
 import com.rheinmetal.tianshu.weaving.runtime.LlmContextBudget;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.weaving.settings.WeavingConfiguration;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 
@@ -63,18 +63,12 @@ public final class LLMService {
     public LLMResult chat(LlmPrompt prompt, Consumer<LlmPromptCacheUsage> cacheSink) {
         LlmPrompt effective = requirePrompt(prompt);
         try {
-            LlmInferenceResult result = inferenceClient.chat(
-                    effective.messages(),
-                    effective.sampling(),
-                    effective.maxTokens(),
-                    effective.captureThinkingContent(),
-                    effective.reasoningTier(),
-                    cacheSink
-            );
+            LlmInferenceResult result = inferenceClient.chat(effective, cacheSink);
             LLMResult response = new LLMResult(
                     result == null ? "" : result.text(),
                     result == null ? "" : result.thinkingContent(),
                     toUsagePayload(result == null ? null : result.usage()),
+                    result == null ? List.of() : result.toolCalls(),
                     result != null && result.truncated()
             );
             publishDialogueDiagnostic("CHAT_COMPLETED", effective, response.text());
@@ -99,11 +93,7 @@ public final class LLMService {
         try {
             LlmStreamFinishHolder finishHolder = new LlmStreamFinishHolder();
             CompletableFuture<LlmInferenceResult> future = inferenceClient.chatStream(
-                    effective.messages(),
-                    effective.sampling(),
-                    effective.maxTokens(),
-                    effective.captureThinkingContent(),
-                    effective.reasoningTier(),
+                    effective,
                     safeTokenConsumer(onToken),
                     safeTokenConsumer(onThinking),
                     finishHolder::set,
@@ -115,6 +105,7 @@ public final class LLMService {
             return new LLMStreamResult(
                     text,
                     toStreamFinish(finishHolder.finish(), result == null ? null : result.thinkingContent()),
+                    result == null ? List.of() : result.toolCalls(),
                     result != null && result.truncated()
             );
         } catch (CancellationException cancelled) {
@@ -186,7 +177,7 @@ public final class LLMService {
      * Prompt-size estimate. The provider's own usage is authoritative for billing, but it only
      * exists after a request; a caller that budgets before sending has nothing else to ask.
      */
-    public LLMPrimitiveResultPayload tokenCountResponse(String requestId, List<ChatMessage> messages) {
+    public LLMPrimitiveResultPayload tokenCountResponse(String requestId, List<LlmChatMessage> messages) {
         try {
             return LLMPrimitiveResultPayload.tokenCount(
                     requestId,
@@ -253,8 +244,7 @@ public final class LLMService {
     private void publishDialogueDiagnostic(String code, LlmPrompt prompt, String response) {
         String input = prompt == null ? "" : prompt.messages().stream()
                 .filter(Objects::nonNull)
-                .map(message -> (message.role == null ? "" : message.role) + ": "
-                        + (message.content == null ? "" : message.content))
+                .map(message -> message.role() + ": " + message.content())
                 .reduce((left, right) -> left + "\n" + right)
                 .orElse("");
         env.diagnostics().publish(DiagnosticEvent.now(
@@ -342,29 +332,41 @@ public final class LLMService {
             String text,
             String thinkingContent,
             LLMPromptResultPayload.TokenUsagePayload usage,
+            List<LLMToolCallPayload> toolCalls,
             boolean truncated
     ) {
         public LLMResult {
             text = text == null ? "" : text;
             thinkingContent = thinkingContent == null ? "" : thinkingContent;
             usage = usage == null ? LLMPromptResultPayload.TokenUsagePayload.empty() : usage;
+            toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
         }
     }
 
     /**
-     * One streamed answer: the text that arrived, how its stream ended, and whether the provider cut
-     * it at the completion cap.
+     * One streamed answer: the text that arrived, how its stream ended, the tool calls the model asked
+     * for, and whether the provider cut it at the completion cap.
+     *
+     * <p>{@code toolCalls} is complete here even though the provider streamed it in fragments; the
+     * transport joins them before the stream ends, so a streamed tool request is as usable as a
+     * blocking one.</p>
      *
      * @param truncated whether the answer stopped at the cap rather than at its end; a stream that
      *                  failed or was cancelled is never marked truncated, because its text is a prefix
      *                  of an interrupted call — a fact {@code finish.type()} already states
      */
-    public record LLMStreamResult(String text, LLMStreamFinish finish, boolean truncated) {
+    public record LLMStreamResult(
+            String text,
+            LLMStreamFinish finish,
+            List<LLMToolCallPayload> toolCalls,
+            boolean truncated
+    ) {
         public LLMStreamResult {
             text = text == null ? "" : text;
             finish = finish == null
                     ? LLMStreamFinish.completed(LLMPromptResultPayload.TokenUsagePayload.empty())
                     : finish;
+            toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
         }
     }
 

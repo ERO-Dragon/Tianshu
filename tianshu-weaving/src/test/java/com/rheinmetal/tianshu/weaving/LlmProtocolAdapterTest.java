@@ -10,14 +10,15 @@ import com.rheinmetal.tianshu.weaving.contract.LLMPromptStreamChunkPayload;
 import com.rheinmetal.tianshu.weaving.protocol.LlmCapabilities;
 import com.rheinmetal.tianshu.weaving.service.EmbeddingRuntime;
 import com.rheinmetal.tianshu.weaving.service.LLMService;
+import com.rheinmetal.tianshu.weaving.service.LlmChatMessage;
 import com.rheinmetal.tianshu.weaving.service.LlmInferenceClient;
 import com.rheinmetal.tianshu.weaving.service.LlmInferenceResult;
+import com.rheinmetal.tianshu.weaving.service.LlmPrompt;
 import com.rheinmetal.tianshu.weaving.service.LlmPromptFactory;
 import com.rheinmetal.tianshu.weaving.service.LlmRagStorageService;
 import com.rheinmetal.tianshu.weaving.service.RagPersistenceScheduler;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
 import com.rheinmetal.tianshu.weaving.usage.LlmUsageLedger;
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
@@ -53,7 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The protocol face of the lane: request execution, streaming, cache management, primitive queries
- * and the failure paths. No lane, no task admission, no status topic — those concepts are gone.
+ * and the failure paths. No lane, no task admission, no status topic 閳?those concepts are gone.
  */
 class LlmProtocolAdapterTest {
     @TempDir
@@ -389,33 +390,24 @@ class LlmProtocolAdapterTest {
         private int countCalls;
 
         @Override
-        public LlmInferenceResult chat(
-                List<ChatMessage> messages,
-                LLMPromptRequestPayload.SamplingPayload sampling,
-                int maxTokens,
-                boolean captureThinkingContent,
-                Integer reasoningTier,
-                Consumer<LlmPromptCacheUsage> cacheSink
-        ) {
+        public LlmInferenceResult chat(LlmPrompt prompt, Consumer<LlmPromptCacheUsage> cacheSink) {
             chatCalls++;
             reportCache(cacheSink);
-            return new LlmInferenceResult(text, usage, captureThinkingContent ? thinking : "", false);
+            return new LlmInferenceResult(text, usage,
+                    prompt.captureThinkingContent() ? thinking : "", List.of(), false);
         }
 
         @Override
         public CompletableFuture<LlmInferenceResult> chatStream(
-                List<ChatMessage> messages,
-                LLMPromptRequestPayload.SamplingPayload sampling,
-                int maxTokens,
-                boolean captureThinkingContent,
-                Integer reasoningTier,
+                LlmPrompt prompt,
                 Consumer<String> onToken,
                 Consumer<String> onThinking,
                 Consumer<LlmStreamFinish> onFinish,
                 Consumer<LlmPromptCacheUsage> cacheSink
         ) {
             streamCalls++;
-            if (onThinking != null && captureThinkingContent && !thinking.isEmpty()) {
+            boolean captureThinking = prompt.captureThinkingContent();
+            if (onThinking != null && captureThinking && !thinking.isEmpty()) {
                 onThinking.accept(thinking);
             }
             for (String token : tokens) {
@@ -425,15 +417,15 @@ class LlmProtocolAdapterTest {
             }
             if (onFinish != null) {
                 onFinish.accept(new LlmStreamFinish(
-                        StreamFinishType.COMPLETED, usage, null, captureThinkingContent ? thinking : ""));
+                        StreamFinishType.COMPLETED, usage, null, captureThinking ? thinking : ""));
             }
             reportCache(cacheSink);
             return CompletableFuture.completedFuture(
-                    new LlmInferenceResult(text, usage, captureThinkingContent ? thinking : "", false));
+                    new LlmInferenceResult(text, usage, captureThinking ? thinking : "", List.of(), false));
         }
 
         @Override
-        public int countChatPromptTokens(List<ChatMessage> messages) {
+        public int countChatPromptTokens(List<LlmChatMessage> messages) {
             countCalls++;
             return tokenCount;
         }

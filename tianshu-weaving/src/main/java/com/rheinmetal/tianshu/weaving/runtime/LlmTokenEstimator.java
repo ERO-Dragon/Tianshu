@@ -1,6 +1,6 @@
 package com.rheinmetal.tianshu.weaving.runtime;
 
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
+import com.rheinmetal.tianshu.weaving.service.LlmChatMessage;
 
 import java.util.List;
 
@@ -42,18 +42,18 @@ public final class LlmTokenEstimator {
     }
 
     /** Prompt tokens for a whole message list, excluding the completion. */
-    public int estimate(List<ChatMessage> messages) {
+    public int estimate(List<LlmChatMessage> messages) {
         if (messages == null || messages.isEmpty()) {
             return REQUEST_OVERHEAD_TOKENS;
         }
         double total = REQUEST_OVERHEAD_TOKENS;
-        for (ChatMessage message : messages) {
+        for (LlmChatMessage message : messages) {
             if (message == null) {
                 continue;
             }
             total += MESSAGE_OVERHEAD_TOKENS;
-            total += estimateText(message.content);
-            total += estimateText(message.role);
+            total += estimateText(message.content());
+            total += estimateText(message.role());
         }
         return Math.max(1, (int) Math.round(total * calibration));
     }

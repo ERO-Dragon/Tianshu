@@ -2,9 +2,15 @@ package com.rheinmetal.tianshu.weaving.contract;
 
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
 
+import java.util.List;
+
 /**
  * Terminal result of one inference request: what the provider answered, why it failed, and what it
  * billed. {@code text} is always the visible answer; reasoning text travels separately.
+ *
+ * <p>{@code toolCalls} is where a tool-using answer lives. A model that asks for a tool answers with
+ * empty {@code text} and one or more calls; the caller executes them and replays the calls plus their
+ * results in the next request. Weaving transports both directions and executes neither.</p>
  *
  * <p>{@code truncated} states that a <em>completed</em> answer stopped at the provider's completion
  * cap rather than at its end. The text is still usable, which is why the status stays
@@ -20,6 +26,7 @@ public record LLMPromptResultPayload(
         String errorCode,
         String errorMessage,
         TokenUsagePayload usage,
+        List<LLMToolCallPayload> toolCalls,
         boolean truncated
 ) implements ITianshuPayload {
 
@@ -31,9 +38,25 @@ public record LLMPromptResultPayload(
         errorCode = blankToNull(errorCode);
         errorMessage = blankToNull(errorMessage);
         usage = usage == null ? TokenUsagePayload.empty() : usage;
+        // The calls the model asked for. A reply that only asks for tools carries empty text, so the
+        // transport must not treat "no visible text" as "no answer".
+        toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
         // Truncation only means something for an answer the provider completed; a cancelled or failed
         // call carries a prefix, which its status already states.
         truncated = truncated && "COMPLETED".equals(status);
+    }
+
+    /** A completed plain answer, in the field order this payload had before tool transport existed. */
+    public LLMPromptResultPayload(
+            String requestId,
+            String status,
+            String text,
+            String thinkingContent,
+            String errorCode,
+            String errorMessage,
+            TokenUsagePayload usage
+    ) {
+        this(requestId, status, text, thinkingContent, errorCode, errorMessage, usage, List.of(), false);
     }
 
     private static String normalize(String value) {
@@ -73,7 +96,36 @@ public record LLMPromptResultPayload(
             TokenUsagePayload usage,
             boolean truncated
     ) {
-        return new LLMPromptResultPayload(requestId, "COMPLETED", text, thinkingContent, null, null, usage, truncated);
+        return new LLMPromptResultPayload(requestId, "COMPLETED", text, thinkingContent, null, null, usage,
+                List.of(), truncated);
+    }
+
+    /**
+     * A completed answer whose model asked for tool calls. {@code text} is usually empty here: the
+     * provider puts the request in the structured field, not in the visible answer.
+     */
+    public static LLMPromptResultPayload completed(
+            String requestId,
+            String text,
+            String thinkingContent,
+            TokenUsagePayload usage,
+            List<LLMToolCallPayload> toolCalls
+    ) {
+        return new LLMPromptResultPayload(requestId, "COMPLETED", text, thinkingContent, null, null, usage,
+                toolCalls, false);
+    }
+
+    /** A completed answer that may carry both a tool request and the truncation mark. */
+    public static LLMPromptResultPayload completed(
+            String requestId,
+            String text,
+            String thinkingContent,
+            TokenUsagePayload usage,
+            List<LLMToolCallPayload> toolCalls,
+            boolean truncated
+    ) {
+        return new LLMPromptResultPayload(requestId, "COMPLETED", text, thinkingContent, null, null, usage,
+                toolCalls, truncated);
     }
 
     public static LLMPromptResultPayload cancelled(String requestId, String text) {
@@ -86,7 +138,8 @@ public record LLMPromptResultPayload(
             String thinkingContent,
             TokenUsagePayload usage
     ) {
-        return new LLMPromptResultPayload(requestId, "CANCELLED", text, thinkingContent, null, null, usage, false);
+        return new LLMPromptResultPayload(requestId, "CANCELLED", text, thinkingContent, null, null, usage,
+                List.of(), false);
     }
 
     public static LLMPromptResultPayload failed(String requestId, String errorCode, String errorMessage) {
@@ -109,6 +162,7 @@ public record LLMPromptResultPayload(
                 errorCode,
                 errorMessage,
                 usage,
+                List.of(),
                 false
         );
     }

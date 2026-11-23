@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptResultPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptStreamChunkPayload;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolSpecPayload;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.weaving.settings.LlmWireCompat;
@@ -423,6 +424,69 @@ class WeavingBlackBoxChatTest {
                 assertTrue(response.result().truncated(), "the streamed path reports the same fact");
             }
         }
+    }
+
+    /**
+     * A model turn that asks for a tool is not an failure and not an answer: the structured request
+     * has to reach the caller, and the catalogue the caller offered has to reach the provider.
+     */
+    @Test
+    void aToolCallReachesTheCallerAsAStructuredRequest() throws Exception {
+        try (FakeOpenAiEndpoint endpoint = FakeOpenAiEndpoint.start((body, exchange) ->
+                FakeOpenAiEndpoint.sse(exchange,
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\","
+                                + "\"type\":\"function\",\"function\":{\"name\":\"block.place\","
+                                + "\"arguments\":\"{\\\"x\\\":1}\"}}]}}]}",
+                        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}",
+                        "data: [DONE]"))) {
+            try (BlackBoxDriver driver = BlackBoxDriver.start(new BlackBoxConfig(tempDir, endpoint.baseUrl()))) {
+                BlackBoxDriver.Response response = driver.prompt(toolPayload("req-tool", false));
+
+                assertEquals("COMPLETED", response.result().status());
+                assertEquals("", response.result().text(), "a tool-only answer has no visible text");
+                assertEquals(1, response.result().toolCalls().size());
+                assertEquals("call_1", response.result().toolCalls().get(0).id());
+                assertEquals("block.place", response.result().toolCalls().get(0).name());
+                assertEquals("{\"x\":1}", response.result().toolCalls().get(0).argumentsJson());
+            }
+
+            JsonObject sent = endpoint.onlyRequest();
+            assertEquals(1, sent.getAsJsonArray("tools").size());
+            assertEquals("block.place", sent.getAsJsonArray("tools").get(0).getAsJsonObject()
+                    .getAsJsonObject("function").get("name").getAsString());
+        }
+    }
+
+    @Test
+    void aStreamedToolCallIsJoinedBeforeItReachesTheCaller() throws Exception {
+        try (FakeOpenAiEndpoint endpoint = FakeOpenAiEndpoint.start((body, exchange) ->
+                FakeOpenAiEndpoint.sse(exchange,
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_2\","
+                                + "\"function\":{\"name\":\"block.place\",\"arguments\":\"{\\\"x\\\":\"}}]}}]}",
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,"
+                                + "\"function\":{\"arguments\":\"2}\"}}]}}]}",
+                        "data: [DONE]"))) {
+            try (BlackBoxDriver driver = BlackBoxDriver.start(new BlackBoxConfig(tempDir, endpoint.baseUrl()))) {
+                BlackBoxDriver.Response response = driver.prompt(toolPayload("req-tool-stream", true));
+
+                assertEquals("COMPLETED", response.result().status());
+                assertEquals("{\"x\":2}", response.result().toolCalls().get(0).argumentsJson());
+            }
+        }
+    }
+
+    private LLMPromptRequestPayload toolPayload(String requestId, boolean stream) {
+        return new LLMPromptRequestPayload(
+                requestId,
+                List.of(LLMPromptRequestPayload.MessageItemPayload.user("place a block at 1,2,3")),
+                List.of(LLMToolSpecPayload.noArguments("block.place", "place a block")),
+                "auto",
+                stream,
+                false,
+                64,
+                null,
+                LLMPromptRequestPayload.SamplingPayload.empty()
+        );
     }
 
     private static String[] completion(String content, int promptTokens, int completionTokens,

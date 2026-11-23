@@ -18,6 +18,7 @@ Weaving is a base capability on Tianshu's AI foundation: it turns "talking to a 
 - **Retrieval can stay entirely local** — the vector model is optional: install it and vectors are computed on this machine and search works offline; skip it and chat still works.
 - **Separate by default** — every mod registers its own library, and the registrant decides who can see it.
 - **Built for long conversations** — the budget is published from the selected model's window, with room for plenty of world detail.
+- **Tools over the same channel** — offer a catalogue and the model's answer comes back as structured calls (joined for you when the provider streams them in fragments); the mod that owns a tool still executes it.
 - **Open to developers** — any mod can call it to ask a model, compute vectors, store and search; see the integration guide above.
 
 ## One capability, three uses
@@ -28,7 +29,7 @@ Weaving is a base capability on Tianshu's AI foundation: it turns "talking to a 
 
 ## What it does not do
 
-Weaving does not manage memory and does not decide content for its callers: prompt assembly, injecting search results, persona, dialogue ownership and tool scheduling all belong to the caller. It guarantees that messages go out, fragments come back in order, and vectors and retrieval work locally. When the vector model is not installed or fails to start, the cloud channel keeps working; only retrieval and vector queries report unavailable, and retrieval degrades to lexical matching.
+Weaving does not manage memory and does not decide content for its callers: prompt assembly, injecting search results, persona, dialogue ownership and tool orchestration all belong to the caller. It carries the tool protocol — the catalogue down, the model's structured calls back, the caller's results up again — and executes none of it. It guarantees that messages go out, fragments come back in order, and vectors and retrieval work locally. When the vector model is not installed or fails to start, the cloud channel keeps working; only retrieval and vector queries report unavailable, and retrieval degrades to lexical matching.
 
 ## License and credits
 

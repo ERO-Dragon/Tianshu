@@ -7,13 +7,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolCallPayload;
+import com.rheinmetal.tianshu.weaving.contract.LLMToolSpecPayload;
 import com.rheinmetal.tianshu.weaving.runtime.LlmHttpTransport;
 import com.rheinmetal.tianshu.weaving.runtime.LlmTokenEstimator;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningProfile;
 import com.rheinmetal.tianshu.weaving.settings.LlmReasoningWire;
 import com.rheinmetal.tianshu.weaving.settings.LlmWireCompat;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
@@ -28,9 +29,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -233,38 +237,23 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     }
 
     @Override
-    public LlmInferenceResult chat(
-            List<ChatMessage> messages,
-            LLMPromptRequestPayload.SamplingPayload sampling,
-            int maxTokens,
-            boolean captureThinkingContent,
-            Integer reasoningTier,
-            Consumer<LlmPromptCacheUsage> cacheSink
-    ) throws Exception {
-        return await(startStream(
-                messages, sampling, maxTokens, captureThinkingContent, reasoningTier,
-                null, null, null, cacheSink));
+    public LlmInferenceResult chat(LlmPrompt prompt, Consumer<LlmPromptCacheUsage> cacheSink) throws Exception {
+        return await(startStream(prompt, null, null, null, cacheSink));
     }
 
     @Override
     public CompletableFuture<LlmInferenceResult> chatStream(
-            List<ChatMessage> messages,
-            LLMPromptRequestPayload.SamplingPayload sampling,
-            int maxTokens,
-            boolean captureThinkingContent,
-            Integer reasoningTier,
+            LlmPrompt prompt,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LlmStreamFinish> onFinish,
             Consumer<LlmPromptCacheUsage> cacheSink
     ) {
-        return startStream(
-                messages, sampling, maxTokens, captureThinkingContent, reasoningTier,
-                onToken, onThinking, onFinish, cacheSink);
+        return startStream(prompt, onToken, onThinking, onFinish, cacheSink);
     }
 
     @Override
-    public int countChatPromptTokens(List<ChatMessage> messages) {
+    public int countChatPromptTokens(List<LlmChatMessage> messages) {
         return tokenEstimator.estimate(messages);
     }
 
@@ -283,11 +272,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     // --- streaming -------------------------------------------------------------------------------
 
     private CompletableFuture<LlmInferenceResult> startStream(
-            List<ChatMessage> messages,
-            LLMPromptRequestPayload.SamplingPayload sampling,
-            int maxTokens,
-            boolean captureThinkingContent,
-            Integer reasoningTier,
+            LlmPrompt prompt,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             Consumer<LlmStreamFinish> onFinish,
@@ -304,7 +289,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             }
         });
         Consumer<String> tokenSink = sink(onToken);
-        Consumer<String> thinkingSink = captureThinkingContent ? sink(onThinking) : null;
+        Consumer<String> thinkingSink = prompt.captureThinkingContent() ? sink(onThinking) : null;
         // Armed before the exchange starts: the request timeout covers the wait for a response head, not a
         // body that stops mid-stream, so without this a stalled provider holds the reader and its socket.
         LlmTimeoutScheduler.Handle deadline = armDeadline(stream);
@@ -312,7 +297,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
             executor.execute(() -> {
                 try {
                     LlmInferenceResult result = streamChat(
-                            messages, sampling, maxTokens, reasoningTier, tokenSink, thinkingSink, stream, cacheSink
+                            prompt, tokenSink, thinkingSink, stream, cacheSink
                     );
                     notifyFinish(onFinish, result, null);
                     future.complete(result);
@@ -365,10 +350,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
     }
 
     private LlmInferenceResult streamChat(
-            List<ChatMessage> messages,
-            LLMPromptRequestPayload.SamplingPayload sampling,
-            int maxTokens,
-            Integer reasoningTier,
+            LlmPrompt prompt,
             Consumer<String> onToken,
             Consumer<String> onThinking,
             RemoteStream stream,
@@ -379,7 +361,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
         try {
             HttpRequest request = buildRequest(buildChatRequestBody(
-                    model, messages, sampling, maxTokens, reasoningProfile, reasoningTier, wireCompat));
+                    model, prompt, reasoningProfile, wireCompat));
             HttpResponse<InputStream> response;
             try {
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -399,7 +381,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                     throw new IllegalStateException("REMOTE_LLM_HTTP_STATUS status=" + status + errorDetail(readErrorBody(body)));
                 }
                 LlmInferenceResult result = readStream(body, onToken, onThinking, stream, cacheSink);
-                calibrateUsage(messages, result);
+                calibrateUsage(prompt.messages(), result);
                 return result;
             } catch (IOException failure) {
                 if (stream.timedOut() || stream.cancelled()) {
@@ -429,6 +411,9 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         int cacheMissTokens = -1;
         String finishReason = "";
         boolean truncated = false;
+        // Tool calls arrive as fragments keyed by index; they are joined here and handed over complete,
+        // so the caller never has to reassemble a JSON argument body from the stream.
+        Map<Integer, ToolCallAccumulator> toolCalls = new TreeMap<>();
         BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
         String line;
         while ((line = reader.readLine()) != null) {
@@ -469,6 +454,10 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
                     onToken.accept(event.text());
                 }
             }
+            for (OpenAiChatStreamParser.ToolCallDelta fragment : event.toolCalls()) {
+                toolCalls.computeIfAbsent(fragment.index(), index -> new ToolCallAccumulator())
+                        .append(fragment);
+            }
             // Guards providers that keep the socket open after the last token.
             if (System.nanoTime() - deadline > 0L) {
                 throw new IllegalStateException("REMOTE_LLM_STREAM_TIMEOUT timeoutSeconds=" + timeout.toSeconds());
@@ -488,72 +477,184 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         reportCacheHitRatio(promptTokens, cacheHitTokens, cacheMissTokens);
         reportPromptCacheUsage(cacheSink, cacheHitTokens, cacheMissTokens);
         return new LlmInferenceResult(text.toString(), new LlmTokenUsage(promptTokens, completionTokens),
-                thinking.toString(), truncated);
+                thinking.toString(), completedToolCalls(toolCalls), truncated);
+    }
+
+    /**
+     * The accumulated calls, in provider order.
+     *
+     * <p>A fragment group without a name cannot be executed by anyone, so it is dropped rather than
+     * handed on as a call the caller would have to reject. Everything else is passed through as the
+     * model wrote it: the arguments are the model's JSON, not something this build re-encodes.</p>
+     */
+    private static List<LLMToolCallPayload> completedToolCalls(Map<Integer, ToolCallAccumulator> toolCalls) {
+        if (toolCalls.isEmpty()) {
+            return List.of();
+        }
+        List<LLMToolCallPayload> calls = new ArrayList<>(toolCalls.size());
+        for (ToolCallAccumulator accumulator : toolCalls.values()) {
+            LLMToolCallPayload call = accumulator.toPayload();
+            if (!call.name().isEmpty()) {
+                calls.add(call);
+            }
+        }
+        return List.copyOf(calls);
+    }
+
+    /** One tool call being assembled across stream fragments. */
+    private static final class ToolCallAccumulator {
+        private String id = "";
+        private String name = "";
+        private final StringBuilder arguments = new StringBuilder();
+
+        private void append(OpenAiChatStreamParser.ToolCallDelta fragment) {
+            if (id.isEmpty() && !fragment.id().isEmpty()) {
+                id = fragment.id();
+            }
+            if (name.isEmpty() && !fragment.name().isEmpty()) {
+                name = fragment.name();
+            }
+            arguments.append(fragment.argumentsFragment());
+        }
+
+        private LLMToolCallPayload toPayload() {
+            return new LLMToolCallPayload(id, name, arguments.toString());
+        }
     }
 
     // --- request construction --------------------------------------------------------------------
 
     /**
-     * OpenAI-compatible chat-completions body: the four sampling fields, plus the reasoning field
-     * this provider understands. The tier is an index into the profile's ladder; the name sent on the
-     * wire is the provider's own level name, never an alias.
+     * OpenAI-compatible chat-completions body: the four sampling fields, the reasoning field this
+     * provider understands, and the caller's tool catalogue when it offered one.
      *
-     * <p>The two optional fields follow {@link LlmWireCompat}: a gateway that predates
+     * <p>The two optional streaming fields follow {@link LlmWireCompat}: a gateway that predates
      * {@code stream_options} or rejects {@code max_tokens} says so on its own entry, instead of the
      * request always assuming OpenAI's current shape.</p>
+     *
+     * <p>Tools are only sent when the caller offered them, so a deployment that never uses tools sends
+     * exactly the body it always did — and a relay that rejects the field cannot break plain chat.</p>
      */
     static String buildChatRequestBody(
             String model,
-            List<ChatMessage> messages,
-            LLMPromptRequestPayload.SamplingPayload sampling,
-            int maxTokens,
-            LlmReasoningProfile reasoningProfile,
-            Integer reasoningTier
+            LlmPrompt prompt,
+            LlmReasoningProfile reasoningProfile
     ) {
-        return buildChatRequestBody(model, messages, sampling, maxTokens, reasoningProfile, reasoningTier,
-                LlmWireCompat.DEFAULT);
+        return buildChatRequestBody(model, prompt, reasoningProfile, LlmWireCompat.DEFAULT);
     }
 
     static String buildChatRequestBody(
             String model,
-            List<ChatMessage> messages,
-            LLMPromptRequestPayload.SamplingPayload sampling,
-            int maxTokens,
+            LlmPrompt prompt,
             LlmReasoningProfile reasoningProfile,
-            Integer reasoningTier,
             LlmWireCompat wireCompat
     ) {
         LlmWireCompat effective = wireCompat == null ? LlmWireCompat.DEFAULT : wireCompat;
         JsonObject root = new JsonObject();
         root.addProperty("model", model);
-        root.add("messages", messageArray(messages));
+        root.add("messages", messageArray(prompt.messages()));
         root.addProperty("stream", true);
         if (effective.includeStreamUsage()) {
             JsonObject streamOptions = new JsonObject();
             streamOptions.addProperty("include_usage", true);
             root.add("stream_options", streamOptions);
         }
-        applySampling(root, sampling);
-        applyReasoning(root, reasoningProfile, reasoningTier);
-        if (maxTokens > 0) {
-            root.addProperty(effective.maxTokensField().wireName(), maxTokens);
+        applySampling(root, prompt.sampling());
+        applyReasoning(root, reasoningProfile, prompt.reasoningTier());
+        if (prompt.maxTokens() > 0) {
+            root.addProperty(effective.maxTokensField().wireName(), prompt.maxTokens());
+        }
+        if (prompt.offersTools()) {
+            root.add("tools", toolArray(prompt.tools()));
+            if (prompt.toolChoice() != null) {
+                root.addProperty("tool_choice", prompt.toolChoice());
+            }
         }
         return GSON.toJson(root);
     }
 
-    private static JsonArray messageArray(List<ChatMessage> messages) {
+    private static JsonArray messageArray(List<LlmChatMessage> messages) {
         JsonArray array = new JsonArray();
         if (messages == null) {
             return array;
         }
-        for (ChatMessage message : messages) {
+        for (LlmChatMessage message : messages) {
             if (message == null) {
                 continue;
             }
+            String role = normalizeRole(message.role());
             JsonObject item = new JsonObject();
-            item.addProperty("role", normalizeRole(message.role));
-            item.addProperty("content", message.content == null ? "" : message.content);
+            item.addProperty("role", role);
+            item.addProperty("content", message.content());
+            // A tool result must name the call it answers, and an assistant turn that asked for calls
+            // must replay them; the provider rejects a conversation where either is missing.
+            if ("tool".equals(role) && !message.toolCallId().isEmpty()) {
+                item.addProperty("tool_call_id", message.toolCallId());
+            }
+            if (!message.toolCalls().isEmpty()) {
+                item.add("tool_calls", toolCallArray(message.toolCalls()));
+            }
             array.add(item);
+        }
+        return array;
+    }
+
+    /** The declared catalogue, in OpenAI's function shape. */
+    private static JsonArray toolArray(List<LLMToolSpecPayload> tools) {
+        JsonArray array = new JsonArray();
+        for (LLMToolSpecPayload tool : tools) {
+            if (tool == null || tool.name().isEmpty()) {
+                continue;
+            }
+            JsonObject function = new JsonObject();
+            function.addProperty("name", tool.name());
+            if (!tool.description().isEmpty()) {
+                function.addProperty("description", tool.description());
+            }
+            function.add("parameters", parametersOf(tool.parametersJson()));
+            JsonObject entry = new JsonObject();
+            entry.addProperty("type", "function");
+            entry.add("function", function);
+            array.add(entry);
+        }
+        return array;
+    }
+
+    /**
+     * The arguments schema as an object, or the no-argument schema when the caller's text is not one.
+     *
+     * <p>A schema that is not a JSON object cannot be sent, and failing the whole request over the
+     * shape of one tool would take down a turn the model could otherwise answer; the tool simply
+     * becomes argument-less. The caller sees that in the request it built, not in a silent failure.</p>
+     */
+    private static JsonElement parametersOf(String parametersJson) {
+        try {
+            JsonElement parsed = JsonParser.parseString(parametersJson);
+            if (parsed != null && parsed.isJsonObject()) {
+                return parsed;
+            }
+        } catch (RuntimeException malformed) {
+            // Falls through to the no-argument schema below.
+        }
+        return JsonParser.parseString(LLMToolSpecPayload.NO_ARGUMENTS_SCHEMA);
+    }
+
+    private static JsonArray toolCallArray(List<LLMToolCallPayload> calls) {
+        JsonArray array = new JsonArray();
+        for (LLMToolCallPayload call : calls) {
+            if (call == null) {
+                continue;
+            }
+            JsonObject function = new JsonObject();
+            function.addProperty("name", call.name());
+            function.addProperty("arguments", call.argumentsJson());
+            JsonObject entry = new JsonObject();
+            if (!call.id().isEmpty()) {
+                entry.addProperty("id", call.id());
+            }
+            entry.addProperty("type", "function");
+            entry.add("function", function);
+            array.add(entry);
         }
         return array;
     }
@@ -564,7 +665,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
         }
         String normalized = role.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
-            case "system", "assistant", "user" -> normalized;
+            case "system", "assistant", "user", "tool" -> normalized;
             default -> "user";
         };
     }
@@ -740,7 +841,7 @@ public final class OpenAiCompatibleInferenceClient implements LlmInferenceClient
      * Feeds the provider's reported prompt size back into the estimator. The endpoint ships no
      * tokenizer, so this is the only way the estimate converges on the real number.
      */
-    private void calibrateUsage(List<ChatMessage> messages, LlmInferenceResult result) {
+    private void calibrateUsage(List<LlmChatMessage> messages, LlmInferenceResult result) {
         if (result == null || result.usage() == null || messages == null) {
             return;
         }

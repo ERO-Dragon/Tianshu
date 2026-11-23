@@ -5,7 +5,6 @@ import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.contract.LLMRuntimeSnapshotPayload;
 import com.rheinmetal.tianshu.weaving.runtime.LlmContextBudget;
 import com.rheinmetal.tianshu.weaving.usage.LlmPromptCacheUsage;
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 import com.rheinmetal.tianshu.foundry.llm.LlmStreamFinish;
 import com.rheinmetal.tianshu.foundry.llm.LlmTokenUsage;
 import com.rheinmetal.tianshu.foundry.llm.StreamFinishType;
@@ -131,7 +130,7 @@ class LLMServiceTest {
         LLMService service = service(client, new EmbeddingRuntime());
 
         LLMPrimitiveResultPayload result = service.tokenCountResponse(
-                "count-1", List.of(new ChatMessage("user", "hello"))
+                "count-1", List.of(LlmChatMessage.user("hello"))
         );
 
         assertEquals(42, result.tokenCount());
@@ -200,7 +199,7 @@ class LLMServiceTest {
 
     private static LlmPrompt prompt(String userMessage) {
         return new LlmPrompt(
-                List.of(new ChatMessage("user", userMessage)),
+                List.of(LlmChatMessage.user(userMessage)),
                 LLMPromptRequestPayload.SamplingPayload.empty(),
                 0,
                 true,
@@ -242,28 +241,18 @@ class LLMServiceTest {
         private RuntimeException streamFailure;
 
         @Override
-        public LlmInferenceResult chat(
-                List<ChatMessage> messages,
-                LLMPromptRequestPayload.SamplingPayload sampling,
-                int maxTokens,
-                boolean captureThinkingContent,
-                Integer reasoningTier,
-                Consumer<LlmPromptCacheUsage> cacheSink
-        ) {
+        public LlmInferenceResult chat(LlmPrompt prompt, Consumer<LlmPromptCacheUsage> cacheSink) {
             chatCalls++;
-            lastMessages = messages.stream().map(message -> message.role + ":" + message.content).toList();
-            lastCaptureThinking = captureThinkingContent;
-            lastReasoningTier = reasoningTier;
-            return new LlmInferenceResult(text, usage, captureThinkingContent ? thinking : "", false);
+            lastMessages = prompt.messages().stream().map(message -> message.role() + ":" + message.content()).toList();
+            lastCaptureThinking = prompt.captureThinkingContent();
+            lastReasoningTier = prompt.reasoningTier();
+            return new LlmInferenceResult(text, usage,
+                    prompt.captureThinkingContent() ? thinking : "", List.of(), false);
         }
 
         @Override
         public CompletableFuture<LlmInferenceResult> chatStream(
-                List<ChatMessage> messages,
-                LLMPromptRequestPayload.SamplingPayload sampling,
-                int maxTokens,
-                boolean captureThinkingContent,
-                Integer reasoningTier,
+                LlmPrompt prompt,
                 Consumer<String> onToken,
                 Consumer<String> onThinking,
                 Consumer<LlmStreamFinish> onFinish,
@@ -273,7 +262,8 @@ class LLMServiceTest {
             if (streamFailure != null) {
                 return CompletableFuture.failedFuture(streamFailure);
             }
-            if (onThinking != null && captureThinkingContent && !thinking.isEmpty()) {
+            boolean captureThinking = prompt.captureThinkingContent();
+            if (onThinking != null && captureThinking && !thinking.isEmpty()) {
                 onThinking.accept(thinking);
             }
             for (String token : tokens) {
@@ -283,14 +273,14 @@ class LLMServiceTest {
             }
             if (onFinish != null) {
                 onFinish.accept(new LlmStreamFinish(
-                        StreamFinishType.COMPLETED, usage, null, captureThinkingContent ? thinking : ""));
+                        StreamFinishType.COMPLETED, usage, null, captureThinking ? thinking : ""));
             }
             return CompletableFuture.completedFuture(new LlmInferenceResult(
-                    String.join("", tokens), usage, captureThinkingContent ? thinking : "", false));
+                    String.join("", tokens), usage, captureThinking ? thinking : "", List.of(), false));
         }
 
         @Override
-        public int countChatPromptTokens(List<ChatMessage> messages) {
+        public int countChatPromptTokens(List<LlmChatMessage> messages) {
             countCalls++;
             return tokenCount;
         }

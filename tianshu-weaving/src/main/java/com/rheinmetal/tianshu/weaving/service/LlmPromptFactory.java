@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.weaving.service;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
 import com.rheinmetal.tianshu.weaving.model.LlmModelInfo;
 import com.rheinmetal.tianshu.weaving.model.LlmModelManager;
-import com.rheinmetal.tianshu.foundry.llm.ChatMessage;
 
 import java.util.List;
 import java.util.Objects;
@@ -12,9 +11,10 @@ import java.util.function.Supplier;
 /**
  * Turns a protocol payload into a sendable {@link LlmPrompt}.
  *
- * <p>This is deliberately not a prompt assembler: messages are forwarded in order and unchanged.
- * The only work done here is validation (a request must carry at least one message) and filling the
- * sampling fields the caller left empty from the cloud model's catalog defaults.</p>
+ * <p>This is deliberately not a prompt assembler: messages are forwarded in order and unchanged, and
+ * the tool catalogue is forwarded as the caller declared it. The only work done here is validation
+ * (a request must carry at least one message) and filling the sampling fields the caller left empty
+ * from the cloud model's catalog defaults.</p>
  */
 public final class LlmPromptFactory {
     private final Supplier<String> samplingModelId;
@@ -31,15 +31,17 @@ public final class LlmPromptFactory {
         if (payload == null) {
             throw new LlmRequestRejectedException("LLM_EMPTY_REQUEST", "LLM_EMPTY_REQUEST");
         }
-        List<ChatMessage> messages = payload.messages().stream()
+        List<LlmChatMessage> messages = payload.messages().stream()
                 .filter(Objects::nonNull)
-                .map(item -> new ChatMessage(item.role(), item.content()))
+                .map(LlmChatMessage::from)
                 .toList();
         if (messages.isEmpty()) {
             throw new LlmRequestRejectedException("LLM_EMPTY_MESSAGES", "LLM_EMPTY_MESSAGES");
         }
         return new LlmPrompt(
                 messages,
+                payload.tools(),
+                payload.toolChoice(),
                 resolveSampling(payload.sampling()),
                 payload.maxTokens(),
                 payload.captureThinkingContent(),

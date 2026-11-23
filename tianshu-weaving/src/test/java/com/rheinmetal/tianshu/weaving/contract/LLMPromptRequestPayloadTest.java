@@ -17,7 +17,7 @@ class LLMPromptRequestPayloadTest {
                 "  request-1 ",
                 List.of(
                         new LLMPromptRequestPayload.MessageItemPayload("SYSTEM", " sys "),
-                        new LLMPromptRequestPayload.MessageItemPayload("tool", "hello")
+                        new LLMPromptRequestPayload.MessageItemPayload("developer", "hello")
                 ),
                 true,
                 true,
@@ -32,6 +32,42 @@ class LLMPromptRequestPayloadTest {
         assertTrue(payload.stream());
         assertTrue(payload.captureThinkingContent());
         assertEquals(128, payload.maxTokens());
+        assertFalse(payload.offersTools(), "a request without a catalogue offers nothing");
+    }
+
+    /** {@code tool} is a real role now: a tool result is a message and must not be degraded. */
+    @Test
+    void aToolResultMessageKeepsItsRoleAndItsCallReference() {
+        LLMPromptRequestPayload.MessageItemPayload result =
+                LLMPromptRequestPayload.MessageItemPayload.toolResult("call-1", "done");
+
+        assertEquals("tool", result.role());
+        assertEquals("call-1", result.toolCallId());
+        assertTrue(result.hasToolContent());
+
+        LLMPromptRequestPayload.MessageItemPayload replay =
+                LLMPromptRequestPayload.MessageItemPayload.assistantToolCalls("", List.of(
+                        new LLMToolCallPayload("call-1", "block.place", "{\"x\":1}")));
+        assertEquals("assistant", replay.role());
+        assertEquals(1, replay.toolCalls().size());
+    }
+
+    @Test
+    void offeringToolsIsCarriedAndEmptyCatalogueIsNormalized() {
+        LLMPromptRequestPayload withTools = new LLMPromptRequestPayload(
+                "r", List.of(LLMPromptRequestPayload.MessageItemPayload.user("hi")),
+                List.of(LLMToolSpecPayload.noArguments("block.place", "place a block")),
+                "auto", false, false, 0, null, LLMPromptRequestPayload.SamplingPayload.empty());
+
+        assertTrue(withTools.offersTools());
+        assertEquals("block.place", withTools.tools().get(0).name());
+        assertEquals("auto", withTools.toolChoice());
+
+        LLMPromptRequestPayload noTools = new LLMPromptRequestPayload(
+                "r", List.of(LLMPromptRequestPayload.MessageItemPayload.user("hi")),
+                null, "  ", false, false, 0, null, null);
+        assertFalse(noTools.offersTools());
+        assertNull(noTools.toolChoice(), "a blank choice means the endpoint default");
     }
 
     @Test
