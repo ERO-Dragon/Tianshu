@@ -86,6 +86,8 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 - 结束帧之后仍会收到 `LLMPromptResultPayload`；`index` 严格递增，调用方应按 `index` 拼接——分片经协议运行时派发，可能由不同工作线程送达，按到达顺序拼接会打乱正文。
 - 取消或中断时：结束帧 `CANCELLED`，终态结果同样为 `CANCELLED`，正文是本轮已经发出的部分。
 - 供应商以 `finish_reason=content_filter` 结束流时按失败处理：终态 `FAILED`、`errorCode=LLM_INFERENCE_FAILED`、消息含 `REMOTE_LLM_CONTENT_FILTERED`。被过滤机制截断的回复不能当作完整回答交给调用方。
+- 供应商以 `finish_reason=length` 结束（达成长度上限）时，已生成的部分仍是可用文本，终态保持 `COMPLETED`，并把 `truncated` 置为 `true`。截断只对**已完成**的回答成立：`CANCELLED` / `FAILED` 的文本是被中断请求的前缀，状态本身已经说明，`truncated` 恒为 `false`。流式请求的结束帧语义不变（仍是 `COMPLETED` + 已发送文本），截断事实随其后必到的终态结果交给调用方——**一种信息只有一个落点**。
+- 非 2xx 时错误体里的供应商错误码被提取进消息：`REMOTE_LLM_HTTP_STATUS status=400 code=model_not_found body=…`。读 `error.code`，其次顶层 `code`，再次 `error.type`；错误码按供应商原文截断后进入消息，仍未脱敏之外的任何字段都不外泄。
 
 ### 2.5 终态结果
 
@@ -96,6 +98,7 @@ DeepSeek 内置档位表：`[非思考, low, high, max]`，**默认 tier 1（low
 | `text` | 可见正文 |
 | `thinkingContent` | 结构化 reasoning；不混入 `text` |
 | `errorCode` / `errorMessage` | 失败原因 |
+| `truncated` | 已完成但被供应商的长度上限截断（`true` 时 `text` 不是完整回答）；只有 `COMPLETED` 可能为 `true` |
 | `usage` | `promptTokens` / `completionTokens` / `thinkingTokens` / `outputTokens` / `totalTokens` |
 
 `usage` 来自供应商返回的真实用量；`outputTokens = completionTokens + thinkingTokens`。未报告时为零值，不猜测。
@@ -191,8 +194,8 @@ record LLMRuntimeSnapshotPayload(
 - 向映迹报告 `llm.model.load`（加载）、`llm.runtime.reconnecting` / `llm.runtime.error`（氛围状态）；映迹缺席时完全旁路。请求本身不产生映迹活动，那属于调用方的一轮对话。
 - 取消或线程中断会中止底层 HTTP 交换，而不是让读者线程继续读到超时；中断标志会被恢复，交给上层决定。
 - 每个请求还会在 scheduled lane 上挂一个截止任务：供应商接上流后若不再发字节，截止到点会关闭响应体并按 `REMOTE_LLM_STREAM_TIMEOUT` 报失败，不会让读者线程一直阻塞在 `readLine()` 上。
-- **内置提供商预设**：DeepSeek、OpenAI、xAI（Grok）、Google Gemini、通义千问（DashScope 兼容模式）、Moonshot Kimi、智谱 GLM。每个预设固定一个默认模型和一小份常用模型清单，端点、窗口与默认模型都是数据；玩家可在表单里切换模型，或用“选择模型…”从端点实时拉取。
-  - 预设在 `com/rheinmetal/tianshu/function/weaving/settings/llm_providers.json`，不是 Java 常量：上游改名只改数据，后续刷新预设也可以只替换资源。
+- **内置提供商预设**：DeepSeek、OpenAI、xAI（Grok）、Google Gemini、通义千问（DashScope 兼容模式）、Moonshot Kimi、智谱 GLM。每个预设固定一个默认模型和一小份常用模型清单，端点、窗口、默认模型、推理梯子、请求兼容开关与余额接口都是数据；玩家可在表单里切换模型，或用“选择模型…”从端点实时拉取。
+  - 预设在 `com/rheinmetal/tianshu/weaving/settings/llm_providers.json`，不是 Java 常量：上游改名只改数据，后续刷新预设也可以只替换资源。
   - 预设的模型清单/窗口取自 DeepSeek Harness 的 provider catalog（2026-11 快照），非官方承诺；上游改 ID 时用自定义模式覆盖即可。
   - 只有 OpenAI 与 Gemini 预设携带 `OPENAI_EFFORT` 推理梯子；xAI / Qwen / Kimi / GLM 不猜 `reasoning_effort`，梯子为“无控制”，玩家可在自定义模式自行声明。
   - OpenAI / xAI 预设使用 `max_completion_tokens`；其余使用 `max_tokens`。
@@ -213,4 +216,19 @@ record LLMRuntimeSnapshotPayload(
 
 - 每个请求结束后按 envelope 的 `sourceId` 记入本地账本：请求数、输入 / 输出 token、缓存命中断言（供应商报告才有）。
 - 本地计价按配置的每百万 token 单价估算，仅供对账，**不是账单**。
-- 剩余余额来自供应商账户接口；未接入或失败时显示“未知”，绝不以 0 代替。
+- 剩余余额来自供应商账户接口；**没有可用接口时显示“未知”，绝不以 0 代替**。
+
+余额也是**条目数据**（`LlmBalanceSpec`，配置键 `balance`，形如 `wire;/path`），读取顺序：条目覆盖 → 内置提供商 profile → `NONE`。
+
+| wire | 端点 | 回答 | 币种 |
+|---|---|---|---|
+| `DEEPSEEK` | `GET {origin}/user/balance` | `balance_infos[].total_balance` | 回答里声明的货币，优先 CNY |
+| `MOONSHOT` | `GET {baseUrl}/users/me/balance` | `data.available_balance` | USD（文档定义） |
+| `OPENAI_BILLING` | `GET {baseUrl}/dashboard/billing/subscription` + `…/usage` | 上限 − 已用（`total_usage` 是**美分**） | USD |
+| `NONE` | 无 | 报“该平台不提供余额查询接口” | — |
+
+- 内置预设里只有 DeepSeek 与 Kimi 带 `balance`；OpenAI / xAI / Gemini / 通义 / 智谱没有公开的余额接口，保持 `NONE`，不借别人的端点。
+- 自定义模式可以选这四种形状并覆盖路径（留空用该形状的默认路径）：中转站只要实现了上面某一种回答就能出余额，不需要改代码。
+- 路径只能是相对路径（以 `/` 开头、不含 `://`）：密钥只会发往条目自己配置的地址。
+- 余额查询失败一律报“未知”：401/403 是“密钥被拒绝”，其它状态是“提供商返回错误”，读不懂是“结构无法识别”，连不上是“网络请求失败”。诊断行只带状态与币种，**不带金额、不带密钥**。
+- 超上限的账单型余额夹到 0（“没有余量”），不显示负数。

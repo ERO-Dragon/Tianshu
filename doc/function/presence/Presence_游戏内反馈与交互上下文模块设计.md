@@ -601,7 +601,7 @@ tianshu-adapter/1.21.1-neoforge/src/main/java/.../neoforge/adapter/
 tianshu-echo/src/main/java/.../function/echo/bridge/
   TtsPresenceActivityBridge
 
-tianshu-weaving/src/main/java/.../function/weaving/bridge/
+tianshu-weaving/src/main/java/.../weaving/bridge/
   LlmPresenceActivityBridge
 
 tianshu-adapter/1.21.1-neoforge/src/main/java/.../neoforge/event/
