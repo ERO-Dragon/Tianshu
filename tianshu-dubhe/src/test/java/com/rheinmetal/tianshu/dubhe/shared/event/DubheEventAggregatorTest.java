@@ -11,12 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Folding behaviour: what gets folded, when a window closes, and which template a fold produces.
+ * Window-only folding: what reaches the history as one transient line, and what disappears.
  *
- * <p>The old cases asserted on a producer callback. The layer now builds the fold template itself, so these
- * cases assert the <em>shape</em> of the {@link DubheEventText} handed to the renderer (key plus arguments) and
- * leave "does that template become a good sentence" to the provider-side rendering test. The split is the
- * point of the refactor, not a gap in coverage.
+ * <p>Only {@code FOLD} reaches the aggregator. Below the threshold the occurrences are noise and vanish; a renderer
+ * that cannot word the template leaves nothing behind instead of resurrecting singles.</p>
  */
 class DubheEventAggregatorTest {
     private static final long START = 1_000_000L;
@@ -39,7 +37,7 @@ class DubheEventAggregatorTest {
     }
 
     @Test
-    void repeatedOccurrencesFoldIntoALayerBuiltRangeTemplate() {
+    void repeatedOccurrencesFoldIntoOneTransientLine() {
         DubheEventAggregator aggregator = aggregator("血量多次下降");
 
         fold(aggregator, "tianshu:health_change", "失去 5 心", 20, DubheEventFold.RANGE, SOURCE, START);
@@ -49,12 +47,13 @@ class DubheEventAggregatorTest {
         List<DubheEventAppend> appends = aggregator.drainAll();
 
         assertEquals(1, appends.size());
-        DubheEventAppend.Aggregated aggregated = (DubheEventAppend.Aggregated) appends.get(0);
-        assertEquals("tianshu:health_change", aggregated.kind());
-        assertEquals(3, aggregated.count());
-        assertEquals("血量多次下降", aggregated.text());
+        DubheEventAppend.Transient folded = (DubheEventAppend.Transient) appends.get(0);
+        assertTrue(folded.transientEntry(), "the folded line must never reach long-term memory");
+        assertEquals("tianshu:health_change", folded.kind());
+        assertEquals(3, folded.count());
+        assertEquals("血量多次下降", folded.text());
 
-        // The shape is the contract now: count plus the first and last magnitude, under the aggregate key.
+        // The shape is the contract: count plus the first and last magnitude, under the aggregate key.
         assertEquals(1, rendered.size());
         DubheEventText template = rendered.get(0);
         assertEquals(AGGREGATE_KEY, template.key());
@@ -81,21 +80,17 @@ class DubheEventAggregatorTest {
     }
 
     @Test
-    void windowsBelowTheThresholdEmitTheirOriginalOccurrencesUntouched() {
+    void windowsBelowTheThresholdLeaveNothingBehind() {
         DubheEventAggregator aggregator = aggregator("never used");
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START);
         fold(aggregator, "tianshu:mob_killed", "击杀骷髅", null, DubheEventFold.COUNT, SOURCE, START + 1_000L);
 
-        List<DubheEventAppend> appends = aggregator.drainAll();
-
-        assertEquals(2, appends.size());
-        assertEquals(new DubheEventAppend.Single("tianshu:mob_killed", "击杀僵尸"), appends.get(0));
-        assertEquals(new DubheEventAppend.Single("tianshu:mob_killed", "击杀骷髅"), appends.get(1));
+        assertTrue(aggregator.drainAll().isEmpty(), "below the threshold a window is noise, not two lines");
         assertTrue(rendered.isEmpty(), "a window below the threshold never reaches a fold template");
     }
 
     @Test
-    void occurrencesWithoutAFoldShapeAreNeverFoldedAndNeverGainWording() {
+    void occurrencesWithoutAFoldShapeAreNeverFolded() {
         DubheEventAggregator aggregator = aggregator("never used");
         DubheEventDescriptor descriptor = descriptor("mymod:ritual", null, DubheEventFold.NONE, SOURCE);
 
@@ -105,25 +100,18 @@ class DubheEventAggregatorTest {
     }
 
     @Test
-    void aFoldTemplateWithoutASentenceKeepsEveryOccurrence() {
-        // The renderer answering blank is the new equivalent of the old "renderer returns null": the layer
-        // refuses to invent wording, so the occurrences survive as themselves.
+    void aTemplateThatCannotBeWordedDropsTheWindow() {
         DubheEventAggregator aggregator = aggregator(template -> "");
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START);
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START + 1_000L);
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START + 2_000L);
 
-        List<DubheEventAppend> appends = aggregator.drainAll();
-
-        assertEquals(3, appends.size());
-        appends.forEach(append -> {
-            assertTrue(append instanceof DubheEventAppend.Single);
-            assertEquals("击杀僵尸", append.text());
-        });
+        assertTrue(aggregator.drainAll().isEmpty(), "the layer refuses to invent wording, and a window-only line" +
+                " that cannot be worded is dropped");
     }
 
     @Test
-    void aRendererThatThrowsKeepsEveryOccurrence() {
+    void aRendererThatThrowsDropsTheWindow() {
         DubheEventAggregator aggregator = aggregator(template -> {
             throw new IllegalStateException("renderer bug");
         });
@@ -131,13 +119,9 @@ class DubheEventAggregatorTest {
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START + 1_000L);
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START + 2_000L);
 
-        assertEquals(3, aggregator.drainAll().size());
+        assertTrue(aggregator.drainAll().isEmpty());
     }
 
-    /**
-     * A magnitude is what a fold summarises, not what identifies the event: drops of different sizes are one window,
-     * otherwise every RANGE template would be unreachable.
-     */
     @Test
     void numericArgumentsDoNotSplitAWindow() {
         DubheEventAggregator aggregator = new DubheEventAggregator(threshold(2), template -> "folded");
@@ -166,7 +150,7 @@ class DubheEventAggregatorTest {
     }
 
     @Test
-    void aLateOccurrenceClosesTheIdleWindowWithoutLosingIt() {
+    void aLateOccurrenceClosesTheIdleWindowAndStartsANewOne() {
         DubheEventAggregator aggregator = aggregator("folded");
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START);
         fold(aggregator, "tianshu:mob_killed", "击杀僵尸", null, DubheEventFold.COUNT, SOURCE, START + 1_000L);
@@ -176,9 +160,9 @@ class DubheEventAggregatorTest {
 
         List<DubheEventAppend> closed = aggregator.drainAll();
 
-        assertEquals(2, closed.size());
-        assertEquals(3, ((DubheEventAppend.Aggregated) closed.get(0)).count());
-        assertEquals(new DubheEventAppend.Single("tianshu:mob_killed", "击杀僵尸"), closed.get(1));
+        assertEquals(1, closed.size(), "the closed window emits one line; the new single occurrence is below" +
+                " the threshold and vanishes");
+        assertEquals(3, ((DubheEventAppend.Transient) closed.get(0)).count());
     }
 
     @Test
@@ -197,8 +181,8 @@ class DubheEventAggregatorTest {
         List<DubheEventAppend> appends = perSubject.drainAll();
 
         assertEquals(2, appends.size(), "two subjects, two counted lines, never one 'item x 4'");
-        assertEquals(2, ((DubheEventAppend.Aggregated) appends.get(0)).count());
-        assertEquals(2, ((DubheEventAppend.Aggregated) appends.get(1)).count());
+        assertEquals(2, ((DubheEventAppend.Transient) appends.get(0)).count());
+        assertEquals(2, ((DubheEventAppend.Transient) appends.get(1)).count());
     }
 
     private void fold(DubheEventAggregator aggregator, String kind, String sentence, Integer magnitude,

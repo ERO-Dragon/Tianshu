@@ -14,7 +14,7 @@ import java.util.function.Function;
  *       row, never by the state.</li>
  *   <li>{@link DubheEventPolicy} maps (row, state) to one fixed class; it is a pure function with no threshold and
  *       no clock.</li>
- *   <li>{@link DubheEventClass#SILENT} goes through the counted fold windows; {@link DubheEventClass#FOLD} goes
+ *   <li>{@link DubheEventClass#SILENT} appends every occurrence as itself; {@link DubheEventClass#FOLD} goes
  *       through the window-only fold, whose line is marked transient and which drops below its threshold.</li>
  * </ol>
  *
@@ -64,10 +64,8 @@ public final class DubheEventDispatcher {
         DubheEventClass eventClass = DubheEventPolicy.classFor(tier, state);
 
         boolean folded = false;
-        if (eventClass == DubheEventClass.SILENT) {
+        if (eventClass == DubheEventClass.FOLD) {
             folded = aggregator.offer(descriptor, sentence, nowMillis);
-        } else if (eventClass == DubheEventClass.FOLD) {
-            folded = aggregator.offerTransient(descriptor, sentence, nowMillis);
         }
         return new DubheEventDecision(eventClass, tier, state, folded);
     }

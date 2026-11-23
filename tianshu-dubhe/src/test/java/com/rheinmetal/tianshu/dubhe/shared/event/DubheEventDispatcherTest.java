@@ -163,28 +163,30 @@ class DubheEventDispatcherTest {
     }
 
     @Test
-    void aFrequentKindHighlightedIntoSilenceStillFolds() {
+    void aSilentKindAppendsPerOccurrenceEvenWithAFoldShape() {
         DubheEventDecision first = decide(
                 event("tianshu:health_change", "line.health", DubheEventPayload.ofMagnitude(15), FOLD)
                         .withHighlight(true),
                 START);
 
         assertEquals(DubheEventClass.SILENT, first.eventClass());
-        assertTrue(first.folded(), "a silent kind with a fold shape is retained in a window");
+        assertFalse(first.folded(), "SILENT appends every occurrence as itself; only FOLD is window-only");
+        assertTrue(first.appends());
     }
 
     @Test
     void theFoldedWindowIsAppendedOnceAfterItCloses() {
         for (int occurrence = 0; occurrence < 3; occurrence++) {
-            decide(event("tianshu:damage_taken", "line.hit", DubheEventPayload.of(), FOLD), START + occurrence * 100L);
+            decide(event("tianshu:health_change", "line.health", DubheEventPayload.of(), FOLD),
+                    START + occurrence * 100L);
         }
         assertTrue(dispatcher.drainDueAppends(START + 200L).isEmpty(), "the window is still open");
 
         List<DubheEventAppend> due = dispatcher.drainDueAppends(START + 200L + WINDOW);
 
         assertEquals(1, due.size());
-        DubheEventAppend.Aggregated aggregated = (DubheEventAppend.Aggregated) due.get(0);
-        assertEquals("tianshu:damage_taken", aggregated.kind());
+        DubheEventAppend.Transient aggregated = (DubheEventAppend.Transient) due.get(0);
+        assertEquals("tianshu:health_change", aggregated.kind());
         assertEquals(3, aggregated.count());
         assertEquals("folded", aggregated.text());
     }
@@ -204,17 +206,17 @@ class DubheEventDispatcherTest {
                 template -> "folded");
 
         for (int occurrence = 0; occurrence < 2; occurrence++) {
-            perSubject.decide(event("tianshu:damage_taken", "line.hit", DubheEventPayload.of(), FOLD),
+            perSubject.decide(event("tianshu:health_change", "line.health", DubheEventPayload.of(), FOLD),
                     "sentence", START + occurrence * 100L);
-            perSubject.decide(event("tianshu:damage_taken", "line.hit_other", DubheEventPayload.of(), FOLD),
+            perSubject.decide(event("tianshu:health_change", "line.health_other", DubheEventPayload.of(), FOLD),
                     "sentence", START + occurrence * 100L);
         }
 
         List<DubheEventAppend> due = perSubject.flushAppends();
 
         assertEquals(2, due.size(), "two subjects, two counted lines");
-        assertEquals(2, ((DubheEventAppend.Aggregated) due.get(0)).count());
-        assertEquals(2, ((DubheEventAppend.Aggregated) due.get(1)).count());
+        assertEquals(2, ((DubheEventAppend.Transient) due.get(0)).count());
+        assertEquals(2, ((DubheEventAppend.Transient) due.get(1)).count());
     }
 
     @Test

@@ -8,19 +8,17 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Folds repeated silent occurrences into one counted history line.
+ * Folds window-only ({@link DubheEventClass#FOLD}) occurrences into one counted line.
  *
- * <p>Only {@link DubheEventClass#SILENT} reaches this class: a spoken event is never folded, because a folded "said it
- * five times" loses which line was which and the speech channel already throttles itself. For a silent kind the
- * fold is the whole point — the model should learn that the thing happened, not read it forty-three times.
+ * <p>Only {@code FOLD} reaches this class. A spoken event is never folded, and a {@code SILENT} event appends every
+ * occurrence as itself: those are facts memory should keep. A folded line is the opposite — it exists so the current
+ * conversation knows "this happened a few times" without memory carrying forty-three pickup lines.</p>
  *
- * <p>A window is keyed by the kind <em>and the rendered line</em>. That is what keeps two different payloads of the
- * same kind apart: four different items crafted are four windows with one occurrence each, never one window of
- * "item × 4". The key never influences a tier, a blacklist flag or a class.
+ * <p>A window is keyed by the kind and the rendered line's identity. That keeps two different subjects apart: four
+ * different items picked up are four windows, never "item × 4".</p>
  *
- * <p>The folded sentence is not a producer callback. The window carries the descriptor's {@link DubheEventFold}, and at
- * close time the aggregator builds the fold template through {@link DubheEventTexts#aggregate} and renders it with the
- * same renderer the single occurrences use, so the producer never contributes wording to a fold.
+ * <p>Below the configured threshold a window disappears instead of degrading to single lines: those occurrences are
+ * exactly the noise this class exists to suppress (G38).</p>
  */
 final class DubheEventAggregator {
     private final DubheEventSettings settings;
@@ -38,35 +36,19 @@ final class DubheEventAggregator {
     }
 
     /**
-     * Offers one occurrence for folding.
+     * Offers one off a fold-shaped occurrence.
      *
-     * @param sentence the already rendered sentence of this occurrence, kept so a window that never folds still
-     *                 contributes readable single entries
-     * @return {@code true} when the occurrence was retained in a window, {@code false} when the caller must append it
-     *         immediately
+     * @return {@code true} when it was retained in a window; {@code false} when it has no fold shape and the caller
+     *         must append its own window-only line
      */
     boolean offer(DubheEventDescriptor descriptor, String sentence, long nowMillis) {
-        return offer(descriptor, sentence, nowMillis, false);
-    }
-
-    /**
-     * Offers one occurrence for a window-only fold: the closed line is marked transient and below the threshold the
-     * occurrences are dropped instead of degrading to singles (G38).
-     */
-    boolean offerTransient(DubheEventDescriptor descriptor, String sentence, long nowMillis) {
-        return offer(descriptor, sentence, nowMillis, true);
-    }
-
-    private boolean offer(DubheEventDescriptor descriptor, String sentence, long nowMillis, boolean transientMode) {
         if (descriptor.fold() == DubheEventFold.NONE) {
-            // A one-off moment keeps its occurrences separate: there is no fold shape to word.
             return false;
         }
-        WindowKey key = new WindowKey(descriptor.kind(), identityOf(descriptor.text()), transientMode);
+        WindowKey key = new WindowKey(descriptor.kind(), identityOf(descriptor.text()));
         Window window = windows.get(key);
         if (window != null && isDue(window, nowMillis)) {
-            // The window went idle before this occurrence arrived. Close it into the pending queue
-            // instead of dropping it, so no retained occurrence is lost.
+            // The window went idle before this occurrence arrived; close it instead of dropping it.
             windows.remove(key);
             closed.addAll(close(window));
             window = null;
@@ -117,28 +99,19 @@ final class DubheEventAggregator {
 
     private List<DubheEventAppend> close(Window window) {
         int count = window.items.size();
-        if (window.key.transientMode()) {
-            // Window-only: below the threshold it is noise and disappears; it never degrades to singles.
-            if (count < Math.max(2, settings.aggregateThreshold())) {
-                return List.of();
-            }
-            String folded = render(window, count);
-            return folded.isBlank()
-                    ? List.of()
-                    : List.of(new DubheEventAppend.Transient(window.key.kind(), count, folded.trim()));
-        }
         if (count < Math.max(2, settings.aggregateThreshold())) {
-            return singles(window);
+            // Below the threshold this is noise; it disappears rather than becoming one line per occurrence.
+            return List.of();
         }
         String sentence = render(window, count);
         if (sentence.isBlank()) {
-            // The fold template could not be worded; the occurrences survive as single entries.
-            return singles(window);
+            // The fold template could not be worded; the window still leaves nothing behind.
+            return List.of();
         }
-        return List.of(new DubheEventAppend.Aggregated(window.key.kind(), count, sentence.trim()));
+        return List.of(new DubheEventAppend.Transient(window.key.kind(), count, sentence.trim()));
     }
 
-    /** Renders the fold template of this window; a renderer that throws degrades to single entries. */
+    /** Renders the fold template of this window; a renderer that throws degrades to nothing. */
     private String render(Window window, int count) {
         Integer first = window.items.get(0).magnitude();
         Integer last = window.items.get(count - 1).magnitude();
@@ -150,24 +123,12 @@ final class DubheEventAggregator {
         }
     }
 
-    private List<DubheEventAppend> singles(Window window) {
-        List<DubheEventAppend> singles = new ArrayList<>(window.items.size());
-        for (Item item : window.items) {
-            singles.add(new DubheEventAppend.Single(window.key.kind(), item.text()));
-        }
-        return singles;
-    }
-
     /**
      * What makes two occurrences "the same event": the template key plus its non-numeric arguments.
      *
-     * <p>Numeric arguments are excluded on purpose. They are the magnitudes a {@link DubheEventFold#RANGE} or
-     * {@link DubheEventFold#COUNT} window is supposed to summarise ("lost 5 hearts" three times is one line), so treating
-     * them as identity would make every occurrence its own window and every fold template unreachable. Text arguments
-     * are the subject — an item name, a dimension, a player — and those must keep the windows apart: four different
-     * items crafted are four lines, never "item × 4".
-     *
-     * <p>Nested templates contribute their own key and non-numeric arguments for the same reason.
+     * <p>Numeric arguments are excluded on purpose: they are the magnitudes a fold template is supposed to summarise
+     * ("lost 5 hearts" three times is one line). Text arguments are the subject — an item name, a dimension — and
+     * those must keep windows apart.</p>
      */
     private static String identityOf(DubheEventText text) {
         StringBuilder identity = new StringBuilder();
@@ -205,7 +166,7 @@ final class DubheEventAggregator {
     }
 
     /** Kind plus the occurrence's identity: two different subjects must never share one count. */
-    private record WindowKey(String kind, String identity, boolean transientMode) {
+    private record WindowKey(String kind, String identity) {
     }
 
     private record Item(String text, Integer magnitude) {

@@ -198,21 +198,16 @@ class DubheGameEventServiceTest {
     }
 
     @Test
-    void theSilentClassFoldsIntoOneCountedLine() {
+    void theSilentClassAppendsEveryOccurrence() {
         DubheGameEventService service = service(false, true);
         for (int occurrence = 0; occurrence < 3; occurrence++) {
             service.submit(event("tianshu:damage_taken", "line.death", DubheEventFold.COUNT)
                     .withTier(DubheEventTier.NORMAL), START + occurrence * 100L);
         }
 
-        assertTrue(appended.isEmpty(), "a silent occurrence only reaches the history through its window");
-
-        service.flush(START + 1_000L);
-
-        assertEquals(1, appended.size());
-        DubheEventAppend.Aggregated aggregated = (DubheEventAppend.Aggregated) appended.get(0);
-        assertEquals(3, aggregated.count());
-        assertEquals("折叠 3 次", aggregated.text());
+        assertEquals(3, appended.size(), "SILENT is a fact: every occurrence is its own history line");
+        appended.forEach(entry -> assertEquals(false, entry.transientEntry()));
+        assertTrue(spoken.isEmpty());
     }
 
     @Test
@@ -253,9 +248,8 @@ class DubheGameEventServiceTest {
         }
         service.flush(START + 2_000L);
 
-        assertEquals(1, appended.size(), "the lifted kind is retained as one folded line");
-        assertEquals(10, ((DubheEventAppend.Aggregated) appended.get(0)).count(),
-                "ten occurrences, and the tier cannot be corrected past frequent");
+        assertEquals(10, appended.size(), "the lifted kind is SILENT, which keeps every occurrence");
+        appended.forEach(entry -> assertEquals(false, entry.transientEntry()));
         assertTrue(spoken.isEmpty(), "a lifted frequent kind still may not speak");
     }
 

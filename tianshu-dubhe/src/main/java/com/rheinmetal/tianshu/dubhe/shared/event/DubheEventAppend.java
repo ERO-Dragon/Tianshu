@@ -6,17 +6,16 @@ import java.util.Objects;
  * One entry ready to be appended to the event history.
  *
  * <p>Every entry carries one already rendered sentence, and this layer never composes, prefixes, joins or formats
- * that sentence: no kind tag, no occurrence count, no value range. Folding only changes the granularity of what is
- * appended.</p>
+ * that sentence: no kind tag, no occurrence count, no value range.</p>
  *
- * <p>{@link Transient} is the window-only shape: it is appended now so the model sees it in this conversation, but
- * memory compaction and retrieval skip it (G38). That distinction must be a type, not a boolean a caller may forget.</p>
+ * <p>{@link Transient} is the only folded shape: a {@code FOLD} event leaves one line that is visible in this
+ * conversation but excluded from compaction and retrieval (G38). That distinction must be a type, not a boolean a
+ * caller may forget.</p>
  *
  * <p>{@link #kind()} is provenance metadata for the sink owner (logs, diagnostics, ledger); it is not part of the
  * appended line.</p>
  */
-public sealed interface DubheEventAppend permits DubheEventAppend.Single, DubheEventAppend.Aggregated,
-        DubheEventAppend.Transient {
+public sealed interface DubheEventAppend permits DubheEventAppend.Single, DubheEventAppend.Transient {
 
     String kind();
 
@@ -33,17 +32,6 @@ public sealed interface DubheEventAppend permits DubheEventAppend.Single, DubheE
         public Single {
             Objects.requireNonNull(kind, "event kind is required");
             Objects.requireNonNull(text, "event text is required");
-        }
-    }
-
-    /** Several occurrences of one kind folded into one entry that memory may still learn from. */
-    record Aggregated(String kind, int count, String text) implements DubheEventAppend {
-        public Aggregated {
-            Objects.requireNonNull(kind, "event kind is required");
-            Objects.requireNonNull(text, "aggregate text is required");
-            if (count < 2) {
-                throw new IllegalArgumentException("an aggregate entry needs at least two occurrences");
-            }
         }
     }
 

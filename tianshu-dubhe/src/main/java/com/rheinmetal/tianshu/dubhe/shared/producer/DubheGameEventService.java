@@ -289,11 +289,7 @@ public final class DubheGameEventService {
                 // Nothing at all: no line, no utterance. The decision is still returned to the caller as a whole,
                 // so a producer that logs its own submissions can see the drop.
             }
-            case SILENT -> {
-                if (!decision.folded()) {
-                    append(new DubheEventAppend.Single(descriptor.kind(), sentence));
-                }
-            }
+            case SILENT -> append(new DubheEventAppend.Single(descriptor.kind(), sentence));
             case FOLD -> {
                 if (!decision.folded()) {
                     // No fold shape: one window-only line, still excluded from compaction.
