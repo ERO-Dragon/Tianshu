@@ -43,6 +43,7 @@ import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
 import com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy.DubheDiplomacySkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.definition.DubheSkillPackageResourceLoader;
 import com.rheinmetal.tianshu.dubhe.agent.skill.shared.DubheSharedSkillReader;
+import com.rheinmetal.tianshu.dubhe.agent.skill.host.DubheHostToolSkills;
 import com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
@@ -425,7 +426,9 @@ public final class DubheModule implements TianshuManagedModule {
                 this::publishDelegateDelivery,
                 env.logs(),
                 System::currentTimeMillis,
-                assistantSettings.autonomyConsent()
+                assistantSettings.autonomyConsent(),
+                () -> DubheHostToolSkills.fromCatalog(
+                        ToolCaller.agent("dubhe", false, assistantSettings.autonomy()))
         );
         turnOrchestrator = new DubheTurnOrchestrator(
                 scopeProvider,

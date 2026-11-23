@@ -15,6 +15,7 @@ import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunOutcome;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunPolicy;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunTermination;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheStepFailure;
+import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventAppend;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventHistorySink;
@@ -56,6 +57,8 @@ public final class DubheDelegateService {
     private final LogSink logSink;
     private final Supplier<Long> nowMillis;
     private final com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent;
+    /** 宿主工具目录（按当前档位动态取）；每次任务开始时并入代理工具目录。 */
+    private final Supplier<List<com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill>> hostTools;
 
     /** 不带授权闸门的构造：测试与无设置的装配。 */
     public DubheDelegateService(
@@ -73,7 +76,7 @@ public final class DubheDelegateService {
             Supplier<Long> nowMillis
     ) {
         this(requestSender, registry, promptRepository, agentBudget, skills, compactor, eventLedger,
-                historySink, runSubmitter, deliverySink, logSink, nowMillis, null);
+                historySink, runSubmitter, deliverySink, logSink, nowMillis, null, null);
     }
 
     public DubheDelegateService(
@@ -91,6 +94,26 @@ public final class DubheDelegateService {
             Supplier<Long> nowMillis,
             com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent
     ) {
+        this(requestSender, registry, promptRepository, agentBudget, skills, compactor, eventLedger,
+                historySink, runSubmitter, deliverySink, logSink, nowMillis, consent, null);
+    }
+
+    public DubheDelegateService(
+            DubheDelegateRequestSender requestSender,
+            DubheDelegateRegistry registry,
+            DubheDelegatePromptRepository promptRepository,
+            DubheAgentContextBudget agentBudget,
+            DubheSkillRegistry skills,
+            DubheAgentCompactor compactor,
+            DubheDelegateEventLedger eventLedger,
+            DubheEventHistorySink historySink,
+            DubheDelegateRunSubmitter runSubmitter,
+            DubheDelegateDeliverySink deliverySink,
+            LogSink logSink,
+            Supplier<Long> nowMillis,
+            com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent,
+            Supplier<List<com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill>> hostTools
+    ) {
         this.requestSender = requestSender;
         this.registry = registry == null ? new DubheDelegateRegistry() : registry;
         this.promptRepository = promptRepository;
@@ -104,6 +127,7 @@ public final class DubheDelegateService {
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.nowMillis = nowMillis == null ? System::currentTimeMillis : nowMillis;
         this.consent = consent;
+        this.hostTools = hostTools;
     }
 
     public DubheDelegateEventLedger eventLedger() {
@@ -198,14 +222,41 @@ public final class DubheDelegateService {
     }
 
     /** Complex run 本体：同一个循环，策略 {@code complex()}；每一步都可能调用技能。 */
+    /** 内部技能 + 当前档位允许的宿主工具；每次任务重新取，档位变更不需要重启。 */
+    private DubheSkillRegistry toolDirectory() {
+        if (hostTools == null) {
+            return skills;
+        }
+        List<DubheSkill> extra;
+        try {
+            extra = hostTools.get();
+        } catch (RuntimeException failure) {
+            // 宿主工具目录不可用不应让一次委派失败：内部技能仍然可用。
+            return skills;
+        }
+        if (extra == null || extra.isEmpty()) {
+            return skills;
+        }
+        DubheSkillRegistry combined = new DubheSkillRegistry();
+        for (DubheSkill skill : skills.all()) {
+            combined.register(skill);
+        }
+        for (DubheSkill host : extra) {
+            if (combined.find(host.id()).isEmpty()) {
+                combined.register(host);
+            }
+        }
+        return combined;
+    }
     private void runComplex(DubheDelegateTicket ticket, DubhePausedTask paused) {
         String notice = promptRepository == null ? "" : promptRepository.softBudgetNotice();
         DubheAgentModel model = new DubheDelegateAgentModel(requestSender, promptRepository);
+        DubheSkillRegistry directory = toolDirectory();
         DubheAgentTurn turn = paused == null
                 ? new DubheAgentTurn(
-                        ticket.taskId(), ticket.query(), ticket.scope(), skills, agentBudget, compactor, model, notice)
+                        ticket.taskId(), ticket.query(), ticket.scope(), directory, agentBudget, compactor, model, notice)
                 : DubheAgentTurn.resumed(
-                        ticket.taskId(), ticket.query(), ticket.scope(), skills, agentBudget, compactor, model,
+                        ticket.taskId(), ticket.query(), ticket.scope(), directory, agentBudget, compactor, model,
                         notice, paused.transcript(), paused.digest());
         DubheRunOutcome<DubheAgentAnswer> outcome = new DubheAgentLoop(DubheRunPolicy.complex())
                 .run(turn, DubheRunCancellation.none());
