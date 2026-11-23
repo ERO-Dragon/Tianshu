@@ -304,7 +304,6 @@ class DubheAgentTurnWiringTest {
                 null,
                 null,
                 null,
-                null,
                 new DubheDelegateEventLedger(),
                 null,
                 (taskId, task) -> delegateRuns.add(task),

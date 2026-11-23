@@ -400,7 +400,6 @@ public final class DubheModule implements TianshuManagedModule {
                 llmClient::submitDetached,
                 delegateRegistry,
                 delegatePrompts,
-                null,
                 agentBudget,
                 skillRegistry,
                 agentCompactor,

@@ -3,27 +3,34 @@ package com.rheinmetal.tianshu.dubhe.agent.loop;
 import java.util.List;
 
 /**
- * What one model step produced: words, one or more skill calls, or both.
+ * What one model step produced: words, skill calls, or the final report.
  *
- * <p>A reply with neither is rejected — it would leave the loop with nothing to append and nothing to do, which
- * is exactly the "silent stall" the report contract exists to prevent.</p>
+ * <p>A step is either "still working" (it calls skills) or "finished" (it carries a report); the two are never
+ * mixed, because a report produced alongside calls would make the run end before the calls were executed.</p>
  */
-public record DubheAgentModelReply(String text, List<DubheSkillCall> calls) {
+public record DubheAgentModelReply(String text, List<DubheSkillCall> calls, DubheAgentReport report) {
 
     public DubheAgentModelReply {
         text = text == null ? "" : text.trim();
         calls = calls == null ? List.of() : List.copyOf(calls);
-        if (text.isEmpty() && calls.isEmpty()) {
-            throw new IllegalArgumentException("a model reply must either say something or call a skill");
+        if (calls.isEmpty() && report == null) {
+            throw new IllegalArgumentException("a finished reply must carry a report");
+        }
+        if (!calls.isEmpty() && report != null) {
+            throw new IllegalArgumentException("a reply that calls skills cannot also be the final report");
         }
     }
 
-    public static DubheAgentModelReply answer(String text) {
-        return new DubheAgentModelReply(text, List.of());
+    public static DubheAgentModelReply calls(List<DubheSkillCall> calls) {
+        return new DubheAgentModelReply("", calls, null);
     }
 
-    public static DubheAgentModelReply calls(List<DubheSkillCall> calls) {
-        return new DubheAgentModelReply("", calls);
+    public static DubheAgentModelReply working(String text, List<DubheSkillCall> calls) {
+        return new DubheAgentModelReply(text, calls, null);
+    }
+
+    public static DubheAgentModelReply finished(DubheAgentReport report) {
+        return new DubheAgentModelReply("", List.of(), report);
     }
 
     public boolean finished() {

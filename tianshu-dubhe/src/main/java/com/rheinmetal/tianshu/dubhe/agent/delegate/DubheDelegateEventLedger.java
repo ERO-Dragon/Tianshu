@@ -23,12 +23,10 @@ public final class DubheDelegateEventLedger {
             DubheDelegateOutcomeKind kind,
             DubheRunTermination status,
             String text,
-            List<String> sources,
             long createdAtMillis,
             boolean appendedToHistory
     ) {
         public Entry {
-            sources = sources == null ? List.of() : List.copyOf(sources);
             text = text == null ? "" : text;
         }
     }

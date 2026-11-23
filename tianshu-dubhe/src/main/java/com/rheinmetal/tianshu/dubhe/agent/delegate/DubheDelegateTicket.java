@@ -10,7 +10,7 @@ import java.util.Objects;
  * 一次委派的 ticket（设计 §5.3）。
  *
  * <p>状态机：{@code PENDING → RUNNING → 终态}。终态<b>只允许写一次</b>（§5.3 "终态不可变"、A4"恰好一条"），
- * 由 {@link #terminate(DubheRunTermination, String, List)} 的 CAS 保证；重复写返回 {@code false} 而不是抛异常，
+ * 由 {@link #terminate(DubheRunTermination, String)} 的 CAS 保证；重复写返回 {@code false} 而不是抛异常，
  * 因为投递路径上"晚到的第二个终态"是常态（复用命中、车道拒绝与回调竞速）。</p>
  *
  * <p>ticket 同时是 §6.3 事件线的 {@code taskId} 持有者——它是<b>投递</b>的幂等主键，与"同一个问题问过几次"
@@ -34,8 +34,7 @@ public final class DubheDelegateTicket {
 
     private volatile State state = State.PENDING;
     private volatile DubheRunTermination termination;
-    private volatile String conclusionText = "";
-    private volatile List<String> conclusionSources = List.of();
+    private volatile String reportText = "";
 
     DubheDelegateTicket(String taskId, String replayKey, String sessionId, String query, DubheScope scope, long createdAtMillis) {
         this.taskId = Objects.requireNonNull(taskId, "taskId");
@@ -83,14 +82,9 @@ public final class DubheDelegateTicket {
         return termination;
     }
 
-    /** 已投递的结论正文；未终态或失败终态时为空串。 */
-    public String conclusionText() {
-        return conclusionText;
-    }
-
-    /** 已投递的来源短标识；未终态或失败终态时为空列表。 */
-    public List<String> conclusionSources() {
-        return conclusionSources;
+    /** 已投递的那一句话；未终态或失败终态时为空串。 */
+    public String reportText() {
+        return reportText;
     }
 
     /** {@code PENDING → RUNNING}；非 PENDING 时返回 {@code false}（说明已被别的路径推走）。 */
@@ -107,13 +101,12 @@ public final class DubheDelegateTicket {
      *
      * @return {@code true} 表示本次写入生效；{@code false} 表示已有终态（A4：同一 taskId 只登记一条）
      */
-    synchronized boolean terminate(DubheRunTermination termination, String conclusionText, List<String> conclusionSources) {
+    synchronized boolean terminate(DubheRunTermination termination, String reportText) {
         if (termination == null || state == State.TERMINAL) {
             return false;
         }
         this.termination = termination;
-        this.conclusionText = conclusionText == null ? "" : conclusionText;
-        this.conclusionSources = conclusionSources == null ? List.of() : List.copyOf(conclusionSources);
+        this.reportText = reportText == null ? "" : reportText;
         this.state = State.TERMINAL;
         return true;
     }

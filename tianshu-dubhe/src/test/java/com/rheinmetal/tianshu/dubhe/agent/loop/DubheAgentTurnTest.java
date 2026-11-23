@@ -30,7 +30,8 @@ class DubheAgentTurnTest {
     }
 
     private static DubheStepOutcome<DubheAgentModelReply> answer(String text) {
-        return new DubheStepOutcome.Finished<>(DubheAgentModelReply.answer(text));
+        return new DubheStepOutcome.Finished<>(
+                DubheAgentModelReply.finished(new DubheAgentReport(text, "", "")));
     }
 
     private static DubheStepOutcome<DubheAgentModelReply> call(String id, String skill) {
@@ -63,7 +64,7 @@ class DubheAgentTurnTest {
         DubheRunOutcome<DubheAgentAnswer> outcome = run(turn(new DubheSkillRegistry(), scripted(answer("我直接答"))));
 
         assertEquals(DubheRunTermination.COMPLETED, outcome.termination());
-        assertEquals("我直接答", outcome.result().text());
+        assertEquals("我直接答", outcome.result().report().result());
         assertEquals(List.of(), outcome.result().usedSkills());
     }
 

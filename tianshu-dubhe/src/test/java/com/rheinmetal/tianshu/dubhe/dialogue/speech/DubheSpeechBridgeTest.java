@@ -27,7 +27,6 @@ class DubheSpeechBridgeTest {
                 DubheDelegateOutcomeKind.OK,
                 DubheRunTermination.COMPLETED,
                 "Iron blocks can be mined with a stone pickaxe.",
-                List.of("wiki"),
                 null));
 
         assertEquals(1, outlet.lines.size(), "one delivery is one line");
@@ -62,7 +61,6 @@ class DubheSpeechBridgeTest {
                 DubheDelegateOutcomeKind.TIMEOUT,
                 DubheRunTermination.ABORT_TIMEOUT,
                 "",
-                List.of(),
                 "dubhe.runtime.delegate.timeout"));
 
         DubheSpeechLine line = outlet.lines.get(0);
@@ -88,7 +86,7 @@ class DubheSpeechBridgeTest {
         DubheSpeechBridge bridge = new DubheSpeechBridge(outlet, LogSink.NOOP);
 
         bridge.publish(new DubheDelegateDelivery(
-                "dubhe.delegate.4", DubheDelegateOutcomeKind.FAILED, DubheRunTermination.FAILED, "", List.of(), null));
+                "dubhe.delegate.4", DubheDelegateOutcomeKind.FAILED, DubheRunTermination.FAILED, "", null));
         bridge.speak("tianshu:death", "   ");
         bridge.speak("tianshu:death", null);
 
@@ -103,7 +101,7 @@ class DubheSpeechBridgeTest {
 
         bridge.publish(new DubheDelegateDelivery(
                 "dubhe.delegate.5", DubheDelegateOutcomeKind.OK, DubheRunTermination.COMPLETED, "some conclusion",
-                List.of(), null));
+                null));
         bridge.speak("tianshu:death", "You died");
     }
 

@@ -79,11 +79,11 @@ class DubheDelegateRegistryTest {
 
         assertTrue(ticket.markRunning());
         assertFalse(ticket.markRunning(), "PENDING 只能转 RUNNING 一次");
-        assertTrue(ticket.terminate(DubheRunTermination.COMPLETED, "铁砧可以修复工具。", java.util.List.of("wiki")));
-        assertFalse(ticket.terminate(DubheRunTermination.FAILED, "", java.util.List.of()),
+        assertTrue(ticket.terminate(DubheRunTermination.COMPLETED, "铁砧可以修复工具。"));
+        assertFalse(ticket.terminate(DubheRunTermination.FAILED, ""),
                 "同一 taskId 只允许一条终态（A4）");
         assertEquals(DubheRunTermination.COMPLETED, ticket.termination());
-        assertEquals("铁砧可以修复工具。", ticket.conclusionText());
+        assertEquals("铁砧可以修复工具。", ticket.reportText());
         assertTrue(ticket.isTerminal());
     }
 
@@ -93,7 +93,7 @@ class DubheDelegateRegistryTest {
         for (int index = 0; index < DubheDelegateRegistry.MAX_RETAINED_TICKETS_PER_SESSION + 4; index++) {
             DubheDelegateTicket ticket = registry.open(DubheScope.unknown(), "session", "问题" + index, 1_000L + index).ticket();
             ticket.markRunning();
-            ticket.terminate(DubheRunTermination.COMPLETED, "结论", java.util.List.of());
+            ticket.terminate(DubheRunTermination.COMPLETED, "结论");
         }
 
         assertEquals(DubheDelegateRegistry.MAX_RETAINED_TICKETS_PER_SESSION, registry.retainedCount("session"));

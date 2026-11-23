@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentLoop;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentModel;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentReport;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentTurn;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunCancellation;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunExpiry;
@@ -41,7 +42,6 @@ public final class DubheDelegateService {
     private final DubheDelegateRequestSender requestSender;
     private final DubheDelegateRegistry registry;
     private final DubheDelegatePromptRepository promptRepository;
-    private final DubheDelegateConclusionParser conclusionParser;
     private final DubheAgentContextBudget agentBudget;
     private final DubheSkillRegistry skills;
     private final DubheAgentCompactor compactor;
@@ -56,7 +56,6 @@ public final class DubheDelegateService {
             DubheDelegateRequestSender requestSender,
             DubheDelegateRegistry registry,
             DubheDelegatePromptRepository promptRepository,
-            DubheDelegateConclusionParser conclusionParser,
             DubheAgentContextBudget agentBudget,
             DubheSkillRegistry skills,
             DubheAgentCompactor compactor,
@@ -70,7 +69,6 @@ public final class DubheDelegateService {
         this.requestSender = requestSender;
         this.registry = registry == null ? new DubheDelegateRegistry() : registry;
         this.promptRepository = promptRepository;
-        this.conclusionParser = conclusionParser == null ? new DubheDelegateConclusionParser() : conclusionParser;
         this.agentBudget = agentBudget == null ? DubheAgentContextBudget.forWindow(32_768) : agentBudget;
         this.skills = skills == null ? new DubheSkillRegistry() : skills;
         this.compactor = compactor;
@@ -127,28 +125,7 @@ public final class DubheDelegateService {
                 ticket.taskId(), ticket.query(), ticket.scope(), skills, agentBudget, compactor, model);
         DubheRunOutcome<DubheAgentAnswer> outcome = new DubheAgentLoop(DubheRunPolicy.complex())
                 .run(turn, DubheRunCancellation.none());
-        deliver(ticket, toConclusionOutcome(outcome));
-    }
-
-    /**
-     * 把代理的终态换成投递契约：只有完成态才解析结论；解析失败是预期内失败，仍按 FAILED 投递（A4）。
-     */
-    private DubheRunOutcome<DubheDelegateConclusion> toConclusionOutcome(DubheRunOutcome<DubheAgentAnswer> outcome) {
-        if (outcome.termination() != DubheRunTermination.COMPLETED) {
-            return new DubheRunOutcome<>(outcome.termination(), outcome.steps(), outcome.elapsedMillis(),
-                    null, outcome.cancellation(), outcome.failure(), outcome.expiry());
-        }
-        DubheDelegateConclusion conclusion;
-        try {
-            conclusion = conclusionParser.parse(outcome.result().text());
-        } catch (RuntimeException unusable) {
-            return new DubheRunOutcome<>(DubheRunTermination.FAILED, outcome.steps(), outcome.elapsedMillis(),
-                    null, null,
-                    new DubheStepFailure(DubheDelegateConclusionParser.REASON_MISSING, unusable),
-                    DubheRunExpiry.NONE);
-        }
-        return new DubheRunOutcome<>(DubheRunTermination.COMPLETED, outcome.steps(), outcome.elapsedMillis(),
-                conclusion, null, null, DubheRunExpiry.NONE);
+        deliver(ticket, outcome);
     }
 
     /**
@@ -156,15 +133,24 @@ public final class DubheDelegateService {
      *
      * <p>{@code terminate} 与 {@code register} 的双重 CAS 保证"同一 ticket 只登记一条"：晚到的第二个终态
      * （复用、车道拒绝与回调竞速）直接被丢弃，而不是写第二条（A4 / §6.3）。</p>
+     *
+     * <p>只用 block 的报告也按 OK 投递：那是"没查到"的人话，不是系统失败；系统失败由终态（超时/取消/异常）决定。</p>
      */
-    private void deliver(DubheDelegateTicket ticket, DubheRunOutcome<DubheDelegateConclusion> outcome) {
-        DubheDelegateOutcomeKind kind = DubheDelegateOutcomeKind.of(outcome.termination());
-        DubheDelegateConclusion conclusion = outcome.result();
-        String text = kind == DubheDelegateOutcomeKind.OK && conclusion != null ? conclusion.text() : "";
-        List<String> sources = kind == DubheDelegateOutcomeKind.OK && conclusion != null
-                ? conclusion.sources()
-                : List.of();
-        if (!ticket.terminate(outcome.termination(), text, sources)) {
+    private void deliver(DubheDelegateTicket ticket, DubheRunOutcome<DubheAgentAnswer> outcome) {
+        DubheAgentReport report = outcome.result() == null ? null : outcome.result().report();
+        if (report != null && report.truncated()) {
+            logSink.warn("dubhe.delegate.report_truncated task=" + ticket.taskId());
+        }
+        DubheDelegateOutcomeKind kind;
+        if (outcome.termination() != DubheRunTermination.COMPLETED) {
+            kind = DubheDelegateOutcomeKind.of(outcome.termination());
+        } else if (report != null && !report.speech().isBlank()) {
+            kind = DubheDelegateOutcomeKind.OK;
+        } else {
+            kind = DubheDelegateOutcomeKind.FAILED;
+        }
+        String text = kind == DubheDelegateOutcomeKind.OK && report != null ? report.speech() : "";
+        if (!ticket.terminate(outcome.termination(), text)) {
             return;
         }
         boolean appended = appendHistory(kind, text);
@@ -173,7 +159,6 @@ public final class DubheDelegateService {
                 kind,
                 outcome.termination(),
                 text,
-                sources,
                 nowMillis.get(),
                 appended
         ));
@@ -185,8 +170,9 @@ public final class DubheDelegateService {
                 + " status=" + outcome.termination().name()
                 + " appended=" + appended);
         deliverySink.publish(new DubheDelegateDelivery(
-                ticket.taskId(), kind, outcome.termination(), text, sources, kind.speechKey()));
+                ticket.taskId(), kind, outcome.termination(), text, kind.speechKey()));
     }
+
 
     /** ② 进 prompt：结论（或失败标记）作为一条 {@code <event>} 历史条目追加（A4 必达）。 */
     private boolean appendHistory(DubheDelegateOutcomeKind kind, String text) {
@@ -215,8 +201,7 @@ public final class DubheDelegateService {
             return;
         }
         deliverySink.publish(new DubheDelegateDelivery(
-                ticket.taskId(), kind, ticket.termination(), ticket.conclusionText(),
-                ticket.conclusionSources(), kind.speechKey()));
+                ticket.taskId(), kind, ticket.termination(), ticket.reportText(), kind.speechKey()));
     }
 
     private static String messageOf(Throwable failure) {

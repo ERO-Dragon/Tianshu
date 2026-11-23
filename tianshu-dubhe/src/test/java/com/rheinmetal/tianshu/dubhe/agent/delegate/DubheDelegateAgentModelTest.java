@@ -49,7 +49,7 @@ class DubheDelegateAgentModelTest {
     void theDirectoryTravelsAsNativeToolsAndTheConversationIsReplayed() {
         List<LLMPromptRequestPayload> captured = new ArrayList<>();
         DubheDelegateAgentModel model = modelThatAnswers(
-                LLMPromptResultPayload.completed("req", "{\"conclusion\":\"好\"}"), captured);
+                LLMPromptResultPayload.completed("req", "{\"result\":\"好\"}"), captured);
 
         model.next(request());
 
@@ -89,14 +89,15 @@ class DubheDelegateAgentModelTest {
     void aTextOnlyAnswerIsAFinalReply() {
         List<LLMPromptRequestPayload> captured = new ArrayList<>();
         DubheDelegateAgentModel model = modelThatAnswers(
-                LLMPromptResultPayload.completed("req", "{\"conclusion\":\"好\"}"), captured);
+                LLMPromptResultPayload.completed("req", "{\"result\":\"好\"}"), captured);
 
         DubheStepOutcome<DubheAgentModelReply> outcome = model.next(request());
 
         DubheStepOutcome.Finished<?> finished = assertInstanceOf(DubheStepOutcome.Finished.class, outcome);
         DubheAgentModelReply reply = (DubheAgentModelReply) finished.result();
         assertTrue(reply.finished());
-        assertTrue(reply.text().contains("conclusion"));
+        assertEquals("好", reply.report().result());
+        assertEquals("", reply.report().block());
     }
 
     @Test

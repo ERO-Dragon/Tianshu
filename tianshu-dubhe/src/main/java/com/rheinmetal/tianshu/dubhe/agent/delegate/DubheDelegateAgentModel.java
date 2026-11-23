@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentEntry;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentModel;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentModelReply;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentRequest;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentReport;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunExpiry;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheSkillCall;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheStepFailure;
@@ -35,7 +36,7 @@ public final class DubheDelegateAgentModel implements DubheAgentModel {
     static final float TEMPERATURE = 0.2F;
     private static final String REQUEST_ID_PREFIX = "dubhe.agent.";
     private static final String REASON_RESULT_FAILED = "delegate.result_failed";
-    private static final String REASON_EMPTY_REPLY = "delegate.empty_reply";
+    private static final String REASON_REPORT_MISSING = "delegate.report_missing";
     private static final String REASON_SEND_FAILED = "delegate.send_failed";
 
     private final DubheDelegateRequestSender requestSender;
@@ -141,13 +142,20 @@ public final class DubheDelegateAgentModel implements DubheAgentModel {
                     .map(call -> new DubheSkillCall(
                             call.id(), call.name(), parseArguments(call.argumentsJson())))
                     .toList();
-            try {
+            if (!calls.isEmpty()) {
                 signal.complete(new DubheStepOutcome.Finished<>(
-                        new DubheAgentModelReply(payload.text(), calls)));
-            } catch (IllegalArgumentException emptyReply) {
-                signal.complete(new DubheStepOutcome.Rejected<>(
-                        new DubheStepFailure(REASON_EMPTY_REPLY, emptyReply)));
+                        new DubheAgentModelReply(payload.text(), calls, null)));
+                return;
             }
+            DubheAgentReport report;
+            try {
+                report = DubheAgentReport.fromJson(payload.text()).clamped();
+            } catch (RuntimeException unusable) {
+                signal.complete(new DubheStepOutcome.Rejected<>(
+                        new DubheStepFailure(REASON_REPORT_MISSING, unusable)));
+                return;
+            }
+            signal.complete(new DubheStepOutcome.Finished<>(DubheAgentModelReply.finished(report)));
         }
 
         @Override

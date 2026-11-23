@@ -61,8 +61,22 @@ class DubheDelegateServiceTest {
         assertTrue(request.requestId().startsWith("dubhe.agent."));
         assertEquals(ticket.taskId(), fixture.taskOf(request.requestId()));
 
-        fixture.answer("{\"conclusion\":\"铁砧可以修复工具。\"}");
+        fixture.answer("{\"result\":\"铁砧可以修复工具。\"}");
         fixture.awaitTerminalDelivery(ticket);
+    }
+
+    @Test
+    void aBlockOnlyReportIsSpokenAsItsHumanReason() {
+        Fixture fixture = new Fixture();
+        DubheDelegateTicket ticket = fixture.service.delegate(DubheScope.unknown(), "session", "暮色森林怎么进");
+        fixture.driveRun();
+        fixture.awaitRequest();
+
+        fixture.answer("{\"block\":\"我没查到暮色森林的进入方式。\"}");
+        fixture.awaitTerminalDelivery(ticket);
+
+        assertEquals(DubheRunTermination.COMPLETED, ticket.termination());
+        assertEquals("我没查到暮色森林的进入方式。", ticket.reportText());
     }
 
     @Test
@@ -72,7 +86,7 @@ class DubheDelegateServiceTest {
         fixture.driveRun();
         fixture.awaitRequest();
 
-        fixture.answer("{\"conclusion\":\"铁砧可以修复工具。\",\"sources\":[\"wiki\"]}");
+        fixture.answer("{\"result\":\"铁砧可以修复工具。\"}");
         fixture.awaitTerminalDelivery(ticket);
 
         assertEquals(DubheRunTermination.COMPLETED, ticket.termination());
@@ -80,7 +94,6 @@ class DubheDelegateServiceTest {
         DubheDelegateEventLedger.Entry entry = fixture.ledger.find(ticket.taskId());
         assertEquals(DubheDelegateOutcomeKind.OK, entry.kind());
         assertEquals("铁砧可以修复工具。", entry.text());
-        assertEquals(List.of("wiki"), entry.sources());
         assertTrue(entry.appendedToHistory());
 
         assertEquals(1, fixture.appends.size(), "② <event> 追加必达");
@@ -132,7 +145,7 @@ class DubheDelegateServiceTest {
         DubheDelegateTicket ticket = fixture.service.delegate(DubheScope.unknown(), "session", "铁砧怎么修复工具");
         fixture.driveRun();
         fixture.awaitRequest();
-        fixture.answer("{\"conclusion\":\"铁砧可以修复工具。\"}");
+        fixture.answer("{\"result\":\"铁砧可以修复工具。\"}");
         fixture.awaitTerminalDelivery(ticket);
 
         DubheDelegateTicket again = fixture.service.delegate(DubheScope.unknown(), "session", "铁砧怎么修复工具");
@@ -193,7 +206,6 @@ class DubheDelegateServiceTest {
                     },
                     new DubheDelegateRegistry(),
                     null,
-                    new DubheDelegateConclusionParser(String::length),
                     null,
                     null,
                     null,

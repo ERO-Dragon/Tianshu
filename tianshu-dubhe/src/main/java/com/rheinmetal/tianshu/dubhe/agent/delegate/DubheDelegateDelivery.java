@@ -22,7 +22,6 @@ import java.util.List;
  * @param kind         终态分类；回执为 {@code null}
  * @param status       原始终态枚举；回执为 {@code null}
  * @param text         结论正文；只有 {@link DubheDelegateOutcomeKind#OK} 时非空
- * @param sources      来源短标识
  * @param utteranceKey 兜底句 / 回执的资源键；结论类为 {@code null}
  */
 public record DubheDelegateDelivery(
@@ -30,18 +29,16 @@ public record DubheDelegateDelivery(
         DubheDelegateOutcomeKind kind,
         DubheRunTermination status,
         String text,
-        List<String> sources,
         String utteranceKey
 ) {
     public DubheDelegateDelivery {
-        sources = sources == null ? List.of() : List.copyOf(sources);
         text = text == null ? "" : text;
     }
 
     /** 回执（§6.2 "我查一下"），不是终态，因此不带 kind / status。 */
     public static DubheDelegateDelivery ack(String taskId) {
         return new DubheDelegateDelivery(
-                taskId, null, null, "", List.of(), DubheDelegateOutcomeKind.ACK_SPEECH_KEY);
+                taskId, null, null, "", DubheDelegateOutcomeKind.ACK_SPEECH_KEY);
     }
 
     /** 是否为回执。 */

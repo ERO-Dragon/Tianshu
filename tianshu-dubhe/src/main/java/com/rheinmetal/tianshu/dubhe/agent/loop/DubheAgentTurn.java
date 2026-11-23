@@ -112,7 +112,7 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
             transcript.append(DubheAgentEntry.assistant(reply.text(), replay));
         }
         if (calls.isEmpty()) {
-            return new DubheStepOutcome.Finished<>(new DubheAgentAnswer(transcriptText(), List.copyOf(usedSkills)));
+            return new DubheStepOutcome.Finished<>(new DubheAgentAnswer(reply.report(), List.copyOf(usedSkills)));
         }
         return invokeAll(calls, context);
     }
@@ -173,16 +173,6 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
 
     private List<DubheSkillSpec> directory() {
         return registry.all().stream().map(DubheSkill::spec).toList();
-    }
-
-    private String transcriptText() {
-        StringBuilder text = new StringBuilder();
-        for (DubheAgentEntry entry : transcript.entries()) {
-            if (entry.kind() == DubheAgentEntry.Kind.ASSISTANT) {
-                text.append(entry.text());
-            }
-        }
-        return text.toString();
     }
 
     private static String canonical(JsonObject arguments) {
