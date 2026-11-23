@@ -25,8 +25,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * 天枢对外只暴露两个能力（G10）：{@code DUBHE.RESEARCH} 与 {@code DUBHE.RELAY}。
  *
- * <p>执行层（代理、技能目录、记忆、世界动作）一律不对外，也没有 {@code DUBHE.AGENT_TASK} 这类"提交任务给我规划"
- * 的通用入口（G38）。两个能力各有明确输入输出：</p>
+ * <p>执行层（代理、技能目录、记忆、世界动作）一律不对外，也没有"提交任务给我规划"的通用入口（G38 已取消）
+ * ；两个能力各有明确输入输出：</p>
  *
  * <ul>
  *   <li>{@code DUBHE.RESEARCH}（只读）：入 {@code intent}，出 {@code conclusion} + {@code sources}；不读会话上下文、
