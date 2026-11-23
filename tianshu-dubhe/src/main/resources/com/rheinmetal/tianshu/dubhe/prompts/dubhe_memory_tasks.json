@@ -13,6 +13,10 @@
     "memory.compact.turn_dialogue": {
       "zh_cn": "[{{index}}] {{role}}: {{content}}",
       "en_us": "[{{index}}] {{role}}: {{content}}"
+    },
+    "memory.compact.previous_summary": {
+      "zh_cn": "上一个压缩单元的摘要，仅用于把本单元接上前文，不要重复它：\n{{summary}}\n",
+      "en_us": "Summary of the previous compression unit. Use it only to connect this unit to what came before; do not repeat it:\n{{summary}}\n"
     }
   }
 }

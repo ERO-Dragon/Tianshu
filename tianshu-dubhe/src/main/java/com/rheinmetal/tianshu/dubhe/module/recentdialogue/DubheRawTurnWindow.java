@@ -390,6 +390,18 @@ public final class DubheRawTurnWindow {
     private Set<String> uncoveredTurnIds(Deque<DubheRawTurn> turns, String coveredThroughTurnId) {
         Set<String> uncovered = new LinkedHashSet<>();
         boolean afterCursor = coveredThroughTurnId == null || coveredThroughTurnId.isBlank();
+        if (!afterCursor) {
+            // A cursor outside the window means it is older than everything retained, so every retained turn is
+            // uncovered. Without this, a resume after a reset would look fully covered.
+            boolean present = false;
+            for (DubheRawTurn turn : turns) {
+                if (coveredThroughTurnId.equals(turn.id())) {
+                    present = true;
+                    break;
+                }
+            }
+            afterCursor = !present;
+        }
         for (DubheRawTurn turn : turns) {
             if (!afterCursor) {
                 if (coveredThroughTurnId.equals(turn.id())) {

@@ -162,6 +162,41 @@ class DubheMemoryMaintenanceServiceTest {
     }
 
     @Test
+    void compactionCarriesExactlyOnePreviousUnitSummary() throws Exception {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        try {
+            DubheScope scope = scope();
+            DubheStorageLayout layout = layout();
+            DubheMemorySystem memorySystem = new DubheMemorySystem(layout, jsonStore(), policy());
+            DubheRecentDialogueSystem recentDialogueSystem = recentDialogue();
+            memorySystem.appendStmBlock(scope, new DubheStmBlock(
+                    "stm_previous", "", scope.worldId(), 500L, 100L, 200L, "", "",
+                    2, 10, "旧单元摘要：玩家在准备去下界。", List.of(), "old-1", "old-2"));
+            appendWindow(recentDialogueSystem, scope);
+            RecordingLlmModule llm = new RecordingLlmModule(COMPACT_JSON);
+            registerLlm(runtime, llm);
+            registerPrimitive(runtime);
+            DubheMemoryMaintenanceService service = service(runtime, layout, memorySystem, recentDialogueSystem);
+
+            assertTrue(service.requestMaintenance(scope));
+            await(() -> memorySystem.stmBlocks().loadAll(scope).size() == 2);
+
+            List<LLMPromptRequestPayload.MessageItemPayload> messages = llm.requests.get(0).messages();
+            assertEquals(4, messages.size(), "system + 上一条单元摘要 + raw 轮次 + 指令后缀");
+            assertEquals("system", messages.get(0).role());
+            assertEquals("user", messages.get(1).role());
+            assertTrue(messages.get(1).content().contains("旧单元摘要：玩家在准备去下界。"),
+                    "the predecessor summary connects the units");
+            long occurrences = messages.stream()
+                    .filter(message -> message.content().contains("旧单元摘要：玩家在准备去下界。"))
+                    .count();
+            assertEquals(1, occurrences, "exactly one predecessor summary, never the whole generation");
+        } finally {
+            runtime.close();
+        }
+    }
+
+    @Test
     void unitCompactionLeavesRawWindowAndSummaryBlockUnchanged() throws Exception {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         try {

@@ -55,6 +55,19 @@ public final class DubheMemoryTaskPromptRepository {
     }
 
     /**
+     * The one previous-unit summary that connects this unit to its predecessor (G34).
+     *
+     * <p>Exactly one: carrying every summary of the generation would grow with the generation and accumulate
+     * paraphrase drift along the chain. Blank means "no predecessor", and then the request has no such message.</p>
+     */
+    public String compactPreviousSummary(String summary) {
+        if (summary == null || summary.isBlank()) {
+            return "";
+        }
+        String template = load("memory.compact.previous_summary", currentLanguage());
+        return render(template, Map.of("summary", clean(summary)));
+    }
+    /**
      * 一行带序号的轮次。
      *
      * <p>序号是 1-based，与提示词里 {@code turnRefs} 的写法一致——模型只要抄行首方括号里的数字就能

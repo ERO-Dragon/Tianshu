@@ -315,7 +315,7 @@ public final class DubheMemoryMaintenanceService {
             long generation
     ) {
         publishStartedStatus(startedStatusPublished);
-        DubheCompactionOutcome outcome = compact(batch, scope.worldId()).join();
+        DubheCompactionOutcome outcome = compact(batch, scope.worldId(), previousUnitSummary(scope, batch)).join();
         if (!isCurrent(generation)) {
             return false;
         }
@@ -394,9 +394,10 @@ public final class DubheMemoryMaintenanceService {
      * <p>请求 = {@code system(规则+schema) + raw 轮次 + 指令}：system 与指令都是每次压缩逐字节相同的
      * 常量段，raw 轮次每行带 1-based 序号（{@code turnRefs} 抄的就是这个序号）。</p>
      */
-    private CompletableFuture<DubheCompactionOutcome> compact(DubheRawTurnBatch batch, String worldId) {
+    private CompletableFuture<DubheCompactionOutcome> compact(DubheRawTurnBatch batch, String worldId,
+                                                              String previousSummary) {
         CompletableFuture<DubheCompactionOutcome> future = new CompletableFuture<>();
-        TianshuEnvelope envelope = llmClient.submitDetached(compactionRequest(batch, worldId), new DubheLlmRequestHandler() {
+        TianshuEnvelope envelope = llmClient.submitDetached(compactionRequest(batch, worldId, previousSummary), new DubheLlmRequestHandler() {
             @Override
             public void onResult(LLMPromptResultPayload payload) {
                 String text = cleanModelTaskText(payload == null ? "" : payload.text());
@@ -421,7 +422,17 @@ public final class DubheMemoryMaintenanceService {
         return withTaskTimeout(future, envelope, null);
     }
 
-    private LLMPromptRequestPayload compactionRequest(DubheRawTurnBatch batch, String worldId) {
+    /** The newest unit wholly before this batch; blank for the first unit of the session. */
+    private String previousUnitSummary(DubheScope scope, DubheRawTurnBatch batch) {
+        long from = batch.sourceFromMillis();
+        return memorySystem.stmBlocks().loadAll(scope).stream()
+                .filter(block -> block != null && !block.isEmpty() && block.sourceToMillis() <= from)
+                .max(java.util.Comparator.comparingLong(DubheStmBlock::sourceToMillis))
+                .map(DubheStmBlock::content)
+                .orElse("");
+    }
+    private LLMPromptRequestPayload compactionRequest(DubheRawTurnBatch batch, String worldId,
+                                                               String previousSummary) {
         List<DubheRawTurn> turns = batch.turns();
         StringBuilder rendered = new StringBuilder();
         for (int index = 0; index < turns.size(); index++) {
@@ -434,6 +445,11 @@ public final class DubheMemoryMaintenanceService {
         String system = promptRepository.compactSystemPrompt();
         if (!system.isBlank()) {
             messages.add(LLMPromptRequestPayload.MessageItemPayload.system(system));
+        }
+        String previous = promptRepository.compactPreviousSummary(previousSummary);
+        if (!previous.isBlank()) {
+            // Right after system and before the raw unit: exactly one predecessor summary (G34).
+            messages.add(LLMPromptRequestPayload.MessageItemPayload.user(previous));
         }
         if (!rendered.isEmpty()) {
             messages.add(LLMPromptRequestPayload.MessageItemPayload.user(rendered.toString().stripTrailing()));
