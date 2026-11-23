@@ -73,7 +73,11 @@ metadata:
 | `memory` | 待建 | 记忆检索与压缩（当前压缩是内部维护服务） |
 | `diplomacy` | 已实现（代码形态，待迁包） | 对外投递与按需查询；`relay` 是它旗下的一类 reference |
 
-## 6. 与平台实现的重复（待清理）\n\n舟楫已经在 `tianshu-client` 里实现了同一份规范（`SkillFileProvider`：目录/classpath 扫描、`references` 按需读、注册为 SKILL）。本目录下的 `DubheSkillDefinitionLoader` 与它功能重叠。正确的收口是把 `SkillFileProvider`（及其 `FrontMatter`/`TextPages`）移到 `tianshu-api` 或 `tianshu-core` 共享层，天枢改为复用，删除本目录的重复加载器。\n\n## 7. 验收
+## 6. 与平台实现的合并（已完成）
+
+`SkillFileProvider`、`FrontMatter`、`TextPages` 已移到共享层 `tianshu-api`（`com.rheinmetal.tianshu.api.capability.skill`），`tianshu-client` 与天枢共用同一份实现。天枢删除了自己的 `DubheSkillFrontmatter` / `DubheSkillDefinitionLoader`，只保留：`skills/index.json` 清单、资源读取、以及 `DubheSkillPackageAdapter`（把包接成代理技能）。
+
+## 7. 验收
 
 - 7 个加载器用例：元数据/正文/references、无 references 的元数据读取、只扫一层、路径穿越拒绝、frontmatter 非法规避、名字必须等于目录、文本形态校验；
 - 新增技能包不改变代理循环代码（目录扫描 + 注册表），这是 G7 的判据。
