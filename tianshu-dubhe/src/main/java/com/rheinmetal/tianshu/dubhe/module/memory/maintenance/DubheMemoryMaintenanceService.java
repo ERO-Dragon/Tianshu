@@ -307,6 +307,18 @@ public final class DubheMemoryMaintenanceService {
      *
      * @return 是否产出了摘要块
      */
+    /** One compaction attempt; a thrown failure is treated like an empty result so the retry path covers it. */
+    private DubheCompactionOutcome attemptCompaction(DubheScope scope, DubheRawTurnBatch batch) {
+        try {
+            return compact(batch, scope.worldId(), previousUnitSummary(scope, batch)).join();
+        } catch (RuntimeException failure) {
+            return null;
+        }
+    }
+
+    private static boolean incomplete(DubheCompactionOutcome outcome) {
+        return outcome == null || outcome.result() == null || outcome.result().isEmpty();
+    }
     private boolean compactUnit(
             DubheScope scope,
             DubheRawTurnBatch batch,
@@ -315,12 +327,16 @@ public final class DubheMemoryMaintenanceService {
             long generation
     ) {
         publishStartedStatus(startedStatusPublished);
-        DubheCompactionOutcome outcome = compact(batch, scope.worldId(), previousUnitSummary(scope, batch)).join();
+        DubheCompactionOutcome outcome = attemptCompaction(scope, batch);
+        if (incomplete(outcome)) {
+            // One silent retry: the raw window was never consumed, so a transient failure costs one call only.
+            outcome = attemptCompaction(scope, batch);
+        }
         if (!isCurrent(generation)) {
             return false;
         }
-        if (outcome == null || outcome.result() == null || outcome.result().isEmpty()) {
-            // 调用失败 / 取消 / 输出不可解析 / 模型什么都没给：没有任何可提交内容，raw 留在窗口。
+        if (incomplete(outcome)) {
+            // Still failed / cancelled / unparsable: nothing to submit, raw stays in the window.
             return false;
         }
         DubheMemoryCompressionResult compaction = outcome.result();

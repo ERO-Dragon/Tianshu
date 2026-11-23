@@ -112,6 +112,14 @@ class DubhePromptAssemblySnapshotTest {
         // 摘要块只渲染单元摘要正文：挂在块上的世界事件不重复进前缀，它们随检索进入尾部。
         assertTrue(!joined.contains("Stone Age"), "摘要块不得夹带附件事件");
         assertTrue(!joined.contains("IA delivery 附带上下文"));
+
+        // 同一份输入连装两次必须逐字节一致：这是前缀缓存成立的前提（G?：装配确定性）。
+        LLMPromptRequestPayload again = builder.buildChatRequest(
+                new DubheRequest("request", "当前输入：这个怎么修？", ""),
+                context,
+                budget
+        );
+        assertEquals(payload.messages(), again.messages(), "two assemblies of the same snapshot must be identical");
     }
 
     @Test

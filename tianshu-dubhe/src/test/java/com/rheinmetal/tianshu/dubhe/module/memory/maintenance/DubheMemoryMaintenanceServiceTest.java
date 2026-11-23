@@ -197,6 +197,31 @@ class DubheMemoryMaintenanceServiceTest {
     }
 
     @Test
+    void aFailedCompactionIsRetriedExactlyOnceSilently() throws Exception {
+        ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
+        try {
+            DubheScope scope = scope();
+            DubheStorageLayout layout = layout();
+            DubheMemorySystem memorySystem = new DubheMemorySystem(layout, jsonStore(), policy());
+            DubheRecentDialogueSystem recentDialogueSystem = recentDialogue();
+            appendWindow(recentDialogueSystem, scope);
+            FlakyLlmModule llm = new FlakyLlmModule();
+            registerLlm(runtime, llm::handle);
+            registerPrimitive(runtime);
+            DubheMemoryMaintenanceService service = service(runtime, layout, memorySystem, recentDialogueSystem);
+
+            assertTrue(service.requestMaintenance(scope));
+            await(() -> memorySystem.stmBlocks().loadAll(scope).size() == 1);
+
+            assertEquals(2, llm.requests.size(), "one silent retry, never a loop");
+            assertEquals(1, memorySystem.events().loadAll(scope).size(),
+                    "the failed attempt wrote nothing, so the retry cannot double-write");
+        } finally {
+            runtime.close();
+        }
+    }
+
+    @Test
     void unitCompactionLeavesRawWindowAndSummaryBlockUnchanged() throws Exception {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run);
         try {
@@ -383,6 +408,11 @@ class DubheMemoryMaintenanceServiceTest {
     }
 
     private static void registerLlm(ProtocolRuntime runtime, RecordingLlmModule llm) {
+        registerLlm(runtime, llm::handle);
+    }
+
+    private static void registerLlm(ProtocolRuntime runtime,
+                                java.util.function.BiConsumer<TianshuEnvelope, ProtocolContext> llm) {
         AdapterDefaults defaults = AdapterDefaults.standard();
         runtime.registerModule(new ModuleDescriptor(
                 "module.llm.memory-test",
@@ -403,7 +433,7 @@ class DubheMemoryMaintenanceServiceTest {
                 defaults.supportsStreaming(),
                 defaults.maxConcurrency(),
                 defaults.queueCapacity()
-        ), llm::handle);
+        ), (envelope, context) -> llm.accept(envelope, context));
     }
 
     /**
@@ -512,6 +542,23 @@ class DubheMemoryMaintenanceServiceTest {
             Thread.sleep(20L);
         }
         assertTrue(condition.getAsBoolean());
+    }
+
+    private static final class FlakyLlmModule {
+        private final List<LLMPromptRequestPayload> requests = new ArrayList<>();
+
+        void handle(TianshuEnvelope envelope, ProtocolContext context) {
+            LLMPromptRequestPayload payload = (LLMPromptRequestPayload) envelope.payload();
+            requests.add(payload);
+            String response = requests.size() == 1 ? "" : COMPACT_JSON;
+            context.submit(EnvelopeBuilder.responseTo(
+                    "module.llm.memory-test",
+                    envelope,
+                    PayloadType.of("LLM_PROMPT_RESULT"),
+                    LLMPromptResultPayload.completed(payload.requestId(), response)
+            ).build());
+            context.complete(envelope.envelopeId());
+        }
     }
 
     private static final class RecordingLlmModule {
