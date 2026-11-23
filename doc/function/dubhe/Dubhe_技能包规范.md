@@ -62,16 +62,16 @@ metadata:
 | 内容 | 说明 + references | id / schema / capabilities / budget / reportSchema |
 | 执行 | 由代理按说明调用工具 | `DubheSkillExecutor` |
 
-两者不是替代关系：技能包定义"怎么做"，`DubheSkillSpec` 定义"代理怎么发现、预算多少、报告要什么"。后续把 `diplomacy`、`search`、`work`、`memory` 迁成技能包，并让注册表从包加载元数据。
+两者不是替代关系：技能包定义"怎么做"，`DubheSkillSpec` 定义"代理怎么发现、预算多少、报告要什么"。`DubheSkillPackageAdapter` 把包接成技能：目录只给元数据，调用才返回正文，带 `reference` 参数再读参考。模块启动时按 `skills/index.json` 注册内置包；`work` 已按此接入。
 
 ## 5. 计划中的技能（内容另定）
 
 | 技能 | 状态 | 说明 |
 |---|---|---|
 | `search` | 对外已发布 SKILL（内容待路由表细化） | 联网技能族入口 |
-| `work` | 待建 | 替玩家干活：合成/容器/交互/放置与 `FULL` 档服务端动作，按三档授权 |
+| `work` | **已建**（SKILL.md + 3 篇 references） | 替玩家干活：只读查询 / 保守操作 / 全权动作三档；不碰 `body.*` |
 | `memory` | 待建 | 记忆检索与压缩（当前压缩是内部维护服务） |
-| `diplomacy` | 已实现（代码形态） | 对外投递与按需查询；`relay` 是它旗下的一类 reference |
+| `diplomacy` | 已实现（代码形态，待迁包） | 对外投递与按需查询；`relay` 是它旗下的一类 reference |
 
 ## 6. 验收
 
