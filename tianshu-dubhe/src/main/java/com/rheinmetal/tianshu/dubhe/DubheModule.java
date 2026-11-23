@@ -41,6 +41,7 @@ import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
 import com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy.DubheDiplomacySkill;
+import com.rheinmetal.tianshu.dubhe.agent.skill.definition.DubheSkillPackageResourceLoader;
 import com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
@@ -400,6 +401,10 @@ public final class DubheModule implements TianshuManagedModule {
                 (payload, handler, timeout) -> llmClient.submitDetached(payload, handler, timeout),
                 delegatePrompts);
         DubheSkillRegistry skillRegistry = new DubheSkillRegistry();
+        // 技能包（SKILL.md + references）：目录里只有元数据，调用时才读正文。
+        for (var packageSkill : DubheSkillPackageResourceLoader.loadBuiltin()) {
+            skillRegistry.register(packageSkill);
+        }
         skillRegistry.register(new DubheDiplomacySkill(
                 () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy()),
                 assistantSettings.autonomyConsent(), replyTexts).skill());
