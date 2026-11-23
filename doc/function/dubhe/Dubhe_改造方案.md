@@ -654,7 +654,7 @@ loop step = 1..maxSteps:
 1. **代理层**（G43）：有界 supervisor，复用 `DubheAgentLoop` complex 预设（25 步 / 120 秒 / 无进展检测），**不与玩家说话**。
 2. **技能暴露给代理**：技能描述符 → 目录条目（名称、功能说明、输入 schema）+ 执行器；技能目录只进**代理的**提示词（G41）。起步**不注册任何技能**（零技能跑通通路）；`research` 因依赖网络检索而搁置，到位后注册即可。
 3. **代理的循环**：选技能 → 看报告 → 不满意可换一个或重试（预算闭集，G44）；确定性意图匹配退化为"没选/选了未知"时的兜底。
-4. **办事报告** `{outcome, facts, blocked, needsDecision, elapsed, refs}`（§3.4），字段强制校验；材料和原文不进报告（A2）。
+4. **办事报告**（§3.4、G52）：模型只交 `outcome / conclusion / need`；`facts`/`blocked`/`refs`/`skillsUsed` 只落票据与诊断，**不进 simple 的窗口**。
 5. **暂停与恢复**（G48）：软预算提示 → `PAUSED` 终态 + checkpoint → 玩家说"继续"时以 `resumes` 开新票据；硬上限只作兜底。
 6. **代理上下文预算**（G49）：独立于对话档位，`0.75 W`、单条工具结果 ≤2048；到 `0.6 W` 做**任务内压缩**（折成进度摘要 + 保留最近 3 轮），摘要与 checkpoint 同源。
 7. simple 派单走内部调用路径；`RESEARCH` 作为它的只读子集在 P8 以外用 `CapabilityKind.SKILL` 暴露（P8 不重造路径）。
@@ -817,7 +817,7 @@ loop step = 1..maxSteps:
 | 14 | P4 | 代理上下文预算、工具结果裁剪与任务内压缩（独立于对话档位） | ✅ |
 | 15 | P4 | 代理读技能目录并调用（零技能时直接作答；之后逐个注册） | ✅ |
 | 16 | P4 | 委派入口改造：`<delegate>` → 代理；票据、投递与终态不变 | ✅ |
-| 17 | P4 | 办事报告契约：`outcome / facts / blocked / needsDecision` 强制校验 | ⬜ |
+| 17 | P4 | 办事报告最小化：对外 `outcome / conclusion / need`；机器字段只落票据与诊断（G52） | ⬜ |
 | 18 | P4 | 重试与换技能 + **暂停/恢复**（`PAUSED` 终态、checkpoint、`resumes` 指针、续命上限） | ⬜ |
 | 19 | P4 | 门禁：simple 工具集恒为 `{delegate}`；`internal` 技能不得出现在对外目录 | ⬜ |
 | 20 | P5 | 五档 `DubheEventClass`（新增 FOLD） | ⬜ |
