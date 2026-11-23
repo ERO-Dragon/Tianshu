@@ -12,8 +12,8 @@
 | `DUBHE.RESEARCH` | `dubhe:research` | **只读**查证：入 `intent`，出结论 + 来源 |
 | `DUBHE.RELAY` | `dubhe:relay` | **只转发**：把一句话交给指定模组，或查询已投递任务的状态 |
 
-两者都是 `CapabilityKind.SKILL`、`CapabilityBinding.LOCAL`、`ToolSide.CLIENT`、`ToolPermission.EVERYONE`，
-由 `dubhe` 提供。执行层（代理循环、技能目录、记忆）不对外。
+两者都是 `CapabilityKind.of("function")`、`CapabilityBinding.LOCAL`、`ToolSide.CLIENT`、`ToolPermission.EVERYONE`，
+由 `dubhe` 提供。**代理的技能目录不对外**：`diplomacy` 等技能只在本地，外部看不到也调不到；对外的是功能。
 
 ## 2. DUBHE.RESEARCH
 
@@ -86,7 +86,7 @@ CapabilityCatalog.invoke(research, args, ToolCaller.mod("your.mod.id"), ToolSide
         });
 ```
 
-## 6. 不要做的事
+## 6. 代理技能与外部功能的分工\n\n- 代理的技能（`diplomacy` 等）只在本地：它们通过舟楫目录发现其他模块的功能、投递任务、按需查进度。\n- 外部看到的只有 `DUBHE.RESEARCH` / `DUBHE.RELAY` 两个功能，没有技能目录，也没有“提交任务给我规划”的入口。\n\n## 7. 不要做的事
 
 - 不要用天枢驱动实体动作（放置、破坏、攻击、跟随）：天枢没有实体，这些能力不存在。
 - 不要寻找 `AGENT_TASK` 一类的通用入口：已永久取消，契约测试会守住这条边界。
