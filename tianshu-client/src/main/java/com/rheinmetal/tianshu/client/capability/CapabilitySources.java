@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.client.capability;
 
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
-import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
+import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;

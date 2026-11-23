@@ -1,8 +1,8 @@
-package com.rheinmetal.tianshu.client.tool.skill;
+package com.rheinmetal.tianshu.api.capability.skill;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.client.capability.FrontMatter;
-import com.rheinmetal.tianshu.client.capability.TextPages;
+
+
 import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;

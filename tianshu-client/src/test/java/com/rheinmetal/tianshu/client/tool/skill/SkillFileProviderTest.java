@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.client.tool.skill;
 
+import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
+
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityExposure;

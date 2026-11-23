@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.client.capability;
+package com.rheinmetal.tianshu.api.capability.skill;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.client.capability;
+package com.rheinmetal.tianshu.api.capability.skill;
 
 /** Splits long capability text into fixed-size pages and appends the navigation footer. */
 public final class TextPages {

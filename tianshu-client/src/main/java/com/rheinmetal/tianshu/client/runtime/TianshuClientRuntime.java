@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.client.runtime;
 import com.rheinmetal.tianshu.api.LogSink;
 import com.rheinmetal.tianshu.client.tool.ClientTools;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
-import com.rheinmetal.tianshu.client.tool.skill.SkillFileProvider;
+import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
