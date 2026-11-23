@@ -20,10 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 对外契约的硬边界（G10）：只有两个具体能力，没有"提交任务给我规划"的通用入口。
- *
- * <p>这是契约测试，不是行为测试：它检查能力表与源码字面量，所以新增一个对外入口会同时让这里变红，
- * 迫使改动者先改契约。</p>
+ * 对外契约的硬边界（G10 修订）：天枢只发布一个**技能**（搜索）；技能是可读材料，不是执行入口；
+ * 没有通用任务入口，也没有把内部代理技能发布出去。
  */
 class DubheExternalContractTest {
 
@@ -33,7 +31,7 @@ class DubheExternalContractTest {
     }
 
     @Test
-    void dubheExposesExactlySearchAndRelay() {
+    void dubhePublishesOnlyTheSearchSkill() {
         DubheExternalCapabilities.register((payload, handler, timeout) -> {
             throw new AssertionError("contract test never calls the model");
         }, prompts());
@@ -44,27 +42,19 @@ class DubheExternalContractTest {
                 .sorted()
                 .toList();
 
-        assertEquals(List.of("dubhe:relay", "dubhe:search"), exposed,
-                "the external surface is a closed set: research and relay only");
+        assertEquals(List.of("dubhe:search"), exposed,
+                "the published surface is the search skill only; relay is an internal reference");
     }
 
     @Test
-    void theExternalRowsAreFunctionsNotAgentSkills() {
+    void theSearchRowIsAReadableSkillNotATool() {
         DubheExternalCapabilities.register((payload, handler, timeout) -> {
             throw new AssertionError("contract test never calls the model");
         }, prompts());
 
-        for (var descriptor : CapabilityCatalog.list()) {
-            if (!"dubhe".equals(descriptor.provider())) {
-                continue;
-            }
-            assertEquals("function", descriptor.kind().value(),
-                    "external rows are functions; agent skills are never exposed: " + descriptor.id());
-        }
-        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "diplomacy")).isEmpty(),
-                "the diplomacy skill is internal and must never appear as a capability");
-        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "search")).isPresent());
-        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "relay")).isPresent());
+        var descriptor = CapabilityCatalog.find(DubheExternalCapabilities.SEARCH).orElseThrow();
+        assertEquals("skill", descriptor.kind().value());
+        assertFalse(descriptor.kind().isTool(), "a skill teaches; it does not execute as a tool");
     }
 
     @Test
@@ -80,6 +70,8 @@ class DubheExternalContractTest {
             assertFalse(id.endsWith(":task"), "a bare task entry is a generic entry: " + id);
         }
         assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "agent_task")).isEmpty());
+        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "diplomacy")).isEmpty(),
+                "the internal diplomacy skill is never published");
     }
 
     @Test
