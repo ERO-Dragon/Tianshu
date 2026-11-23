@@ -1,11 +1,11 @@
-# AX 运行架构
+# Dubhe 运行架构
 
-> **施工中口径变更（2026-11-21）**：本次大改会取代本篇的部分结论。实施前以《AX 双层改造方案》为准，这里只列"会变什么"：
-> - 分层改为 `dialogue`（角色层，概念上仍叫 simple）→ `agent`（专席池）→ `shared`，`protocol` 单独承载对外契约（§3.1、G8）。
-> - **执行层不对外**：agent / memory / world 全部内部；对外只有 `RESEARCH` 与 `RELAY` 两个能力，`AGENT_TASK` 取消（§3.8、G10）。
-> - 记忆读路径拆两层：装配内 L1 结构化召回 + `memory` 专席深度检索；压缩归 `memory` 专席（§3.9、G3）。
-> - **压缩与窗口重置是两个触发器**：压缩由单元驱动、重置由水位驱动，操作不相交集合、允许并行（§3.10、G35）。
-> - 窗口预算成表：system 固定 / 摘要 5% / 尾部 8% / 历史剩余 / 保留区 12% / 水位 80%（§3.12）。
+> **施工中口径变更（2026-11-21，2026-11-23 修订）**：实施前以《Dubhe_双层改造方案》为准，这里只列"会变什么"：
+> - 分层改为 `dialogue`（角色层）→ `agent`（代理 + 技能）→ `shared`，`protocol` 单独承载对外契约（§3.1、G8）。
+> - **执行层不对外**：代理与技能全部内部；对外只有 `RESEARCH` 与 `RELAY` 两个能力，`AGENT_TASK` 取消（§3.8、G10）。
+> - 记忆读路径拆两层：装配内 L1 结构化召回 + `memory` 技能深度检索；压缩归 `memory` 技能（§3.9、G3）。
+> - **压缩与窗口重置是两个触发器**：压缩由单元驱动、重置由水位驱动，可并行（G35）。
+> - 窗口预算成表（§3.12，仅 simple）；代理另有独立预算（G49）。
 >
 > 本篇其余内容仍描述当前实现；实施完成后按新口径重写。
 
@@ -69,7 +69,7 @@ echo：TTS 合成与播放（播报不调模型）
 
 | 主题 | 入口 |
 |---|---|
-| AX 模块装配与对外服务 | `tianshu-dubhe/.../dubhe/DubheModule.java`、`DubheProtocolAdapter.java`、`DubheParticipantRegistrar.java` |
+| 天枢 模块装配与对外服务 | `tianshu-dubhe/.../dubhe/DubheModule.java`、`DubheProtocolAdapter.java`、`DubheParticipantRegistrar.java` |
 | 一轮对话 | `dubhe/core/turn/DubheTurnOrchestrator.java`、`DubheReplyContract.java`、`DubheDialogueGateway.java` |
 | 模型请求的重投 | `dubhe/core/llm/DubheLlmClient.java`、`DubheLlmRetryPolicy.java` |
 | 提示词装配 | `dubhe/core/prompt/DubhePromptOrchestrator.java`、`DubhePromptAssemblyBuilder.java`、`module/system/DubheSystemPromptContributor.java`、其余 `*PromptContributor` |
@@ -196,7 +196,7 @@ echo：TTS 合成与播放（播报不调模型）
 
 | | 尾部块 | 历史 |
 |---|---|---|
-| 内容 | 当前状态、检索到的记忆、待处理项 | 用户与 AX 的对话、事件 |
+| 内容 | 当前状态、检索到的记忆、待处理项 | 用户与 天枢 的对话、事件 |
 | 生命周期 | 每轮重建，下一轮丢弃 | 追加后长期存在，可被压缩成记忆 |
 | 能否被压缩 | 否 | 能（事件除外，见《Dubhe_事件系统》§10） |
 | 前缀影响 | 不影响（在末尾） | 影响很小（只追加） |
@@ -240,7 +240,7 @@ echo：TTS 合成与播放（播报不调模型）
 | 游戏主线程是 tick 线程，不能在里面阻塞等模型 | agent 循环与模型调用放到独立执行器；结果通过队列回投主线程 |
 | 单进程同步 append 在 MC 里不成立 | 同一会话的写入必须自己串行化（每会话一个串行队列） |
 | 区域化多线程服务端（Folia 类） | 不能有"全局单例会话存储"当竞争点；按世界/玩家分片 |
-| 客户端优先的前提 | AX 跑在客户端，不改变世界状态：只读旁听，事件与状态都不写回游戏对象；可选的服务端组件只做事实采集，不参与 AX 的任何判定 |
+| 客户端优先的前提 | 天枢 跑在客户端，不改变世界状态：只读旁听，事件与状态都不写回游戏对象；可选的服务端组件只做事实采集，不参与 天枢 的任何判定 |
 
 这三条决定了本项目里"看起来很自然"的许多写法不能用：任何在 tick 里 `.join()`、任何跨线程直接改会话容器、任何假定全局单例的缓存，都会在真实负载下炸掉。
 
