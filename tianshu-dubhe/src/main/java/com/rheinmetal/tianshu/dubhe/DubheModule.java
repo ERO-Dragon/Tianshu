@@ -41,6 +41,7 @@ import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
 import com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy.DubheDiplomacySkill;
+import com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
 import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnOrchestrator;import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnStatusPublisher;
@@ -395,6 +396,9 @@ public final class DubheModule implements TianshuManagedModule {
         DubheOutputProcessor outputProcessor = new DubheOutputProcessor(
                 adapter, outputSettings, chatOutputSink, replyTexts, speechSink);
         DubheDelegatePromptRepository delegatePrompts = new DubheDelegatePromptRepository(promptLanguageProvider);
+        DubheExternalCapabilities.register(
+                (payload, handler, timeout) -> llmClient.submitDetached(payload, handler, timeout),
+                delegatePrompts);
         DubheSkillRegistry skillRegistry = new DubheSkillRegistry();
         skillRegistry.register(new DubheDiplomacySkill(
                 () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy()),
@@ -667,6 +671,8 @@ public final class DubheModule implements TianshuManagedModule {
 
     @Override
     public void stop() {
+        // The two external rows are process-global; leaving them behind would expose a stopped module.
+        DubheExternalCapabilities.unregister();
         // Events close first so a pending aggregate still lands in the window before the checkpoint.
         withdrawModuleServices();
         if (textInputSubscription != null) {

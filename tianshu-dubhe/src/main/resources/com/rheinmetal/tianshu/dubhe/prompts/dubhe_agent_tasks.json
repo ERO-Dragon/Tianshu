@@ -25,6 +25,14 @@
     "agent.consent.accept": {
       "zh_cn": "同意,允许,可以,好,行,准了,允许你",
       "en_us": "yes,allow,ok,okay,sure,go ahead"
+    },
+    "external.research.system": {
+      "zh_cn": "你是天枢的查证接口：只回答被问到的事实，不写建议、不写步骤、不提及自己或玩家。信息不足就直说不知道。只输出一两句结论。",
+      "en_us": "You are the fact-check endpoint of Tianshu: answer only the fact that was asked, with no advice, no steps, no reference to yourself or the player. If the information is insufficient, say you do not know. Output one or two sentences of conclusion only."
+    },
+    "external.research.user": {
+      "zh_cn": "查证：{{intent}}",
+      "en_us": "Fact-check: {{intent}}"
     }
   }
 }
