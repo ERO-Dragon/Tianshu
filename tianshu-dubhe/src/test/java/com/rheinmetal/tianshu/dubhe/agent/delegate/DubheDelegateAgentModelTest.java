@@ -33,7 +33,7 @@ class DubheDelegateAgentModelTest {
                 DubheAgentEntry.assistant("", List.of(new LLMToolCallPayload("c1", "echo", "{}"))),
                 DubheAgentEntry.toolResult("c1", "{\"fact\":1}"));
         return new DubheAgentRequest("task-1", "问题", entries, List.of(ECHO), 5_000L,
-                DubheRunCancellation.none());
+                DubheRunCancellation.none(), "");
     }
 
     private static DubheDelegateAgentModel modelThatAnswers(LLMPromptResultPayload result,

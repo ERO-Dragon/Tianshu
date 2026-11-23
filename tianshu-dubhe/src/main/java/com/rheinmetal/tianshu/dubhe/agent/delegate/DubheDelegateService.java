@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentLoop;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentModel;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentReport;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentTranscript;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentTurn;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunCancellation;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunExpiry;
@@ -37,6 +38,9 @@ import java.util.function.Supplier;
  * 后两步失败也不影响前一步（A4 不因播报失败而破）。</p>
  */
 public final class DubheDelegateService {
+
+    /** 暂停后最多允许续跑的次数；用尽即 EXPIRED，不再无限续命（G48）。 */
+    public static final int MAX_RESUMES = 2;
 
 
     private final DubheDelegateRequestSender requestSender;
@@ -88,14 +92,17 @@ public final class DubheDelegateService {
         return registry;
     }
 
-    /**
-     * 委派一次检索：立即返回 ticket，不等任何检索 I/O（§5.1 步骤 ③⑤）。
-     *
-     * <p>5s 窗口内命中同 {@code replayKey} 时不新建 Run（A7）：还活着的 ticket 只补一条回执，已终态的
-     * ticket 直接把既有结论再投递一次——<b>都不再登记第二条事件</b>（A4）。</p>
-     */
     public DubheDelegateTicket delegate(DubheScope scope, String sessionId, String query) {
-        DubheDelegateRegistry.Reservation reservation = registry.open(scope, sessionId, query, nowMillis.get());
+        long now = nowMillis.get();
+        DubhePausedTask paused = registry.paused(sessionId, now);
+        if (paused != null && DubheResumeIntent.accepts(query, resumeAcceptWords())) {
+            return resume(paused, now);
+        }
+        if (paused != null) {
+            // 玩家换了话题：旧暂停任务作废，避免下次一句"好"续到不相干的事上。
+            registry.clearPaused(sessionId);
+        }
+        DubheDelegateRegistry.Reservation reservation = registry.open(scope, sessionId, query, now);
         DubheDelegateTicket ticket = reservation.ticket();
         if (!reservation.created()) {
             logSink.info("dubhe.delegate.replay_hit session=" + ticket.sessionId() + " task=" + ticket.taskId()
@@ -108,9 +115,8 @@ public final class DubheDelegateService {
         }
         publishAck(ticket);
         try {
-            runSubmitter.submit(ticket.taskId(), () -> runComplex(ticket));
+            runSubmitter.submit(ticket.taskId(), () -> runComplex(ticket, null));
         } catch (RuntimeException rejected) {
-            // 车道拒绝/队列满：立即终态 FAILED(rejected)，仍按投递路径投一句（§5.2 步骤 ④）。
             logSink.warn("dubhe.delegate.rejected task=" + ticket.taskId() + " reason=" + messageOf(rejected));
             deliver(ticket, new DubheRunOutcome<>(
                     DubheRunTermination.FAILED, 0, 0L, null, null, rejected, DubheRunExpiry.NONE));
@@ -118,14 +124,74 @@ public final class DubheDelegateService {
         return ticket;
     }
 
+    private List<String> resumeAcceptWords() {
+        return promptRepository == null ? List.of() : promptRepository.resumeAcceptWords();
+    }
+
+    /** 续跑：新建一张票据并指向被暂停的那张；旧票据保持 PAUSED（G48）。 */
+    private DubheDelegateTicket resume(DubhePausedTask paused, long now) {
+        registry.clearPaused(paused.sessionId());
+        DubheDelegateRegistry.Reservation reservation =
+                registry.open(paused.scope(), paused.sessionId(), paused.question(), now, paused.taskId());
+        DubheDelegateTicket ticket = reservation.ticket();
+        if (!ticket.markRunning()) {
+            return ticket;
+        }
+        publishAck(ticket);
+        try {
+            runSubmitter.submit(ticket.taskId(), () -> runComplex(ticket, paused));
+        } catch (RuntimeException rejected) {
+            logSink.warn("dubhe.delegate.resume_rejected task=" + ticket.taskId() + " reason=" + messageOf(rejected));
+            deliver(ticket, new DubheRunOutcome<>(
+                    DubheRunTermination.FAILED, 0, 0L, null, null, rejected, DubheRunExpiry.NONE));
+        }
+        return ticket;
+    }
+
     /** Complex run 本体：同一个循环，策略 {@code complex()}；每一步都可能调用技能。 */
-    private void runComplex(DubheDelegateTicket ticket) {
+    private void runComplex(DubheDelegateTicket ticket, DubhePausedTask paused) {
+        String notice = promptRepository == null ? "" : promptRepository.softBudgetNotice();
         DubheAgentModel model = new DubheDelegateAgentModel(requestSender, promptRepository);
-        DubheAgentTurn turn = new DubheAgentTurn(
-                ticket.taskId(), ticket.query(), ticket.scope(), skills, agentBudget, compactor, model);
+        DubheAgentTurn turn = paused == null
+                ? new DubheAgentTurn(
+                        ticket.taskId(), ticket.query(), ticket.scope(), skills, agentBudget, compactor, model, notice)
+                : DubheAgentTurn.resumed(
+                        ticket.taskId(), ticket.query(), ticket.scope(), skills, agentBudget, compactor, model,
+                        notice, paused.transcript(), paused.digest());
         DubheRunOutcome<DubheAgentAnswer> outcome = new DubheAgentLoop(DubheRunPolicy.complex())
                 .run(turn, DubheRunCancellation.none());
+        int usedResumes = paused == null ? 0 : paused.resumes();
+        if (shouldPause(outcome.termination(), turn.transcript(), usedResumes)) {
+            pause(ticket, turn, usedResumes);
+            return;
+        }
         deliver(ticket, outcome);
+    }
+
+    /** 预算用尽但还有进展：停在这里等玩家说继续；续跑次数用尽则不再暂停（G48）。 */
+    static boolean shouldPause(
+            DubheRunTermination termination, DubheAgentTranscript transcript, int usedResumes) {
+        if (termination != DubheRunTermination.ABORT_MAX_STEPS
+                && termination != DubheRunTermination.ABORT_TIMEOUT) {
+            return false;
+        }
+        if (usedResumes >= MAX_RESUMES) {
+            return false;
+        }
+        return transcript.compactions() > 0 || transcript.entries().size() > 2;
+    }
+
+    private void pause(DubheDelegateTicket ticket, DubheAgentTurn turn, int usedResumes) {
+        registry.pause(new DubhePausedTask(
+                ticket.taskId(),
+                ticket.sessionId(),
+                ticket.scope(),
+                ticket.query(),
+                turn.transcript().entries(),
+                turn.transcript().digest(),
+                usedResumes + 1,
+                nowMillis.get()));
+        publishTerminal(ticket, DubheDelegateOutcomeKind.PAUSED, DubheRunTermination.PAUSED, "");
     }
 
     /**
@@ -143,21 +209,35 @@ public final class DubheDelegateService {
         }
         DubheDelegateOutcomeKind kind;
         if (outcome.termination() != DubheRunTermination.COMPLETED) {
-            kind = DubheDelegateOutcomeKind.of(outcome.termination());
+            boolean budget = outcome.termination() == DubheRunTermination.ABORT_MAX_STEPS
+                    || outcome.termination() == DubheRunTermination.ABORT_TIMEOUT;
+            kind = budget && !ticket.resumes().isEmpty()
+                    ? DubheDelegateOutcomeKind.EXPIRED
+                    : DubheDelegateOutcomeKind.of(outcome.termination());
         } else if (report != null && !report.speech().isBlank()) {
             kind = DubheDelegateOutcomeKind.OK;
         } else {
             kind = DubheDelegateOutcomeKind.FAILED;
         }
         String text = kind == DubheDelegateOutcomeKind.OK && report != null ? report.speech() : "";
-        if (!ticket.terminate(outcome.termination(), text)) {
+        registry.clearPaused(ticket.sessionId());
+        publishTerminal(ticket, kind, outcome.termination(), text);
+    }
+
+    private void publishTerminal(
+            DubheDelegateTicket ticket,
+            DubheDelegateOutcomeKind kind,
+            DubheRunTermination termination,
+            String text
+    ) {
+        if (!ticket.terminate(termination, text)) {
             return;
         }
         boolean appended = appendHistory(kind, text);
         boolean registered = eventLedger.register(new DubheDelegateEventLedger.Entry(
                 ticket.taskId(),
                 kind,
-                outcome.termination(),
+                termination,
                 text,
                 nowMillis.get(),
                 appended
@@ -167,11 +247,12 @@ public final class DubheDelegateService {
         }
         logSink.info("dubhe.delegate.terminal task=" + ticket.taskId()
                 + " kind=" + kind.code()
-                + " status=" + outcome.termination().name()
+                + " status=" + termination.name()
                 + " appended=" + appended);
         deliverySink.publish(new DubheDelegateDelivery(
-                ticket.taskId(), kind, outcome.termination(), text, kind.speechKey()));
+                ticket.taskId(), kind, termination, text, kind.speechKey()));
     }
+
 
 
     /** ② 进 prompt：结论（或失败标记）作为一条 {@code <event>} 历史条目追加（A4 必达）。 */

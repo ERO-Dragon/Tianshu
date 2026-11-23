@@ -40,6 +40,25 @@ public final class DubheAgentTranscript {
         entries.add(new DubheAgentEntry(DubheAgentEntry.Kind.BRIEF, this.goal));
     }
 
+    /** Rehydrates a paused task's transcript; the first entry must still be the brief. */
+    public static DubheAgentTranscript resumed(
+            DubheAgentContextBudget budget,
+            String goal,
+            List<DubheAgentEntry> restored,
+            DubheAgentDigest digest
+    ) {
+        DubheAgentTranscript transcript = new DubheAgentTranscript(budget, goal);
+        if (restored != null && !restored.isEmpty()) {
+            if (restored.get(0).kind() != DubheAgentEntry.Kind.BRIEF) {
+                throw new IllegalArgumentException("a resumed transcript must start with the brief");
+            }
+            transcript.entries.clear();
+            transcript.entries.addAll(restored);
+        }
+        transcript.digest = digest;
+        return transcript;
+    }
+
     /** Appends one entry; tool results are clamped on the way in. */
     public synchronized void append(DubheAgentEntry entry) {
         if (entry == null) {

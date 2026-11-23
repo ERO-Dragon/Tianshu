@@ -23,5 +23,11 @@ public enum DubheRunTermination {
     CANCELLED,
 
     /** 一步抛出了异常。 */
-    FAILED
+    FAILED,
+
+    /** 停在可续跑的点：由服务层在预算耗尽但仍有进展时置入，循环从不产生。 */
+    PAUSED,
+
+    /** 续跑次数用尽仍未完成：服务层置入，循环从不产生。 */
+    EXPIRED
 }

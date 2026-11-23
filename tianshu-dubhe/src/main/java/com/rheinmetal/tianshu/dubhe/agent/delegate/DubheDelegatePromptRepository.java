@@ -28,6 +28,10 @@ public final class DubheDelegatePromptRepository {
     /** 任务内压缩：system 规则与携带待压缩数据的 user 模板。 */
     public static final String COMPACT_SYSTEM = "agent.compact.system";
     public static final String COMPACT_INSTRUCTION = "agent.compact.user";
+    /** 软预算提示：到大部分步数时要求收尾或明确说"需要继续"。 */
+    public static final String SOFT_BUDGET = "agent.skill.soft_budget";
+    /** 玩家同意续跑的词表（逗号分隔）；它是交互识别，不是模型提示词。 */
+    public static final String RESUME_ACCEPT = "agent.resume.accept";
 
     private static final String PLACEHOLDER_PAYLOAD = "{{payload}}";
 
@@ -39,6 +43,26 @@ public final class DubheDelegatePromptRepository {
                 ? DubhePromptLanguageProvider.fixed(DubhePromptLanguage.EN_US)
                 : languageProvider;
         this.catalog = readBuiltinCatalog();
+    }
+
+    public String softBudgetNotice() {
+        return load(SOFT_BUDGET, currentLanguage());
+    }
+
+    /** 同意续跑的词；空白表示不做续跑识别。 */
+    public java.util.List<String> resumeAcceptWords() {
+        String csv = load(RESUME_ACCEPT, currentLanguage());
+        if (csv.isBlank()) {
+            return java.util.List.of();
+        }
+        java.util.List<String> words = new java.util.ArrayList<>();
+        for (String part : csv.split(",")) {
+            String word = part.trim();
+            if (!word.isEmpty()) {
+                words.add(word);
+            }
+        }
+        return java.util.List.copyOf(words);
     }
 
     public String agentSystemPrompt() {

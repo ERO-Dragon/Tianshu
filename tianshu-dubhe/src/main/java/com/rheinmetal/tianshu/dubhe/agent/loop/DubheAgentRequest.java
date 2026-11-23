@@ -17,7 +17,9 @@ public record DubheAgentRequest(
         List<DubheAgentEntry> transcript,
         List<DubheSkillSpec> directory,
         long remainingMillis,
-        DubheRunCancellation cancellation
+        DubheRunCancellation cancellation,
+        /** A one-off system note for this step, such as the soft-budget wrap-up request; blank when none. */
+        String notice
 ) {
 
     public DubheAgentRequest {
@@ -29,5 +31,6 @@ public record DubheAgentRequest(
             throw new IllegalArgumentException("remainingMillis must be positive");
         }
         cancellation = cancellation == null ? DubheRunCancellation.none() : cancellation;
+        notice = notice == null ? "" : notice.trim();
     }
 }

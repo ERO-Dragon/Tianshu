@@ -100,6 +100,8 @@
   "dubhe.runtime.delegate.failed": "这次没查到，换个说法再问我一次。",
   "dubhe.runtime.delegate.timeout": "查得太久，先不查了。",
   "dubhe.runtime.delegate.cancelled": "这次查询取消了。",
+  "dubhe.runtime.delegate.paused": "还没办完，要接着办吗？",
+  "dubhe.runtime.delegate.expired": "办得太久，先停下了。",
   "tianshu.dubhe.shared.event.detail.health_critical": "剩余 %s 点生命",
   "tianshu.dubhe.shared.event.detail.health_change": "失去 %s 点生命",
   "tianshu.dubhe.shared.event.detail.hunger_critical": "饥饿值 %s",

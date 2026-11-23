@@ -13,6 +13,14 @@
     "agent.compact.user": {
       "zh_cn": "需要压缩的任务数据（JSON）：\n{{payload}}\n\n只输出 JSON。",
       "en_us": "Task data to compress (JSON):\n{{payload}}\n\nJSON only."
+    },
+    "agent.skill.soft_budget": {
+      "zh_cn": "你已经用了大部分步骤。要么现在给出 result/block/need 收尾，要么在 block 里明确说还没办完、需要继续。",
+      "en_us": "You have used most of your steps. Either finish now with result/block/need, or say clearly in block that the task is unfinished and needs to continue."
+    },
+    "agent.resume.accept": {
+      "zh_cn": "继续,接着,接着办,继续吧,好,好的,行,可以,办吧,嗯,继续查",
+      "en_us": "continue,go on,keep going,carry on,yes,ok,okay,sure"
     }
   }
 }

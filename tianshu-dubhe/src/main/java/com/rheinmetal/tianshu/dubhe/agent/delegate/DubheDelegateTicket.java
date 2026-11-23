@@ -3,7 +3,6 @@ package com.rheinmetal.tianshu.dubhe.agent.delegate;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunTermination;
 import com.rheinmetal.tianshu.dubhe.shared.scope.DubheScope;
 
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -12,6 +11,8 @@ import java.util.Objects;
  * <p>状态机：{@code PENDING → RUNNING → 终态}。终态<b>只允许写一次</b>（§5.3 "终态不可变"、A4"恰好一条"），
  * 由 {@link #terminate(DubheRunTermination, String)} 的 CAS 保证；重复写返回 {@code false} 而不是抛异常，
  * 因为投递路径上"晚到的第二个终态"是常态（复用命中、车道拒绝与回调竞速）。</p>
+ *
+ * <p>{@code resumes} 指向被续跑的那个 ticket：续跑是新票据，旧票据停在 {@code PAUSED}，两者通过它关联（G48）。</p>
  *
  * <p>ticket 同时是 §6.3 事件线的 {@code taskId} 持有者——它是<b>投递</b>的幂等主键，与"同一个问题问过几次"
  * 无关（§5.4 A9）。</p>
@@ -31,18 +32,28 @@ public final class DubheDelegateTicket {
     private final String query;
     private final DubheScope scope;
     private final long createdAtMillis;
+    private final String resumes;
 
     private volatile State state = State.PENDING;
     private volatile DubheRunTermination termination;
     private volatile String reportText = "";
 
-    DubheDelegateTicket(String taskId, String replayKey, String sessionId, String query, DubheScope scope, long createdAtMillis) {
+    DubheDelegateTicket(
+            String taskId,
+            String replayKey,
+            String sessionId,
+            String query,
+            DubheScope scope,
+            long createdAtMillis,
+            String resumes
+    ) {
         this.taskId = Objects.requireNonNull(taskId, "taskId");
         this.replayKey = Objects.requireNonNull(replayKey, "replayKey");
         this.sessionId = sessionId == null ? "" : sessionId;
         this.query = Objects.requireNonNull(query, "query");
         this.scope = scope == null ? DubheScope.unknown() : scope;
         this.createdAtMillis = createdAtMillis;
+        this.resumes = resumes == null ? "" : resumes.trim();
     }
 
     public String taskId() {
@@ -67,6 +78,11 @@ public final class DubheDelegateTicket {
 
     public long createdAtMillis() {
         return createdAtMillis;
+    }
+
+    /** 被续跑的那个 ticket id；普通委派为空串。 */
+    public String resumes() {
+        return resumes;
     }
 
     public State state() {

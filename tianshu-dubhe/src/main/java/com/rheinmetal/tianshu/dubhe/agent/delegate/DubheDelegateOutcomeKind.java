@@ -18,7 +18,11 @@ public enum DubheDelegateOutcomeKind {
     /** 撞 COMPLEX 的 120s 挂钟（§3.2 / A.1）。 */
     TIMEOUT("delegate_timeout", "dubhe.runtime.delegate.timeout"),
     /** 本地状态机取消（§5.3；不是模型工具，§7.4）。 */
-    CANCELLED("delegate_cancelled", "dubhe.runtime.delegate.cancelled");
+    CANCELLED("delegate_cancelled", "dubhe.runtime.delegate.cancelled"),
+    /** 预算用尽但仍有进展：停在这里，等玩家说继续。 */
+    PAUSED("delegate_paused", "dubhe.runtime.delegate.paused"),
+    /** 续跑次数用尽仍未完成。 */
+    EXPIRED("delegate_expired", "dubhe.runtime.delegate.expired");
 
     /** 委派回执"我查一下"的播报键：与结论播报是两条不同资源键，不得复用（§6.2）。 */
     public static final String ACK_SPEECH_KEY = "dubhe.runtime.delegate.ack";
@@ -51,6 +55,8 @@ public enum DubheDelegateOutcomeKind {
             case ABORT_TIMEOUT -> TIMEOUT;
             case CANCELLED -> CANCELLED;
             case ABORT_MAX_STEPS, ABORT_NO_PROGRESS, FAILED -> FAILED;
+            case PAUSED -> PAUSED;
+            case EXPIRED -> EXPIRED;
         };
     }
 }

@@ -43,6 +43,9 @@ public final class DubheDelegateRegistry {
      */
     public static final int MAX_RETAINED_TICKETS_PER_SESSION = 16;
 
+    /** 暂停任务的存活时间：超过它就当作玩家已经走开。 */
+    public static final long PAUSED_TTL_MILLIS = 300_000L;
+
     private static final String TASK_ID_PREFIX = "dubhe.delegate.";
     private static final String TASK_ID_SEPARATOR = "-";
     private static final int TASK_ID_KEY_CHARS = 10;
@@ -52,6 +55,8 @@ public final class DubheDelegateRegistry {
 
     private final long replayWindowMillis;
     private final Map<String, List<DubheDelegateTicket>> ticketsBySession = new LinkedHashMap<>();
+    /** 每个会话最近一个暂停任务；只保留一个，玩家换话题即丢弃（G48）。 */
+    private final Map<String, DubhePausedTask> pausedBySession = new LinkedHashMap<>();
     private long sequence;
 
     public DubheDelegateRegistry() {
@@ -82,18 +87,29 @@ public final class DubheDelegateRegistry {
      * <p>同步块保证"查窗口 + 建 ticket"是原子的：两个并发委派不可能同时看不到对方而各建一个 Run。</p>
      */
     public synchronized Reservation open(DubheScope scope, String sessionId, String query, long nowMillis) {
+        return open(scope, sessionId, query, nowMillis, "");
+    }
+
+    /**
+     * 同上；{@code resumes} 非空表示这是一次续跑：它不复用旧票据，而是新建一张并记下被续跑的 taskId（G48）。
+     */
+    public synchronized Reservation open(
+            DubheScope scope, String sessionId, String query, long nowMillis, String resumes) {
         String effectiveSession = sessionId == null ? "" : sessionId;
+        String effectiveResumes = resumes == null ? "" : resumes.trim();
         String replayKey = replayKey(query);
         List<DubheDelegateTicket> sessionTickets = ticketsBySession.computeIfAbsent(effectiveSession, key -> new ArrayList<>());
-        for (int index = sessionTickets.size() - 1; index >= 0; index--) {
-            DubheDelegateTicket candidate = sessionTickets.get(index);
-            if (!candidate.replayKey().equals(replayKey)) {
-                continue;
+        if (effectiveResumes.isEmpty()) {
+            for (int index = sessionTickets.size() - 1; index >= 0; index--) {
+                DubheDelegateTicket candidate = sessionTickets.get(index);
+                if (!candidate.replayKey().equals(replayKey)) {
+                    continue;
+                }
+                if (nowMillis - candidate.createdAtMillis() > replayWindowMillis) {
+                    continue;
+                }
+                return new Reservation(candidate, false);
             }
-            if (nowMillis - candidate.createdAtMillis() > replayWindowMillis) {
-                continue;
-            }
-            return new Reservation(candidate, false);
         }
         sequence++;
         DubheDelegateTicket ticket = new DubheDelegateTicket(
@@ -102,11 +118,40 @@ public final class DubheDelegateRegistry {
                 effectiveSession,
                 query == null ? "" : query.trim(),
                 scope,
-                nowMillis
+                nowMillis,
+                effectiveResumes
         );
         sessionTickets.add(ticket);
         prune(sessionTickets);
         return new Reservation(ticket, true);
+    }
+
+
+    /** 记下最近一个暂停任务，覆盖同会话旧值。 */
+    public synchronized void pause(DubhePausedTask task) {
+        if (task == null) {
+            return;
+        }
+        pausedBySession.put(task.sessionId(), task);
+    }
+
+    /** 该会话可续跑的暂停任务；过期即丢弃并返回 {@code null}。 */
+    public synchronized DubhePausedTask paused(String sessionId, long nowMillis) {
+        String key = sessionId == null ? "" : sessionId;
+        DubhePausedTask task = pausedBySession.get(key);
+        if (task == null) {
+            return null;
+        }
+        if (nowMillis - task.createdAtMillis() > PAUSED_TTL_MILLIS) {
+            pausedBySession.remove(key);
+            return null;
+        }
+        return task;
+    }
+
+    /** 玩家换话题、任务完成或取消时丢弃暂停任务。 */
+    public synchronized void clearPaused(String sessionId) {
+        pausedBySession.remove(sessionId == null ? "" : sessionId);
     }
 
     /** 按 taskId 查 ticket（投递与测试用）。 */

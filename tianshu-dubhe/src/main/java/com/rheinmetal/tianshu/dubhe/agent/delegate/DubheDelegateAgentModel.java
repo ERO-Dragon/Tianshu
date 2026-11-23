@@ -84,6 +84,9 @@ public final class DubheDelegateAgentModel implements DubheAgentModel {
             messages.add(LLMPromptRequestPayload.MessageItemPayload.system(system));
         }
         messages.add(LLMPromptRequestPayload.MessageItemPayload.user(request.question()));
+        if (!request.notice().isBlank()) {
+            messages.add(LLMPromptRequestPayload.MessageItemPayload.system(request.notice()));
+        }
         for (DubheAgentEntry entry : request.transcript()) {
             switch (entry.kind()) {
                 case BRIEF -> {

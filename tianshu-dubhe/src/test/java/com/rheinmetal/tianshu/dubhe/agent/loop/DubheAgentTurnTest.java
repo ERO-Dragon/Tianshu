@@ -178,4 +178,28 @@ class DubheAgentTurnTest {
                 .anyMatch(entry -> entry.kind() == DubheAgentEntry.Kind.DIGEST));
         assertEquals(List.of("bulk"), outcome.result().usedSkills());
     }
+
+    @Test
+    void theWrapUpNoticeIsInjectedOnceAtTheSoftStep() {
+        DubheSkillRegistry registry = new DubheSkillRegistry();
+        registry.register(spec("echo", 1_000L),
+                (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
+        List<DubheAgentRequest> seen = new ArrayList<>();
+        DubheAgentModel model = request -> {
+            seen.add(request);
+            return call("c1", "echo");
+        };
+        DubheAgentTurn turn = new DubheAgentTurn("task-1", "问题", SCOPE, registry,
+                DubheAgentContextBudget.forWindow(32_768), null, model, "WRAP UP");
+
+        DubheRunOutcome<DubheAgentAnswer> outcome = new DubheAgentLoop(
+                new DubheRunPolicy("test", 5, 10_000L, false,
+                        com.rheinmetal.tianshu.protocol.CancellationScope.SELF_ONLY))
+                .run(turn, null);
+
+        assertEquals(DubheRunTermination.ABORT_MAX_STEPS, outcome.termination());
+        assertEquals(1, seen.stream().filter(request -> !request.notice().isBlank()).count(),
+                "the notice is injected once, not every step");
+        assertEquals("WRAP UP", seen.get(3).notice(), "ceil(5 * 0.7) = step 4");
+    }
 }

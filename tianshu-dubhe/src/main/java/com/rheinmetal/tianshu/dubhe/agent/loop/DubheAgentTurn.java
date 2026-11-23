@@ -37,6 +37,8 @@ import java.util.concurrent.TimeoutException;
 public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+    /** At this fraction of the step budget the model is asked to wrap up or say it needs more. */
+    private static final double SOFT_BUDGET_RATIO = 0.7;
 
     private final String taskId;
     private final String question;
@@ -47,6 +49,8 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
     private final DubheAgentModel model;
     private final DubheAgentTranscript transcript;
     private final Set<String> usedSkills = new LinkedHashSet<>();
+    private final String softBudgetNotice;
+    private boolean noticeSent;
 
     public DubheAgentTurn(
             String taskId,
@@ -56,6 +60,53 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
             DubheAgentContextBudget budget,
             DubheAgentCompactor compactor,
             DubheAgentModel model
+    ) {
+        this(taskId, question, scope, registry, budget, compactor, model, null, null);
+    }
+
+    /** Same task with the wrap-up notice the runner injects at the soft step, and an optional resumed transcript. */
+    public DubheAgentTurn(
+            String taskId,
+            String question,
+            DubheScope scope,
+            DubheSkillRegistry registry,
+            DubheAgentContextBudget budget,
+            DubheAgentCompactor compactor,
+            DubheAgentModel model,
+            String softBudgetNotice
+    ) {
+        this(taskId, question, scope, registry, budget, compactor, model, softBudgetNotice, null);
+    }
+
+    /** Resumes a paused task: the existing transcript is replayed instead of starting over (G48). */
+    public static DubheAgentTurn resumed(
+            String taskId,
+            String question,
+            DubheScope scope,
+            DubheSkillRegistry registry,
+            DubheAgentContextBudget budget,
+            DubheAgentCompactor compactor,
+            DubheAgentModel model,
+            String softBudgetNotice,
+            List<DubheAgentEntry> transcript,
+            DubheAgentDigest digest
+    ) {
+        DubheAgentContextBudget effectiveBudget =
+                budget == null ? DubheAgentContextBudget.forWindow(32_768) : budget;
+        return new DubheAgentTurn(taskId, question, scope, registry, effectiveBudget, compactor, model,
+                softBudgetNotice, DubheAgentTranscript.resumed(effectiveBudget, question, transcript, digest));
+    }
+
+    private DubheAgentTurn(
+            String taskId,
+            String question,
+            DubheScope scope,
+            DubheSkillRegistry registry,
+            DubheAgentContextBudget budget,
+            DubheAgentCompactor compactor,
+            DubheAgentModel model,
+            String softBudgetNotice,
+            DubheAgentTranscript resumedTranscript
     ) {
         this.taskId = taskId == null ? "" : taskId.trim();
         this.question = question == null ? "" : question.trim();
@@ -67,7 +118,10 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
         }
         this.compactor = compactor;
         this.model = model;
-        this.transcript = new DubheAgentTranscript(this.budget, this.question);
+        this.softBudgetNotice = softBudgetNotice == null ? "" : softBudgetNotice.trim();
+        this.transcript = resumedTranscript != null
+                ? resumedTranscript
+                : new DubheAgentTranscript(this.budget, this.question);
     }
 
     @Override
@@ -81,7 +135,7 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
 
         DubheStepOutcome<DubheAgentModelReply> modelStep = model.next(new DubheAgentRequest(
                 taskId, question, transcript.entries(), directory(),
-                context.remainingMillis(), context.cancellation()));
+                context.remainingMillis(), context.cancellation(), softNotice(context)));
 
         if (modelStep instanceof DubheStepOutcome.Finished<?> finished) {
             return handleReply((DubheAgentModelReply) finished.result(), context);
@@ -169,6 +223,18 @@ public final class DubheAgentTurn implements DubheStepSource<DubheAgentAnswer> {
             normalized.add(new DubheSkillCall(id, call.skillId(), call.arguments()));
         }
         return normalized;
+    }
+
+    private String softNotice(DubheStepContext context) {
+        if (noticeSent || softBudgetNotice.isBlank()) {
+            return "";
+        }
+        int softStep = Math.max(1, (int) Math.ceil(context.policy().maxSteps() * SOFT_BUDGET_RATIO));
+        if (context.stepIndex() + 1 < softStep) {
+            return "";
+        }
+        noticeSent = true;
+        return softBudgetNotice;
     }
 
     private List<DubheSkillSpec> directory() {

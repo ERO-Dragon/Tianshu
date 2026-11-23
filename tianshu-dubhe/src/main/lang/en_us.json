@@ -100,6 +100,8 @@
   "dubhe.runtime.delegate.failed": "I could not look that up. Try asking me again.",
   "dubhe.runtime.delegate.timeout": "That lookup took too long, so I stopped.",
   "dubhe.runtime.delegate.cancelled": "That lookup was cancelled.",
+  "dubhe.runtime.delegate.paused": "I have not finished. Shall I keep going?",
+  "dubhe.runtime.delegate.expired": "That took too long, so I stopped.",
   "tianshu.dubhe.shared.event.detail.health_critical": "at %s health",
   "tianshu.dubhe.shared.event.detail.health_change": "lost %s health",
   "tianshu.dubhe.shared.event.detail.hunger_critical": "hunger at %s",

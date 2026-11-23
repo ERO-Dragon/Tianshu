@@ -1,6 +1,11 @@
 package com.rheinmetal.tianshu.dubhe.agent.delegate;
 
 import com.rheinmetal.tianshu.api.LogSink;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentEntry;
+import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentTranscript;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheRunTermination;
 import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRequestHandler;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventAppend;
@@ -18,6 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -205,7 +211,7 @@ class DubheDelegateServiceTest {
                         requests.add(payload);
                     },
                     new DubheDelegateRegistry(),
-                    null,
+                    new DubheDelegatePromptRepository(DubhePromptLanguageProvider.fixed(DubhePromptLanguage.ZH_CN)),
                     null,
                     null,
                     null,
@@ -303,5 +309,31 @@ class DubheDelegateServiceTest {
             }
         }
         fail("timed out waiting for " + what);
+    }
+
+    @Test
+    void anAgreementResumesThePausedTaskAsANewTicket() {
+        Fixture fixture = new Fixture();
+        fixture.service.registry().pause(new DubhePausedTask(
+                "dubhe.delegate.old", "session", DubheScope.unknown(), "暮色森林怎么进",
+                List.of(new DubheAgentEntry(DubheAgentEntry.Kind.BRIEF, "暮色森林怎么进")), null, 0, 1_000L));
+
+        DubheDelegateTicket ticket = fixture.service.delegate(DubheScope.unknown(), "session", "继续");
+
+        assertEquals("dubhe.delegate.old", ticket.resumes());
+        assertEquals("暮色森林怎么进", ticket.query());
+        assertEquals(1, fixture.pendingRuns.size(), "续跑同样交给后台车道");
+    }
+
+    @Test
+    void pausingNeedsProgressAndRemainingResumes() {
+        DubheAgentTranscript transcript = new DubheAgentTranscript(
+                DubheAgentContextBudget.forWindow(32_768), "问题");
+        assertFalse(DubheDelegateService.shouldPause(DubheRunTermination.ABORT_MAX_STEPS, transcript, 0));
+        transcript.append(DubheAgentEntry.assistant("一步"));
+        transcript.append(DubheAgentEntry.assistant("两步"));
+        assertTrue(DubheDelegateService.shouldPause(DubheRunTermination.ABORT_MAX_STEPS, transcript, 0));
+        assertFalse(DubheDelegateService.shouldPause(DubheRunTermination.ABORT_MAX_STEPS, transcript, 2));
+        assertFalse(DubheDelegateService.shouldPause(DubheRunTermination.COMPLETED, transcript, 0));
     }
 }
