@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 外部调用方视角的完整往返：别人 → 天枢的两个能力 → 目标模组。
  *
- * <p>验收台（§6 第 8 条）要的就是这条路径：RESEARCH 拿结论，RELAY 投递并查进度，调用方身份是
+ * <p>验收台（§6 第 8 条）要的就是这条路径：SEARCH 拿结论，RELAY 投递并查进度，调用方身份是
  * {@code ToolCaller.mod(...)}，不经过任何"提交任务给我规划"的入口。</p>
  */
 class DubheExternalRoundTripTest {
@@ -48,7 +48,7 @@ class DubheExternalRoundTripTest {
     }
 
     @Test
-    void anExternalCallerCanResearchAndRelay() {
+    void anExternalCallerCanSearchAndRelay() {
         DubheExternalCapabilities.register((payload, handler, timeout) ->
                 handler.onResult(LLMPromptResultPayload.completed(payload.requestId(), "先做传送门。")), prompts());
         CapabilityCatalog.register(new CapabilityDescriptor(
@@ -74,7 +74,7 @@ class DubheExternalRoundTripTest {
         JsonObject researchArgs = new JsonObject();
         researchArgs.addProperty("intent", "怎么去暮色森林");
         JsonObject research = CapabilityCatalog
-                .invoke(DubheExternalCapabilities.RESEARCH, researchArgs, OTHER_MOD, ToolSide.CLIENT).join();
+                .invoke(DubheExternalCapabilities.SEARCH, researchArgs, OTHER_MOD, ToolSide.CLIENT).join();
 
         assertEquals("先做传送门。", research.get("conclusion").getAsString());
         assertTrue(research.getAsJsonArray("sources").isEmpty());

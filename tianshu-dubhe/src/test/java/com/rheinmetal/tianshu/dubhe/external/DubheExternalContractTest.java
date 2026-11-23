@@ -33,7 +33,7 @@ class DubheExternalContractTest {
     }
 
     @Test
-    void dubheExposesExactlyResearchAndRelay() {
+    void dubheExposesExactlySearchAndRelay() {
         DubheExternalCapabilities.register((payload, handler, timeout) -> {
             throw new AssertionError("contract test never calls the model");
         }, prompts());
@@ -44,7 +44,7 @@ class DubheExternalContractTest {
                 .sorted()
                 .toList();
 
-        assertEquals(List.of("dubhe:relay", "dubhe:research"), exposed,
+        assertEquals(List.of("dubhe:relay", "dubhe:search"), exposed,
                 "the external surface is a closed set: research and relay only");
     }
 
@@ -63,7 +63,7 @@ class DubheExternalContractTest {
         }
         assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "diplomacy")).isEmpty(),
                 "the diplomacy skill is internal and must never appear as a capability");
-        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "research")).isPresent());
+        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "search")).isPresent());
         assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "relay")).isPresent());
     }
 

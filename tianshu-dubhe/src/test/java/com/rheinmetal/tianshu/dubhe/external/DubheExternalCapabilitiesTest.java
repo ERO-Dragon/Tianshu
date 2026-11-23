@@ -37,7 +37,7 @@ class DubheExternalCapabilitiesTest {
 
     @AfterEach
     void cleanUp() {
-        CapabilityCatalog.unregister(DubheExternalCapabilities.RESEARCH);
+        CapabilityCatalog.unregister(DubheExternalCapabilities.SEARCH);
         CapabilityCatalog.unregister(DubheExternalCapabilities.RELAY);
         CapabilityCatalog.unregister(TARGET);
     }
@@ -60,7 +60,7 @@ class DubheExternalCapabilitiesTest {
 
         JsonObject args = new JsonObject();
         args.addProperty("intent", "怎么进入暮色森林");
-        JsonObject result = CapabilityCatalog.invoke(DubheExternalCapabilities.RESEARCH, args, CALLER, ToolSide.CLIENT).join();
+        JsonObject result = CapabilityCatalog.invoke(DubheExternalCapabilities.SEARCH, args, CALLER, ToolSide.CLIENT).join();
 
         assertEquals("暮色森林需要先做传送门。", result.get("conclusion").getAsString());
         assertTrue(result.getAsJsonArray("sources").isEmpty(), "no retrieval module means no invented sources");
@@ -121,7 +121,7 @@ class DubheExternalCapabilitiesTest {
 
         JsonObject noIntent = new JsonObject();
         JsonObject researchError = CapabilityCatalog
-                .invoke(DubheExternalCapabilities.RESEARCH, noIntent, CALLER, ToolSide.CLIENT).join();
+                .invoke(DubheExternalCapabilities.SEARCH, noIntent, CALLER, ToolSide.CLIENT).join();
         assertFalse(researchError.get("ok").getAsBoolean(), "a malformed research request becomes an error value");
         JsonObject noTarget = new JsonObject();
         JsonObject relayError = CapabilityCatalog
