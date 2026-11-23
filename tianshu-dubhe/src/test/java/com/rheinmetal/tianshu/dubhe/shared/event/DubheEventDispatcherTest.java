@@ -32,7 +32,8 @@ class DubheEventDispatcherTest {
         DubheEventDecision decision = decide(event("mymod:ritual_complete", "line.ritual"), START);
 
         assertEquals(DubheEventTier.FREQUENT, decision.tier(), "an unknown kind may never interrupt");
-        assertEquals(DubheEventClass.DROP, decision.eventClass());
+        assertEquals(DubheEventClass.FOLD, decision.eventClass(),
+                "unknown kinds land on the window-only cell, never on speech");
         assertFalse(decision.speaksImmediately());
         assertFalse(decision.folded());
     }
@@ -85,7 +86,7 @@ class DubheEventDispatcherTest {
 
     /** A producer's highlight is a dynamic whitelist: it outranks the static blacklist row. */
     @Test
-    void aHighlightOutranksTheStaticBlacklist() {
+    void aHighlightOutranksTheStaticWeakening() {
         assertEquals(DubheEventClass.DROP,
                 decide(event("tianshu:block_break", "line.block"), START).eventClass(),
                 "the static blacklist drops a frequent kind");
@@ -97,7 +98,7 @@ class DubheEventDispatcherTest {
     }
 
     @Test
-    void suppressionRegistersAsABlacklistStep() {
+    void suppressionRegistersAsAWeakening() {
         DubheEventDescriptor suppressed = new DubheEventDescriptor(
                 "tianshu:death", null, true, false, DubheEventPayload.of(), DubheEventText.of("line.death"),
                 DubheEventFold.NONE, PRODUCER);
@@ -105,7 +106,7 @@ class DubheEventDispatcherTest {
         DubheEventDecision decision = decide(suppressed, START);
 
         assertEquals(DubheEventClass.SILENT, decision.eventClass(), "rare + blacklist is silent, not dropped");
-        assertTrue(decision.blacklisted());
+        assertEquals(DubheEventState.WEAKENED, decision.state());
     }
 
     /**
@@ -216,6 +217,39 @@ class DubheEventDispatcherTest {
         assertEquals(2, ((DubheEventAppend.Aggregated) due.get(1)).count());
     }
 
+    @Test
+    void aWindowOnlyCellFoldsBelowThresholdDropAndAboveItBecomeTransient() {
+        DubheEventDispatcher folding = new DubheEventDispatcher(
+                DubheEventTierTable.builtin(),
+                new DubheEventSettings() {
+                    @Override
+                    public int aggregateThreshold() {
+                        return 3;
+                    }
+                },
+                template -> "folded");
+
+        // health_change is frequent x normal, the FOLD cell.
+        for (int occurrence = 0; occurrence < 2; occurrence++) {
+            DubheEventDecision decision = folding.decide(
+                    event("tianshu:health_change", "line.health", DubheEventPayload.of(), FOLD),
+                    "sentence", START + occurrence * 100L);
+            assertEquals(DubheEventClass.FOLD, decision.eventClass());
+            assertTrue(decision.folded());
+        }
+        assertTrue(folding.flushAppends().isEmpty(), "below the threshold a FOLD window disappears");
+
+        for (int occurrence = 0; occurrence < 3; occurrence++) {
+            folding.decide(event("tianshu:health_change", "line.health", DubheEventPayload.of(), FOLD),
+                    "sentence", START + 1_000L + occurrence * 100L);
+        }
+        var due = folding.flushAppends();
+
+        assertEquals(1, due.size());
+        DubheEventAppend.Transient transientEntry = (DubheEventAppend.Transient) due.get(0);
+        assertTrue(transientEntry.transientEntry());
+        assertEquals(3, transientEntry.count());
+    }
     @Test
     void anEventWithoutAFoldShapeIsNotRetained() {
         DubheEventDecision decision = decide(

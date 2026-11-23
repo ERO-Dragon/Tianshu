@@ -6,23 +6,23 @@ import java.util.function.Function;
 /**
  * Turns a submitted event into the handling class the caller has to perform.
  *
- * <p>Three inputs decide, in this order: the effective tier, the effective blacklist flag, and how often the kind
- * has happened recently.
+ * <p>Three inputs decide, in this order: the effective frequency row, the attention state, and how often the kind has
+ * happened recently.</p>
  *
  * <ol>
- *   <li>{@link DubheEventFrequencyGate} corrects the tier when the kind keeps happening — a tier is a frequency, so the
- *       frequency question is answered in the tier, not in the handling class.</li>
- *   <li>{@link DubheEventPolicy} maps (corrected tier, list) to a class. It is a pure function: no threshold, no clock.</li>
- *   <li>A {@link DubheEventClass#SILENT} occurrence goes through the fold windows: the history gets one line with a
- *       count instead of one line per occurrence.</li>
+ *   <li>{@link DubheEventFrequencyGate} corrects the row when the kind keeps happening — frequency is answered by the
+ *       row, never by the state.</li>
+ *   <li>{@link DubheEventPolicy} maps (row, state) to one fixed class; it is a pure function with no threshold and
+ *       no clock.</li>
+ *   <li>{@link DubheEventClass#SILENT} goes through the counted fold windows; {@link DubheEventClass#FOLD} goes
+ *       through the window-only fold, whose line is marked transient and which drops below its threshold.</li>
  * </ol>
  *
  * <p>The class never touches wording: it decides, and the sentence it stores is the one the caller already
- * rendered from the descriptor's {@link DubheEventText}. Nothing here inspects {@link DubheEventDescriptor#sourceId()};
- * a module AX has never heard of follows exactly the same path as the built-in producer.
+ * rendered from the descriptor's {@link DubheEventText}.</p>
  *
  * <p>Not thread safe by design: events are submitted from the game loop. It owns the frequency gate and the fold
- * windows, so the caller only has to wire one object.
+ * windows, so the caller only has to wire one object.</p>
  */
 public final class DubheEventDispatcher {
     private final DubheEventTierTable tierTable;
@@ -53,32 +53,23 @@ public final class DubheEventDispatcher {
     /**
      * Resolves the handling class of one occurrence.
      *
-     * <p>A declared tier always wins over the table; otherwise the table decides, and an unknown kind falls back
-     * to {@link DubheEventTier#FREQUENT} — the most conservative tier, so a module AX does not know can never
-     * interrupt the player.
-     *
-     * <p>The order is fixed and each step owns one question: the frequency gate first corrects the <em>tier</em> (a tier
-     * is a frequency, so repetition belongs there), then {@link DubheEventPolicy} — a pure function of tier and list —
-     * names the class. A producer that marks everything as highlighted therefore cannot turn AX into a repeater: its
-     * kind is simply corrected to a more frequent tier, and the list then nudges that tier up one step instead of up
-     * from the original one.
-     *
-     * @param nowMillis monotonic wall clock of the calling tick; only windows use it, and it never reaches the
-     *                  appended line
+     * <p>A declared tier always wins over the table; otherwise the table decides, and an unknown kind falls back to
+     * {@link DubheEventTier#FREQUENT} — the most conservative row, so a module this one does not know can never
+     * interrupt the player.</p>
      */
     public DubheEventDecision decide(DubheEventDescriptor descriptor, String sentence, long nowMillis) {
         DubheEventTier declaredTier = resolveTier(descriptor);
         DubheEventTier tier = frequencyGate.correctedTier(descriptor.kind(), declaredTier, nowMillis);
-        DubheEventList list = resolveList(descriptor);
-        DubheEventClass eventClass = DubheEventPolicy.classFor(tier, list);
-        boolean blacklisted = list == DubheEventList.BLACKLIST;
-        if (eventClass != DubheEventClass.SILENT) {
-            return new DubheEventDecision(eventClass, tier, blacklisted, false);
+        DubheEventState state = resolveState(descriptor, tier);
+        DubheEventClass eventClass = DubheEventPolicy.classFor(tier, state);
+
+        boolean folded = false;
+        if (eventClass == DubheEventClass.SILENT) {
+            folded = aggregator.offer(descriptor, sentence, nowMillis);
+        } else if (eventClass == DubheEventClass.FOLD) {
+            folded = aggregator.offerTransient(descriptor, sentence, nowMillis);
         }
-        // Only the silent class folds: the history keeps one counted line instead of one line per occurrence, and
-        // the window key includes the rendered line so two different payloads of the same kind never merge.
-        boolean folded = aggregator.offer(descriptor, sentence, nowMillis);
-        return new DubheEventDecision(eventClass, tier, blacklisted, folded);
+        return new DubheEventDecision(eventClass, tier, state, folded);
     }
 
     /** Appends closed by an expired fold window; append them in order before the next turn. */
@@ -104,20 +95,18 @@ public final class DubheEventDispatcher {
     }
 
     /**
-     * Where this occurrence sits on the attention list.
+     * Which attention state this occurrence carries.
      *
-     * <p>The producer's per-occurrence flags come first: a {@code highlight} is a dynamic whitelist and outranks the
-     * static list (the module is the one that knows whether this occurrence matters); {@code suppress} is the
-     * standing "do not interrupt for this" of the producer and registers as a blacklist. Without either, the static
-     * table answers.
+     * <p>Per-occurrence flags come first: {@code highlight} is a dynamic emphasis and {@code suppress} a dynamic
+     * weakening; neither changes the row. Otherwise the table answers for the corrected row.</p>
      */
-    private DubheEventList resolveList(DubheEventDescriptor descriptor) {
+    private DubheEventState resolveState(DubheEventDescriptor descriptor, DubheEventTier tier) {
         if (descriptor.highlight()) {
-            return DubheEventList.WHITELIST;
+            return DubheEventState.EMPHASIS;
         }
         if (descriptor.suppress()) {
-            return DubheEventList.BLACKLIST;
+            return DubheEventState.WEAKENED;
         }
-        return tierTable.listOf(descriptor.kind());
+        return tierTable.stateFor(descriptor.kind(), tier);
     }
 }

@@ -114,7 +114,6 @@ class DubheEventLayerBoundaryTest {
         for (String retired : RETIRED_TIER_IDS) {
             assertFalse(table.toString().contains("\"tier\": " + retired), () -> "retired tier id in the table: " + retired);
         }
-        assertFalse(table.toString().contains("\"tier\":"), "the table stores a tier value per kind, not a tier field");
     }
 
 

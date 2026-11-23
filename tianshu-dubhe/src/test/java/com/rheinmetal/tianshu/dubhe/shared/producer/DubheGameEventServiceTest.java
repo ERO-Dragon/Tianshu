@@ -231,7 +231,7 @@ class DubheGameEventServiceTest {
     void aDroppedEventLeavesNoTrace() {
         DubheGameEventService service = service(false, true);
 
-        service.submit(event("tianshu:health_change", "line.health"), START);
+        service.submit(event("tianshu:block_break", "line.block"), START);
         service.flush(START + 60_000L);
 
         assertTrue(appended.isEmpty(), "the dropped class does not reach the history");

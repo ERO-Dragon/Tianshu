@@ -77,8 +77,13 @@ public record DubheEventDescriptor(
         return new DubheEventDescriptor(kind, tier, suppress, highlight, payload, text, fold, sourceId);
     }
 
-    /** Same event, marked or unmarked as worth a step up the ladder by its producer. */
+    /** Same event, marked or unmarked as worth a step up the matrix by its producer. */
     public DubheEventDescriptor withHighlight(boolean highlight) {
+        return new DubheEventDescriptor(kind, tier, suppress, highlight, payload, text, fold, sourceId);
+    }
+
+    /** Same event, marked or unmarked as deliberately weakened by its producer. */
+    public DubheEventDescriptor withSuppress(boolean suppress) {
         return new DubheEventDescriptor(kind, tier, suppress, highlight, payload, text, fold, sourceId);
     }
 

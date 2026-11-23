@@ -11,6 +11,7 @@ import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventSettings;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventSpeechSink;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventPayload;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventPolicy;
+import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventState;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventText;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventTexts;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventTierTable;
@@ -273,9 +274,11 @@ public final class DubheGameEventService {
         if (sentence.isBlank()) {
             return;
         }
+        DubheEventPolicy.Declaration declaration = DubheEventPolicy.declarationFor(behavior);
         DubheEventDescriptor descriptor = DubheEventDescriptor
-                .rendered(kind, DubheEventPolicy.tierFor(behavior), sourceId)
-                .withHighlight(DubheEventPolicy.highlightedFor(behavior));
+                .rendered(kind, declaration.tier(), sourceId)
+                .withHighlight(declaration.state() == DubheEventState.EMPHASIS)
+                .withSuppress(declaration.state() == DubheEventState.WEAKENED);
         land(descriptor, sentence, nowMillis);
     }
 
@@ -289,6 +292,12 @@ public final class DubheGameEventService {
             case SILENT -> {
                 if (!decision.folded()) {
                     append(new DubheEventAppend.Single(descriptor.kind(), sentence));
+                }
+            }
+            case FOLD -> {
+                if (!decision.folded()) {
+                    // No fold shape: one window-only line, still excluded from compaction.
+                    append(new DubheEventAppend.Transient(descriptor.kind(), 1, sentence));
                 }
             }
             case IMMEDIATE -> submitImmediate(descriptor, sentence, nowMillis);

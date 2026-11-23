@@ -20,45 +20,33 @@ class DubheEventTierTableTest {
         assertEquals(8, table.count(DubheEventTier.RARE));
         assertEquals(12, table.count(DubheEventTier.NORMAL));
         assertEquals(20, table.count(DubheEventTier.FREQUENT));
-        assertEquals(14, table.count(DubheEventList.BLACKLIST));
-        assertEquals(5, table.count(DubheEventList.WHITELIST), "the shipped whitelist is the actionable warnings");
-        assertEquals(21, table.count(DubheEventList.NEUTRAL));
+        assertEquals(14, table.count(DubheEventState.WEAKENED));
+        assertEquals(5, table.count(DubheEventState.EMPHASIS), "the shipped emphasis set is the actionable warnings");
+        assertEquals(21, table.count(DubheEventState.NORMAL));
     }
 
     @Test
-    void everyBlacklistedKindIsFrequentTier() {
-        // The data has not changed, only the names: every kind the player asked to hear less of is a frequent one.
-        for (DubheEventTierTable.Entry entry : DubheEventTierTable.builtin().entries()) {
-            if (entry.list() == DubheEventList.BLACKLIST) {
-                assertEquals(DubheEventTier.FREQUENT, entry.tier(), "blacklisted kind must be frequent: " + entry.kind());
-            }
-        }
-    }
-
-    @Test
-    void knownKindsResolveTheirDocumentedTierAndListState() {
+    void knownKindsResolveTheirDocumentedTierAndState() {
         DubheEventTierTable table = DubheEventTierTable.builtin();
 
         assertEquals(DubheEventTier.RARE, table.tierOf("tianshu:death").orElseThrow());
-        assertEquals(DubheEventList.WHITELIST, table.listOf("tianshu:death"));
+        assertEquals(DubheEventState.EMPHASIS, table.stateFor("tianshu:death", DubheEventTier.RARE));
         assertEquals(DubheEventTier.NORMAL, table.tierOf("tianshu:damage_taken").orElseThrow());
-        assertEquals(DubheEventList.NEUTRAL, table.listOf("tianshu:damage_taken"),
+        assertEquals(DubheEventState.NORMAL, table.stateFor("tianshu:damage_taken", DubheEventTier.NORMAL),
                 "a damage line is context, not an interruption");
         assertEquals(DubheEventTier.FREQUENT, table.tierOf("tianshu:health_change").orElseThrow());
-        assertEquals(DubheEventList.NEUTRAL, table.listOf("tianshu:health_change"));
-        assertEquals(DubheEventTier.FREQUENT, table.tierOf("tianshu:block_break").orElseThrow());
-        assertEquals(DubheEventList.BLACKLIST, table.listOf("tianshu:block_break"));
-        assertTrue(table.blacklisted("tianshu:block_break"));
+        assertEquals(DubheEventState.NORMAL, table.stateFor("tianshu:health_change", DubheEventTier.FREQUENT));
+        assertEquals(DubheEventState.WEAKENED, table.stateFor("tianshu:block_break", DubheEventTier.FREQUENT));
     }
 
     @Test
-    void unknownKindHasNoTierAndIsNeutral() {
+    void unknownKindHasNoTierAndIsNormal() {
         DubheEventTierTable table = DubheEventTierTable.builtin();
 
         assertTrue(table.tierOf("mymod:ritual_complete").isEmpty());
-        assertEquals(DubheEventList.NEUTRAL, table.listOf("mymod:ritual_complete"));
+        assertEquals(DubheEventState.NORMAL, table.stateFor("mymod:ritual_complete", DubheEventTier.RARE));
         assertTrue(table.tierOf(null).isEmpty());
-        assertEquals(DubheEventList.NEUTRAL, table.listOf(null));
+        assertEquals(DubheEventState.NORMAL, table.stateFor(null, null));
     }
 
     @Test
@@ -70,54 +58,41 @@ class DubheEventTierTableTest {
     }
 
     @Test
-    void entryWithoutAValidTierIsRejected() {
-        JsonObject noTier = JsonParser.parseString("""
-                { "kinds": { "mymod:thing": { "list": "neutral" } } }
-                """).getAsJsonObject();
-        JsonObject unknownTier = JsonParser.parseString("""
-                { "kinds": { "mymod:thing": "HIGH" } }
-                """).getAsJsonObject();
-
-        assertThrows(IllegalStateException.class, () -> DubheEventTierTable.fromJson(noTier));
-        assertThrows(IllegalStateException.class, () -> DubheEventTierTable.fromJson(unknownTier),
-                "the retired tier names must not parse any more");
-    }
-
-    /**
-     * The list is its own section: a kind the list mentions but the tier table does not still gets the list step, and
-     * its tier stays unknown so the dispatcher applies its conservative fallback.
-     */
-    @Test
-    void theListIsParsedSeparatelyFromTheTiers() {
+    void aV5EntryCarriesTierAndPerRowStates() {
         JsonObject json = JsonParser.parseString("""
                 {
-                  "kinds": { "mymod:thing": "NORMAL", "mymod:other": "RARE" },
-                  "list": { "mymod:thing": "whitelist", "mymod:other": "blacklist" }
+                  "schemaVersion": 5,
+                  "kinds": {
+                    "mymod:thing": {
+                      "tier": "NORMAL",
+                      "states": { "NORMAL": "emphasis", "FREQUENT": "normal" }
+                    }
+                  }
                 }
                 """).getAsJsonObject();
 
         DubheEventTierTable table = DubheEventTierTable.fromJson(json);
 
-        assertEquals(2, table.size());
         assertEquals(DubheEventTier.NORMAL, table.tierOf("mymod:thing").orElseThrow());
-        assertEquals(DubheEventList.WHITELIST, table.listOf("mymod:thing"));
-        assertEquals(DubheEventList.BLACKLIST, table.listOf("mymod:other"));
-        assertEquals(1, table.count(DubheEventList.WHITELIST));
-        assertEquals(1, table.count(DubheEventList.BLACKLIST));
+        assertEquals(DubheEventState.EMPHASIS, table.stateFor("mymod:thing", DubheEventTier.NORMAL));
+        assertEquals(DubheEventState.NORMAL, table.stateFor("mymod:thing", DubheEventTier.FREQUENT));
     }
 
     @Test
-    void aListedKindWithoutATierKeepsOnlyItsListStep() {
-        JsonObject json = JsonParser.parseString("""
-                {
-                  "kinds": { "mymod:thing": "NORMAL" },
-                  "list": { "mymod:unlisted": "blacklist" }
-                }
+    void malformedEntriesAreRejected() {
+        JsonObject wrongVersion = JsonParser.parseString("""
+                { "schemaVersion": 2, "kinds": { "mymod:thing": "NORMAL" } }
+                """).getAsJsonObject();
+        JsonObject noTier = JsonParser.parseString("""
+                { "schemaVersion": 5, "kinds": { "mymod:thing": { "states": { "NORMAL": "normal" } } } }
+                """).getAsJsonObject();
+        JsonObject missingOwnRow = JsonParser.parseString("""
+                { "schemaVersion": 5, "kinds": { "mymod:thing": { "tier": "NORMAL",
+                  "states": { "FREQUENT": "normal" } } } }
                 """).getAsJsonObject();
 
-        DubheEventTierTable table = DubheEventTierTable.fromJson(json);
-
-        assertTrue(table.tierOf("mymod:unlisted").isEmpty(), "no tier is invented for a listed-only kind");
-        assertEquals(DubheEventList.BLACKLIST, table.listOf("mymod:unlisted"));
+        assertThrows(IllegalStateException.class, () -> DubheEventTierTable.fromJson(wrongVersion));
+        assertThrows(IllegalStateException.class, () -> DubheEventTierTable.fromJson(noTier));
+        assertThrows(IllegalStateException.class, () -> DubheEventTierTable.fromJson(missingOwnRow));
     }
 }

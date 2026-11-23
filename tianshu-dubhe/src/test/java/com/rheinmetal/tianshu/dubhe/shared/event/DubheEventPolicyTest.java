@@ -6,69 +6,53 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * The policy matrix, expanded from the ladder rather than written as nine cases.
+ * The nine-cell matrix and its inverse.
  *
- * <p>The ladder is the thing being pinned: baseline per tier, one step for the list, both ends clamped. The nine
- * cells below are the expansion the design document states, so a change to either the baselines or the clamping
- * shows up here as a broken cell instead of as a quietly different behaviour.
+ * <p>The matrix is the contract: the {@code FREQUENT} row contains no speaking class (H1), and the two cells that
+ * used to collapse into {@code DROP} now fold into the window instead (FOLD).</p>
  */
 class DubheEventPolicyTest {
 
     @Test
-    void theMatrixExpandsFromTheLadder() {
-        // RARE: rare enough that a whitelist entry is worth interrupting for.
-        assertClass(DubheEventClass.IMMEDIATE, DubheEventTier.RARE, DubheEventList.WHITELIST);
-        assertClass(DubheEventClass.DEFERRED, DubheEventTier.RARE, DubheEventList.NEUTRAL);
-        assertClass(DubheEventClass.SILENT, DubheEventTier.RARE, DubheEventList.BLACKLIST);
+    void theNineCellsAreFixed() {
+        assertClass(DubheEventClass.IMMEDIATE, DubheEventTier.RARE, DubheEventState.EMPHASIS);
+        assertClass(DubheEventClass.DEFERRED, DubheEventTier.RARE, DubheEventState.NORMAL);
+        assertClass(DubheEventClass.SILENT, DubheEventTier.RARE, DubheEventState.WEAKENED);
 
-        // NORMAL: worth saying during a lull, silent when marked, never heard when both.
-        assertClass(DubheEventClass.DEFERRED, DubheEventTier.NORMAL, DubheEventList.WHITELIST);
-        assertClass(DubheEventClass.SILENT, DubheEventTier.NORMAL, DubheEventList.NEUTRAL);
-        assertClass(DubheEventClass.DROP, DubheEventTier.NORMAL, DubheEventList.BLACKLIST);
+        assertClass(DubheEventClass.DEFERRED, DubheEventTier.NORMAL, DubheEventState.EMPHASIS);
+        assertClass(DubheEventClass.SILENT, DubheEventTier.NORMAL, DubheEventState.NORMAL);
+        assertClass(DubheEventClass.FOLD, DubheEventTier.NORMAL, DubheEventState.WEAKENED);
 
-        // FREQUENT: the baseline is already dropped; a whitelist entry lifts it back to a counted history line.
-        assertClass(DubheEventClass.SILENT, DubheEventTier.FREQUENT, DubheEventList.WHITELIST);
-        assertClass(DubheEventClass.DROP, DubheEventTier.FREQUENT, DubheEventList.NEUTRAL);
-        assertClass(DubheEventClass.DROP, DubheEventTier.FREQUENT, DubheEventList.BLACKLIST);
+        assertClass(DubheEventClass.SILENT, DubheEventTier.FREQUENT, DubheEventState.EMPHASIS);
+        assertClass(DubheEventClass.FOLD, DubheEventTier.FREQUENT, DubheEventState.NORMAL);
+        assertClass(DubheEventClass.DROP, DubheEventTier.FREQUENT, DubheEventState.WEAKENED);
     }
 
-    /** A blacklisted rare event is still worth a counted history line: it is quieted, not thrown away. */
+    /** H1 as a property of the table: no state on the frequent row can reach the voice channel. */
     @Test
-    void aBlacklistedRareEventIsSilentNotDropped() {
-        assertEquals(DubheEventClass.SILENT, DubheEventPolicy.classFor(DubheEventTier.RARE, DubheEventList.BLACKLIST));
-        assertEquals(DubheEventPolicy.baselineFor(DubheEventTier.RARE).downgraded(),
-                DubheEventPolicy.classFor(DubheEventTier.RARE, DubheEventList.BLACKLIST),
-                "one step down from the rare baseline is silent");
-    }
-
-    @Test
-    void theLadderClampsAtBothEnds() {
-        assertEquals(DubheEventClass.IMMEDIATE, DubheEventClass.IMMEDIATE.upgraded());
-        assertEquals(DubheEventClass.DROP, DubheEventClass.DROP.downgraded());
-        assertEquals(DubheEventClass.IMMEDIATE, DubheEventClass.DEFERRED.upgraded());
-        assertEquals(DubheEventClass.DROP, DubheEventClass.SILENT.downgraded());
-    }
-
-    @Test
-    void aNeutralKindFollowsItsTierBaseline() {
-        for (DubheEventTier tier : DubheEventTier.values()) {
-            assertEquals(DubheEventPolicy.baselineFor(tier), DubheEventPolicy.classFor(tier, DubheEventList.NEUTRAL));
+    void theFrequentRowCannotSpeak() {
+        for (DubheEventState state : DubheEventState.values()) {
+            assertEquals(false, DubheEventPolicy.classFor(DubheEventTier.FREQUENT, state).speaks(),
+                    "frequent row x " + state);
         }
     }
 
-    /**
-     * The event entry external modules submit to states a behaviour, not a frequency; the translation back into a
-     * declaration has to reproduce exactly that behaviour, otherwise a producer asking for "say it now" would get a
-     * counted history line instead.
-     */
     @Test
-    void theInverseOfTheMatrixReproducesTheRequestedBehaviour() {
+    void unknownInputsFallBackToTheMostConservativeCell() {
+        assertEquals(DubheEventClass.FOLD, DubheEventPolicy.classFor(null, null),
+                "the fallback is the frequent row with a normal state, which is window-only");
+        assertEquals(DubheEventClass.FOLD, DubheEventPolicy.classFor(DubheEventTier.FREQUENT, null));
+    }
+
+    /** A producer states the behaviour it wants; the inverse must reproduce exactly that behaviour. */
+    @Test
+    void theInverseReproducesTheRequestedBehaviour() {
         for (DubheEventClass requested : DubheEventClass.values()) {
             if (requested == DubheEventClass.DROP) {
                 continue;
             }
-            DubheEventList list = DubheEventPolicy.highlightedFor(requested) ? DubheEventList.WHITELIST : DubheEventList.NEUTRAL;
-            assertEquals(requested, DubheEventPolicy.classFor(DubheEventPolicy.tierFor(requested), list),
+            DubheEventPolicy.Declaration declaration = DubheEventPolicy.declarationFor(requested);
+            assertEquals(requested, DubheEventPolicy.classFor(declaration.tier(), declaration.state()),
                     "a producer asking for " + requested + " must land on it");
         }
     }
@@ -76,11 +60,11 @@ class DubheEventPolicyTest {
     /** "Nothing happens" is the absence of a submission, so it has no translation into the table. */
     @Test
     void nothingCanBeSubmittedAsDrop() {
-        assertThrows(IllegalArgumentException.class, () -> DubheEventPolicy.tierFor(DubheEventClass.DROP));
-        assertThrows(IllegalArgumentException.class, () -> DubheEventPolicy.tierFor(null));
+        assertThrows(IllegalArgumentException.class, () -> DubheEventPolicy.declarationFor(DubheEventClass.DROP));
+        assertThrows(IllegalArgumentException.class, () -> DubheEventPolicy.declarationFor(null));
     }
 
-    private static void assertClass(DubheEventClass expected, DubheEventTier tier, DubheEventList list) {
-        assertEquals(expected, DubheEventPolicy.classFor(tier, list), tier + " x " + list);
+    private static void assertClass(DubheEventClass expected, DubheEventTier row, DubheEventState state) {
+        assertEquals(expected, DubheEventPolicy.classFor(row, state), row + " x " + state);
     }
 }

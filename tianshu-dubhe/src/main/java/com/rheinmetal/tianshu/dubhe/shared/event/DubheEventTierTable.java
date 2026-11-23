@@ -10,36 +10,33 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Built-in tier table and attention list for event kinds.
+ * Built-in tier table and per-row attention states for event kinds.
  *
- * <p>The table is data, not code: it ships as {@code dubhe_event_tiers.json} next to this package so the built-in kinds
- * can be audited against the design document without reading Java. It holds two separate things, because they
- * answer two separate questions:
+ * <p>The table is data, not code: it ships as {@code dubhe_event_tiers.json} next to this package so the built-in
+ * kinds can be audited against the design document without reading Java. Each kind declares:</p>
  *
  * <ul>
- *   <li>{@code kinds} — how often each kind happens ({@link DubheEventTier});</li>
- *   <li>{@code list} — where the player put it on the attention list ({@link DubheEventList}); a kind that is absent is
- *       {@link DubheEventList#NEUTRAL}.</li>
+ *   <li>{@code tier} — how often it happens ({@link DubheEventTier});</li>
+ *   <li>{@code states} — one {@link DubheEventState} per reachable row. Only the rows its tier can be corrected to
+ *       are stored: a rare kind has three, a normal kind two, a frequent kind one.</li>
  * </ul>
  *
- * <p>Lookups stay permissive on purpose: an unknown kind has no tier and is neutral, and the dispatcher turns that
- * into the most conservative fallback.
- *
- * <p>The table says nothing about wording. How a folded window reads is declared by the descriptor's
- * {@link DubheEventFold}, so a kind unknown to this table can still fold as long as its producer names a fold shape and
- * its template resolves through the session's text provider.
+ * <p>Lookups stay permissive: an unknown kind has no tier and is {@link DubheEventState#NORMAL}, the dispatcher then
+ * falls back to the most conservative row.</p>
  */
 public final class DubheEventTierTable {
     private static final String BUILTIN_RESOURCE =
             "/com/rheinmetal/tianshu/dubhe/shared/event/dubhe_event_tiers.json";
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 5;
     private static final String KINDS_FIELD = "kinds";
-    private static final String LIST_FIELD = "list";
+    private static final String TIER_FIELD = "tier";
+    private static final String STATES_FIELD = "states";
 
     private static final DubheEventTierTable BUILTIN = loadBuiltin();
 
@@ -50,8 +47,18 @@ public final class DubheEventTierTable {
         this.entries = Collections.unmodifiableMap(new LinkedHashMap<>(entries));
     }
 
-    /** One table row: the tier of a kind and where it sits on the attention list. */
-    public record Entry(String kind, DubheEventTier tier, DubheEventList list) {
+    /** One table row: the declared tier of a kind and its state on each reachable frequency row. */
+    public record Entry(String kind, DubheEventTier tier, Map<DubheEventTier, DubheEventState> states) {
+
+        public Entry {
+            states = states == null ? Map.of() : Map.copyOf(states);
+        }
+
+        /** The state on {@code row}; rows the kind cannot reach fall back to the declared row's state. */
+        public DubheEventState stateOn(DubheEventTier row) {
+            DubheEventState declared = states.get(tier);
+            return states.getOrDefault(row, declared == null ? DubheEventState.NORMAL : declared);
+        }
     }
 
     /** Table shipped with the mod. */
@@ -64,18 +71,10 @@ public final class DubheEventTierTable {
         return entry == null || entry.tier() == null ? Optional.empty() : Optional.of(entry.tier());
     }
 
-    /** Where the given kind sits on the attention list; a kind the table does not mention is neutral. */
-    public DubheEventList listOf(String kind) {
+    /** The state of a kind on one row; unknown kinds and unknown rows are {@link DubheEventState#NORMAL}. */
+    public DubheEventState stateFor(String kind, DubheEventTier row) {
         Entry entry = entry(kind);
-        return entry == null ? DubheEventList.NEUTRAL : entry.list();
-    }
-
-    public boolean blacklisted(String kind) {
-        return listOf(kind) == DubheEventList.BLACKLIST;
-    }
-
-    public boolean whitelisted(String kind) {
-        return listOf(kind) == DubheEventList.WHITELIST;
+        return entry == null ? DubheEventState.NORMAL : entry.stateOn(row);
     }
 
     public Collection<Entry> entries() {
@@ -90,12 +89,15 @@ public final class DubheEventTierTable {
         return entries.values().stream().filter(entry -> entry.tier() == tier).count();
     }
 
-    public long count(DubheEventList list) {
-        return entries.values().stream().filter(entry -> entry.list() == list).count();
+    /** Kinds whose declared row carries {@code state}. */
+    public long count(DubheEventState state) {
+        return entries.values().stream()
+                .filter(entry -> entry.stateOn(entry.tier()) == state)
+                .count();
     }
 
     /**
-     * Parses a table document.
+     * Parses a v5 table document.
      *
      * @throws IllegalStateException when the document is malformed; a broken built-in table is a deployment error
      *                               that must fail fast instead of degrading
@@ -104,6 +106,10 @@ public final class DubheEventTierTable {
         if (json == null || !json.has(KINDS_FIELD) || !json.get(KINDS_FIELD).isJsonObject()) {
             throw new IllegalStateException("event tier table has no " + KINDS_FIELD);
         }
+        int version = json.has("schemaVersion") ? json.get("schemaVersion").getAsInt() : -1;
+        if (version != SCHEMA_VERSION) {
+            throw new IllegalStateException("event tier table schema is " + version + ", expected " + SCHEMA_VERSION);
+        }
         Map<String, Entry> parsed = new LinkedHashMap<>();
         JsonObject kinds = json.getAsJsonObject(KINDS_FIELD);
         for (Map.Entry<String, JsonElement> raw : kinds.entrySet()) {
@@ -111,69 +117,54 @@ public final class DubheEventTierTable {
             if (kind == null || kind.isBlank()) {
                 throw new IllegalStateException("event tier table contains a blank kind");
             }
-            if (!raw.getValue().isJsonPrimitive()) {
-                throw new IllegalStateException("event tier entry is not a tier value: " + kind);
+            if (!raw.getValue().isJsonObject()) {
+                throw new IllegalStateException("event tier entry is not an object: " + kind);
             }
-            DubheEventTier tier = DubheEventTier.fromId(raw.getValue().getAsString());
+            JsonObject body = raw.getValue().getAsJsonObject();
+            DubheEventTier tier = DubheEventTier.fromId(text(body, TIER_FIELD));
             if (tier == null) {
                 throw new IllegalStateException("event tier entry has no valid tier: " + kind);
             }
-            parsed.put(kind.trim(), new Entry(kind.trim(), tier, DubheEventList.NEUTRAL));
-        }
-        if (parsed.isEmpty()) {
-            throw new IllegalStateException("event tier table is empty");
-        }
-        Map<String, Entry> withLists = new LinkedHashMap<>(parsed);
-        if (json.has(LIST_FIELD) && json.get(LIST_FIELD).isJsonObject()) {
-            for (Map.Entry<String, JsonElement> raw : json.getAsJsonObject(LIST_FIELD).entrySet()) {
-                String kind = raw.getKey() == null ? "" : raw.getKey().trim();
-                if (kind.isEmpty()) {
-                    throw new IllegalStateException("event list contains a blank kind");
-                }
-                if (!raw.getValue().isJsonPrimitive()) {
-                    throw new IllegalStateException("event list entry is not a list value: " + kind);
-                }
-                DubheEventList list = DubheEventList.fromId(raw.getValue().getAsString());
-                Entry existing = withLists.get(kind);
-                if (existing == null) {
-                    // A listed kind with no tier is legal: the tier falls back to the most conservative one, while the
-                    // list still moves it. Keeping the row makes the audit read the file, not guess.
-                    withLists.put(kind, new Entry(kind, null, list));
-                } else {
-                    withLists.put(kind, new Entry(kind, existing.tier(), list));
+            Map<DubheEventTier, DubheEventState> states = new EnumMap<>(DubheEventTier.class);
+            if (body.has(STATES_FIELD) && body.get(STATES_FIELD).isJsonObject()) {
+                for (Map.Entry<String, JsonElement> stateRaw : body.getAsJsonObject(STATES_FIELD).entrySet()) {
+                    DubheEventTier row = DubheEventTier.fromId(stateRaw.getKey());
+                    if (row == null) {
+                        throw new IllegalStateException("event state has no valid row: " + kind);
+                    }
+                    DubheEventState state = DubheEventState.fromId(stateRaw.getValue().getAsString());
+                    states.put(row, state);
                 }
             }
+            if (!states.containsKey(tier)) {
+                throw new IllegalStateException("event " + kind + " declares no state for its own row " + tier.id());
+            }
+            parsed.put(kind.trim(), new Entry(kind.trim(), tier, states));
         }
-        return new DubheEventTierTable(withLists);
+        return new DubheEventTierTable(parsed);
     }
 
     private Entry entry(String kind) {
-        return kind == null ? null : entries.get(kind.trim());
+        return kind == null ? null : entries.get(kind);
+    }
+
+    private static String text(JsonObject body, String field) {
+        JsonElement value = body.get(field);
+        return value == null || value.isJsonNull() ? "" : value.getAsString();
     }
 
     private static DubheEventTierTable loadBuiltin() {
         try (InputStream stream = DubheEventTierTable.class.getResourceAsStream(BUILTIN_RESOURCE)) {
             if (stream == null) {
-                throw new IllegalStateException("missing event tier table resource: " + BUILTIN_RESOURCE);
+                throw new IllegalStateException("missing built-in event tier table: " + BUILTIN_RESOURCE);
             }
             try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-                JsonElement element = JsonParser.parseReader(reader);
-                if (!element.isJsonObject()) {
-                    throw new IllegalStateException("event tier table resource is not a JSON object");
-                }
-                JsonObject json = element.getAsJsonObject();
-                int schemaVersion = json.has("schemaVersion") && !json.get("schemaVersion").isJsonNull()
-                        ? json.get("schemaVersion").getAsInt()
-                        : SCHEMA_VERSION;
-                if (schemaVersion != SCHEMA_VERSION) {
-                    throw new IllegalStateException("unsupported event tier table schema: " + schemaVersion);
-                }
-                return fromJson(json);
+                return fromJson(JsonParser.parseReader(reader).getAsJsonObject());
             }
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalStateException("failed to read event tier table resource", e);
+        } catch (IllegalStateException broken) {
+            throw broken;
+        } catch (Exception failure) {
+            throw new IllegalStateException("cannot read the built-in event tier table", failure);
         }
     }
 }

@@ -46,11 +46,23 @@ final class DubheEventAggregator {
      *         immediately
      */
     boolean offer(DubheEventDescriptor descriptor, String sentence, long nowMillis) {
+        return offer(descriptor, sentence, nowMillis, false);
+    }
+
+    /**
+     * Offers one occurrence for a window-only fold: the closed line is marked transient and below the threshold the
+     * occurrences are dropped instead of degrading to singles (G38).
+     */
+    boolean offerTransient(DubheEventDescriptor descriptor, String sentence, long nowMillis) {
+        return offer(descriptor, sentence, nowMillis, true);
+    }
+
+    private boolean offer(DubheEventDescriptor descriptor, String sentence, long nowMillis, boolean transientMode) {
         if (descriptor.fold() == DubheEventFold.NONE) {
             // A one-off moment keeps its occurrences separate: there is no fold shape to word.
             return false;
         }
-        WindowKey key = new WindowKey(descriptor.kind(), identityOf(descriptor.text()));
+        WindowKey key = new WindowKey(descriptor.kind(), identityOf(descriptor.text()), transientMode);
         Window window = windows.get(key);
         if (window != null && isDue(window, nowMillis)) {
             // The window went idle before this occurrence arrived. Close it into the pending queue
@@ -104,10 +116,20 @@ final class DubheEventAggregator {
     }
 
     private List<DubheEventAppend> close(Window window) {
-        if (window.items.size() < Math.max(2, settings.aggregateThreshold())) {
+        int count = window.items.size();
+        if (window.key.transientMode()) {
+            // Window-only: below the threshold it is noise and disappears; it never degrades to singles.
+            if (count < Math.max(2, settings.aggregateThreshold())) {
+                return List.of();
+            }
+            String folded = render(window, count);
+            return folded.isBlank()
+                    ? List.of()
+                    : List.of(new DubheEventAppend.Transient(window.key.kind(), count, folded.trim()));
+        }
+        if (count < Math.max(2, settings.aggregateThreshold())) {
             return singles(window);
         }
-        int count = window.items.size();
         String sentence = render(window, count);
         if (sentence.isBlank()) {
             // The fold template could not be worded; the occurrences survive as single entries.
@@ -183,7 +205,7 @@ final class DubheEventAggregator {
     }
 
     /** Kind plus the occurrence's identity: two different subjects must never share one count. */
-    private record WindowKey(String kind, String identity) {
+    private record WindowKey(String kind, String identity, boolean transientMode) {
     }
 
     private record Item(String text, Integer magnitude) {
