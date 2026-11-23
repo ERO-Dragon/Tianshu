@@ -39,7 +39,7 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.PLAYER_WRITE;
     }
 
     @Override

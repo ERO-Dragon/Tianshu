@@ -72,7 +72,8 @@ class BlockInteractToolTest {
 
         JsonObject denied = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.agent(false));
         assertFalse(denied.get("ok").getAsBoolean());
-        assertEquals("NO_PERMISSION", denied.get("code").getAsString());
+        // An agent has no actor to act as; that is a parameter problem, not a missing permission.
+        assertEquals("INVALID_ARGS", denied.get("code").getAsString());
     }
 
     @Test

@@ -38,7 +38,7 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.PLAYER_WRITE;
     }
 
     @Override

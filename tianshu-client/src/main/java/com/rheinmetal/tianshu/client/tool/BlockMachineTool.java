@@ -44,7 +44,7 @@ public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.PLAYER_WRITE;
     }
 
     @Override

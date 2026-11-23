@@ -68,7 +68,8 @@ class BlockMachineToolTest {
         TianshuTools.register(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
         JsonObject denied = envelope(FUEL, ToolCaller.agent(false));
-        assertEquals("NO_PERMISSION", denied.get("code").getAsString());
+        // An agent has no actor to act as; that is a parameter problem, not a missing permission.
+        assertEquals("INVALID_ARGS", denied.get("code").getAsString());
     }
 
     @Test

@@ -41,7 +41,7 @@ public final class ContainerTransferTool implements
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.PLAYER_WRITE;
     }
 
     @Override

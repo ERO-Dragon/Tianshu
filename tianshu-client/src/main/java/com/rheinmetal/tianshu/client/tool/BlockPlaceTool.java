@@ -37,7 +37,7 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.PLAYER_WRITE;
     }
 
     @Override
