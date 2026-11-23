@@ -51,7 +51,7 @@ metadata:
 2. **决策表**：玩家这句话 → 先调哪个工具 → 看返回的哪个字段；
 3. **至少一个完整示例**：真实参数 JSON + 返回字段 + 该说什么；
 4. **失败与确认**：写操作何时先确认、失败怎么说；
-5. **按需参考**：哪类细节去 `references/` 的哪一篇。
+5. **按需参考**：哪类细节去 `references/` 的哪一篇。**references 按稳定轴分**：平台工具按档位（read-only / conservative / full），不要按工具逐个拆。
 
 只写"有哪些工具/有哪些档位"不够——那是目录，不是可执行的说明。
 
@@ -81,7 +81,7 @@ metadata:
 | 技能 | 状态 | 说明 |
 |---|---|---|
 | `search` | 对外已发布 SKILL（内容待路由表细化） | 联网技能族入口 |
-| `work` | **已建**（SKILL.md + 1 篇 reference） | 天枢的工作策略：顺序与边界；工具清单与三档细节引用平台技能 `tianshu:tianshu-tools`，不重复 |
+| `work` | **已建**（SKILL.md + 1 篇 reference） | 天枢的工作策略：顺序与边界；工具清单与三档细节引用平台技能 `tianshu:minecraft-tools`，不重复 |
 | `memory` | 待建 | 记忆检索与压缩（当前压缩是内部维护服务） |
 | `diplomacy` | 已实现（代码形态，待迁包） | 对外投递与按需查询；`relay` 是它旗下的一类 reference |
 
@@ -91,14 +91,14 @@ metadata:
 
 ## 8. 共享技能：平台注册、模组运行时读取
 
-三档与工具清单属于**平台公共知识**：舟楫把它注册成 SKILL（`tianshu:tianshu-tools`），任何模组都能读。
+三档与工具清单属于**平台公共知识**：舟楫把它注册成 SKILL（`tianshu:minecraft-tools`），任何模组都能读。
 模组不保存副本，运行时通过保留工具 `tianshu:capability.read` 去舟楫取：
 
 - 列可用技能：不带 `id`；
 - 读正文：带 `id`；
-- 读参考：带 `id` + `file`（如 `references/tiers.md`）；长文用 `page`。
+- 读参考：带 `id` + `file`（如 `references/read-only.md`）；长文用 `page`。
 
-天枢把它包成内部技能 `read-shared-skill`；`work` 技能第 0 步先读 `tianshu:tianshu-tools`，再按其中的三档与工具清单操作。平台改了说明，下一次读取即生效。
+天枢把它包成内部技能 `read-shared-skill`；`work` 技能第 0 步先读 `tianshu:minecraft-tools`，再按其中的三档与工具清单操作。平台改了说明，下一次读取即生效。
 
 ## 9. 验收
 
