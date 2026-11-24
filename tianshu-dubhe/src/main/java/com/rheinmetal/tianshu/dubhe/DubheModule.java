@@ -871,7 +871,7 @@ public final class DubheModule implements TianshuManagedModule {
         }
         if (payload.behavior() == null || payload.behavior() == DubheEventClass.DROP) {
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD",
-                    "AX world event behavior must be IMMEDIATE, DEFERRED or SILENT", null);
+                    "world event behavior must be IMMEDIATE, DEFERRED, SILENT or FOLD", null);
             return;
         }
         if (payload.text().isBlank()) {

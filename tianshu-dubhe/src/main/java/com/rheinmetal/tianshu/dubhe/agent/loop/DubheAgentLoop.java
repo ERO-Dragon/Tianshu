@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /**
- * 唯一的运行期循环实现，对应《Dubhe_Agent运行时设计.md》§3.1：发请求 → 解释输出 → 继续或收尾。
+ * 唯一的运行期循环实现，对应《Dubhe_Agent与技能》§3.1：发请求 → 解释输出 → 继续或收尾。
  *
  * <p>两种运行不是两套代码：策略差异全部来自 {@link DubheRunPolicy}，循环里没有"这是主对话还是
  * 异步委派"的分支。终止判定在每次请求<b>之前</b>按设计 §3.3 的顺序检查（步数安全阀 → 时长超限

@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.dubhe.agent.loop;
 import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
 
 /**
- * 一步的产出，对应《Dubhe_Agent运行时设计.md》§3.1 循环体的第 ③ 步，以及 §12.2 的四路映射。
+ * 一步的产出，对应《Dubhe_Agent与技能》§3.1 循环体的第 ③ 步，以及 §12.2 的四路映射。
  *
  * <p>四种形态覆盖全部情形，循环因此不需要知道"这一步做了什么"：工具、检索、契约修复在它眼里
  * 都只是"还没完"。**预期内的终止用返回值表达，异常只留给真正的意外**——这样

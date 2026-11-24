@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.dubhe.agent.loop;
 
 /**
- * 一步的"发请求 → 解释输出"，对应《Dubhe_Agent运行时设计.md》§3.1 循环体的第 ② ③ 步。
+ * 一步的"发请求 → 解释输出"，对应《Dubhe_Agent与技能》§3.1 循环体的第 ② ③ 步。
  *
  * <p>循环不关心请求怎么发：主对话是 CHAT 车道上一次不带 {@code tools[]} 的请求，Complex 是
  * TASK 车道上带检索工具的多次往返。循环只关心这一步是否终止。</p>

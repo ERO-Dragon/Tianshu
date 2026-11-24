@@ -16,7 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheProtocolDocumentationBoundaryTest {
-    private static final Path PROTOCOL_GUIDE = WorkspacePaths.doc("function/dubhe/Dubhe_协议中心使用文档.md");
+    private static final Path PROTOCOL_GUIDE = WorkspacePaths.doc("function/dubhe/Dubhe_对外接口.md");
 
     @Test
     void protocolGuideCoversEveryStableAxProtocolSymbol() throws Exception {

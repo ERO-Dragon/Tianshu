@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.dubhe.agent.loop;
 import java.util.Objects;
 
 /**
- * 连续相同一步的检测器，对应《Dubhe_Agent运行时设计.md》§3.4。
+ * 连续相同一步的检测器，对应《Dubhe_Agent与技能》§3.4。
  *
  * <p>只在一个 run 内有效，由 {@link DubheAgentLoop} 每次 run 新建，因此不需要重置、也不会跨任务
  * 串味。</p>

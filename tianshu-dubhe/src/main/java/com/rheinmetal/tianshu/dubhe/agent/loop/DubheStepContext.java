@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.dubhe.agent.loop;
 
 /**
- * 一步执行时交给 {@link DubheStepSource} 的上下文，对应《Dubhe_Agent运行时设计.md》§3.1。
+ * 一步执行时交给 {@link DubheStepSource} 的上下文，对应《Dubhe_Agent与技能》§3.1。
  *
  * @param stepIndex       本轮之内的步序号，从 0 开始（1 步 = 1 次模型请求）
  * @param elapsedMillis   本次 run 已用挂钟

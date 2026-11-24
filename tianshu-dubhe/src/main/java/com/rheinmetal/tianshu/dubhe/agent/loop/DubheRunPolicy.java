@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.dubhe.agent.loop;
 import com.rheinmetal.tianshu.protocol.CancellationScope;
 
 /**
- * 一次 Agent 运行的策略参数（不可变值对象），对应《Dubhe_Agent运行时设计.md》§3.2。
+ * 一次 Agent 运行的策略参数（不可变值对象），对应《Dubhe_Agent与技能》§3.2。
  *
  * <p>只有 {@link #simple()} 与 {@link #complex()} 两个预设，参数是闭集：调用方只能选预设，
  * 不得覆盖步数或时长上限（设计不变量 A8）。</p>
