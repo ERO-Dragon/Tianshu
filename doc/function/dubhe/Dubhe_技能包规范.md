@@ -52,6 +52,7 @@ metadata:
 3. **至少一个完整示例**：真实参数 JSON + 返回字段 + 该说什么；
 4. **失败与确认**：写操作何时先确认、失败怎么说；
 5. **按需参考**：哪类细节去 `references/` 的哪一篇。**references 按稳定轴分**：平台工具按档位（read-only / conservative / full），不要按工具逐个拆。
+6. **例子跟着功能走**：每篇 reference 自带该主题的例子，入口只放一个完整往返；**不要单独建 `examples.md`**——那会让模型为学一件事读两份文件。
 
 只写"有哪些工具/有哪些档位"不够——那是目录，不是可执行的说明。
 
@@ -82,7 +83,7 @@ metadata:
 |---|---|---|
 | `search` | 对外已发布 SKILL（内容待路由表细化） | 联网技能族入口 |
 | `work` | **已建**（SKILL.md + 1 篇 reference） | 天枢的工作策略：顺序与边界；工具清单与三档细节引用平台技能 `tianshu:minecraft-tools`，不重复 |
-| `diplomacy` | **已建**（SKILL.md + 6 篇 references） | 外交：发现（`discovery`）/ 投递（`relay`）/ 查进度（`progress`）/ 权限 / 失败 / 示例；执行由 `relay` 工具（list/describe/submit/progress）完成 |
+| `diplomacy` | **已建**（SKILL.md + 5 篇 references） | 外交：发现（`discovery`）/ 投递（`relay`）/ 查进度（`progress`）/ 权限 / 失败；每篇自带例子，入口放一个完整往返。执行由 `relay` 工具（list/describe/submit/progress）完成 |
 | `memory` | 待建 | 记忆检索与压缩（当前压缩是内部维护服务） |
 
 
