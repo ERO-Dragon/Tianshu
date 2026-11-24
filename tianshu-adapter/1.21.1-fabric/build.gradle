@@ -145,16 +145,29 @@ tasks.withType(JavaCompile).configureEach {
 // development run picks it up by its jar in `run/mods`, not by a classpath entry. That is why this task has no
 // module-set logic of its own here, unlike the NeoForge adapter, whose `mods {}` block resolves source sets.
 
-// Development runs from the adapter load every universal feature jar, not just the kernel.
-// Lab is NeoForge-only, so it is intentionally absent here.
+// Development runs from the adapter load the kernel alone; a full assembly is started from the repository root, which
+// is where every feature module is meant to be exercised together. The bench is NeoForge-only, so it is absent here.
 def devFeatureJars = [':tianshu-intake', ':tianshu-echo', ':tianshu-weaving', ':tianshu-dubhe', ':tianshu-presence'].collect { path ->
     project(path).tasks.named('jar').flatMap { it.archiveFile }
+}
+def fullAssemblyRun = gradle.startParameter.taskNames.any { name ->
+    name == ':runClient' || name == ':runServer' || name == ':runClientFabric' || name == ':runServerFabric'
 }
 tasks.register('prepareDevMods', Copy) {
     from(devFeatureJars)
     into layout.projectDirectory.dir('run/mods')
 }
-tasks.named('runClient') { dependsOn tasks.named('prepareDevMods') }
+// A core run has to start from a clean shelf: jars copied by an earlier full run would keep every feature installed
+// and quietly turn the "adapter only" profile back into the full assembly.
+tasks.register('clearDevMods', Delete) {
+    delete fileTree(layout.projectDirectory.dir('run/mods')) {
+        include 'tianshu-intake*.jar', 'tianshu-echo*.jar', 'tianshu-weaving*.jar',
+                'tianshu-dubhe*.jar', 'tianshu-presence*.jar'
+    }
+}
+['runClient', 'runServer'].each { name ->
+    tasks.named(name) { dependsOn fullAssemblyRun ? 'prepareDevMods' : 'clearDevMods' }
+}
 
 // Unattended verification. The dedicated server keeps its own run directory (Fabric's processedMods cache is
 // exclusive), and the dev client joins with a fixed name so the server's offline profile matches ops.json.

@@ -165,6 +165,11 @@ neoForge {
             return explicitFeature
         }
         if (startParameter.taskNames.any { name ->
+                    name == ':runClient' || name == ':runServer'
+                }) {
+            return 'root'
+        }
+        if (startParameter.taskNames.any { name ->
                     (name.endsWith('runClient') || name.endsWith('runServer')) && name.contains('tianshu-adapter')
                 }) {
             return 'adapter'
@@ -184,7 +189,9 @@ neoForge {
             return explicit.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
         }
         if (startedFrom == 'adapter') {
-            return (runFeatureNames + (rootProject.devRunFeatureEdges['root'] ?: [])).unique()
+            // The adapter's own run is the kernel plus its bench: a loader change should be observable without every
+            // feature module in the way. A full assembly is one click up, from the repository root.
+            return (rootProject.devRunFeatureEdges['adapter'] ?: []).unique()
         }
         def base
         if (startedFrom == 'root') {
