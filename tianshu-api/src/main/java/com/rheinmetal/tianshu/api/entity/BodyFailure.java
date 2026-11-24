@@ -13,6 +13,7 @@ public enum BodyFailure {
     SELF_ONLY("body.controller.self_only", ToolError.NO_PERMISSION),
     PLAYER_DENIED("body.access.denied", ToolError.NO_PERMISSION),
     KIND_INVALID("body.kind.invalid", ToolError.INVALID_ARGS),
+    KIND_FOREIGN("body.kind.foreign", ToolError.NO_PERMISSION),
     DIMENSION_UNAVAILABLE("body.dimension.unavailable", ToolError.UNAVAILABLE),
     SPAWN_FAILED("body.spawn.failed", ToolError.FAILED),
     PLAYER_UNAVAILABLE("body.player.unavailable", ToolError.UNAVAILABLE),

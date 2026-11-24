@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.api.entity;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -61,6 +62,24 @@ public final class EntityTypes {
             DECLARED.clear();
             return drained;
         }
+    }
+
+    /**
+     * Whether {@code moduleId} may spawn the declared type {@code typeId}.
+     *
+     * <p>The namespace <em>is</em> the ownership: {@link EntityTypeSpec} names a type after the module that declared
+     * it, so the same string that identifies the registry entry also says who may spawn it. There is no second table
+     * to keep in step, and no way to claim someone else's type by asking nicely.</p>
+     *
+     * <p>This rule covers declared types only. The adapter's built-in carriers are its own shapes, not declarations,
+     * and every module may ask for one by name.</p>
+     */
+    public static boolean ownedBy(String moduleId, String typeId) {
+        if (moduleId == null || typeId == null) {
+            return false;
+        }
+        String owner = moduleId.trim().toLowerCase(Locale.ROOT);
+        return !owner.isEmpty() && typeId.startsWith(owner + ":");
     }
 
     /** Whether the registration pass has already taken the declarations. */

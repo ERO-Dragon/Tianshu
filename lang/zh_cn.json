@@ -5,6 +5,7 @@
   "tianshu.body.controller.self_only": "NPC 只能以自己的身份行动。",
   "tianshu.body.access.denied": "你没有操作这个 NPC 的权限。",
   "tianshu.body.kind.invalid": "身体类型无效或未注册。",
+  "tianshu.body.kind.foreign": "该实体类型由其他模组声明，只有声明它的模组能生成。",
   "tianshu.body.dimension.unavailable": "目标维度不可用。",
   "tianshu.body.spawn.failed": "未能生成 NPC。",
   "tianshu.body.player.unavailable": "当前无法创建玩家型 NPC。",

@@ -5,6 +5,7 @@
   "tianshu.body.controller.self_only": "An NPC can only act as itself.",
   "tianshu.body.access.denied": "You do not have permission to control this NPC.",
   "tianshu.body.kind.invalid": "The body type is invalid or unavailable.",
+  "tianshu.body.kind.foreign": "That entity type is declared by another mod; only its declaring mod can spawn it.",
   "tianshu.body.dimension.unavailable": "The target dimension is unavailable.",
   "tianshu.body.spawn.failed": "The NPC could not be spawned.",
   "tianshu.body.player.unavailable": "A player-backed NPC cannot be created here.",
