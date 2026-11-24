@@ -10,6 +10,8 @@ import com.rheinmetal.tianshu.client.settings.session.SettingsSaveTransaction;
 import com.rheinmetal.tianshu.client.settings.session.SettingsSessionRegistry;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -136,6 +138,96 @@ class SettingsFailureRecoveryTest {
             if (fail) {
                 throw new IllegalStateException("simulated write failure");
             }
+        }
+    }
+    @Test
+    void aPartialSaveReportsWhatLandedAndKeepsItsReloadRequirement() {
+        // Module A saves and asks for a reload; module B then fails. The screen still says "failed" for B, but A is
+        // already on disk — and a retry only touches B, so A's reload requirement would be lost without this.
+        FailingAccess first = new FailingAccess();
+        first.fail = false;
+        FailingAccess second = new FailingAccess();
+        second.fail = true;
+        SettingsSessionRegistry registry = new SettingsSessionRegistry();
+        registry.register(new ReloadingSession("a.module", first));
+        registry.register(new FailingSession("b.module", second));
+
+        SettingsSaveResult result = registry.saveAll();
+
+        assertFalse(result.success());
+        assertEquals(SettingsSaveResult.FailureType.SAVE, result.failureType());
+        assertEquals(List.of("a.module"), List.copyOf(result.savedModules()),
+                "the caller has to know which modules already landed");
+        assertTrue(result.requiresReload(), "the saved module's reload requirement must not vanish with the failure");
+        assertTrue(first.hudEnabled, "the module that succeeded is on disk");
+    }
+
+    private static final class ReloadingSession implements ModuleSettingsSession {
+        private final String moduleId;
+        private final FailingAccess access;
+        private final MutableSettingsValue<Boolean> value;
+
+        private ReloadingSession(String moduleId, FailingAccess access) {
+            this.moduleId = moduleId;
+            this.access = access;
+            this.value = new MutableSettingsValue<>(() -> access.hudEnabled, updated -> access.hudEnabled = updated);
+            value.set(true);
+        }
+
+        @Override
+        public String moduleId() {
+            return moduleId;
+        }
+
+        @Override
+        public boolean dirty() {
+            return value.dirty();
+        }
+
+        @Override
+        public SettingsSaveResult save() {
+            boolean changed = dirty();
+            new SettingsSaveTransaction(value).commit(access::save);
+            return SettingsSaveResult.success(UiText.literal("saved"), changed, false, true);
+        }
+
+        @Override
+        public void reset() {
+            value.reset();
+        }
+    }
+
+    private static final class FailingSession implements ModuleSettingsSession {
+        private final String moduleId;
+        private final FailingAccess access;
+        private final MutableSettingsValue<Boolean> value;
+
+        private FailingSession(String moduleId, FailingAccess access) {
+            this.moduleId = moduleId;
+            this.access = access;
+            this.value = new MutableSettingsValue<>(() -> access.hudEnabled, updated -> access.hudEnabled = updated);
+            value.set(true);
+        }
+
+        @Override
+        public String moduleId() {
+            return moduleId;
+        }
+
+        @Override
+        public boolean dirty() {
+            return value.dirty();
+        }
+
+        @Override
+        public SettingsSaveResult save() {
+            new SettingsSaveTransaction(value).commit(access::save);
+            return SettingsSaveResult.success(UiText.literal("saved"), true, false, false);
+        }
+
+        @Override
+        public void reset() {
+            value.reset();
         }
     }
 }

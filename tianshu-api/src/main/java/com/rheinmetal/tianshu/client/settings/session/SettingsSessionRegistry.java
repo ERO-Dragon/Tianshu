@@ -110,7 +110,13 @@ public final class SettingsSessionRegistry implements AutoCloseable {
                     logs.warn("settings.save_partial saved=" + String.join(",", savedModules)
                             + " failed=" + session.moduleId() + " (already-saved modules stay saved)");
                 }
-                return result.failureType() == SettingsSaveResult.FailureType.UNKNOWN ? SettingsSaveResult.failure(result.message(), SettingsSaveResult.FailureType.SAVE) : result;
+                // Partial, not plain failure: the earlier modules are on disk and their reload requirement has to
+                // survive the failure message, or a retry of the failing module silently loses it.
+                return SettingsSaveResult.partial(result.message(),
+                        result.failureType() == SettingsSaveResult.FailureType.UNKNOWN
+                                ? SettingsSaveResult.FailureType.SAVE
+                                : result.failureType(),
+                        savedModules, requiresRestart, requiresReload);
             }
             savedModules.add(session.moduleId());
             savedAny = true;
