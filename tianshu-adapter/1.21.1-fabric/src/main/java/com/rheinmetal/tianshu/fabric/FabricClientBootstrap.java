@@ -202,7 +202,9 @@ public final class FabricClientBootstrap {
                             context,
                             moduleSettingsSources));
             TianshuCoreManager assembledCoreManager = coreManager;
-            session.own(() -> assembledCoreManager.destroy().join());
+            ClientSession.Ownership coreOwnership = session.own(
+                    () -> assembledCoreManager.destroy().join()
+            );
 
             TianshuClientRuntime clientRuntime = new TianshuClientRuntime(
                     new ClientRuntimeServices(coreManager, audioManager, diagnosticRouter),
@@ -212,6 +214,7 @@ public final class FabricClientBootstrap {
             lifecycleAdapter = new ClientLifecycleAdapter(clientRuntime);
             ClientLifecycleAdapter currentLifecycleAdapter = lifecycleAdapter;
             session.own(currentLifecycleAdapter::onClientShutdown);
+            coreOwnership.release();
             currentLifecycleAdapter.onClientReady();
             session.own(worldIdentityCapture::clear);
 
