@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.lab.acceptance;
 
+import com.rheinmetal.tianshu.lab.LabModuleRegistration;
 import com.rheinmetal.tianshu.api.entity.ActionOutcome;
 import com.rheinmetal.tianshu.api.entity.ActionResult;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
@@ -82,6 +83,11 @@ final class AcceptanceBodies implements EntityProvider {
             }
 
             @Override
+            public String ownerModule() {
+                return LabModuleRegistration.MOD_ID;
+            }
+
+            @Override
             public boolean operator() {
                 return false;
             }
@@ -108,6 +114,11 @@ final class AcceptanceBodies implements EntityProvider {
             @Override
             public String id() {
                 return BODY_ID;
+            }
+
+            @Override
+            public String ownerModule() {
+                return LabModuleRegistration.MOD_ID;
             }
 
             @Override

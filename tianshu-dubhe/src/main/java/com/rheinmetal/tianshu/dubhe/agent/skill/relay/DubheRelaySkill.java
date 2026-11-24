@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.agent.skill.relay;
 
+import com.rheinmetal.tianshu.dubhe.DubheModule;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
@@ -260,7 +261,7 @@ public final class DubheRelaySkill {
         ToolCaller effective = caller == null ? null : caller.get();
         return effective != null
                 ? effective
-                : ToolCaller.agent("dubhe", false, ToolAutonomy.READ_ONLY);
+                : ToolCaller.agent(DubheModule.MOD_ID, false, ToolAutonomy.READ_ONLY);
     }
 
     private static com.rheinmetal.tianshu.api.tool.ToolSide side() {

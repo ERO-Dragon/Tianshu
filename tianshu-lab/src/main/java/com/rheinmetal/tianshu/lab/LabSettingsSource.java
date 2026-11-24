@@ -102,8 +102,8 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                             return error.isBlank() ? common("dash") : UiText.literal(error);
                         })
                         .row("lab.status.tool", lab("row.tool"), () -> {
-                            String text = tools.result();
-                            return text.isBlank() ? common("dash") : UiText.literal(text);
+                            UiText text = tools.displayResult();
+                            return text.isBlank() ? common("dash") : text;
                         })
                         .row("lab.status.capabilities", lab("row.capabilities"), () -> {
                             String text = capabilities.report();

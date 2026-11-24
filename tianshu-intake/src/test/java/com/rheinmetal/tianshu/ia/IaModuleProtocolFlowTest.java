@@ -637,10 +637,10 @@ class IaModuleProtocolFlowTest {
 
         TianshuEnvelope speech = new AsrProtocolAdapter(runtime)
                 .publishSpeechActivity(AsrSpeechActivityPayload.speaking(1L));
-        await(() -> runtime.lifecycle().statusOf(speech.envelopeId()) == EnvelopeStatus.COMPLETED);
+        awaitSubscribers(speech);
         TianshuEnvelope diamond = publishInteractionContext("player", "minecraft:overworld", "",
                 "minecraft:diamond", "", "", "", 0.0D);
-        await(() -> runtime.lifecycle().statusOf(diamond.envelopeId()) == EnvelopeStatus.COMPLETED);
+        awaitSubscribers(diamond);
         TianshuEnvelope silent = new AsrProtocolAdapter(runtime)
                 .publishSpeechActivity(AsrSpeechActivityPayload.silent(1L));
         await(() -> runtime.lifecycle().statusOf(silent.envelopeId()) == EnvelopeStatus.COMPLETED);
@@ -685,10 +685,10 @@ class IaModuleProtocolFlowTest {
         // Press V: the frame with the crosshair is frozen. The held item changes during the turn.
         TianshuEnvelope speech = new AsrProtocolAdapter(runtime)
                 .publishSpeechActivity(AsrSpeechActivityPayload.speaking(speechSessionId));
-        await(() -> runtime.lifecycle().statusOf(speech.envelopeId()) == EnvelopeStatus.COMPLETED);
+        awaitSubscribers(speech);
         TianshuEnvelope diamond = publishInteractionContext("player", "minecraft:overworld", "",
                 "minecraft:diamond", "", "", "", 0.0D);
-        await(() -> runtime.lifecycle().statusOf(diamond.envelopeId()) == EnvelopeStatus.COMPLETED);
+        awaitSubscribers(diamond);
         assertTrue(partnerEvents.envelopes().stream()
                         .map(TianshuEnvelope::payload)
                         .noneMatch(payload -> payload instanceof PresencePartnerPayload marker
@@ -970,6 +970,15 @@ class IaModuleProtocolFlowTest {
                 1,
                 32
         );
+    }
+
+    private void awaitSubscribers(TianshuEnvelope broadcast) {
+        // A topic parent is completed when routed. Its deliveries finish independently.
+        await(() -> {
+            var deliveries = runtime.lifecycle().childrenOf(broadcast.envelopeId());
+            return !deliveries.isEmpty() && deliveries.stream().allMatch(delivery ->
+                    runtime.lifecycle().statusOf(delivery.envelopeId()) == EnvelopeStatus.COMPLETED);
+        });
     }
 
     private static void await(BooleanCondition condition) {

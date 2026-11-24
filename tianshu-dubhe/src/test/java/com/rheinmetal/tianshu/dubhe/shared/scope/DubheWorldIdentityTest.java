@@ -51,6 +51,17 @@ final class DubheWorldIdentityTest {
     }
 
     @Test
+    void theSameProviderResumesWhenTheSaveIsIdentified() {
+        var facts = new AtomicReference<>(WorldFacts.UNKNOWN);
+        var identity = identityOf(facts);
+        assertFalse(identity.currentWorldIdentity().writable());
+        facts.set(new WorldFacts(WorldFacts.KIND_LOCAL_WORLD, "local|saves|Home-2", "Home", "minecraft:overworld", true));
+        var recovered = identity.currentWorldIdentity();
+        assertTrue(recovered.writable());
+        assertEquals("local|saves|Home-2", recovered.stableIdentity());
+    }
+
+    @Test
     void aKindTheModuleDoesNotKnowIsTreatedAsUnknown() {
         AtomicReference<WorldFacts> facts = new AtomicReference<>(
                 new WorldFacts("some_future_kind", "x|1", "X", "minecraft:overworld", true));

@@ -3,12 +3,10 @@ package com.rheinmetal.tianshu.intake.model;
 import com.rheinmetal.tianshu.model.ModelDownloadHttpClient;
 import com.rheinmetal.tianshu.model.ModelDownloadSourcePolicy;
 import com.rheinmetal.tianshu.model.HuggingFaceDownloader;
+import com.rheinmetal.tianshu.model.HuggingFaceDownloader.RepositoryFile;
+import com.rheinmetal.tianshu.model.HuggingFaceDownloader.RepositoryTree;
 import com.rheinmetal.tianshu.model.ModelDownloadProgress;
 import com.rheinmetal.tianshu.model.ModelDownloadStage;
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
 import com.rheinmetal.tianshu.model.lifecycle.ModelDownloadCallback;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -22,17 +20,15 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -41,19 +37,14 @@ public class AsrModelDownloader {
     private static final String HF_OFFICIAL = "https://huggingface.co";
     private static final String HF_MIRROR = "https://hf-mirror.com";
     private static final String REVISION = "main";
-    private static final Gson GSON = new Gson();
-    private static final ModelDownloadHttpClient.RetryPolicy TREE_RETRY =
-            new ModelDownloadHttpClient.RetryPolicy(1, 10_000, 15_000, 0L);
-    private static final ModelDownloadHttpClient.RetryPolicy HF_FILE_RETRY =
-            new ModelDownloadHttpClient.RetryPolicy(3, 15_000, 120_000, 1_000L);
+    private static final int HF_FILE_ATTEMPTS = 3;
     private static final ModelDownloadHttpClient.RetryPolicy ARCHIVE_RETRY =
             new ModelDownloadHttpClient.RetryPolicy(5, 60_000, 60_000, 1_000L);
 
     private final IGameEnvironment env;
-    private final ModelDownloadSourcePolicy sources;
+    private final HuggingFaceDownloader repositories;
     private final ModelDownloadHttpClient http;
     private final Supplier<String> preferredHfBaseSupplier;
-    private final BooleanSupplier githubReachable;
 
     @FunctionalInterface
     public interface DownloadControl {
@@ -71,8 +62,7 @@ public class AsrModelDownloader {
                 env,
                 new ModelDownloadSourcePolicy(HF_OFFICIAL, HF_MIRROR),
                 new ModelDownloadHttpClient(env),
-                HuggingFaceDownloader::getActiveBaseUrl,
-                AsrModelDownloader::isGithubReachable
+                HuggingFaceDownloader::getActiveBaseUrl
         );
     }
 
@@ -80,14 +70,12 @@ public class AsrModelDownloader {
             IGameEnvironment env,
             ModelDownloadSourcePolicy sources,
             ModelDownloadHttpClient http,
-            Supplier<String> preferredHfBaseSupplier,
-            BooleanSupplier githubReachable
+            Supplier<String> preferredHfBaseSupplier
     ) {
         this.env = Objects.requireNonNull(env, "env");
-        this.sources = Objects.requireNonNull(sources, "sources");
+        this.repositories = new HuggingFaceDownloader(env, sources, http, preferredHfBaseSupplier);
         this.http = Objects.requireNonNull(http, "http");
         this.preferredHfBaseSupplier = Objects.requireNonNull(preferredHfBaseSupplier, "preferredHfBaseSupplier");
-        this.githubReachable = Objects.requireNonNull(githubReachable, "githubReachable");
     }
 
     public void downloadSync(AsrModelInfo info, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback, DownloadControl control) throws Exception {
@@ -151,11 +139,14 @@ public class AsrModelDownloader {
         env.info("ASR_HF_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
 
         callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.RESOLVING_FILES, 0, "files.resolve"));
-        List<RemoteFile> repoFiles = fetchFileTree(preferredBase, repoId, REVISION, control);
+        RepositoryTree tree = repositories.fetchFileTree(preferredBase, repoId, REVISION, control::awaitReady);
+        preferredBase = tree.baseUrl();
+        Map<String, RepositoryFile> repoFiles = tree.files().stream()
+                .collect(Collectors.toMap(RepositoryFile::path, file -> file, (first, duplicate) -> first));
         control.awaitReady();
         List<SourceTarget> downloads = resolveRequestedFiles(
                 requiredFiles,
-                repoFiles.stream().map(RemoteFile::path).toList()
+                tree.files().stream().map(RepositoryFile::path).toList()
         );
         env.info("ASR selected files: " + downloads.stream().map(SourceTarget::display).collect(Collectors.joining(", ")));
 
@@ -172,11 +163,9 @@ public class AsrModelDownloader {
             Path localPath = stagingDir.resolve(item.targetPath()).normalize();
             ensureWithinTarget(localPath, stagingDir);
             long fileStartBytes = completedBytes;
-            http.download(
-                    sources.huggingFaceFileCandidates(preferredBase, repoId, REVISION, item.sourcePath()),
-                    localPath,
-                    HF_FILE_RETRY,
-                    adapt(control),
+            preferredBase = repositories.downloadRepositoryFile(
+                    preferredBase, repoId, REVISION, repoFiles.get(item.sourcePath()), localPath,
+                    HF_FILE_ATTEMPTS, control::awaitReady,
                     (downloaded, fileTotal) -> {
                         long effectiveTotal = aggregateTotalBytes > 0L
                                 ? aggregateTotalBytes
@@ -201,7 +190,7 @@ public class AsrModelDownloader {
 
     private void downloadFromArchive(AsrModelInfo info, List<String> requiredFiles, Path stagingDir, Path targetDir, String githubProxyUrl, ModelDownloadCallback callback, DownloadControl control) throws Exception {
         callback.onProgress(ModelDownloadProgress.stage(ModelDownloadStage.CHECKING_NETWORK, 0, "network.check"));
-        boolean proxyFirst = shouldUseGithubProxy(githubProxyUrl);
+        boolean proxyFirst = githubProxyUrl != null && !githubProxyUrl.isBlank();
         List<URI> candidates = ModelDownloadSourcePolicy.githubArchiveCandidates(
                 info.downloadUrl,
                 githubProxyUrl,
@@ -306,19 +295,6 @@ public class AsrModelDownloader {
         }
     }
 
-    private boolean shouldUseGithubProxy(String githubProxyUrl) {
-        return githubProxyUrl != null && !githubProxyUrl.isBlank() && !githubReachable.getAsBoolean();
-    }
-
-    private static boolean isGithubReachable() {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("github.com", 443), 300);
-            return true;
-        } catch (IOException unreachable) {
-            return false;
-        }
-    }
-
     private String archiveSuffix(String downloadUrl) {
         if (downloadUrl == null) return ".archive";
         String lower = downloadUrl.toLowerCase(Locale.ROOT);
@@ -345,36 +321,6 @@ public class AsrModelDownloader {
         }
         throw new IOException("Unsupported ASR model archive type: " + downloadUrl);
     }
-
-    private List<RemoteFile> fetchFileTree(
-            String preferredBase,
-            String repoId,
-            String revision,
-            DownloadControl control
-    ) throws IOException {
-        String json = http.readUtf8(
-                sources.huggingFaceTreeCandidates(preferredBase, repoId, revision),
-                TREE_RETRY,
-                adapt(control)
-        );
-        JsonArray root = GSON.fromJson(json, JsonArray.class);
-        if (root == null) {
-            throw new IOException("ASR_HF_TREE_RESPONSE_INVALID repo=" + repoId);
-        }
-        List<RemoteFile> result = new ArrayList<>();
-        for (JsonElement element : root) {
-            if (!element.isJsonObject()) {
-                continue;
-            }
-            JsonObject node = element.getAsJsonObject();
-            if (node.has("type") && node.has("path")
-                    && "file".equalsIgnoreCase(node.get("type").getAsString())) {
-                result.add(new RemoteFile(node.get("path").getAsString(), readSize(node)));
-            }
-        }
-        return List.copyOf(result);
-    }
-
 
     private List<String> listRelativeFiles(Path root) throws IOException {
         try (var walk = Files.walk(root)) {
@@ -518,14 +464,10 @@ public class AsrModelDownloader {
         }
     }
 
-    private long knownTotalBytes(List<SourceTarget> downloads, List<RemoteFile> repoFiles) {
+    private long knownTotalBytes(List<SourceTarget> downloads, Map<String, RepositoryFile> repoFiles) {
         long total = 0L;
         for (SourceTarget download : downloads) {
-            long size = repoFiles.stream()
-                    .filter(file -> file.path().equals(download.sourcePath()))
-                    .mapToLong(RemoteFile::size)
-                    .findFirst()
-                    .orElse(-1L);
+            long size = repoFiles.get(download.sourcePath()).size();
             if (size <= 0L || Long.MAX_VALUE - total < size) {
                 return 0L;
             }
@@ -534,18 +476,4 @@ public class AsrModelDownloader {
         return total;
     }
 
-    private long readSize(JsonObject node) {
-        if (node == null || !node.has("size") || !node.get("size").isJsonPrimitive()) {
-            return -1L;
-        }
-        try {
-            long size = node.get("size").getAsLong();
-            return size > 0L ? size : -1L;
-        } catch (RuntimeException invalidSize) {
-            return -1L;
-        }
-    }
-
-    private record RemoteFile(String path, long size) {
-    }
 }

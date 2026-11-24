@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.lab.acceptance;
 
+import com.rheinmetal.tianshu.lab.LabModuleRegistration;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.agent.AgentSession;
@@ -228,8 +229,8 @@ public final class LabAcceptanceCases {
         return AcceptanceCase.of(id, title, () -> {
             TianshuTools.register(new FullProbeTool());
             try {
-                ToolCaller conservative = ToolCaller.agent("lab", true, ToolAutonomy.CONSERVATIVE);
-                ToolCaller full = ToolCaller.agent("lab", true, ToolAutonomy.FULL);
+                ToolCaller conservative = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
+                ToolCaller full = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL);
                 boolean hidden = !lists(conservative, FULL_PROBE);
                 boolean shown = lists(full, FULL_PROBE);
                 if (hidden && shown) {
@@ -409,7 +410,7 @@ public final class LabAcceptanceCases {
             TianshuTools.register(new SessionProbeTool());
             registerProbe(SESSION_SKILL_PROBE, CapabilityKind.SKILL, "agent probe body");
             try {
-                AgentSession session = AgentSession.client(ToolCaller.agent(false));
+                AgentSession session = AgentSession.client(ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY));
                 boolean discovered = session.tools().stream()
                         .anyMatch(spec -> spec.id().equals(SESSION_PROBE));
                 JsonObject call = session.call(SESSION_PROBE, new JsonObject())
@@ -442,7 +443,7 @@ public final class LabAcceptanceCases {
         return AcceptanceCase.of(id, title, () -> {
             TianshuTools.register(new SessionProbeTool());
             try {
-                JsonObject contract = AgentSession.client(ToolCaller.agent(false)).describe();
+                JsonObject contract = AgentSession.client(ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY)).describe();
                 String protocol = contract.has("protocol") ? contract.get("protocol").getAsString() : "";
                 int limit = contract.getAsJsonObject("limits").get("maxInFlightPerCaller").getAsInt();
                 boolean namesProbe = contract.getAsJsonArray("tools").toString().contains(SESSION_PROBE.toString());
@@ -463,7 +464,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-AGT-3";
         final String title = "a session stops notifying a change listener after it unsubscribes";
         return AcceptanceCase.of(id, title, () -> {
-            AgentSession session = AgentSession.client(ToolCaller.agent(false));
+            AgentSession session = AgentSession.client(ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY));
             java.util.concurrent.atomic.AtomicInteger delivered = new java.util.concurrent.atomic.AtomicInteger();
             Runnable unsubscribe = session.onChange(change -> delivered.incrementAndGet());
             try {
@@ -703,7 +704,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-AGT-4";
         final String title = "the session contract names every tool the session itself lists";
         return AcceptanceCase.of(id, title, () -> {
-            AgentSession session = AgentSession.client(ToolCaller.agent(false));
+            AgentSession session = AgentSession.client(ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY));
             JsonObject contract = session.describe();
             if (!contract.has("tools") || !contract.get("tools").isJsonArray()) {
                 return AcceptanceOutcome.fail(id, title, "the contract has no tools array");
@@ -949,9 +950,9 @@ public final class LabAcceptanceCases {
         final String id = "ACC-EXP-8";
         final String title = "a wider autonomy tier only ever adds tools, never removes them";
         return AcceptanceCase.of(id, title, () -> {
-            Set<String> readOnly = listedIds(ToolCaller.agent("lab", true, ToolAutonomy.READ_ONLY));
-            Set<String> conservative = listedIds(ToolCaller.agent("lab", true, ToolAutonomy.CONSERVATIVE));
-            Set<String> full = listedIds(ToolCaller.agent("lab", true, ToolAutonomy.FULL));
+            Set<String> readOnly = listedIds(ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.READ_ONLY));
+            Set<String> conservative = listedIds(ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE));
+            Set<String> full = listedIds(ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             if (readOnly.isEmpty()) {
                 return AcceptanceOutcome.skip(id, title, "no tool is visible even at the widest tier");
             }
@@ -1508,7 +1509,7 @@ public final class LabAcceptanceCases {
                 args.addProperty("y", 64);
                 args.addProperty("z", 10);
                 JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.look"), args,
-                        ToolCaller.agent("lab", true, ToolAutonomy.FULL));
+                        ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
                 boolean refused = envelope.has("ok") && !envelope.get("ok").getAsBoolean();
                 boolean nothingHappened = bodies.looks().isEmpty();
                 if (refused && nothingHappened) {
@@ -1641,7 +1642,7 @@ public final class LabAcceptanceCases {
             JsonObject args = new JsonObject();
             args.addProperty("levels", 0);
             JsonObject envelope = callEnabled(ToolId.of("tianshu", "server.xp"), args,
-                    ToolCaller.agent("lab", true, ToolAutonomy.FULL));
+                    ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if (envelope.has("ok") && envelope.get("ok").getAsBoolean()) {
                 return AcceptanceOutcome.pass(id, title, "the server executed the action: " + detail(envelope));
@@ -1673,7 +1674,7 @@ public final class LabAcceptanceCases {
             args.addProperty("y", 64.0);
             args.addProperty("z", 0.0);
             JsonObject envelope = callEnabled(ToolId.of("tianshu", "server.teleport"), args,
-                    ToolCaller.agent("lab", true, ToolAutonomy.FULL));
+                    ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if ("DISABLED".equals(code)) {
                 return AcceptanceOutcome.pass(id, title, "refused with DISABLED naming the server switch");
@@ -1705,7 +1706,7 @@ public final class LabAcceptanceCases {
             args.addProperty("z", 0);
             args.addProperty("block", "tianshu:no_such_block");
             JsonObject envelope = callEnabled(ToolId.of("tianshu", "server.setblock"), args,
-                    ToolCaller.agent("lab", true, ToolAutonomy.FULL));
+                    ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if ("INVALID_ARGS".equals(code)) {
                 return AcceptanceOutcome.pass(id, title, "the server refused the unknown block id");

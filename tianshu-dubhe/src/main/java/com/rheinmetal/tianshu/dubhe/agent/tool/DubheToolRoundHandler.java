@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.agent.tool;
 
+import com.rheinmetal.tianshu.dubhe.DubheModule;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
@@ -59,7 +60,7 @@ public final class DubheToolRoundHandler implements DubheLlmRequestHandler {
      */
     public static DubheToolRoundHandler prepare(LLMPromptRequestPayload base, DubheLlmRequestHandler delivery,
                                              Submit submit, Runnable discardHeld) {
-        return prepare(base, delivery, submit, discardHeld, ToolCaller.agent(false));
+        return prepare(base, delivery, submit, discardHeld, ToolCaller.agent(DubheModule.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY));
     }
 
     /**
@@ -72,7 +73,7 @@ public final class DubheToolRoundHandler implements DubheLlmRequestHandler {
         Objects.requireNonNull(delivery, "delivery");
         Objects.requireNonNull(submit, "submit");
         Objects.requireNonNull(discardHeld, "discardHeld");
-        ToolCaller effective = caller == null ? ToolCaller.agent(false) : caller;
+        ToolCaller effective = caller == null ? ToolCaller.agent(DubheModule.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY) : caller;
         List<ToolSpec> catalogue = TianshuTools.catalog(effective, ToolSide.CLIENT);
         DubheToolTurn turn = DubheToolTurn.start(catalogue, base, call ->
                 TianshuTools.callJson(call.toolId(), call.args(), effective)

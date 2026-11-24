@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -34,14 +33,11 @@ class AsrModelDownloaderTest {
     Path tempDir;
 
     @Test
-    void directFirstFallsBackToGithubProxyAndMaterializesNestedRequiredFile() throws Exception {
-        try (ModelDownloadTestServer direct = new ModelDownloadTestServer();
-             ModelDownloadTestServer proxy = new ModelDownloadTestServer()) {
+    void downloadsDirectlyWhenNoArchiveProxyIsConfigured() throws Exception {
+        try (ModelDownloadTestServer direct = new ModelDownloadTestServer()) {
             String directPath = "/archive.zip";
             String directUrl = direct.uri(directPath).toString();
-            String proxyPath = proxyPath(proxy, directUrl);
-            direct.enqueue(directPath, ModelDownloadTestServer.text(503, "direct unavailable"));
-            proxy.enqueue(proxyPath, ModelDownloadTestServer.bytes(
+            direct.enqueue(directPath, ModelDownloadTestServer.bytes(
                     200,
                     zip("nested/model.onnx", "asr-model")
             ));
@@ -49,17 +45,16 @@ class AsrModelDownloaderTest {
             Path target = tempDir.resolve("direct-first-model");
             RecordingCallback callback = new RecordingCallback();
 
-            downloader(direct::baseUrl, () -> true).downloadSync(
+            downloader(direct::baseUrl).downloadSync(
                     info,
                     target,
-                    proxy.baseUrl(),
+                    "",
                     callback,
                     () -> {}
             );
 
             assertEquals("asr-model", Files.readString(target.resolve("model.onnx"), StandardCharsets.UTF_8));
-            assertEquals(5, direct.requests(directPath));
-            assertEquals(1, proxy.requests(proxyPath));
+            assertEquals(1, direct.requests(directPath));
             assertEquals(1, callback.completed.get());
         }
     }
@@ -77,7 +72,7 @@ class AsrModelDownloaderTest {
                     zip("model.onnx", "direct-model")
             ));
 
-            downloader(direct::baseUrl, () -> false).downloadSync(
+            downloader(direct::baseUrl).downloadSync(
                     archiveInfo(directUrl, "model.onnx"),
                     tempDir.resolve("proxy-first-model"),
                     proxy.baseUrl(),
@@ -102,7 +97,7 @@ class AsrModelDownloaderTest {
             Files.createDirectories(target);
             Files.writeString(target.resolve("old.marker"), "stable", StandardCharsets.UTF_8);
 
-            assertThrows(IOException.class, () -> downloader(direct::baseUrl, () -> true).downloadSync(
+            assertThrows(IOException.class, () -> downloader(direct::baseUrl).downloadSync(
                     archiveInfo(directUrl, "required.onnx"),
                     target,
                     "",
@@ -118,13 +113,16 @@ class AsrModelDownloaderTest {
     }
 
     @Test
-    void huggingFaceRequiredFileFallsBackForTreeAndFile() throws Exception {
+    void followsHuggingFaceTreePagesAndKeepsTheRespondingMirror() throws Exception {
         try (ModelDownloadTestServer official = new ModelDownloadTestServer();
              ModelDownloadTestServer mirror = new ModelDownloadTestServer()) {
             String treePath = "/api/models/org/asr/tree/main";
             String filePath = "/org/asr/resolve/main/nested/model.onnx";
+            String nextPath = "/tree-page-two";
             official.enqueue(treePath, ModelDownloadTestServer.text(500, "tree failed"));
-            mirror.enqueue(treePath, ModelDownloadTestServer.text(
+            mirror.enqueue(treePath, ModelDownloadTestServer.text(200, "[]")
+                    .withHeader("Link", "<" + nextPath + ">; rel=\"next\""));
+            mirror.enqueue(nextPath, ModelDownloadTestServer.text(
                     200,
                     "[{\"type\":\"file\",\"path\":\"nested/model.onnx\"}]"
             ));
@@ -134,9 +132,8 @@ class AsrModelDownloaderTest {
             AsrModelDownloader downloader = new AsrModelDownloader(
                     env,
                     new ModelDownloadSourcePolicy(official.baseUrl(), mirror.baseUrl()),
-                    new ModelDownloadHttpClient(env),
-                    official::baseUrl,
-                    () -> true
+                    new ModelDownloadHttpClient(env, ModelDownloadTestServer::allowLoopback),
+                    official::baseUrl
             );
             AsrModelInfo info = new AsrModelInfo();
             info.name = "hf-asr";
@@ -149,7 +146,8 @@ class AsrModelDownloaderTest {
             assertEquals("hf-asr", Files.readString(target.resolve("model.onnx"), StandardCharsets.UTF_8));
             assertEquals(1, official.requests(treePath));
             assertEquals(1, mirror.requests(treePath));
-            assertEquals(3, official.requests(filePath));
+            assertEquals(1, mirror.requests(nextPath));
+            assertEquals(0, official.requests(filePath));
             assertEquals(1, mirror.requests(filePath));
         }
     }
@@ -177,7 +175,7 @@ class AsrModelDownloaderTest {
             info.size = first.length + second.length;
             List<ModelDownloadProgress> progress = new ArrayList<>();
 
-            downloader(server::baseUrl, () -> true).downloadSync(
+            downloader(server::baseUrl).downloadSync(
                     info,
                     tempDir.resolve("chunked-asr"),
                     "",
@@ -198,17 +196,13 @@ class AsrModelDownloaderTest {
         }
     }
 
-    private AsrModelDownloader downloader(
-            Supplier<String> preferredHfBase,
-            BooleanSupplier githubReachable
-    ) {
+    private AsrModelDownloader downloader(Supplier<String> preferredHfBase) {
         FakeGameEnvironment env = new FakeGameEnvironment();
         return new AsrModelDownloader(
                 env,
                 new ModelDownloadSourcePolicy("http://official.test", "http://mirror.test"),
-                new ModelDownloadHttpClient(env),
-                preferredHfBase,
-                githubReachable
+                new ModelDownloadHttpClient(env, ModelDownloadTestServer::allowLoopback),
+                preferredHfBase
         );
     }
 

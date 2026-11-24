@@ -719,9 +719,19 @@ public final class TtsRuntime implements TtsPlaybackListener {
     }
 
     @Override
-    public void onPlaybackFinished(TtsSession session) {
+    public void onPlaybackFinished(TtsSession session, IAudioBridge.PlaybackOutcome outcome) {
         if (session == null) {
             return;
+        }
+        if (outcome == IAudioBridge.PlaybackOutcome.FAILED && !session.isTerminal()) {
+            var work = sentenceWorks.get(session);
+            var context = work == null ? null : speechContexts.get(work.sessionKey());
+            TtsFailure failure = TtsFailure.of(TtsFailureCode.PLAYBACK_FAILED, TtsFailureCode.PLAYBACK_FAILED.name());
+            if (context != null) {
+                failSpeechSession(session, work, context, failure);
+                return;
+            }
+            failSession(session, failure);
         }
         TtsSpeechSessionCoordinator.SentenceWork work = sentenceWorks.remove(session);
         if (work != null) {

@@ -6,6 +6,7 @@
   "description": "Development test bench: acceptance runs and module probes. Not a shipped feature.",
   "environment": "*",
   "entrypoints": {
+    "client": ["com.rheinmetal.tianshu.lab.LabFabricClient"],
     "main": [
       "com.rheinmetal.tianshu.lab.LabFabricMod"
     ]
@@ -14,6 +15,7 @@
     "fabricloader": ">=0.16.0",
     "minecraft": ">=1.21.1",
     "java": ">=21",
-    "tianshu": "*"
+    "fabric-networking-api-v1": "*",
+    "tianshu_ferry": "*"
   }
 }

@@ -2,9 +2,9 @@
 
 Lab is a small bench for developers, not a mod for players. It places three stand-in companions in the world so you can watch one thing: when several of them could answer, who actually gets the turn — the creature you are looking at, the item in your hand, or the name you just said.
 
-**Game versions**: unrestricted. Distributed as a single universal jar; per-version compatibility is handled by Ferry.
+**Game version covered here**: Minecraft 1.21.1. One development jar contains the Fabric and NeoForge entrypoints.
 **Loaders**: NeoForge / Fabric
-**Runs with**: the Tianshu client, together with Intake. Not meant for players' worlds.
+**Multiplayer installation**: install Lab and Ferry on the test server and every test client. Lab registers the acceptance orb entity and requires its peer on both loaders. The client also uses Intake for arbitration.
 
 ---
 

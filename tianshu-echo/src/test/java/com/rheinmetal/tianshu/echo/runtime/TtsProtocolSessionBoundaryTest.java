@@ -33,6 +33,41 @@ class TtsProtocolSessionBoundaryTest {
     }
 
     @Test
+    void deviceFailureFailsOnlyItsRequestAndAdvancesTheQueue() throws Exception {
+        BlockingFirstSynthesisEngine engine = new BlockingFirstSynthesisEngine();
+        List<TtsRequestStatusPayload> terminals = new java.util.concurrent.CopyOnWriteArrayList<>();
+        CountDownLatch done = new CountDownLatch(2);
+        FakeAudioBridge audio = new FakeAudioBridge() {
+            private int utterances;
+
+            @Override
+            public void setOnPlaybackFinished(java.util.function.Consumer<PlaybackOutcome> callback) {
+                PlaybackOutcome outcome = utterances++ == 0 ? PlaybackOutcome.FAILED : PlaybackOutcome.FINISHED;
+                super.setOnPlaybackFinished(() -> callback.accept(outcome));
+            }
+        };
+        TtsRuntime runtime = new TtsRuntime(new FakeGameEnvironment(), executorManager, engine, audio,
+                ignored -> { }, ignored -> { }, status -> {
+                    if (status.status() != TtsRequestStatus.QUEUED && status.status() != TtsRequestStatus.PLAYING) {
+                        terminals.add(status);
+                        done.countDown();
+                    }
+                });
+        prepare(runtime);
+        for (String id : List.of("failed", "next")) {
+            assertTrue(runtime.submitSpeech(TtsSpeechSessionKey.of("module.a", 0L, 1, id),
+                    TtsTextInputMode.DOCUMENT, true,
+                    request(id, "Sentence.", "module.a", TtsPlaybackPlacement.QUEUE_AFTER_SESSION)).accepted());
+        }
+        engine.releaseFirst.countDown();
+        assertTrue(done.await(3, TimeUnit.SECONDS), terminals::toString);
+        assertEquals(List.of("failed", "next"), terminals.stream().map(TtsRequestStatusPayload::requestId).toList());
+        assertEquals(TtsRequestStatus.FAILED, terminals.get(0).status());
+        assertEquals(TtsFailureCode.PLAYBACK_FAILED.name(), terminals.get(0).failureCode());
+        assertEquals(TtsRequestStatus.COMPLETED, terminals.get(1).status());
+    }
+
+    @Test
     void idleStreamEndsWithoutAnEndPacketAndFreesItsKey() throws Exception {
         BlockingFirstSynthesisEngine engine = new BlockingFirstSynthesisEngine();
         List<TtsRequestStatusPayload> statuses = Collections.synchronizedList(new ArrayList<>());
@@ -309,7 +344,7 @@ class TtsProtocolSessionBoundaryTest {
         @Override public void shutdown() { }
     }
 
-    private static final class FakeAudioBridge implements IAudioBridge {
+    private static class FakeAudioBridge implements IAudioBridge {
         private Runnable callback;
         @Override public void ensureHardwareRunning() { }
         @Override public void releaseCaptureHardware() { }

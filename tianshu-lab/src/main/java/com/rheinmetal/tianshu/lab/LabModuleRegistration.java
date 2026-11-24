@@ -10,6 +10,8 @@ import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleProviderRegistry;
  */
 public final class LabModuleRegistration {
 
+    public static final String MOD_ID = "tianshu_lab";
+
     private LabModuleRegistration() {
     }
 

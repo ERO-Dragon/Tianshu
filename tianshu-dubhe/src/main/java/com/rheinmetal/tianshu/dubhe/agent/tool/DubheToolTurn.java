@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.agent.tool;
 
+import com.rheinmetal.tianshu.dubhe.DubheModule;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -58,7 +59,7 @@ public final class DubheToolTurn {
      * @param executor runs one call; production wraps {@link DubheToolExecutor}, tests inject a stub
      */
     public static DubheToolTurn start(List<ToolSpec> catalogue, LLMPromptRequestPayload base, ToolExecutor executor) {
-        return start(catalogue, base, executor, ToolCaller.agent(false));
+        return start(catalogue, base, executor, ToolCaller.agent(DubheModule.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY));
     }
 
     /**
@@ -69,7 +70,7 @@ public final class DubheToolTurn {
                                    ToolCaller caller) {
         Objects.requireNonNull(base, "base");
         Objects.requireNonNull(executor, "executor");
-        ToolCaller effective = caller == null ? ToolCaller.agent(false) : caller;
+        ToolCaller effective = caller == null ? ToolCaller.agent(DubheModule.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY) : caller;
         List<MessageItemPayload> messages = base.messages();
         boolean hasTools = catalogue != null && catalogue.stream().anyMatch(ToolSpec::enabled);
         String readable = CapabilityExposure.describe(CapabilityExposure.exposed(effective, ToolSide.CLIENT).stream()

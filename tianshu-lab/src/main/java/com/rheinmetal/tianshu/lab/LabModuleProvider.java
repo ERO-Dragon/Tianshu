@@ -8,9 +8,7 @@ import com.rheinmetal.tianshu.core.lifecycle.TianshuModuleRegistrar;
 /**
  * Announces the bench to the session.
  *
- * <p>Only the development client installs this mod, so the provider never has to decide whether it should
- * exist: the jar's presence is the answer. It still checks the runtime context because a host without
- * protocol access cannot host a participant at all.</p>
+ * <p>The development client contributes the arbitration UI and participants once its module runtime exists.</p>
  */
 public final class LabModuleProvider implements TianshuModuleProvider {
     private final TianshuModuleAssemblyContext context;

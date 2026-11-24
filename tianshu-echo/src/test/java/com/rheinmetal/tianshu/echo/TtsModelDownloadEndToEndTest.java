@@ -214,7 +214,7 @@ class TtsModelDownloadEndToEndTest {
         return new HuggingFaceDownloader(
                 env,
                 new ModelDownloadSourcePolicy(server.baseUrl(), server.baseUrl()),
-                new ModelDownloadHttpClient(env),
+                new ModelDownloadHttpClient(env, ModelDownloadTestServer::allowLoopback),
                 server::baseUrl
         );
     }
@@ -229,7 +229,7 @@ class TtsModelDownloadEndToEndTest {
         return new HuggingFaceDownloader(
                 env,
                 new ModelDownloadSourcePolicy(server.baseUrl(), server.baseUrl()),
-                new ModelDownloadHttpClient(env),
+                new ModelDownloadHttpClient(env, ModelDownloadTestServer::allowLoopback),
                 server::baseUrl
         ) {
             @Override

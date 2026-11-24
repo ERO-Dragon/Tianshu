@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.lab;
 
+import com.rheinmetal.tianshu.client.api.text.UiText;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
@@ -25,6 +27,7 @@ public final class LabToolConsole {
     private final DiagnosticSink diagnostics;
     private volatile String result = "";
     private volatile boolean running;
+    private volatile BodyFailure bodyFailure;
 
     public LabToolConsole(DiagnosticSink diagnostics) {
         this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
@@ -48,6 +51,11 @@ public final class LabToolConsole {
 
     public String result() {
         return result;
+    }
+
+    public UiText displayResult() {
+        BodyFailure reason = bodyFailure;
+        return reason == null ? UiText.literal(result) : UiText.key(reason.translationKey());
     }
 
     public boolean running() {
@@ -90,6 +98,7 @@ public final class LabToolConsole {
         if (running) {
             return;
         }
+        bodyFailure = null;
         ToolId id;
         try {
             id = ToolId.parse(toolId);
@@ -109,6 +118,9 @@ public final class LabToolConsole {
         TianshuTools.callJson(id, args, ToolCaller.player("lab", true), ToolSide.CLIENT)
                 .whenComplete((envelope, failure) -> {
                     result = failure == null ? envelope.toString() : String.valueOf(failure);
+                    if (failure == null && envelope.has("message") && envelope.has("ok") && !envelope.get("ok").getAsBoolean()) {
+                        bodyFailure = BodyFailure.fromId(envelope.get("message").getAsString()).orElse(null);
+                    }
                     running = false;
                     publish(id, envelope, failure);
                 });

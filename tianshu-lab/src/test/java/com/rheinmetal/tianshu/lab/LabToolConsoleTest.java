@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.lab;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -46,6 +47,27 @@ class LabToolConsoleTest {
         }
     }
 
+    @Test
+    void bodyRefusalKeepsItsWireIdAndTranslatesThePlayerView() throws Exception {
+        TianshuTools.register(new EchoTool());
+        LabToolConsole console = new LabToolConsole(null);
+        console.setToolId(TOOL.toString());
+        console.setArgsJson("{\"deny\":true}");
+        try {
+            console.run();
+            for (int attempt = 0; attempt < 100 && console.running(); attempt++) {
+                Thread.sleep(10);
+            }
+            assertFalse(console.running());
+            assertTrue(console.result().contains("NO_PERMISSION"));
+            assertTrue(console.result().contains("body.controller.mismatch"));
+            assertTrue(console.displayResult().translatable());
+            assertEquals("tianshu.body.controller.mismatch", console.displayResult().value());
+        } finally {
+            TianshuTools.unregister(TOOL);
+        }
+    }
+
     private record EchoTool() implements TianshuTool<JsonObject, JsonObject> {
         @Override
         public ToolId id() {
@@ -74,6 +96,9 @@ class LabToolConsoleTest {
 
         @Override
         public CompletableFuture<JsonObject> invoke(ToolContext context, JsonObject args) {
+            if (args.has("deny")) {
+                return CompletableFuture.failedFuture(BodyFailure.CONTROLLER_MISMATCH.exception());
+            }
             return CompletableFuture.completedFuture(new JsonObject());
         }
     }

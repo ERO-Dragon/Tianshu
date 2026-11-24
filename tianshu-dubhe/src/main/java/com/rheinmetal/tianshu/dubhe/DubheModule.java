@@ -109,6 +109,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class DubheModule implements TianshuManagedModule {
+    public static final String MOD_ID = "tianshu";
     public static final String MODULE_ID = "module.dubhe";
 
     private final IGameEnvironment env;
@@ -409,7 +410,7 @@ public final class DubheModule implements TianshuManagedModule {
         }
         skillRegistry.register(DubheSharedSkillReader.skill());
         skillRegistry.register(new DubheRelaySkill(
-                () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy()),
+                () -> ToolCaller.agent(DubheModule.MOD_ID, false, assistantSettings.autonomy()),
                 assistantSettings.autonomyConsent(), replyTexts).skill());
         DubheAgentContextBudget agentBudget = DubheAgentContextBudget.forWindow(constructionFallbackPolicy.tier().maxTokens());
         DubheAgentCompactor agentCompactor = new DubheLlmAgentCompactor(llmClient::submitDetached, delegatePrompts);
@@ -428,7 +429,7 @@ public final class DubheModule implements TianshuManagedModule {
                 System::currentTimeMillis,
                 assistantSettings.autonomyConsent(),
                 () -> DubheHostToolSkills.fromCatalog(
-                        ToolCaller.agent("dubhe", false, assistantSettings.autonomy()))
+                        ToolCaller.agent(DubheModule.MOD_ID, false, assistantSettings.autonomy()))
         );
         turnOrchestrator = new DubheTurnOrchestrator(
                 scopeProvider,

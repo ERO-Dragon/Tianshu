@@ -36,7 +36,7 @@ class LlmModelDownloaderTest {
             HuggingFaceDownloader hfDownloader = new HuggingFaceDownloader(
                     env,
                     new ModelDownloadSourcePolicy(server.baseUrl(), server.baseUrl()),
-                    new ModelDownloadHttpClient(env),
+                    new ModelDownloadHttpClient(env, ModelDownloadTestServer::allowLoopback),
                     server::baseUrl
             );
             LlmModelInfo info = new LlmModelInfo();
@@ -97,7 +97,7 @@ class LlmModelDownloaderTest {
         HuggingFaceDownloader downloader = new HuggingFaceDownloader(
                 env,
                 new ModelDownloadSourcePolicy(deadA, deadB),
-                new ModelDownloadHttpClient(env),
+                new ModelDownloadHttpClient(env, ModelDownloadTestServer::allowLoopback),
                 () -> deadA
         );
         Path target = tempDir.resolve("dead/model.gguf");

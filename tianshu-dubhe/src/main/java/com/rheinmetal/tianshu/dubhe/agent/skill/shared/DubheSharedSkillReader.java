@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.agent.skill.shared;
 
+import com.rheinmetal.tianshu.dubhe.DubheModule;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -59,7 +60,7 @@ public final class DubheSharedSkillReader {
         copy(args, request, "id");
         copy(args, request, "file");
         copy(args, request, "page");
-        ToolCaller caller = ToolCaller.agent("dubhe", false, ToolAutonomy.READ_ONLY);
+        ToolCaller caller = ToolCaller.agent(DubheModule.MOD_ID, false, ToolAutonomy.READ_ONLY);
         return TianshuTools.callJson(CAPABILITY_READ, request, caller, ToolSide.CLIENT)
                 .handle((envelope, error) -> {
                     JsonObject result = new JsonObject();

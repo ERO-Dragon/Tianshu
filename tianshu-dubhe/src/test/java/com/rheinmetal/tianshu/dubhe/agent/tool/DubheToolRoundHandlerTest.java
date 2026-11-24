@@ -69,6 +69,7 @@ class DubheToolRoundHandlerTest {
             public CompletableFuture<JsonObject> invoke(ToolContext context, JsonObject args) {
                 JsonObject result = new JsonObject();
                 result.add("args", args);
+                result.addProperty("ownerModule", context.caller().id());
                 return CompletableFuture.completedFuture(result);
             }
         });
@@ -110,6 +111,7 @@ class DubheToolRoundHandlerTest {
         assertNotNull(submitted.get(), "a tool call must submit the next request");
         assertNull(delivered.get(), "the call itself is not spoken");
         assertTrue(submitted.get().messages().get(3).content().contains("tool result"));
+        assertTrue(submitted.get().messages().get(3).content().contains("\"ownerModule\":\"tianshu\""));
 
         handler.onResult(LLMPromptResultPayload.completed("req", "You said hi."));
         assertEquals("You said hi.", delivered.get().text());

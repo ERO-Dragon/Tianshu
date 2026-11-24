@@ -30,7 +30,7 @@ class TtsPlaybackControllerTest {
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
                 new FakeGameEnvironment(),
-                ignored -> { },
+                (session, outcome) -> { },
                 executors
         );
         String callerThread = Thread.currentThread().getName();
@@ -52,7 +52,7 @@ class TtsPlaybackControllerTest {
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
                 new FakeGameEnvironment(),
-                ignored -> { },
+                (session, outcome) -> { },
                 executors
         );
         TtsSession session = session("preview", TtsRequestSource.PREVIEW);
@@ -76,7 +76,7 @@ class TtsPlaybackControllerTest {
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
                 new FakeGameEnvironment(),
-                ignored -> { },
+                (session, outcome) -> { },
                 executors
         );
         TtsSession session = session("short-preview", TtsRequestSource.PREVIEW);
@@ -101,7 +101,7 @@ class TtsPlaybackControllerTest {
         TtsPlaybackController controller = new TtsPlaybackController(
                 audioBridge,
                 new FakeGameEnvironment(),
-                ignored -> { },
+                (session, outcome) -> { },
                 executors
         );
         TtsSession session = session("normal", TtsRequestSource.SYSTEM);

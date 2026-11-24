@@ -10,28 +10,27 @@ iconFile="icon.png"
 description='''
 Development-only dialogue participants for exercising Intake's arbitration.
 '''
-displayTest="IGNORE_ALL_VERSION"
 
 [[dependencies.tianshu_lab]]
     modId="neoforge"
     type="required"
     versionRange="[1,)"
     ordering="NONE"
-    side="CLIENT"
+    side="BOTH"
 
 [[dependencies.tianshu_lab]]
     modId="minecraft"
     type="required"
     versionRange="${minecraft_version_range}"
     ordering="NONE"
-    side="CLIENT"
+    side="BOTH"
 
 [[dependencies.tianshu_lab]]
     modId="tianshu_ferry"
     type="required"
     versionRange="[1.0.0,2.0.0)"
     ordering="AFTER"
-    side="CLIENT"
+    side="BOTH"
 
 [[dependencies.tianshu_lab]]
     modId="tianshu_intake"
