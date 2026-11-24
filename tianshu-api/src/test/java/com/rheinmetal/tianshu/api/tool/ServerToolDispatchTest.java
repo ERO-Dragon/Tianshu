@@ -312,4 +312,75 @@ class ServerToolDispatchTest {
             return CompletableFuture.completedFuture(new Reply());
         }
     }
+    @Test
+    void aRetryThatRacesTheCompletionStillRunsTheToolOnce() throws Exception {
+        GatedTool.CALLS.set(0);
+        TianshuTools.register(new GatedTool());
+        try {
+            // Start the work, let it reach its gate, then complete it while a retry is about to look the key up.
+            java.util.concurrent.CompletableFuture<ServerToolDispatch.Reply> first = ServerToolDispatch.respond(
+                    ToolCaller.player("p1", false), "racing", GATED.toString(), "{}");
+            assertTrue(GatedTool.STARTED.await(2, TimeUnit.SECONDS), "the tool should be running");
+
+            Thread retry = new Thread(() -> ServerToolDispatch.respond(
+                    ToolCaller.player("p1", false), "racing", GATED.toString(), "{}"));
+            retry.start();
+            GatedTool.RELEASE.countDown();
+            retry.join(2_000L);
+
+            assertTrue(first.get(2, TimeUnit.SECONDS).ok());
+            assertEquals(1, GatedTool.CALLS.get(),
+                    "a retry may see the work in flight or see its answer, but must never start it again");
+        } finally {
+            TianshuTools.unregister(GATED);
+        }
+    }
+
+    private static final ToolId GATED = ToolId.of("test", "dispatch.gated");
+
+    /** Runs once, and only finishes when the test opens its gate, so a retry can be aimed at the completion window. */
+    private static final class GatedTool implements TianshuTool<Args, Reply> {
+        static final AtomicInteger CALLS = new AtomicInteger();
+        static final java.util.concurrent.CountDownLatch STARTED = new java.util.concurrent.CountDownLatch(1);
+        static final java.util.concurrent.CountDownLatch RELEASE = new java.util.concurrent.CountDownLatch(1);
+
+        @Override
+        public ToolId id() {
+            return GATED;
+        }
+
+        @Override
+        public ToolCategory category() {
+            return ToolCategory.LOCAL;
+        }
+
+        @Override
+        public String description() {
+            return "Waits for the test before answering.";
+        }
+
+        @Override
+        public Type argsType() {
+            return Args.class;
+        }
+
+        @Override
+        public Type resultType() {
+            return Reply.class;
+        }
+
+        @Override
+        public CompletableFuture<Reply> invoke(ToolContext context, Args args) {
+            CALLS.incrementAndGet();
+            STARTED.countDown();
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    RELEASE.await(2, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                return new Reply();
+            });
+        }
+    }
 }

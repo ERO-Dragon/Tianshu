@@ -448,4 +448,29 @@ class ModelDownloadHttpClientTest {
     private ModelDownloadHttpClient client() {
         return new ModelDownloadHttpClient(new FakeGameEnvironment(), request -> ExternalDecision.allow());
     }
+    @Test
+    void aPaginatedListingReportsWhereTheNextPageIs() throws Exception {
+        try (ModelDownloadTestServer server = new ModelDownloadTestServer()) {
+            server.enqueue("/tree", ModelDownloadTestServer.text(200, "[]")
+                    .withHeader("Link", "<" + server.uri("/tree?cursor=2") + ">; rel=\"next\""));
+            ModelDownloadHttpClient client = client();
+
+            ModelDownloadHttpClient.Page page = client.readUtf8Page(
+                    List.of(server.uri("/tree")), NO_BACKOFF, () -> {});
+
+            assertEquals("[]", page.body());
+            assertEquals(server.uri("/tree?cursor=2"), page.next(),
+                    "the caller has to know there is more, or it takes the first page as the whole repository");
+        }
+    }
+
+    @Test
+    void theLastPageReportsNoNextPage() throws Exception {
+        try (ModelDownloadTestServer server = new ModelDownloadTestServer()) {
+            server.enqueue("/tree", ModelDownloadTestServer.text(200, "[]"));
+            ModelDownloadHttpClient client = client();
+
+            assertEquals(null, client.readUtf8Page(List.of(server.uri("/tree")), NO_BACKOFF, () -> {}).next());
+        }
+    }
 }

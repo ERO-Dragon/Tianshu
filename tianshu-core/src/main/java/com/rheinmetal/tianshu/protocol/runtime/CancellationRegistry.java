@@ -25,6 +25,19 @@ public final class CancellationRegistry {
 
     public CancellationRegistry(EnvelopeLifecycleStore lifecycleStore) {
         this.lifecycleStore = lifecycleStore;
+        // Any terminal status releases the callbacks: a request that completes normally has no cancellation left to
+        // report, and keeping its callback pinned the registering module for the life of the process.
+        lifecycleStore.onTerminal(this::forget);
+    }
+
+    /** Drops the callbacks of an envelope that ended by itself. Cancel takes them first and fires them. */
+    private void forget(String envelopeId) {
+        callbacks.remove(envelopeId);
+    }
+
+    /** How many envelopes still have a pending cancellation callback; a diagnostic, also used by tests. */
+    public int pendingRegistrations() {
+        return callbacks.size();
     }
 
     public void onCancel(String envelopeId, Consumer<TianshuEnvelope> callback) {
@@ -66,8 +79,10 @@ public final class CancellationRegistry {
                 || status == EnvelopeStatus.DEAD_LETTERED) {
             return;
         }
-        lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.CANCELLED, reasonCode, message);
+        // Take the callbacks before transitioning: the store's terminal observer removes whatever is left, and a
+        // cancel has to fire them rather than let them be dropped.
         List<Consumer<TianshuEnvelope>> registered = callbacks.remove(envelope.envelopeId());
+        lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.CANCELLED, reasonCode, message);
         if (registered == null) {
             return;
         }

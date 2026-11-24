@@ -76,6 +76,7 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     private final long retainedEnvelopeMillis;
     private final int retentionSweepInterval;
     private final int maxRetainedTraces;
+    private final long maxRetainedPayloadBytes;
 
     public ProtocolRuntime(MainThreadExecutor mainThreadExecutor) {
         this(mainThreadExecutor, new TriggerRegistry());
@@ -109,6 +110,7 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         this.retainedEnvelopeMillis = effectivePolicy.retainedEnvelopeMillis();
         this.retentionSweepInterval = effectivePolicy.retentionSweepInterval();
         this.maxRetainedTraces = effectivePolicy.maxRetainedTraces();
+        this.maxRetainedPayloadBytes = effectivePolicy.maxRetainedPayloadBytes();
         this.context = new RuntimeContext();
         subscribeModuleStatusCache();
     }
@@ -258,8 +260,12 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
             deadLetterQueue.add(envelope, validation.code(), validation.message(), DeadLetterPolicy.LOG_ONLY);
             return;
         }
+        // A broker is a module's concurrency lane, so its key is the module — not the target of this one envelope.
+        // Response capabilities are named after the request ("response:<id>:<payload>"), and keying brokers on that
+        // created one broker per request that was never removed: a long conversation grew the registry for its whole
+        // life, and every cancel then walked all of them.
         String brokerTarget = envelope.header().packetType() == PacketType.RESPONSE
-                ? registration.capabilityDescriptor().capabilityId()
+                ? registration.moduleDescriptor().moduleId()
                 : envelope.header().target();
         ProtocolBroker broker = brokerRegistry.brokerFor(brokerTarget, registration.capabilityDescriptor().requiredBrokerType(), registration.moduleDescriptor().queueCapacity(), registration.moduleDescriptor().maxConcurrency());
         BrokerSubmitResult result = broker.submit(envelope, registration, this);
@@ -399,7 +405,7 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
             return;
         }
         try {
-            lifecycleStore.cleanupTerminalTraces(retainedEnvelopeMillis, maxRetainedTraces);
+            lifecycleStore.cleanupTerminalTraces(retainedEnvelopeMillis, maxRetainedTraces, maxRetainedPayloadBytes);
         } finally {
             retentionSweepRunning.set(false);
         }

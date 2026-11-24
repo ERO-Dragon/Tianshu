@@ -56,6 +56,68 @@ public final class ModelDownloadHttpClient {
         return executeCandidates(candidates, policy, control, this::readUtf8Once);
     }
 
+    /** One page of text with the URL its {@code Link: rel="next"} header points at, or null on the last page. */
+    public record Page(String body, URI next) {
+    }
+
+    /**
+     * Reads one page of a paginated collection and reports where the next one is.
+     *
+     * <p>The tree listing is paginated, and the caller used to take the first response as the whole list: a model whose
+     * weights landed on page two downloaded as configuration only and the download reported success. Following the
+     * header here keeps the transport the only place that knows HTTP.</p>
+     */
+    public Page readUtf8Page(List<URI> candidates, RetryPolicy policy, DownloadControl control) throws IOException {
+        return executeCandidates(candidates, policy, control, this::readUtf8PageOnce);
+    }
+
+    private Page readUtf8PageOnce(URI candidate, RetryPolicy policy) throws IOException {
+        HttpURLConnection connection = open(candidate, policy);
+        try {
+            requireSuccessful(connection, candidate);
+            long expectedLength = connection.getContentLengthLong();
+            byte[] bytes;
+            try (InputStream input = connection.getInputStream();
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[BUFFER_SIZE];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                }
+                bytes = output.toByteArray();
+            }
+            validateLength(candidate, expectedLength, bytes.length, false);
+            return new Page(new String(bytes, StandardCharsets.UTF_8),
+                    nextPage(candidate, connection.getHeaderField("Link")));
+        } finally {
+            close(connection);
+        }
+    }
+
+    /** The {@code rel="next"} target of a Link header, resolved against the page it came with. */
+    static URI nextPage(URI current, String linkHeader) {
+        if (linkHeader == null || linkHeader.isBlank()) {
+            return null;
+        }
+        for (String part : linkHeader.split(",")) {
+            int open = part.indexOf('<');
+            int close = part.indexOf('>');
+            if (open < 0 || close < open) {
+                continue;
+            }
+            String parameters = part.substring(close + 1);
+            if (!parameters.contains("rel=\"next\"") && !parameters.contains("rel=next")) {
+                continue;
+            }
+            try {
+                return current.resolve(part.substring(open + 1, close).trim()).normalize();
+            } catch (IllegalArgumentException malformed) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     public void download(
             List<URI> candidates,
             Path target,

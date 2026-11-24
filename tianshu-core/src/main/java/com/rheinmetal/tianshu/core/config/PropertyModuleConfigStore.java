@@ -26,6 +26,14 @@ import java.util.Properties;
 public final class PropertyModuleConfigStore implements ModuleConfigStore {
 
     private static final String LIST_SEPARATOR = "\n";
+    /**
+     * Marks the unambiguous list encoding.
+     *
+     * <p>Joining on a newline cannot express an element that contains one, and an empty list and a single empty string
+     * both end up as "". The prefixed form states each element's length instead, so nothing is ambiguous; values
+     * without the prefix are read the old way, which keeps existing files working.</p>
+     */
+    private static final String LIST_VERSION = "v2:";
 
     private final Path file;
     private final LogSink logs;
@@ -101,6 +109,9 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
         if (value.isEmpty()) {
             return List.of();
         }
+        if (value.startsWith(LIST_VERSION)) {
+            return List.copyOf(decodeList(value.substring(LIST_VERSION.length()), key));
+        }
         return List.copyOf(new ArrayList<>(Arrays.asList(value.split(LIST_SEPARATOR, -1))));
     }
 
@@ -131,7 +142,48 @@ public final class PropertyModuleConfigStore implements ModuleConfigStore {
     }
 
     public void setStringList(String key, List<String> values) {
-        setString(key, values == null ? "" : String.join(LIST_SEPARATOR, values));
+        setString(key, values == null ? "" : encodeList(values));
+    }
+
+    /** {@code <length>:<text>} per element: the length makes separators and empty strings unambiguous. */
+    private static String encodeList(List<String> values) {
+        if (values.isEmpty()) {
+            return LIST_VERSION;
+        }
+        StringBuilder encoded = new StringBuilder(LIST_VERSION);
+        for (String value : values) {
+            String element = value == null ? "" : value;
+            encoded.append(element.length()).append(':').append(element);
+        }
+        return encoded.toString();
+    }
+
+    private List<String> decodeList(String encoded, String key) {
+        List<String> decoded = new ArrayList<>();
+        int index = 0;
+        while (index < encoded.length()) {
+            int colon = encoded.indexOf(':', index);
+            if (colon < 0) {
+                logs.warn("module config list is truncated, treating the rest as one element: key=" + key
+                        + ", file=" + file);
+                decoded.add(encoded.substring(index));
+                return decoded;
+            }
+            int length;
+            try {
+                length = Integer.parseInt(encoded.substring(index, colon));
+            } catch (NumberFormatException malformed) {
+                logs.warn("module config list has an unreadable length, treating the rest as one element: key=" + key
+                        + ", file=" + file);
+                decoded.add(encoded.substring(index));
+                return decoded;
+            }
+            int start = colon + 1;
+            int end = Math.min(encoded.length(), start + Math.max(0, length));
+            decoded.add(encoded.substring(start, end));
+            index = end;
+        }
+        return decoded;
     }
 
     public synchronized void save() {

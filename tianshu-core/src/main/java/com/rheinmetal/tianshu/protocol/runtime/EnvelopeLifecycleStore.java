@@ -16,6 +16,21 @@ public final class EnvelopeLifecycleStore {
     private final Map<String, List<EnvelopeTransition>> transitions = new ConcurrentHashMap<>();
     private final Map<String, List<String>> traceIndex = new ConcurrentHashMap<>();
     private final Map<String, List<String>> parentIndex = new ConcurrentHashMap<>();
+    /**
+     * Told once when an envelope reaches a terminal status, whoever ended it.
+     *
+     * <p>Cleanup that hangs off "cancel" alone misses every envelope that simply completed, which is most of them: a
+     * callback registered for a request that finishes normally stayed in its map for the life of the process. One
+     * notification point here makes release a property of the lifecycle rather than of one code path.</p>
+     */
+    private final List<java.util.function.Consumer<String>> terminalObservers = new CopyOnWriteArrayList<>();
+
+    /** Subscribes to terminal transitions; called exactly once per envelope, on the transitioning thread. */
+    public void onTerminal(java.util.function.Consumer<String> observer) {
+        if (observer != null) {
+            terminalObservers.add(observer);
+        }
+    }
 
     public void accept(TianshuEnvelope envelope) {
         envelopes.put(envelope.envelopeId(), envelope);
@@ -36,6 +51,15 @@ public final class EnvelopeLifecycleStore {
         }
         statuses.put(envelopeId, status);
         transitions.computeIfAbsent(envelopeId, key -> new CopyOnWriteArrayList<>()).add(new EnvelopeTransition(envelopeId, status, reasonCode, message, System.currentTimeMillis()));
+        if (isTerminal(status) && (current == null || !isTerminal(current))) {
+            for (java.util.function.Consumer<String> observer : terminalObservers) {
+                try {
+                    observer.accept(envelopeId);
+                } catch (RuntimeException ignored) {
+                    // One observer's bug must not make an envelope untransitionable.
+                }
+            }
+        }
     }
 
     public Optional<TianshuEnvelope> findEnvelope(String envelopeId) {
@@ -94,6 +118,11 @@ public final class EnvelopeLifecycleStore {
      * @return how many traces were dropped
      */
     public int cleanupTerminalTraces(long maxAgeMillis, int maxRetainedTraces) {
+        return cleanupTerminalTraces(maxAgeMillis, maxRetainedTraces, 0L);
+    }
+
+    /** As above, with a byte budget for retained payloads; {@code maxRetainedBytes <= 0} means no byte limit. */
+    public int cleanupTerminalTraces(long maxAgeMillis, int maxRetainedTraces, long maxRetainedBytes) {
         long now = System.currentTimeMillis();
         int cap = Math.max(1, maxRetainedTraces);
         List<String> removable = new ArrayList<>();
@@ -132,7 +161,55 @@ public final class EnvelopeLifecycleStore {
         for (String traceId : removable) {
             dropTrace(traceId);
         }
+        // A byte budget on top of the age and count rules: a trace of synthesized audio is hundreds of kilobytes, and
+        // "thirty minutes" alone can mean hundreds of megabytes. Oldest terminal traces go first.
+        dropPayloadsOverBudget(maxRetainedBytes);
         return removable.size();
+    }
+
+    /**
+     * Drops the payloads — not the envelopes — of the oldest terminal traces until the retained body bytes fit.
+     *
+     * <p>Keeping the envelope means a trace stays inspectable and a later cancel still finds its target; only the large
+     * body goes. A payload that does not declare a size is assumed small, so modules that never opt in are unaffected.</p>
+     */
+    private void dropPayloadsOverBudget(long maxRetainedBytes) {
+        if (maxRetainedBytes <= 0L) {
+            return;
+        }
+        long total = retainedPayloadBytes();
+        if (total <= maxRetainedBytes) {
+            return;
+        }
+        List<TianshuEnvelope> terminal = new ArrayList<>();
+        for (TianshuEnvelope envelope : envelopes.values()) {
+            if (isTerminal(statusOf(envelope.envelopeId())) && payloadBytes(envelope) > 0) {
+                terminal.add(envelope);
+            }
+        }
+        terminal.sort(java.util.Comparator.comparingLong(envelope -> envelope.header().createdAt()));
+        for (TianshuEnvelope envelope : terminal) {
+            if (total <= maxRetainedBytes) {
+                return;
+            }
+            total -= payloadBytes(envelope);
+            envelopes.put(envelope.envelopeId(), new TianshuEnvelope(envelope.header(), null));
+        }
+    }
+
+    /** Bytes the retained payloads occupy, counted through {@link com.rheinmetal.tianshu.protocol.SizedPayload}. */
+    public long retainedPayloadBytes() {
+        long total = 0L;
+        for (TianshuEnvelope envelope : envelopes.values()) {
+            total += payloadBytes(envelope);
+        }
+        return total;
+    }
+
+    private static long payloadBytes(TianshuEnvelope envelope) {
+        return envelope.payload() instanceof com.rheinmetal.tianshu.protocol.SizedPayload sized
+                ? Math.max(0, sized.retainedBytes())
+                : 0L;
     }
 
     private long newestEnvelopeAt(String traceId) {

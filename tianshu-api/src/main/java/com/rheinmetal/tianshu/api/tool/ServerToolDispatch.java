@@ -86,10 +86,15 @@ public final class ServerToolDispatch {
             return previous;
         }
         future.whenComplete((reply, failure) -> {
-            IN_FLIGHT.remove(key, future);
-            IN_FLIGHT_TOKENS.remove(key, token);
-            if (reply != null) {
-                remember(key, reply);
+            // One critical section: from the retry's point of view a request is either still in flight or already
+            // answered. Removing the in-flight entry first and recording the reply after left a window in which a
+            // retry found neither, and ran the tool a second time.
+            synchronized (ServerToolDispatch.class) {
+                IN_FLIGHT_TOKENS.remove(key, token);
+                if (reply != null) {
+                    remember(key, reply);
+                }
+                IN_FLIGHT.remove(key, future);
             }
         });
         return future;

@@ -34,6 +34,8 @@ public class HuggingFaceDownloader {
     private static final int FILE_READ_TIMEOUT_MILLIS = 120_000;
     private static final long FILE_RETRY_BACKOFF_MILLIS = 1_000L;
     private static final Gson GSON = new Gson();
+        /** A repository listing is paginated; this bounds the walk so a looping server cannot hang a download. */
+    private static final int MAX_TREE_PAGES = 50;
     private static final ModelDownloadHttpClient.RetryPolicy TREE_RETRY =
             new ModelDownloadHttpClient.RetryPolicy(1, 10_000, 15_000, 0L);
 
@@ -346,9 +348,9 @@ public class HuggingFaceDownloader {
             String revision,
             DownloadControl control
     ) throws IOException {
-        String json;
+        ModelDownloadHttpClient.Page page;
         try {
-            json = http.readUtf8(
+            page = http.readUtf8Page(
                     sources.huggingFaceTreeCandidates(preferredBase, repoId, revision),
                     TREE_RETRY,
                     adapt(control)
@@ -360,12 +362,31 @@ public class HuggingFaceDownloader {
             String fallback = fallbackBaseUrl(preferredBase);
             env.warn("[model.download] tree fetch died in transit on " + preferredBase
                     + "; retrying via " + fallback);
-            json = http.readUtf8(
+            page = http.readUtf8Page(
                     sources.huggingFaceTreeCandidates(fallback, repoId, revision),
                     TREE_RETRY,
                     adapt(control)
             );
         }
+        List<RepositoryFile> result = new ArrayList<>();
+        // Follow every page: a repository whose weights land past the first page used to download as configuration
+        // only, and the caller was told the model was complete.
+        int pages = 0;
+        while (page != null) {
+            if (++pages > MAX_TREE_PAGES) {
+                throw new IOException("HF_TREE_TOO_MANY_PAGES repo=" + repoId + " pages=" + pages);
+            }
+            appendTreePage(page.body(), repoId, result);
+            if (page.next() == null) {
+                return List.copyOf(result);
+            }
+            page = http.readUtf8Page(List.of(page.next()), TREE_RETRY, adapt(control));
+        }
+        return List.copyOf(result);
+    }
+
+    /** Reads one tree response into {@code result}; throws when the body is not a JSON array at all. */
+    private static void appendTreePage(String json, String repoId, List<RepositoryFile> result) throws IOException {
         JsonArray root;
         try {
             root = GSON.fromJson(json, JsonArray.class);
@@ -377,7 +398,6 @@ public class HuggingFaceDownloader {
         if (root == null) {
             throw new IOException("HF_TREE_RESPONSE_INVALID repo=" + repoId);
         }
-        List<RepositoryFile> result = new ArrayList<>();
         for (JsonElement element : root) {
             if (!element.isJsonObject()) {
                 continue;
@@ -394,7 +414,6 @@ public class HuggingFaceDownloader {
                 ));
             }
         }
-        return List.copyOf(result);
     }
 
     /**

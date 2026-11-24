@@ -292,6 +292,10 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         resources = null;
         unload(prompts);
         prompts = null;
+        // The audio device is a client resource like any other: the modules are gone, so nothing is left to hear.
+        // It was never released here, which kept the capture thread, the mixer and the TTS executor alive after the
+        // client asked to close.
+        shutdownAudio.run();
         closeDiagnostics.run();
         closeIndex.run();
     }

@@ -8,6 +8,7 @@ public final class ProtocolRuntimePolicy {
     private final long retainedEnvelopeMillis;
     private final int retentionSweepInterval;
     private final int maxRetainedTraces;
+    private final long maxRetainedPayloadBytes;
 
     private ProtocolRuntimePolicy(Builder builder) {
         this.executorPolicy = builder.executorPolicy == null ? ProtocolExecutorPolicy.defaults() : builder.executorPolicy;
@@ -17,6 +18,7 @@ public final class ProtocolRuntimePolicy {
         this.retainedEnvelopeMillis = Math.max(60_000L, builder.retainedEnvelopeMillis);
         this.retentionSweepInterval = Math.max(64, builder.retentionSweepInterval);
         this.maxRetainedTraces = Math.max(64, builder.maxRetainedTraces);
+        this.maxRetainedPayloadBytes = Math.max(0L, builder.maxRetainedPayloadBytes);
     }
 
     public static ProtocolRuntimePolicy defaults() {
@@ -58,6 +60,16 @@ public final class ProtocolRuntimePolicy {
         return maxRetainedTraces;
     }
 
+    /**
+     * Bytes of retained payload bodies the history may hold; zero means no byte limit.
+     *
+     * <p>The age rule alone is not a memory rule: half an hour of synthesized sentences is a hundred megabytes. The
+     * default is 32 MiB — enough for recent audio to be inspected or replayed, small enough not to accumulate.</p>
+     */
+    public long maxRetainedPayloadBytes() {
+        return maxRetainedPayloadBytes;
+    }
+
     public static final class Builder {
         private ProtocolExecutorPolicy executorPolicy;
         private int deadLetterCapacity = 512;
@@ -66,6 +78,7 @@ public final class ProtocolRuntimePolicy {
         private long retainedEnvelopeMillis = 30L * 60L * 1000L;
         private int retentionSweepInterval = 1024;
         private int maxRetainedTraces = 8192;
+        private long maxRetainedPayloadBytes = 32L * 1024L * 1024L;
 
         private Builder() {
         }
@@ -105,6 +118,12 @@ public final class ProtocolRuntimePolicy {
         /** Upper bound of traces kept when the age rule alone would keep more. */
         public Builder maxRetainedTraces(int maxRetainedTraces) {
             this.maxRetainedTraces = maxRetainedTraces;
+            return this;
+        }
+
+        /** Bytes of retained payload bodies; zero disables the byte budget. */
+        public Builder maxRetainedPayloadBytes(long maxRetainedPayloadBytes) {
+            this.maxRetainedPayloadBytes = maxRetainedPayloadBytes;
             return this;
         }
 

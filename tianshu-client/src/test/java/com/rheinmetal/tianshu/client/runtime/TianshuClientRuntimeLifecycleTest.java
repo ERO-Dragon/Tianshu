@@ -9,11 +9,32 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class TianshuClientRuntimeLifecycleTest {
+
+    /**
+     * One counter per released resource.
+     *
+     * <p>They used to share one, which is why "the audio device was never shut down" could not be seen: the total
+     * matched expectations as long as *some* three things ran.</p>
+     */
+    private static final class Releases {
+        final AtomicInteger capture = new AtomicInteger();
+        final AtomicInteger audio = new AtomicInteger();
+        final AtomicInteger diagnostics = new AtomicInteger();
+        final AtomicInteger index = new AtomicInteger();
+
+        /** Every client-side resource released exactly once. */
+        void assertAllReleasedOnce() {
+            assertEquals(1, audio.get(), "the audio device must be released with the client");
+            assertEquals(1, diagnostics.get(), "the diagnostic sink must be released");
+            assertEquals(1, index.get(), "the index must be released");
+        }
+    }
+
     @Test
     void duplicateWorldStartAndStopAreIdempotent() {
         FakeCore core = new FakeCore();
-        AtomicInteger releaseCapture = new AtomicInteger();
-        TianshuClientRuntime runtime = runtime(core, releaseCapture, new AtomicInteger());
+        Releases releases = new Releases();
+        TianshuClientRuntime runtime = runtime(core, releases);
 
         runtime.startClient();
         runtime.startWorldSession();
@@ -27,14 +48,15 @@ class TianshuClientRuntimeLifecycleTest {
         runtime.stopWorldSession();
         assertEquals(1, core.stops.get());
         core.stop.complete(null);
-        assertEquals(1, releaseCapture.get());
+        assertEquals(1, releases.capture.get());
         assertEquals(ClientSessionState.CLIENT_READY, runtime.state());
+        assertEquals(0, releases.audio.get(), "leaving a world must not close the client's audio device");
     }
 
     @Test
     void staleStartCompletionCannotReviveStoppedWorld() {
         FakeCore core = new FakeCore();
-        TianshuClientRuntime runtime = runtime(core, new AtomicInteger(), new AtomicInteger());
+        TianshuClientRuntime runtime = runtime(core, new Releases());
 
         runtime.startClient();
         runtime.startWorldSession();
@@ -48,7 +70,7 @@ class TianshuClientRuntimeLifecycleTest {
     @Test
     void loginDuringWorldStopStartsTheNextSessionAfterStopCompletes() {
         FakeCore core = new FakeCore();
-        TianshuClientRuntime runtime = runtime(core, new AtomicInteger(), new AtomicInteger());
+        TianshuClientRuntime runtime = runtime(core, new Releases());
 
         runtime.startClient();
         runtime.startWorldSession();
@@ -68,10 +90,10 @@ class TianshuClientRuntimeLifecycleTest {
     }
 
     @Test
-    void shutdownIsIdempotentAndRejectsLaterLifecycleEvents() {
+    void shutdownIsIdempotentAndReleasesEachResourceOnce() {
         FakeCore core = new FakeCore();
-        AtomicInteger closedResources = new AtomicInteger();
-        TianshuClientRuntime runtime = runtime(core, new AtomicInteger(), closedResources);
+        Releases releases = new Releases();
+        TianshuClientRuntime runtime = runtime(core, releases);
 
         runtime.startClient();
         runtime.shutdown();
@@ -79,14 +101,14 @@ class TianshuClientRuntimeLifecycleTest {
         runtime.startWorldSession();
 
         assertEquals(1, core.destroys.get());
-        assertEquals(2, closedResources.get());
+        releases.assertAllReleasedOnce();
         assertEquals(ClientSessionState.SHUTDOWN, runtime.state());
     }
 
     @Test
     void failedWorldStartCanBeRetried() {
         FakeCore core = new FakeCore();
-        TianshuClientRuntime runtime = runtime(core, new AtomicInteger(), new AtomicInteger());
+        TianshuClientRuntime runtime = runtime(core, new Releases());
 
         runtime.startClient();
         runtime.startWorldSession();
@@ -104,9 +126,9 @@ class TianshuClientRuntimeLifecycleTest {
     @Test
     void aClientThatCouldNotInstallItselfNeverOpensAWorld() {
         FakeCore core = new FakeCore();
-        TianshuClientRuntime runtime = runtime(core, () -> {
+        TianshuClientRuntime runtime = runtime(core, new Releases(), () -> {
             throw new IllegalStateException("no client resources");
-        }, new AtomicInteger(), new AtomicInteger());
+        });
 
         runtime.startClient();
         assertEquals(ClientSessionState.CLIENT_FAILED, runtime.state());
@@ -121,32 +143,31 @@ class TianshuClientRuntimeLifecycleTest {
     @Test
     void shutdownStillReleasesAfterAFailedInstallation() {
         FakeCore core = new FakeCore();
-        AtomicInteger closedResources = new AtomicInteger();
-        TianshuClientRuntime runtime = runtime(core, () -> {
+        Releases releases = new Releases();
+        TianshuClientRuntime runtime = runtime(core, releases, () -> {
             throw new IllegalStateException("no client resources");
-        }, new AtomicInteger(), closedResources);
+        });
 
         runtime.startClient();
         runtime.shutdown();
 
         assertEquals(1, core.destroys.get());
-        assertEquals(2, closedResources.get());
+        releases.assertAllReleasedOnce();
         assertEquals(ClientSessionState.SHUTDOWN, runtime.state());
     }
 
-    private static TianshuClientRuntime runtime(FakeCore core, AtomicInteger releaseCapture, AtomicInteger closedResources) {
-        return runtime(core, () -> { }, releaseCapture, closedResources);
+    private static TianshuClientRuntime runtime(FakeCore core, Releases releases) {
+        return runtime(core, releases, () -> { });
     }
 
-    private static TianshuClientRuntime runtime(FakeCore core, Runnable startClientResources,
-                                                AtomicInteger releaseCapture, AtomicInteger closedResources) {
+    private static TianshuClientRuntime runtime(FakeCore core, Releases releases, Runnable startClientResources) {
         return new TianshuClientRuntime(
                 core,
                 startClientResources,
-                releaseCapture::incrementAndGet,
-                closedResources::incrementAndGet,
-                closedResources::incrementAndGet,
-                closedResources::incrementAndGet,
+                releases.capture::incrementAndGet,
+                releases.audio::incrementAndGet,
+                releases.diagnostics::incrementAndGet,
+                releases.index::incrementAndGet,
                 LogSink.NOOP,
                 () -> { },
                 ignored -> { }

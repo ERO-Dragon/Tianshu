@@ -113,12 +113,32 @@ public final class CapabilityCatalog {
      * bound that, because {@code orTimeout} only governs a future that already exists. Running the invocation here
      * makes the budget real: the caller gets its future immediately, and a handler stuck on a dead socket costs a
      * worker instead of the game thread.</p>
+     *
+     * <p>Bounded, not cached: a caller that times out leaves its worker behind, so an unbounded pool let a slow device
+     * turn repeated timeouts into unbounded threads. A fixed pool caps how many can be stuck at once; the rest wait in
+     * a queue that the same five-second budget covers, because the timeout starts when the future is created.</p>
      */
-    private static final ExecutorService HANDLERS = Executors.newCachedThreadPool(runnable -> {
-        Thread thread = new Thread(runnable, "tianshu-capability");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final ExecutorService HANDLERS = new java.util.concurrent.ThreadPoolExecutor(
+            Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)),
+            Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)),
+            30L, TimeUnit.SECONDS,
+            new java.util.concurrent.LinkedBlockingQueue<>(64),
+            runnable -> {
+                Thread thread = new Thread(runnable, "tianshu-capability");
+                thread.setDaemon(true);
+                return thread;
+            },
+            // A full queue means every worker is stuck on something; answering "busy" immediately is better than
+            // letting the caller wait out its own timeout behind work that will not start.
+            new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+
+    /** How many handlers are executing or waiting; a diagnostic for "the table is stuck behind a slow provider". */
+    public static int handlerQueueDepth() {
+        if (HANDLERS instanceof java.util.concurrent.ThreadPoolExecutor pool) {
+            return pool.getQueue().size();
+        }
+        return 0;
+    }
 
     private CapabilityCatalog() {
     }
@@ -214,10 +234,17 @@ public final class CapabilityCatalog {
         CapabilityHandler handler = entry.handler();
         JsonObject safeArgs = args == null ? new JsonObject() : args;
         CapabilityContext context = new CapabilityContext(caller, side);
-        return CompletableFuture.supplyAsync(() -> handler.invoke(context, safeArgs), HANDLERS)
-                .thenCompose(invocation -> invocation)
+        CompletableFuture<CompletableFuture<JsonObject>> invocation;
+        try {
+            invocation = CompletableFuture.supplyAsync(() -> handler.invoke(context, safeArgs), HANDLERS);
+        } catch (java.util.concurrent.RejectedExecutionException saturated) {
+            // Every worker is stuck behind a slow provider: say so instead of queuing behind work that cannot start.
+            return CompletableFuture.completedFuture(error("BUSY", id + " is waiting behind slow providers"));
+        }
+        return invocation
+                .thenCompose(result -> result)
                 .orTimeout(timeoutOf(descriptor), TimeUnit.MILLISECONDS)
-                .exceptionallyCompose(failure -> CompletableFuture.completedFuture(failureOf(failure)));
+                .exceptionally(failure -> failureOf(failure));
     }
 
     /** Kernel use: mirrors one tool into the table. Not part of the consumer contract. */
