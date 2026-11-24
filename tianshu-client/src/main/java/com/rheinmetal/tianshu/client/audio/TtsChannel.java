@@ -27,8 +27,12 @@ final class TtsChannel {
 
     private final LogSink logSink;
     private final DiagnosticSink diagnostics;
+    private final LineOpener lineOpener;
     /** The hook of the utterance that currently owns the line; null when none is pending. */
-    private final AtomicReference<Runnable> onPlaybackFinished = new AtomicReference<>();
+    private final AtomicReference<java.util.function.Consumer<com.rheinmetal.tianshu.api.IAudioBridge.PlaybackOutcome>>
+            onPlaybackFinished = new AtomicReference<>();
+    /** Set when the device refused to open, write or drain this utterance. */
+    private volatile boolean failed;
 
     private volatile SourceDataLine line;
     private volatile String requestId = "";
@@ -41,9 +45,35 @@ final class TtsChannel {
     private volatile long maxWriteGapMillis;
     private volatile int minAvailableBytes = Integer.MAX_VALUE;
 
+    /**
+     * Opens the output line for one utterance.
+     *
+     * <p>A seam, not a feature: the failure paths this channel has to report are exactly the ones a real device refuses
+     * to produce on demand, so a test supplies an opener that fails instead of waiting for a broken sound card.</p>
+     */
+    interface LineOpener {
+        SourceDataLine open(AudioFormat format) throws LineUnavailableException;
+    }
+
+    private static final LineOpener SYSTEM_LINES = format -> {
+        DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+        if (!AudioSystem.isLineSupported(info)) {
+            throw new LineUnavailableException("no line for " + format.getSampleRate());
+        }
+        SourceDataLine opened = (SourceDataLine) AudioSystem.getLine(info);
+        opened.open(format);
+        opened.start();
+        return opened;
+    };
+
     TtsChannel(LogSink logSink, DiagnosticSink diagnostics) {
+        this(logSink, diagnostics, SYSTEM_LINES);
+    }
+
+    TtsChannel(LogSink logSink, DiagnosticSink diagnostics, LineOpener opener) {
         this.logSink = logSink == null ? LogSink.NOOP : logSink;
         this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
+        this.lineOpener = opener == null ? SYSTEM_LINES : opener;
     }
 
     /** The id of the utterance that owns the line; blank when none has started. */
@@ -51,7 +81,8 @@ final class TtsChannel {
         return requestId;
     }
 
-    void setOnPlaybackFinished(Runnable callback) {
+    void setOnPlaybackFinished(
+            java.util.function.Consumer<com.rheinmetal.tianshu.api.IAudioBridge.PlaybackOutcome> callback) {
         onPlaybackFinished.set(callback);
     }
 
@@ -66,6 +97,7 @@ final class TtsChannel {
     void start(String requestId, int sampleRate) {
         close();
         this.requestId = requestId == null ? "" : requestId.trim();
+        failed = false;
         openedAtNanos = 0L;
         lastWriteAtNanos = 0L;
         writeNanos = 0L;
@@ -75,19 +107,13 @@ final class TtsChannel {
         maxWriteGapMillis = 0L;
         minAvailableBytes = Integer.MAX_VALUE;
         try {
-            AudioFormat format = new AudioFormat(sampleRate, 16, 1, true, false);
-            DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
-            if (!AudioSystem.isLineSupported(info)) {
-                return;
-            }
-            SourceDataLine opened = (SourceDataLine) AudioSystem.getLine(info);
-            opened.open(format);
-            opened.start();
+            SourceDataLine opened = lineOpener.open(new AudioFormat(sampleRate, 16, 1, true, false));
             line = opened;
             openedAtNanos = System.nanoTime();
             logSink.info("audio.tts_channel.opened sampleRate=" + sampleRate);
         } catch (LineUnavailableException unavailable) {
             logSink.error("audio.tts_channel.open_failed", unavailable);
+            deliver(com.rheinmetal.tianshu.api.IAudioBridge.PlaybackOutcome.FAILED);
         }
     }
 
@@ -120,8 +146,12 @@ final class TtsChannel {
             } catch (IllegalStateException closedMeanwhile) {
                 // The line was closed while we measured it; a failed write reports the state itself.
             }
-        } catch (Exception ignored) {
-            // A failed write shows up as missing audio; one stack trace per chunk would be noise.
+        } catch (Exception writeFailure) {
+            // A failed write is missing audio for this request; report it once and stop claiming success.
+            if (!failed) {
+                failed = true;
+                logSink.error("audio.tts_channel.write_failed", writeFailure);
+            }
         }
     }
 
@@ -137,15 +167,23 @@ final class TtsChannel {
                 open.drain();
                 drainNanos = Math.max(0L, System.nanoTime() - drainStarted);
             } catch (Exception drainFailure) {
+                failed = true;
                 logSink.error("audio.tts_channel.drain_failed", drainFailure);
             }
         }
         publishMetrics(requestId);
         // Detach before closing so the hook is delivered exactly once; an abort takes the other branch and drops it.
-        Runnable finished = onPlaybackFinished.getAndSet(null);
+        deliver(failed
+                ? com.rheinmetal.tianshu.api.IAudioBridge.PlaybackOutcome.FAILED
+                : com.rheinmetal.tianshu.api.IAudioBridge.PlaybackOutcome.FINISHED);
+    }
+
+    /** Hands the outcome to whoever registered for it, at most once. */
+    private void deliver(com.rheinmetal.tianshu.api.IAudioBridge.PlaybackOutcome outcome) {
+        var finished = onPlaybackFinished.getAndSet(null);
         close();
         if (finished != null) {
-            finished.run();
+            finished.accept(outcome);
         }
     }
 

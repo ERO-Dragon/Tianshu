@@ -31,6 +31,26 @@ public final class TianshuRuntimePorts {
         return implementation == null ? Optional.empty() : Optional.of(port.cast(implementation));
     }
 
+    /**
+     * Removes the registration for one port, without disturbing a newer implementation registered since.
+     *
+     * <p>What installed a port is responsible for removing it: a server-scoped implementation — one that holds a
+     * {@code MinecraftServer} — otherwise stays reachable for the rest of the process after the world is gone.</p>
+     *
+     * @param expected the implementation that should be removed; when a different one is registered now, nothing
+     *                 happens and nobody else's registration is dropped by mistake
+     */
+    public static <T> void unregister(Class<T> port, T expected) {
+        if (port == null) {
+            return;
+        }
+        if (expected == null) {
+            PORTS.remove(port);
+            return;
+        }
+        PORTS.remove(port, expected);
+    }
+
     /** Drops every registration; tests use this. */
     public static void clear() {
         PORTS.clear();
