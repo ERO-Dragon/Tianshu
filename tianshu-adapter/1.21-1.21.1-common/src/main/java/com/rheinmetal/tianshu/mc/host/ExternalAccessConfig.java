@@ -51,7 +51,10 @@ public final class ExternalAccessConfig {
         Properties properties = new Properties();
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             properties.load(reader);
-        } catch (IOException unreadable) {
+        } catch (IOException | RuntimeException unreadable) {
+            // IllegalArgumentException included: Properties.load rejects a truncated unicode escape, which is what a
+            // half-written file looks like. Escaping this into the client bootstrap failed the whole assembly — the
+            // settings screen and every offline capability with it — over one bad line in an optional file.
             return HostAllowListPolicy.denyAll();
         }
         List<String> hosts = new ArrayList<>();

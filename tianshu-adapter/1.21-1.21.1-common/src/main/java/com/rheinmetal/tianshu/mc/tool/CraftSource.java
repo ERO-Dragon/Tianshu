@@ -73,31 +73,55 @@ public final class CraftSource implements CraftPort {
             return failure("no such recipe");
         }
         Recipe<?> recipe = found.get().value();
-        if (!(recipe instanceof CraftingRecipe)) {
+        if (!(recipe instanceof CraftingRecipe crafting)) {
             return failure("only crafting-table recipes are supported");
         }
         if (!craftingTableNearby(BlockPos.containing(holder.position()), level)) {
             return failure("a crafting table is required nearby");
         }
-        ItemStack produced = recipe.getResultItem(level.registryAccess());
+        ItemStack produced = crafting.getResultItem(level.registryAccess());
         if (produced.isEmpty()) {
             return failure("the recipe produces nothing");
         }
-        int[] assignment = assignIngredients(inventory, recipe.getIngredients());
+        int[] assignment = assignIngredients(inventory, crafting.getIngredients());
         if (assignment == null) {
             return failure("the actor is missing ingredients");
         }
         for (int slot : assignment) {
             inventory.removeItem(slot, 1);
         }
+        // The recipe decides the count: a crafting-table recipe yields four sticks, and forcing one silently
+        // short-changed the player on every batch recipe. Remaining items (a bucket from cake, say) are the recipe's
+        // own leftovers and go back to the actor with the product.
         ItemStack crafted = produced.copy();
-        crafted.setCount(1);
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(crafted.getItem());
         String name = itemId == null ? "unknown" : itemId.toString();
+        int craftedCount = crafted.getCount();
         if (Inventories.add(inventory, crafted, MAIN_INVENTORY_SIZE) <= 0) {
             holder.drop(crafted);
         }
-        return new CraftResult(name, 1, true, "crafted");
+        int side = assignment.length <= 4 ? 2 : 3;
+        net.minecraft.world.item.crafting.CraftingInput input =
+                net.minecraft.world.item.crafting.CraftingInput.of(side, side, craftingGrid(assignment, inventory));
+        for (ItemStack remaining : crafting.getRemainingItems(input)) {
+            if (!remaining.isEmpty()) {
+                if (Inventories.add(inventory, remaining.copy(), MAIN_INVENTORY_SIZE) <= 0) {
+                    holder.drop(remaining.copy());
+                }
+            }
+        }
+        return new CraftResult(name, craftedCount, true, "crafted");
+    }
+
+    /** The recipe's view of the grid: one item per ingredient slot, in the order the assignment recorded. */
+    /** The recipe's view of the grid: one item per ingredient slot, in the order the assignment recorded. */
+    private static java.util.List<ItemStack> craftingGrid(int[] assignment, Container inventory) {
+        java.util.List<ItemStack> grid = new java.util.ArrayList<>();
+        for (int index = 0; index < Math.max(1, assignment.length); index++) {
+            int slot = index < assignment.length ? assignment[index] : -1;
+            grid.add(slot >= 0 ? inventory.getItem(slot).copyWithCount(1) : ItemStack.EMPTY);
+        }
+        return grid;
     }
 
     private static int[] assignIngredients(Container inventory, List<Ingredient> ingredients) {
