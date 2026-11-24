@@ -16,14 +16,17 @@ import java.util.regex.Pattern;
 /**
  * Reads one Patchouli book out of a mod's own resources.
  *
- * <p>Layout, as every Patchouli book uses it:</p>
+ * <p>Layout, as it appears in a <em>packaged</em> mod — and it is not what the sources suggest:</p>
  *
  * <pre>
- * assets/&lt;namespace&gt;/patchouli_books/&lt;book&gt;/
- *   book.json
- *   &lt;language&gt;/entries/**.json     one file per entry, holding a title key and the pages
- * assets/&lt;namespace&gt;/lang/&lt;language&gt;.json   the text those keys point at
+ * assets/&lt;namespace&gt;/patchouli_books/&lt;book&gt;/&lt;language&gt;/entries/**.json   the entries
+ * assets/&lt;namespace&gt;/lang/&lt;language&gt;.json                              the text those keys point at
+ * data/&lt;namespace&gt;/patchouli_books/&lt;book&gt;/book.json                   the definition, elsewhere entirely
  * </pre>
+ *
+ * <p>Book discovery therefore keys on the <b>entry tree under {@code assets/}</b>, never on
+ * {@code book.json}: real jars place that file under {@code data/}, so a check for it under
+ * {@code assets/} finds no books at all. A directory without entries simply parses to nothing.</p>
  *
  * <p>Two spellings are both valid and both appear in the wild: an entry field may hold a translation key, or
  * the literal text. One rule covers both — <b>look the value up in the language table, and when it is not
@@ -49,13 +52,12 @@ final class DubhePatchouliParser {
     private DubhePatchouliParser() {
     }
 
-    /** The book ids a namespace ships, verified by the presence of {@code book.json}. */
+    /** The book ids a namespace ships. */
     static List<String> bookIds(ModResources resources, String modId, String namespace) {
         String root = "assets/" + namespace + "/patchouli_books";
         List<String> books = new ArrayList<>();
         for (String name : resources.children(modId, root)) {
-            if (!name.endsWith(".json")
-                    && resources.read(modId, root + "/" + name + "/book.json").isPresent()) {
+            if (!name.endsWith(".json")) {
                 books.add(name);
             }
         }
@@ -65,27 +67,49 @@ final class DubhePatchouliParser {
     /**
      * Every readable entry of one book, in file order.
      *
-     * @param languages the reader's languages, best first: the entry tree and the translations are both taken
-     *                  from the first language the book actually ships, so a player gets the book in the same
-     *                  language as the rest of their game
+     * <p>The entry tree and the translation are chosen <b>separately</b>, because a real book usually ships one
+     * tree and many translations: Botania keeps its entries in {@code en_us/} only, and a complete
+     * {@code lang/zh_cn.json} beside it. Keying the tree on the player's language would fall back to
+     * {@code en_us} and then translate nothing; keying the translations on the tree would ignore the Chinese
+     * file that was right there. So: take the first tree that exists, and the first translation file the
+     * reader can use — the keys are the same in every language.</p>
+     *
+     * @param languages the reader's languages, best first
      */
     static List<DubheBookEntry> parse(String modId, String namespace, String bookId,
                                       ModResources resources, List<String> languages, LogSink log) {
         String root = "assets/" + namespace + "/patchouli_books/" + bookId;
-        for (String language : languages) {
-            List<String> files = new ArrayList<>();
+        String tree = null;
+        List<String> files = new ArrayList<>();
+        for (String language : treeOrder(root, resources, modId, languages)) {
+            files.clear();
             collectEntries(resources, modId, root + "/" + language + "/entries", files, 0);
-            if (files.isEmpty()) {
-                continue;
+            if (!files.isEmpty()) {
+                tree = language;
+                break;
             }
-            Map<String, String> table = languageTable(modId, namespace, language, resources, log);
-            List<DubheBookEntry> entries = new ArrayList<>();
-            for (String path : files) {
-                readEntry(modId, path, table, resources, log).ifPresent(entries::add);
-            }
-            return List.copyOf(entries);
         }
-        return List.of();
+        if (tree == null) {
+            return List.of();
+        }
+        Map<String, String> table = translationTable(modId, namespace, languages, tree, resources, log);
+        List<DubheBookEntry> entries = new ArrayList<>();
+        for (String path : files) {
+            readEntry(modId, path, table, resources, log).ifPresent(entries::add);
+        }
+        return List.copyOf(entries);
+    }
+
+    /** The reader's languages first, then whatever else the book happens to ship. */
+    private static List<String> treeOrder(String root, ModResources resources, String modId,
+                                          List<String> languages) {
+        List<String> order = new ArrayList<>(languages);
+        for (String name : resources.children(modId, root)) {
+            if (!name.endsWith(".json") && !order.contains(name)) {
+                order.add(name);
+            }
+        }
+        return order;
     }
 
     private static void collectEntries(ModResources resources, String modId, String directory,
@@ -148,27 +172,37 @@ final class DubhePatchouliParser {
         return text.toString();
     }
 
-    private static Map<String, String> languageTable(String modId, String namespace, String language,
-                                                     ModResources resources, LogSink log) {
-        String json = resources.read(modId, "assets/" + namespace + "/lang/" + language + ".json")
-                .map(DubhePatchouliParser::stripBom)
-                .orElse(null);
-        if (json == null) {
-            return Map.of();
+    /**
+     * The translation the reader can actually use: the first preferred language the mod ships, then the tree's
+     * own language, then nothing (every value is then its own text).
+     */
+    private static Map<String, String> translationTable(String modId, String namespace, List<String> languages,
+                                                        String tree, ModResources resources, LogSink log) {
+        List<String> order = new ArrayList<>(languages);
+        if (!order.contains(tree)) {
+            order.add(tree);
         }
-        try {
-            JsonObject table = JsonParser.parseString(json).getAsJsonObject();
-            Map<String, String> values = new HashMap<>(table.size() * 2);
-            for (Map.Entry<String, JsonElement> entry : table.entrySet()) {
-                values.put(entry.getKey(), entry.getValue().isJsonPrimitive()
-                        ? entry.getValue().getAsString() : "");
+        for (String language : order) {
+            String json = resources.read(modId, "assets/" + namespace + "/lang/" + language + ".json")
+                    .map(DubhePatchouliParser::stripBom)
+                    .orElse(null);
+            if (json == null) {
+                continue;
             }
-            return values;
-        } catch (RuntimeException failure) {
-            // A broken language file only costs the translations, not the keys' own text.
-            log.warn("book.lang.invalid mod=" + modId + " language=" + language, failure);
-            return Map.of();
+            try {
+                JsonObject table = JsonParser.parseString(json).getAsJsonObject();
+                Map<String, String> values = new HashMap<>(table.size() * 2);
+                for (Map.Entry<String, JsonElement> entry : table.entrySet()) {
+                    values.put(entry.getKey(), entry.getValue().isJsonPrimitive()
+                            ? entry.getValue().getAsString() : "");
+                }
+                return values;
+            } catch (RuntimeException failure) {
+                // A broken language file only costs the translations, not the keys' own text.
+                log.warn("book.lang.invalid mod=" + modId + " language=" + language, failure);
+            }
         }
+        return Map.of();
     }
 
     /** A value is a key when the table knows it, and the text itself when it does not. */

@@ -76,16 +76,16 @@ class DubhePatchouliParserTest {
     }
 
     @Test
-    void findsBooksByTheirBookJson() {
+    void findsBooksByDirectoryNotByBookJson() {
+        // Packaged jars put book.json under data/, not assets/: discovery must not depend on it.
         ModResources mods = FakeModResources.builder()
-                .put("testmod", "assets/testmod/patchouli_books/guide/book.json", "{}")
                 .put("testmod", "assets/testmod/patchouli_books/guide/en_us/entries/a.json", "{}")
+                .put("testmod", "assets/testmod/patchouli_books/book.json", "{}")
                 .put("testmod", "assets/other/patchouli_books/notabook/en_us/entries/a.json", "{}")
                 .build();
 
         assertEquals(List.of("guide"), DubhePatchouliParser.bookIds(mods, "testmod", "testmod"));
-        assertTrue(DubhePatchouliParser.bookIds(mods, "testmod", "other").isEmpty(),
-                "a directory without book.json is not a book");
+        assertEquals(List.of("notabook"), DubhePatchouliParser.bookIds(mods, "testmod", "other"));
         assertTrue(DubhePatchouliParser.bookIds(mods, "testmod", "absent").isEmpty());
     }
 
