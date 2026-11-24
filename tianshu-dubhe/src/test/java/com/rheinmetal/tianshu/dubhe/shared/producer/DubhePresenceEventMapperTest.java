@@ -120,6 +120,37 @@ class DubhePresenceEventMapperTest {
         assertFalse(batch.parts().isEmpty());
     }
 
+
+    @Test
+    void fallingIsItsOwnLineRatherThanAnotherHit() {
+        PresenceWorldEventPayload payload = new PresenceWorldEventPayload(null,
+                PresenceWorldEventPayload.EVENT_FALL_DAMAGE,
+                "player", "minecraft:overworld", 1L,
+                Map.of(PresenceWorldEventPayload.VALUE_AMOUNT, "7"));
+
+        DubhePresenceEventMapper.Batch batch = batch(payload);
+
+        assertEquals("tianshu:fall_damage", batch.kind(),
+                "the tier table and the wording both exist for this kind; only the producer was missing");
+        assertEquals("tianshu.dubhe.shared.event.line.tianshu.fall_damage", batch.lineKey());
+        assertEquals("7", detailOf(batch.parts().get(0)));
+    }
+
+    @Test
+    void aRareFindIsNotFoldedIntoOrdinaryPickups() {
+        PresenceWorldEventPayload payload = new PresenceWorldEventPayload(null,
+                PresenceWorldEventPayload.EVENT_RARE_ITEM,
+                "player", "minecraft:overworld", 1L,
+                Map.of(PresenceWorldEventPayload.VALUE_ITEM_NAME, "钻石",
+                        PresenceWorldEventPayload.VALUE_ITEM_ID, "minecraft:diamond"));
+
+        DubhePresenceEventMapper.Batch batch = batch(payload);
+
+        assertEquals("tianshu:rare_item", batch.kind());
+        assertEquals("tianshu.dubhe.shared.event.line.tianshu.rare_item", batch.lineKey());
+        assertEquals("钻石", detailOf(batch.parts().get(0)));
+    }
+
     private static DubhePresenceEventMapper.Batch batch(PresenceWorldEventPayload payload) {
         return DubhePresenceEventMapper.batch(payload).orElseThrow();
     }

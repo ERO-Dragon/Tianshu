@@ -81,6 +81,12 @@ public final class DubhePresenceEventMapper {
                     new Rule("tianshu:effect_expired", List.of(PresenceWorldEventPayload.VALUE_EFFECT_NAME))),
             Map.entry(PresenceWorldEventPayload.EVENT_DAMAGE_TAKEN,
                     new Rule("tianshu:damage_taken", List.of(PresenceWorldEventPayload.VALUE_AMOUNT))),
+            Map.entry(PresenceWorldEventPayload.EVENT_FALL_DAMAGE,
+                    new Rule("tianshu:fall_damage", List.of(PresenceWorldEventPayload.VALUE_AMOUNT))),
+            Map.entry(PresenceWorldEventPayload.EVENT_RARE_ITEM,
+                    new Rule("tianshu:rare_item", List.of(
+                            PresenceWorldEventPayload.VALUE_ITEM_NAME,
+                            PresenceWorldEventPayload.VALUE_ITEM_ID))),
             Map.entry(PresenceWorldEventPayload.EVENT_EXP_LEVEL,
                     new Rule("tianshu:exp_level", List.of(PresenceWorldEventPayload.VALUE_LEVEL))),
             Map.entry(PresenceWorldEventPayload.EVENT_FRIEND_JOIN,
