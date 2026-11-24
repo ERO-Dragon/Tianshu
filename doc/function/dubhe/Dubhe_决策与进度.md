@@ -81,6 +81,9 @@
 | G59 | 三档与工具说明由舟楫注册成公共技能 `tianshu:minecraft-tools`，模组运行时读取，不存副本 |
 | G60 | 宿主工具接进代理：`TianshuTools.catalog` 适配成带 schema 的代理工具，按档位过滤，排除 `body.*` |
 | G61 | `diplomacy` 是技能（5 篇 references），`relay` 是它旗下的一篇 reference + 执行工具（list/describe/submit/progress） |
+| G62 | `search` 只答描述性知识；配方归舟楫 `recipe.query`，版本与依赖用本地 `ModList`，崩溃不做 |
+| G63 | 搜索三层源按序降级：本地 Patchouli 手册 → 中文站 → 英文站；跨语言降级必须在回答里注明来源语言 |
+| G64 | 不引入需要 API key 的通道：DeepSeek 联网工具不能与其他工具共存，CurseForge 官方 API 需 key → 只走免 key 源（CF 用公开镜像） |
 
 ## 3. 已完成（P1–P8 摘要）
 
@@ -101,7 +104,7 @@
 
 | # | 事项 | 备注 |
 |---|---|---|
-| 1 | `search` 内容 | 只有对外 SKILL 外壳；**路由表**（问题类型 → mcmod / CF / Modrinth / wiki）与真正检索未做，等源细化 |
+| 1 | `search` 落地 | 方向已定（见[搜索](Dubhe_搜索.md)）：三层源、四工具、频控与降级；**代码未动** |
 | 2 | `memory` 技能化 | 压缩仍是内部维护服务，没有技能入口 |
 | 3 | 设置页档位一行 | 配置键已就位，UI 未接 |
 | 4 | 宿主工具 `operator` | 现在固定 `false`，需要 op 的 `FULL` 工具即使全档也不进目录 |
@@ -114,7 +117,7 @@
 
 | # | 事项 | 现状 |
 |---|---|---|
-| 1 | `search` 的路由表：哪类问题去哪个源 | 等你细化 |
+| 1 | L1 本地手册（Patchouli）是否投入 | 等三个测量数：条目总数 / 单条目平均字数 / 中文覆盖率 |
 | 2 | 40+ 条事件在九宫格里的定位（每行放哪个三态） | 已按迁移表落盘（v5）；可继续调 |
 | 3 | `chat_message` 落在哪一格 | 只能"说话类"或"丢弃" |
 
