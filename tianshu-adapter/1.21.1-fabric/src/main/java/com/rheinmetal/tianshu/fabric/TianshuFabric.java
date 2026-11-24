@@ -6,7 +6,10 @@ import com.rheinmetal.tianshu.api.entity.EntityTypeSpec;
 import com.rheinmetal.tianshu.api.entity.EntityTypes;
 import com.rheinmetal.tianshu.mc.body.BodyCarriers;
 import com.rheinmetal.tianshu.mc.body.WalkerBody;
+import com.rheinmetal.tianshu.api.assembly.InstalledModIds;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.ModResources;
+import com.rheinmetal.tianshu.mc.resource.ModResourceFiles;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.client.tool.ToolCallClient;
@@ -87,6 +90,16 @@ public final class TianshuFabric implements ModInitializer {
         // Modules are platform-free: the only sane answer to "is it there?" has to come from here.
         TianshuRuntimePorts.register(InstalledMods.class,
                 modId -> modId != null && !modId.isBlank() && FabricLoader.getInstance().isModLoaded(modId));
+        // A module that reads partner content (guides, data files) cannot open a jar itself: it enumerates the
+        // mods and asks for resource paths through this port. Nothing here knows what the content means.
+        TianshuRuntimePorts.register(InstalledModIds.class,
+                () -> FabricLoader.getInstance().getAllMods().stream()
+                        .map(container -> container.getMetadata().getId())
+                        .toList());
+        TianshuRuntimePorts.register(ModResources.class, ModResourceFiles.over((modId, path) ->
+                FabricLoader.getInstance().getModContainer(modId)
+                        .flatMap(container -> container.findPath(path))
+                        .orElse(null)));
         // Payload types first: a receiver may only be registered for a type the registry already knows, on both
         // sides. Getting this order wrong fails the server at startup with "no payload type has been registered".
         registerPayloads();

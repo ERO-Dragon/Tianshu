@@ -6,7 +6,10 @@ import com.rheinmetal.tianshu.api.entity.EntityTypeSpec;
 import com.rheinmetal.tianshu.api.entity.EntityTypes;
 import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
 import com.rheinmetal.tianshu.api.assembly.LocalPlayerIdentity;
+import com.rheinmetal.tianshu.api.assembly.InstalledModIds;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.ModResources;
+import com.rheinmetal.tianshu.mc.resource.ModResourceFiles;
 import com.rheinmetal.tianshu.api.assembly.KeyBindings;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.mc.body.BodyCarriers;
@@ -111,6 +114,17 @@ public final class TianshuNeoForge {
         // "is it there?" has to come from here. Registered before any module assembles, on both sides.
         TianshuRuntimePorts.register(InstalledMods.class,
                 modId -> modId != null && !modId.isBlank() && ModList.get().isLoaded(modId));
+        // A module that reads partner content (guides, data files) cannot open a jar itself: it enumerates the
+        // mods and asks for resource paths through this port. Nothing here knows what the content means.
+        TianshuRuntimePorts.register(InstalledModIds.class,
+                () -> ModList.get().getMods().stream()
+                        .map(net.neoforged.neoforgespi.language.IModInfo::getModId)
+                        .distinct()
+                        .toList());
+        TianshuRuntimePorts.register(ModResources.class, ModResourceFiles.over((modId, path) -> {
+            var info = ModList.get().getModFileById(modId);
+            return info == null ? null : info.getFile().findResource(path);
+        }));
         // The one network channel is registered on both sides: whoever hosts the server component still has to know
         // how a fact is shaped, and a client has to know how to receive it.
         // The tool channel's client half; the action channel is gone - actions are server tools now.
