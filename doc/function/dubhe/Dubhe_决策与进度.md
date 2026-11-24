@@ -84,6 +84,7 @@
 | G62 | `search` 只答描述性知识；配方归舟楫 `recipe.query`，版本与依赖用本地 `ModList`，崩溃不做 |
 | G63 | 搜索三层源按序降级：本地 Patchouli 手册 → 中文站 → 英文站；跨语言降级必须在回答里注明来源语言 |
 | G64 | 不引入需要 API key 的通道：DeepSeek 联网工具不能与其他工具共存，CurseForge 官方 API 需 key → 只走免 key 源（CF 用公开镜像） |
+| G65 | `dubhe:search` 对外只暴露为调用方另写的 `entry`（`intent` → `text` + `sources`），**不复用内部 SKILL.md**；内部工具名不出现在对外面 |
 
 ## 3. 已完成（P1–P8 摘要）
 

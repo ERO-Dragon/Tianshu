@@ -249,6 +249,8 @@ ASR 活动状态不参与上述任何决策。
 
 渐进式披露：`list` 只回摘要，选中后才 `describe` 取细节；外部只看到技能的描述与 `attributes`（`entry` / `references`）。
 
+**对外文案不复用内部手册**（G65）：`entry` / `references` 是为调用方另写的一套，只讲「给 `intent`、还 `text` + `sources`」。内部 `search` 技能的 SKILL.md 与 references 里写着工具名（`mc_book` / `mcmod` 等），那些是代理的私产，一个字都不出现在对外面。调用方不能指定工具——它只给意图，查哪个源、怎么降级由天枢内部决定。
+
 ## 12. 接入决策表
 
 
