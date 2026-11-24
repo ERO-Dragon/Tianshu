@@ -74,15 +74,6 @@ public final class DubheDelegatePromptRepository {
     public java.util.List<String> consentAcceptWords() {
         return wordsFrom(load(CONSENT_ACCEPT, currentLanguage()));
     }
-    /** DUBHE.SEARCH：只读查证的 system 与一句用户问法（G10）。 */
-    public String externalSearchSystem() {
-        return load("external.search.system", currentLanguage());
-    }
-
-    public String externalSearchUser(String intent) {
-        String template = load("external.search.user", currentLanguage());
-        return template.replace("{{intent}}", intent == null ? "" : intent.trim());
-    }
     public String agentSystemPrompt() {
         return load(AGENT_SYSTEM, currentLanguage());
     }

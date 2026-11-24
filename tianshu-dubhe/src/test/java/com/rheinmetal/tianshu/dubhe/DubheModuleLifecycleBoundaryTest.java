@@ -26,10 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 class DubheModuleLifecycleBoundaryTest {
 
-    @org.junit.jupiter.api.AfterEach
-    void dropGlobalCapabilities() {
-        com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities.unregister();
-    }
     @TempDir
     Path tempDir;
 

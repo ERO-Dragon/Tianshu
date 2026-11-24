@@ -44,7 +44,6 @@ import com.rheinmetal.tianshu.dubhe.agent.skill.relay.DubheRelaySkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.definition.DubheSkillPackageResourceLoader;
 import com.rheinmetal.tianshu.dubhe.agent.skill.shared.DubheSharedSkillReader;
 import com.rheinmetal.tianshu.dubhe.agent.skill.host.DubheHostToolSkills;
-import com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegateService;
 import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnOrchestrator;import com.rheinmetal.tianshu.dubhe.dialogue.turn.DubheTurnStatusPublisher;
@@ -400,9 +399,6 @@ public final class DubheModule implements TianshuManagedModule {
         DubheOutputProcessor outputProcessor = new DubheOutputProcessor(
                 adapter, outputSettings, chatOutputSink, replyTexts, speechSink);
         DubheDelegatePromptRepository delegatePrompts = new DubheDelegatePromptRepository(promptLanguageProvider);
-        DubheExternalCapabilities.register(
-                (payload, handler, timeout) -> llmClient.submitDetached(payload, handler, timeout),
-                delegatePrompts);
         DubheSkillRegistry skillRegistry = new DubheSkillRegistry();
         // 技能包（SKILL.md + references）：目录里只有元数据，调用时才读正文。
         for (var packageSkill : DubheSkillPackageResourceLoader.loadBuiltin()) {
@@ -682,8 +678,6 @@ public final class DubheModule implements TianshuManagedModule {
 
     @Override
     public void stop() {
-        // The two external rows are process-global; leaving them behind would expose a stopped module.
-        DubheExternalCapabilities.unregister();
         // Events close first so a pending aggregate still lands in the window before the checkpoint.
         withdrawModuleServices();
         if (textInputSubscription != null) {

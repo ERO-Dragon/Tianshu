@@ -147,11 +147,6 @@ class DubheRelaySkillTest {
                         "other.mod",
                         new JsonObject()),
                 (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
-        com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities.register((payload, handler, timeout) -> {
-            throw new AssertionError("list must not call the model");
-        }, new com.rheinmetal.tianshu.dubhe.agent.delegate.DubheDelegatePromptRepository(
-                com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider.fixed(
-                        com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage.ZH_CN)));
         try {
             DubheSkill skill = new DubheRelaySkill(
                     () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY))
@@ -173,7 +168,6 @@ class DubheRelaySkillTest {
             assertTrue(sawMiner, "another module function must be discoverable");
         } finally {
             com.rheinmetal.tianshu.api.capability.CapabilityCatalog.unregister(miner);
-            com.rheinmetal.tianshu.dubhe.external.DubheExternalCapabilities.unregister();
         }
     }
 
