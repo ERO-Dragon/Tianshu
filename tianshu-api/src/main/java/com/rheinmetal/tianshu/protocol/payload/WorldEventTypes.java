@@ -27,6 +27,10 @@ public final class WorldEventTypes {
     public static final String EVENT_EFFECT_GAINED = "effect_gained";
     public static final String EVENT_EFFECT_EXPIRED = "effect_expired";
     public static final String EVENT_DAMAGE_TAKEN = "damage_taken";
+    /** Damage of one kind the player worries about specifically: falling. */
+    public static final String EVENT_FALL_DAMAGE = "fall_damage";
+    /** A pickup worth mentioning on its own: the item the game itself calls rare or better. */
+    public static final String EVENT_RARE_ITEM = "rare_item";
     public static final String EVENT_EXP_LEVEL = "exp_level";
     public static final String EVENT_FRIEND_JOIN = "friend_join";
     public static final String EVENT_FRIEND_LEAVE = "friend_leave";
