@@ -222,7 +222,7 @@ public final class ServerToolHandler {
         boolean operator = player.hasPermissions(OPERATOR_PERMISSION_LEVEL);
         // Registering pushes the current catalogue immediately; later changes arrive without the 60s poll.
         ToolCatalogPushRegistry.register(playerId, operator,
-                (ignored, ids) -> sendCatalog(player, ids));
+                (ignored, tools) -> sendCatalog(player, tools));
     }
 
     private static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
@@ -235,14 +235,15 @@ public final class ServerToolHandler {
         }
     }
 
-    private static void sendCatalog(ServerPlayer player, List<String> ids) {
+    private static void sendCatalog(ServerPlayer player,
+                                    List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> tools) {
         MinecraftServer server = player.level().getServer();
         if (server == null) {
             return;
         }
         server.execute(() -> {
             if (player.connection != null) {
-                PacketDistributor.sendToPlayer(player, new ToolCatalogPacket(ids));
+                PacketDistributor.sendToPlayer(player, new ToolCatalogPacket(tools));
             }
         });
     }

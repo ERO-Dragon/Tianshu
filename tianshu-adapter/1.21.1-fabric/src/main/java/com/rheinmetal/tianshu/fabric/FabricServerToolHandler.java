@@ -188,7 +188,7 @@ public final class FabricServerToolHandler {
         String playerId = player.getUUID().toString();
         boolean operator = player.hasPermissions(OPERATOR_PERMISSION_LEVEL);
         com.mojang.logging.LogUtils.getLogger().info("tianshu tool catalog push for {} operator={}", playerId, operator);
-        ToolCatalogPushRegistry.register(playerId, operator, (ignored, ids) -> sendCatalog(player, ids));
+        ToolCatalogPushRegistry.register(playerId, operator, (ignored, tools) -> sendCatalog(player, tools));
     }
 
     private static void onPlayerLogout(ServerPlayer player) {
@@ -201,14 +201,15 @@ public final class FabricServerToolHandler {
         }
     }
 
-    private static void sendCatalog(ServerPlayer player, List<String> ids) {
+    private static void sendCatalog(ServerPlayer player,
+                                    List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> tools) {
         var server = player.level().getServer();
         if (server == null) {
             return;
         }
         server.execute(() -> {
             if (player.connection != null) {
-                ServerPlayNetworking.send(player, new ToolCatalogPacket(ids));
+                ServerPlayNetworking.send(player, new ToolCatalogPacket(tools));
             }
         });
     }

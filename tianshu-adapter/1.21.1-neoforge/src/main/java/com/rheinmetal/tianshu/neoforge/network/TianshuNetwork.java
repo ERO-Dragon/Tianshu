@@ -54,7 +54,7 @@ public final class TianshuNetwork {
         registrar.playToClient(ToolCallResultPacket.TYPE, ToolCallResultPacket.STREAM_CODEC,
                 (packet, context) -> context.enqueueWork(() -> tools.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         registrar.playToClient(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC,
-                (packet, context) -> context.enqueueWork(() -> tools.receiveCatalog(packet.toolIds())));
+                (packet, context) -> context.enqueueWork(() -> tools.receiveCatalog(packet.tools())));
         registrar.playToServer(ToolCallRequestPacket.TYPE, ToolCallRequestPacket.STREAM_CODEC,
                 com.rheinmetal.tianshu.neoforge.server.ServerToolHandler::handle);
     }

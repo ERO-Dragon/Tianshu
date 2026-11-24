@@ -159,7 +159,7 @@ public final class TianshuFabric implements ModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ToolCallResultPacket.TYPE,
                 (packet, context) -> context.client().execute(() -> toolClient.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
         ClientPlayNetworking.registerGlobalReceiver(ToolCatalogPacket.TYPE,
-                (packet, context) -> context.client().execute(() -> toolClient.receiveCatalog(packet.toolIds())));
+                (packet, context) -> context.client().execute(() -> toolClient.receiveCatalog(packet.tools())));
     }
 
 
