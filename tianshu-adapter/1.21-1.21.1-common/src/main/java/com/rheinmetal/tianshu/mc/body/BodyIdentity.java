@@ -18,37 +18,35 @@ import net.minecraft.world.entity.player.Player;
 public final class BodyIdentity {
 
     private final ActionPlayerFactory borrowed;
-    private final Player player;
 
-    private BodyIdentity(ActionPlayerFactory borrowed, Player player) {
+    private BodyIdentity(ActionPlayerFactory borrowed) {
         this.borrowed = borrowed;
-        this.player = player;
     }
 
     /** A body with no player identity: each call borrows a facade. */
     public static BodyIdentity borrowed(ActionPlayerFactory factory) {
-        return new BodyIdentity(java.util.Objects.requireNonNull(factory, "factory"), null);
+        return new BodyIdentity(java.util.Objects.requireNonNull(factory, "factory"));
     }
 
     /** A body with its own player identity: that player acts for it, directly. */
-    public static BodyIdentity playerBacked(Player player) {
-        return new BodyIdentity(null, java.util.Objects.requireNonNull(player, "player"));
+    public static BodyIdentity playerBacked() {
+        return new BodyIdentity(null);
     }
 
     /** Whether this body takes part in player rules; the outward identity {@code EntityActor.playerLike()} reports. */
     public boolean playerLike() {
-        return player != null;
+        return borrowed == null;
     }
 
     /** Whether the acting player is a copy that must be committed and discarded. */
     public boolean borrowed() {
-        return player == null;
+        return borrowed != null;
     }
 
     /** The player to hand to a vanilla API for {@code body}. */
     public Player player(BodyRegistry.BodyState body) {
-        if (player != null) {
-            return player;
+        if (playerLike()) {
+            return (Player) body.entity();
         }
         return borrowed.create(body.level(), body.position(),
                 body.entity().getYRot(), body.entity().getXRot());

@@ -61,7 +61,10 @@ public final class WorldIdentityCapture {
         String dimension = minecraft.level.dimension().location().toString();
         ServerData server = minecraft.getCurrentServer();
         if (server != null) {
-            String address = server.ip == null ? "unknown" : server.ip.trim().toLowerCase(Locale.ROOT);
+            if (server.ip == null || server.ip.isBlank()) {
+                return WorldFacts.UNKNOWN;
+            }
+            String address = server.ip.trim().toLowerCase(Locale.ROOT);
             String name = server.name == null || server.name.isBlank() ? address : server.name.trim();
             return new WorldFacts(WorldFacts.KIND_SERVER_WORLD, "server|" + address, name, dimension, true);
         }
@@ -70,8 +73,10 @@ public final class WorldIdentityCapture {
         // The save folder is what makes two worlds distinct; the display name is only a label, and two saves
         // may share it. The stable identity therefore uses the folder id, while the label stays player-facing.
         String saveId = localSaveId(minecraft);
-        String identityPart = saveId.isBlank() ? levelName : saveId;
-        String stableIdentity = "local|" + gameDirectory + "|" + identityPart;
+        if (saveId.isBlank()) {
+            return WorldFacts.UNKNOWN;
+        }
+        String stableIdentity = "local|" + gameDirectory + "|" + saveId;
         return new WorldFacts(WorldFacts.KIND_LOCAL_WORLD, stableIdentity, levelName, dimension, true);
     }
 

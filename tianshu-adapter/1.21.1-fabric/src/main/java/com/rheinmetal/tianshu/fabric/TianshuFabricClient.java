@@ -36,8 +36,9 @@ public final class TianshuFabricClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         bootstrap = new FabricClientBootstrap();
-        net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(
-                TianshuFabric.WALKER, FabricBodyWalkerRenderer::new);
+        for (var type : com.rheinmetal.tianshu.mc.body.BodyCarriers.types()) {
+            net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(type, FabricBodyWalkerRenderer::new);
+        }
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             if (TianshuFabric.toolClient() != null) {
                 TianshuFabric.toolClient().onDisconnect();

@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.neoforge;
 
+import com.rheinmetal.tianshu.api.LogSink;
+import com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations;
+import com.rheinmetal.tianshu.api.entity.EntityTypeSpec;
+import com.rheinmetal.tianshu.api.entity.EntityTypes;
 import com.rheinmetal.tianshu.api.assembly.ClientKeyBindings;
 import com.rheinmetal.tianshu.api.assembly.LocalPlayerIdentity;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
@@ -33,7 +37,6 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.MobCategory;
 
 /**
  * The mod entry point, loaded on both sides.
@@ -46,17 +49,6 @@ import net.minecraft.world.entity.MobCategory;
 @Mod(TianshuNeoForge.MOD_ID)
 public final class TianshuNeoForge {
     public static final String MOD_ID = "tianshu_ferry";
-
-    /** The walking carrier; everything else about a body is not an entity type. */
-    private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
-            DeferredRegister.create(Registries.ENTITY_TYPE, MOD_ID);
-
-    public static final DeferredHolder<EntityType<?>, EntityType<WalkerBody>> WALKER = ENTITY_TYPES.register(
-            "walker",
-            () -> EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
-                    .sized(0.6F, 1.8F)
-                    .clientTrackingRange(10)
-                    .build("tianshu_walker"));
 
     /** {@code null} on a dedicated server: every client subsystem is constructed only on the client. */
     private final NeoForgeClientBootstrap clientBootstrap;
@@ -79,22 +71,20 @@ public final class TianshuNeoForge {
      * never exists and the symptom appears much later as "the body did not spawn".</p>
      */
     private static void collectDeclaredBodyTypes() {
-        System.Logger logger = System.getLogger("tianshu.adapter");
         for (net.neoforged.neoforgespi.language.IModInfo info : net.neoforged.fml.ModList.get().getMods()) {
             try {
                 java.nio.file.Path path = info.getOwningFile().getFile()
-                        .findResource(com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations.RESOURCE_PATH);
+                        .findResource(EntityTypeDeclarations.RESOURCE_PATH);
                 if (path == null || !java.nio.file.Files.isRegularFile(path)) {
                     continue;
                 }
                 String json = java.nio.file.Files.readString(path, java.nio.charset.StandardCharsets.UTF_8);
-                for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
-                        : com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations.parse(info.getModId(), json)) {
-                    com.rheinmetal.tianshu.api.entity.EntityTypes.declare(spec);
+                for (EntityTypeSpec spec
+                        : EntityTypeDeclarations.parse(info.getModId(), json)) {
+                    EntityTypes.declare(spec);
                 }
             } catch (RuntimeException | java.io.IOException failure) {
-                logger.log(System.Logger.Level.WARNING,
-                        "body_types.json of " + info.getModId() + " was not usable: " + failure);
+                LogSink.SYSTEM.warn("body.type_declarations.invalid mod=" + info.getModId(), failure);
             }
         }
     }
@@ -103,25 +93,19 @@ public final class TianshuNeoForge {
         collectDeclaredBodyTypes();
         // Declared entity types must exist before the loader's registration pass; draining here is the last moment at
         // which the adapter still owns that window.
-        for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
-                : com.rheinmetal.tianshu.api.entity.EntityTypes.drainForRegistration()) {
-            if ("walker".equals(spec.name())) {
-                continue;
-            }
-            ENTITY_TYPES.register(spec.name(), () -> {
-                var builder = EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
-                        .sized(spec.width(), spec.height())
-                        .clientTrackingRange(10);
-                if (spec.fireImmune()) {
-                    builder.fireImmune();
-                }
-                return builder.build(spec.name());
-            });
+        var registers = new java.util.LinkedHashMap<String, DeferredRegister<EntityType<?>>>();
+        var carriers = new java.util.LinkedHashMap<EntityTypeSpec,
+                DeferredHolder<EntityType<?>, EntityType<WalkerBody>>>();
+        for (var spec : BodyCarriers.registrationTypes(EntityTypes.drainForRegistration())) {
+            var register = registers.computeIfAbsent(spec.modId(), namespace -> DeferredRegister.create(Registries.ENTITY_TYPE, namespace));
+            carriers.put(spec, register.register(spec.name(), () -> BodyCarriers.createType(spec)));
         }
-        ENTITY_TYPES.register(modEventBus);
+        registers.values().forEach(register -> register.register(modEventBus));
         modEventBus.addListener((EntityAttributeCreationEvent event) -> {
-            event.put(WALKER.get(), WalkerBody.createAttributes().build());
-            BodyCarriers.installWalker(WALKER.get());
+            carriers.forEach((spec, holder) -> BodyCarriers.track(spec, holder.get()));
+            for (var type : BodyCarriers.types()) {
+                event.put(type, WalkerBody.createAttributes().build());
+            }
         });
         // Modules are platform-free: when they integrate with an optional partner, the only sane answer to
         // "is it there?" has to come from here. Registered before any module assembles, on both sides.
@@ -161,7 +145,7 @@ public final class TianshuNeoForge {
                     (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) ->
                             toolCalls.onDisconnect());
             modEventBus.addListener((net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers event) ->
-                    event.registerEntityRenderer(WALKER.get(), BodyWalkerRenderer::new));
+                    BodyCarriers.types().forEach(type -> event.registerEntityRenderer(type, BodyWalkerRenderer::new)));
             clientBootstrap = new NeoForgeClientBootstrap();
             // A module's settings row may want to send the player to the controls screen; the binding is a
             // Minecraft object, so opening that screen is a platform job offered through a port.

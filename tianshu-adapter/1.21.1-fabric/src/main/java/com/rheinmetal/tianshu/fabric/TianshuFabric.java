@@ -1,6 +1,9 @@
 package com.rheinmetal.tianshu.fabric;
 
-import com.rheinmetal.tianshu.api.ModIdentity;
+import com.rheinmetal.tianshu.api.LogSink;
+import com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations;
+import com.rheinmetal.tianshu.api.entity.EntityTypeSpec;
+import com.rheinmetal.tianshu.api.entity.EntityTypes;
 import com.rheinmetal.tianshu.mc.body.BodyCarriers;
 import com.rheinmetal.tianshu.mc.body.WalkerBody;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
@@ -20,11 +23,6 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.MobCategory;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 
 /**
  * The Fabric entry point, loaded on both sides.
@@ -43,15 +41,6 @@ public final class TianshuFabric implements ModInitializer {
     /** The wire protocol epoch, matching the NeoForge adapter's channel version. */
     public static final String PROTOCOL_VERSION = ProtocolWireVersion.VERSION;
 
-    /** The walking carrier; the only entity type this adapter registers. */
-    public static final EntityType<WalkerBody> WALKER = Registry.register(
-            BuiltInRegistries.ENTITY_TYPE,
-            ModIdentity.MOD_ID + ":walker",
-            EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
-                    .sized(0.6F, 1.8F)
-                    .clientTrackingRange(10)
-                    .build("tianshu_walker"));
-
     /** The tool channel client: only on the client distribution. */
     private static ToolCallClient toolClient;
 
@@ -67,48 +56,33 @@ public final class TianshuFabric implements ModInitializer {
      * appears much later as "the body did not spawn".</p>
      */
     private static void registerDeclaredBodyTypes() {
-        System.Logger logger = System.getLogger("tianshu.adapter");
         for (net.fabricmc.loader.api.ModContainer container : FabricLoader.getInstance().getAllMods()) {
             try {
                 java.util.Optional<java.nio.file.Path> declared =
-                        container.findPath(com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations.RESOURCE_PATH);
+                        container.findPath(EntityTypeDeclarations.RESOURCE_PATH);
                 if (declared.isEmpty() || !java.nio.file.Files.isRegularFile(declared.get())) {
                     continue;
                 }
                 String json = java.nio.file.Files.readString(declared.get(),
                         java.nio.charset.StandardCharsets.UTF_8);
-                for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
-                        : com.rheinmetal.tianshu.api.entity.EntityTypeDeclarations
+                for (EntityTypeSpec spec
+                        : EntityTypeDeclarations
                         .parse(container.getMetadata().getId(), json)) {
-                    com.rheinmetal.tianshu.api.entity.EntityTypes.declare(spec);
+                    EntityTypes.declare(spec);
                 }
             } catch (RuntimeException | java.io.IOException failure) {
-                logger.log(System.Logger.Level.WARNING,
-                        "body_types.json of " + container.getMetadata().getId()
-                                + " was not usable: " + failure);
+                LogSink.SYSTEM.warn("body.type_declarations.invalid mod=" + container.getMetadata().getId(), failure);
             }
         }
-        for (com.rheinmetal.tianshu.api.entity.EntityTypeSpec spec
-                : com.rheinmetal.tianshu.api.entity.EntityTypes.drainForRegistration()) {
-            if ("walker".equals(spec.name())) {
-                continue;
-            }
-            EntityType.Builder<WalkerBody> builder = EntityType.Builder.of(WalkerBody::new, MobCategory.MISC)
-                    .sized(spec.width(), spec.height())
-                    .clientTrackingRange(10);
-            if (spec.fireImmune()) {
-                builder.fireImmune();
-            }
-            EntityType<WalkerBody> type = Registry.register(BuiltInRegistries.ENTITY_TYPE, spec.id(),
-                    builder.build(spec.name()));
+        for (var spec : BodyCarriers.registrationTypes(EntityTypes.drainForRegistration())) {
+            var type = Registry.register(BuiltInRegistries.ENTITY_TYPE, spec.id(), BodyCarriers.createType(spec));
+            BodyCarriers.track(spec, type);
             FabricDefaultAttributeRegistry.register(type, WalkerBody.createAttributes());
         }
     }
 
     @Override
     public void onInitialize() {
-        FabricDefaultAttributeRegistry.register(WALKER, WalkerBody.createAttributes());
-        BodyCarriers.installWalker(WALKER);
         registerDeclaredBodyTypes();
         // Modules are platform-free: the only sane answer to "is it there?" has to come from here.
         TianshuRuntimePorts.register(InstalledMods.class,

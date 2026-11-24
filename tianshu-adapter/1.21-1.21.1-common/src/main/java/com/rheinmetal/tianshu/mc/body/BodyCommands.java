@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.mc.body;
 
+import com.rheinmetal.tianshu.api.tool.ToolException;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -71,7 +73,9 @@ public final class BodyCommands {
     private static CompletableFuture<Suggestions> suggestKinds(CommandContext<CommandSourceStack> context,
                                                                SuggestionsBuilder builder) {
         for (BodyKind kind : BodyKind.values()) {
-            builder.suggest(kind.token());
+            if (BodyCarriers.available(kind)) {
+                builder.suggest(kind.token());
+            }
         }
         return builder.buildFuture();
     }
@@ -187,21 +191,27 @@ public final class BodyCommands {
         CommandSourceStack source = context.getSource();
         String token = StringArgumentType.getString(context, "kind");
         BodyKind kind = BodyKind.parse(token).orElse(null);
-        if (kind == null) {
-            source.sendFailure(Component.literal("unknown body kind: " + token));
+        if (kind == null || !BodyCarriers.available(kind)) {
+            source.sendFailure(spawnFailure(BodyFailure.KIND_INVALID));
             return 0;
         }
         ServerPlayer player = source.getPlayerOrException();
         EntityActor body;
         try {
             body = BodyRuntime.require().spawn(player, kind, playerIdentity);
-        } catch (IllegalStateException unsupported) {
-            source.sendFailure(Component.literal(unsupported.getMessage()));
+        } catch (ToolException failure) {
+            source.sendFailure(spawnFailure(BodyFailure.fromId(failure.getMessage()).orElse(BodyFailure.SPAWN_FAILED)));
             return 0;
         }
         String identity = playerIdentity ? " (player identity)" : "";
         source.sendSuccess(() -> Component.literal("spawned agent body " + describe(body) + identity), true);
         return 1;
+    }
+
+    private static Component spawnFailure(BodyFailure reason) {
+        // Vanilla clients on Ferry-only servers translate the nested vanilla component locally.
+        return Component.translatableWithFallback(reason.translationKey(), "%s",
+                Component.translatable("commands.summon.failed"));
     }
 
     private static int despawn(CommandContext<CommandSourceStack> context) {

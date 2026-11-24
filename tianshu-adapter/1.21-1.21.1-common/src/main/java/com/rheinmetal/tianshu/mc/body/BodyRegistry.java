@@ -1,5 +1,13 @@
 package com.rheinmetal.tianshu.mc.body;
 
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.ResourceKey;
+import com.rheinmetal.tianshu.api.IdSegments;
+import com.rheinmetal.tianshu.api.ModIdentity;
+import java.util.concurrent.CompletableFuture;
+import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntityActions;
@@ -8,7 +16,6 @@ import com.rheinmetal.tianshu.api.entity.EntityAccess;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.entity.EntitySlot;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
-import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -41,11 +48,11 @@ import java.util.UUID;
  * <p>Bodies and their inventories are saved by {@link BodyPersistence}; without a running server they are memory
  * state only. A removed entity makes its body disappear rather than turning into a still body.</p>
  */
-public final class BodyRegistry implements EntityProvider {
+public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
 
     private static final int INVENTORY_SIZE = 36;
 
-    private final Map<UUID, BodyState> bodies = new LinkedHashMap<>();
+    private final Map<UUID, BodyState> bodies = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<UUID, Integer> activeSlots = new LinkedHashMap<>();
     private final Map<UUID, EntityAccess> accessPolicies = new LinkedHashMap<>();
     private final Map<UUID, Set<UUID>> trusted = new LinkedHashMap<>();
@@ -54,6 +61,11 @@ public final class BodyRegistry implements EntityProvider {
     private final ActionPlayerFactory actionPlayers;
     private final PlayerBodyFactory playerBodies;
     private EntityActions actions;
+    private final BodyPersistence persistence = new BodyPersistence();
+
+    public BodyPersistence persistence() {
+        return persistence;
+    }
 
     public BodyRegistry(MinecraftServer server, ActionPlayerFactory actionPlayers, PlayerBodyFactory playerBodies) {
         this.server = server;
@@ -166,8 +178,7 @@ public final class BodyRegistry implements EntityProvider {
                 && trusted.getOrDefault(id, Set.of()).contains(callerId)) {
             return Optional.empty();
         }
-        return Optional.of(new ToolException(ToolError.NO_PERMISSION,
-                "you are not allowed to command this body"));
+        return Optional.of(BodyFailure.PLAYER_DENIED.exception());
     }
 
     /** Spawns a carrier for {@code owner} at the owner's position and returns the new body. */
@@ -182,16 +193,42 @@ public final class BodyRegistry implements EntityProvider {
      * body borrows a facade per call. Nothing downstream branches on it.</p>
      */
     public EntityActor spawn(ServerPlayer owner, BodyKind kind, boolean playerIdentity) {
-        ServerLevel level = owner.serverLevel();
+        return spawn(ModIdentity.MOD_ID, owner.getUUID(), owner.hasPermissions(2),
+                kind, null, playerIdentity, owner.serverLevel(), owner.position(), owner.getYRot(), owner.getXRot());
+    }
+
+    @Override
+    public CompletableFuture<EntityActor> spawn(String moduleId, String kind,
+            ActorPosition position, boolean playerLike) {
+        return CompletableFuture.supplyAsync(() -> {
+            IdSegments.require(moduleId, "body", "owner module");
+            BodyKind carrier = BodyKind.parse(kind).orElse(null);
+            EntityType<WalkerBody> declared = carrier == null ? BodyCarriers.declared(moduleId, kind) : null;
+            var dimension = ResourceLocation.tryParse(position.dimension());
+            var level = dimension == null ? null : server.getLevel(ResourceKey.create(
+                    Registries.DIMENSION, dimension));
+            if (level == null) {
+                throw BodyFailure.DIMENSION_UNAVAILABLE.exception();
+            }
+            return spawn(moduleId, null, false, carrier == null ? BodyKind.WALKER : carrier, declared, playerLike, level,
+                    new Vec3(position.x(), position.y(), position.z()), 0, 0);
+        }, server);
+    }
+
+    private EntityActor spawn(String ownerModule, UUID playerOwner, boolean operator, BodyKind kind,
+                              EntityType<WalkerBody> declared, boolean playerIdentity, ServerLevel level, Vec3 at, float yaw, float pitch) {
+        if (declared == null && !BodyCarriers.available(kind)) {
+            throw BodyFailure.KIND_INVALID.exception();
+        }
         Entity entity;
         BodyIdentity identity;
         if (playerIdentity) {
-            ServerPlayer player = playerBodies == null ? null : playerBodies.create(level, owner.getUUID());
+            ServerPlayer player = playerBodies == null ? null : playerBodies.create(level, UUID.randomUUID());
             if (player == null) {
-                throw new IllegalStateException("this adapter cannot create player-backed bodies");
+                throw BodyFailure.PLAYER_UNAVAILABLE.exception();
             }
             entity = player;
-            identity = BodyIdentity.playerBacked(player);
+            identity = BodyIdentity.playerBacked();
         } else {
             entity = switch (kind) {
                 case MARKER -> new Marker(EntityType.MARKER, level);
@@ -202,21 +239,22 @@ public final class BodyRegistry implements EntityProvider {
                     yield stand;
                 }
                 case WALKER -> {
-                    WalkerBody walker = BodyCarriers.walker().create(level);
+                    WalkerBody walker = (declared == null ? BodyCarriers.walker() : declared).create(level);
                     if (walker == null) {
-                        throw new IllegalStateException("cannot create a walker body");
+                        throw BodyFailure.SPAWN_FAILED.exception();
                     }
                     yield walker;
                 }
             };
             identity = BodyIdentity.borrowed(actionPlayers);
         }
-        Vec3 at = owner.position();
-        entity.moveTo(at.x, at.y, at.z, owner.getYRot(), owner.getXRot());
-        level.addFreshEntity(entity);
+        entity.moveTo(at.x, at.y, at.z, yaw, pitch);
+        if (!level.addFreshEntity(entity)) {
+            throw BodyFailure.SPAWN_FAILED.exception();
+        }
         Container inventory = kind == BodyKind.MARKER ? null : new SimpleContainer(INVENTORY_SIZE);
-        BodyState state = new BodyState(entity.getUUID(), kind, inventory, owner.getUUID(),
-                owner.hasPermissions(2), entity, identity, level.dimension().location().toString(), entity.position());
+        BodyState state = new BodyState(entity.getUUID(), kind, inventory, playerOwner, ownerModule,
+                operator, entity, identity, level.dimension().location().toString(), entity.position());
         bodies.put(state.id(), state);
         return view(state);
     }
@@ -282,22 +320,56 @@ public final class BodyRegistry implements EntityProvider {
     }
 
     /** The carrier for an unloaded record: same level, same uuid, still the shape the record says. */
-    private static Entity findCarrier(MinecraftServer server, BodyState state) {
-        if (server == null || state.dimensionId().isBlank()) {
+    private Entity findCarrier(MinecraftServer server, BodyState state) {
+        if (server == null) {
             return null;
         }
-        net.minecraft.resources.ResourceLocation key =
-                net.minecraft.resources.ResourceLocation.tryParse(state.dimensionId());
+        if (state.dimensionId().isBlank()) {
+            for (ServerLevel level : server.getAllLevels()) {
+                Entity found = level.getEntity(state.id());
+                if (matches(state, found)) {
+                    return found;
+                }
+            }
+            return null;
+        }
+        ResourceLocation key =
+                ResourceLocation.tryParse(state.dimensionId());
         if (key == null) {
             return null;
         }
         ServerLevel level = server.getLevel(
-                net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION, key));
+                ResourceKey.create(Registries.DIMENSION, key));
         if (level == null) {
             return null;
         }
         Entity found = level.getEntity(state.id());
-        return found != null && !found.isRemoved() ? found : null;
+        if (found == null && state.identity().playerLike() && playerBodies != null
+                && level.hasChunkAt(net.minecraft.core.BlockPos.containing(state.position()))) {
+            ServerPlayer player = playerBodies.create(level, state.id());
+            if (player != null) {
+                player.setPos(state.position());
+                if (level.addFreshEntity(player)) {
+                    return player;
+                }
+            }
+        }
+        return matches(state, found) ? found : null;
+    }
+
+    static boolean matches(BodyKind kind, boolean playerLike, Entity entity) {
+        if (playerLike) {
+            return entity instanceof ServerPlayer;
+        }
+        return switch (kind) {
+            case MARKER -> entity instanceof Marker;
+            case STAND -> entity instanceof ArmorStand;
+            case WALKER -> entity instanceof WalkerBody;
+        };
+    }
+
+    private static boolean matches(BodyState state, Entity found) {
+        return found != null && !found.isRemoved() && matches(state.kind(), state.identity().playerLike(), found);
     }
 
     /** Puts a body back after a restart; its entity already exists in the world. */
@@ -375,7 +447,7 @@ public final class BodyRegistry implements EntityProvider {
             ItemStack existing = inventory.getItem(slot);
             if (existing.isEmpty()) {
                 int put = Math.min(remaining, stack.getMaxStackSize());
-                inventory.setItem(slot, new ItemStack(stack.getItem(), put));
+                inventory.setItem(slot, stack.copyWithCount(put));
                 remaining -= put;
             } else if (ItemStack.isSameItemSameComponents(existing, stack)
                     && existing.getCount() < existing.getMaxStackSize()) {
@@ -402,7 +474,7 @@ public final class BodyRegistry implements EntityProvider {
             return false;
         }
         BodyState state = bodies.get(entity.getUUID());
-        if (state == null) {
+        if (state == null || state.entity() != entity) {
             return false;
         }
         if (keepInventory) {
@@ -437,7 +509,7 @@ public final class BodyRegistry implements EntityProvider {
         }
         if (equipment.containsKey(state.id())) {
             for (EntitySlot slot : EntitySlot.values()) {
-                ItemStack stack = equipment.get(state.id()).get(slot);
+                ItemStack stack = equipment(state.id().toString(), slot);
                 if (stack != null && !stack.isEmpty()) {
                     stacks.add(stack.copy());
                 }
@@ -504,6 +576,11 @@ public final class BodyRegistry implements EntityProvider {
             }
 
             @Override
+            public String ownerModule() {
+                return state.ownerModule();
+            }
+
+            @Override
             public boolean playerLike() {
                 return state.identity().playerLike();
             }
@@ -531,9 +608,10 @@ public final class BodyRegistry implements EntityProvider {
      * inventory and a set of permissions. Dropping that record because the entity was not there yet is how a body's
      * belongings disappeared on the next save.</p>
      */
-    public BodyState restored(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity,
-                              String dimensionId, Vec3 position) {
-        return new BodyState(id, kind, inventory, owner, operator, entity, BodyIdentity.borrowed(actionPlayers),
+    public BodyState restored(UUID id, BodyKind kind, Container inventory, UUID owner, String ownerModule, boolean operator, Entity entity,
+                              String dimensionId, Vec3 position, boolean playerLike) {
+        return new BodyState(id, kind, inventory, owner, ownerModule, operator, entity,
+                playerLike ? BodyIdentity.playerBacked() : BodyIdentity.borrowed(actionPlayers),
                 dimensionId, position);
     }
 
@@ -548,20 +626,22 @@ public final class BodyRegistry implements EntityProvider {
 
         private final UUID id;
         private final BodyKind kind;
-        private final Container inventory;
+        private final Container storedInventory;
         private final UUID owner;
+        private final String ownerModule;
         private final boolean operator;
         private final BodyIdentity identity;
         private volatile Entity entity;
         private volatile String dimensionId;
         private volatile Vec3 lastPosition;
 
-        BodyState(UUID id, BodyKind kind, Container inventory, UUID owner, boolean operator, Entity entity,
+        BodyState(UUID id, BodyKind kind, Container inventory, UUID owner, String ownerModule, boolean operator, Entity entity,
                   BodyIdentity identity, String dimensionId, Vec3 position) {
             this.id = id;
             this.kind = kind;
-            this.inventory = inventory;
+            this.storedInventory = inventory;
             this.owner = owner;
+            this.ownerModule = ownerModule;
             this.operator = operator;
             this.identity = identity;
             this.dimensionId = dimensionId == null ? "" : dimensionId;
@@ -578,7 +658,14 @@ public final class BodyRegistry implements EntityProvider {
         }
 
         public Container inventory() {
-            return inventory;
+            if (storedInventory != null && identity.playerLike() && entity instanceof ServerPlayer player) {
+                return player.getInventory();
+            }
+            return storedInventory;
+        }
+
+        public String ownerModule() {
+            return ownerModule;
         }
 
         public UUID owner() {
@@ -629,9 +716,19 @@ public final class BodyRegistry implements EntityProvider {
             if (candidate == null) {
                 return;
             }
+            if (identity.playerLike() && storedInventory != null && candidate instanceof ServerPlayer player) {
+                copyMainSlots(storedInventory, player.getInventory());
+            }
             this.entity = candidate;
             this.dimensionId = candidate.level().dimension().location().toString();
             this.lastPosition = candidate.position();
+        }
+
+        private static void copyMainSlots(Container from, Container to) {
+            for (int slot = 0; slot < INVENTORY_SIZE; slot++) {
+                to.setItem(slot, from.getItem(slot).copy());
+            }
+            to.setChanged();
         }
 
         void attach(Entity candidate) {
@@ -643,6 +740,9 @@ public final class BodyRegistry implements EntityProvider {
             Entity current = entity;
             if (current == null) {
                 return;
+            }
+            if (identity.playerLike() && storedInventory != null && current instanceof ServerPlayer player) {
+                copyMainSlots(player.getInventory(), storedInventory);
             }
             lastPosition = current.position();
             dimensionId = current.level().dimension().location().toString();

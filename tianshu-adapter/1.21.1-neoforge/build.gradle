@@ -57,6 +57,15 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
 
+// Lab's platform entry is compiled for its own mod; Ferry's jar contains only the main source set.
+def labProject = evaluationDependsOn(':tianshu-lab')
+sourceSets {
+    labEntry {
+        java.setSrcDirs([labProject.file('src/neoforgeEntry/java')])
+        compileClasspath += sourceSets.main.compileClasspath + labProject.sourceSets.main.output
+    }
+}
+
 // ---------------------------------------------------------------- shared Minecraft layer
 // Everything that talks to Minecraft but not to a loader lives in tianshu-adapter/common and is compiled here
 // from source. A Gradle project cannot be compiled once against two loaders' Minecraft artifacts, so the tree
@@ -249,7 +258,7 @@ neoForge {
         if ('lab' in devFeatureMods) {
             tianshu_lab {
                 sourceSet(project(':tianshu-lab').sourceSets.main)
-                sourceSet(project(':tianshu-lab').sourceSets.neoforgeEntry)
+                sourceSet(sourceSets.labEntry)
             }
         }
     }

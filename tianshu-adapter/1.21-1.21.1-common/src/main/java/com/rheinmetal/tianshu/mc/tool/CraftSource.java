@@ -11,6 +11,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.ShapedRecipe;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
@@ -47,9 +49,7 @@ public final class CraftSource implements CraftPort {
 
     @Override
     public CompletableFuture<CraftResult> craft(ActorRef actor, CraftRequest request) {
-        CompletableFuture<CraftResult> result = new CompletableFuture<>();
-        server.execute(() -> result.complete(craftNow(actor, request)));
-        return result;
+        return CompletableFuture.supplyAsync(() -> craftNow(actor, request), server);
     }
 
     private CraftResult craftNow(ActorRef actor, CraftRequest request) {
@@ -79,78 +79,92 @@ public final class CraftSource implements CraftPort {
         if (!craftingTableNearby(BlockPos.containing(holder.position()), level)) {
             return failure("a crafting table is required nearby");
         }
-        ItemStack produced = crafting.getResultItem(level.registryAccess());
-        if (produced.isEmpty()) {
-            return failure("the recipe produces nothing");
+        int width = crafting instanceof ShapedRecipe shaped ? shaped.getWidth() : 3;
+        int height = crafting instanceof ShapedRecipe shaped ? shaped.getHeight() : 3;
+        List<Ingredient> ingredients = crafting.getIngredients();
+        if (width > 3 || height > 3 || ingredients.size() > width * height) {
+            return failure("only crafting-table recipes are supported");
         }
-        int[] assignment = assignIngredients(inventory, crafting.getIngredients());
+        int[] assignment = assignIngredients(inventory, ingredients);
         if (assignment == null) {
             return failure("the actor is missing ingredients");
         }
+        List<ItemStack> grid = new java.util.ArrayList<>(width * height);
+        for (int i = 0; i < width * height; i++) {
+            int slot = i < assignment.length ? assignment[i] : -1;
+            grid.add(slot < 0 ? ItemStack.EMPTY : inventory.getItem(slot).copyWithCount(1));
+        }
+        CraftingInput input = CraftingInput.of(width, height, grid);
+        if (!crafting.matches(input, level)) {
+            return failure("the actor is missing ingredients");
+        }
+        ItemStack crafted = crafting.assemble(input, level.registryAccess());
+        if (crafted.isEmpty()) {
+            return failure("the recipe produces nothing");
+        }
+        settle(holder, assignment, crafted, crafting.getRemainingItems(input));
+        return new CraftResult(BuiltInRegistries.ITEM.getKey(crafted.getItem()).toString(), crafted.getCount(),
+                true, "crafted");
+    }
+
+    static void settle(ToolActor holder, int[] assignment, ItemStack crafted, List<ItemStack> leftovers) {
         for (int slot : assignment) {
-            inventory.removeItem(slot, 1);
-        }
-        // The recipe decides the count: a crafting-table recipe yields four sticks, and forcing one silently
-        // short-changed the player on every batch recipe. Remaining items (a bucket from cake, say) are the recipe's
-        // own leftovers and go back to the actor with the product.
-        ItemStack crafted = produced.copy();
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(crafted.getItem());
-        String name = itemId == null ? "unknown" : itemId.toString();
-        int craftedCount = crafted.getCount();
-        if (Inventories.add(inventory, crafted, MAIN_INVENTORY_SIZE) <= 0) {
-            holder.drop(crafted);
-        }
-        int side = assignment.length <= 4 ? 2 : 3;
-        net.minecraft.world.item.crafting.CraftingInput input =
-                net.minecraft.world.item.crafting.CraftingInput.of(side, side, craftingGrid(assignment, inventory));
-        for (ItemStack remaining : crafting.getRemainingItems(input)) {
-            if (!remaining.isEmpty()) {
-                if (Inventories.add(inventory, remaining.copy(), MAIN_INVENTORY_SIZE) <= 0) {
-                    holder.drop(remaining.copy());
-                }
+            if (slot >= 0) {
+                holder.inventory().removeItem(slot, 1);
             }
         }
-        return new CraftResult(name, craftedCount, true, "crafted");
+        deliver(holder, crafted);
+        for (ItemStack remaining : leftovers) {
+            deliver(holder, remaining);
+        }
     }
 
-    /** The recipe's view of the grid: one item per ingredient slot, in the order the assignment recorded. */
-    /** The recipe's view of the grid: one item per ingredient slot, in the order the assignment recorded. */
-    private static java.util.List<ItemStack> craftingGrid(int[] assignment, Container inventory) {
-        java.util.List<ItemStack> grid = new java.util.ArrayList<>();
-        for (int index = 0; index < Math.max(1, assignment.length); index++) {
-            int slot = index < assignment.length ? assignment[index] : -1;
-            grid.add(slot >= 0 ? inventory.getItem(slot).copyWithCount(1) : ItemStack.EMPTY);
+    private static void deliver(ToolActor holder, ItemStack stack) {
+        if (!stack.isEmpty()) {
+            int placed = Inventories.add(holder.inventory(), stack, MAIN_INVENTORY_SIZE);
+            if (placed < stack.getCount()) {
+                holder.drop(stack.copyWithCount(stack.getCount() - placed));
+            }
         }
-        return grid;
     }
 
-    private static int[] assignIngredients(Container inventory, List<Ingredient> ingredients) {
-        int[] assignment = new int[ingredients.size()];
-        int[] used = new int[MAIN_INVENTORY_SIZE];
-        for (int index = 0; index < ingredients.size(); index++) {
-            Ingredient ingredient = ingredients.get(index);
-            if (ingredient.isEmpty()) {
-                assignment[index] = -1;
-                continue;
-            }
-            int slot = -1;
-            for (int candidate = 0; candidate < MAIN_INVENTORY_SIZE; candidate++) {
-                ItemStack stack = inventory.getItem(candidate);
-                if (stack.isEmpty() || used[candidate] >= stack.getCount()) {
-                    continue;
-                }
-                if (ingredient.test(stack)) {
-                    slot = candidate;
-                    break;
-                }
-            }
-            if (slot < 0) {
+    static int[] assignIngredients(Container inventory, List<Ingredient> ingredients) {
+        int[] assigned = new int[ingredients.size()];
+        java.util.Arrays.fill(assigned, -1);
+        int slots = Math.min(MAIN_INVENTORY_SIZE, inventory.getContainerSize());
+        for (int i = 0; i < ingredients.size(); i++) {
+            if (!ingredients.get(i).isEmpty() && !assign(i, inventory, ingredients, assigned, new boolean[slots])) {
                 return null;
             }
-            used[slot]++;
-            assignment[index] = slot;
         }
-        return assignment;
+        return assigned;
+    }
+
+    /** Move an earlier flexible ingredient if it occupies the only slot suitable for this one. */
+    private static boolean assign(int ingredient, Container inventory, List<Ingredient> ingredients,
+                                  int[] assigned, boolean[] visited) {
+        for (int slot = 0; slot < visited.length; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (visited[slot] || stack.isEmpty() || !ingredients.get(ingredient).test(stack)) {
+                continue;
+            }
+            visited[slot] = true;
+            int used = 0;
+            for (int allocation : assigned) {
+                if (allocation == slot) used++;
+            }
+            if (used < stack.getCount()) {
+                assigned[ingredient] = slot;
+                return true;
+            }
+            for (int other = 0; other < assigned.length; other++) {
+                if (assigned[other] == slot && assign(other, inventory, ingredients, assigned, visited)) {
+                    assigned[ingredient] = slot;
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean craftingTableNearby(BlockPos center, ServerLevel level) {

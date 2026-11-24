@@ -2,7 +2,10 @@ package com.rheinmetal.tianshu.fabric;
 
 import com.mojang.authlib.GameProfile;
 import com.rheinmetal.tianshu.mc.body.PlayerBodyFactory;
-import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
+import io.netty.util.ReferenceCountUtil;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
@@ -13,8 +16,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 
-import java.lang.reflect.Field;
-import java.net.InetSocketAddress;
 import java.util.UUID;
 
 /**
@@ -45,27 +46,15 @@ public final class FabricPlayerBodies implements PlayerBodyFactory {
     /** A connection that is complete enough for every player-side publish, with nothing on the other end. */
     private static Connection loopback() {
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
-        EmbeddedChannel channel = new EmbeddedChannel();
-        channel.pipeline().addLast("packet_handler", connection);
-        set(connection, "channel", channel);
-        set(connection, "address", new InetSocketAddress("127.0.0.1", 1));
+        // EmbeddedChannel normally retains outbound messages for a test to read. This peer has no reader.
+        new EmbeddedChannel(new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) {
+                ReferenceCountUtil.release(message);
+                promise.trySuccess();
+            }
+        }, connection);
         return connection;
-    }
-
-    /**
-     * The connection keeps its channel in a private field whose name is stable in the Mojang mappings but not part of
-     * any public contract; reflection is the only route, and a rename fails loudly at body creation rather than
-     * silently misbehaving later.
-     */
-    private static void set(Connection connection, String field, Object value) {
-        try {
-            Field target = Connection.class.getDeclaredField(field);
-            target.setAccessible(true);
-            target.set(connection, value);
-        } catch (ReflectiveOperationException unavailable) {
-            throw new IllegalStateException("cannot fabricate a connection for a player-backed body: " + field,
-                    unavailable);
-        }
     }
 
     private static String nameOf(UUID bodyId) {

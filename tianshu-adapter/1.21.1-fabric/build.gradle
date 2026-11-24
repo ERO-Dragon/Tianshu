@@ -23,6 +23,15 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of((findProperty('java_version') ?: '21') as int)
 
+// Lab's platform entry is compiled for its own mod; Ferry's jar contains only the main source set.
+def labProject = evaluationDependsOn(':tianshu-lab')
+sourceSets {
+    labEntry {
+        java.setSrcDirs([labProject.file('src/fabricEntry/java')])
+        compileClasspath += sourceSets.main.compileClasspath + labProject.sourceSets.main.output
+    }
+}
+
 // ---------------------------------------------------------------- shared Minecraft layer
 // The same tree the NeoForge adapter compiles, from source: a Gradle project cannot be compiled once against
 // two loaders' Minecraft artifacts, so the tree is shared and each adapter supplies the classpath.
@@ -170,4 +179,16 @@ loom {
             }
         }
     }
+}
+// Lab owns its handshake. Remap just its Fabric shell, leaving the NeoForge classes in their native namespace.
+def labEntryJar = tasks.register('labEntryJar', Jar) {
+    archiveClassifier.set('lab-entry-dev')
+    destinationDirectory.set(layout.buildDirectory.dir('lab'))
+    from sourceSets.labEntry.output
+}
+tasks.register('remapLabFabricEntry', net.fabricmc.loom.task.RemapJarTask) {
+    inputFile.set(labEntryJar.flatMap { it.archiveFile })
+    archiveFileName.set('entry.jar')
+    destinationDirectory.set(layout.buildDirectory.dir('lab'))
+    addNestedDependencies.set(false)
 }

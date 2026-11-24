@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.mc.network;
 
 import com.rheinmetal.tianshu.api.ModIdentity;
+import com.rheinmetal.tianshu.protocol.ProtocolWireVersion;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
 import com.rheinmetal.tianshu.api.tool.ToolWireLimits;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -24,7 +25,7 @@ import java.util.List;
 public record ToolCatalogPacket(List<ToolCatalogEntry> tools) implements CustomPacketPayload {
 
     public static final Type<ToolCatalogPacket> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(ModIdentity.MOD_ID, "tool_catalog"));
+            ResourceLocation.fromNamespaceAndPath(ModIdentity.MOD_ID, "tool_catalog_v" + ProtocolWireVersion.VERSION));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, ToolCatalogPacket> STREAM_CODEC =
             StreamCodec.ofMember(ToolCatalogPacket::encode, ToolCatalogPacket::decode);
@@ -50,15 +51,23 @@ public record ToolCatalogPacket(List<ToolCatalogEntry> tools) implements CustomP
     }
 
     static ToolCatalogPacket decode(RegistryFriendlyByteBuf buffer) {
+        int count = readCount(buffer);
+        List<ToolCatalogEntry> entries = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            entries.add(new ToolCatalogEntry(readId(buffer), buffer.readBoolean()));
+        }
+        return new ToolCatalogPacket(entries);
+    }
+
+    static String readId(RegistryFriendlyByteBuf buffer) {
+        return buffer.readUtf(ToolWireLimits.MAX_TOOL_ID);
+    }
+
+    static int readCount(RegistryFriendlyByteBuf buffer) {
         int count = buffer.readVarInt();
         if (count < 0 || count > ToolWireLimits.MAX_TOOLS) {
             throw new IllegalArgumentException("invalid server tool catalog size: " + count);
         }
-        List<ToolCatalogEntry> entries = new ArrayList<>(count);
-        for (int index = 0; index < count; index++) {
-            String id = ToolWireLimits.text(buffer.readUtf(), "toolId", ToolWireLimits.MAX_TOOL_ID);
-            entries.add(new ToolCatalogEntry(id, buffer.readBoolean()));
-        }
-        return new ToolCatalogPacket(entries);
+        return count;
     }
 }

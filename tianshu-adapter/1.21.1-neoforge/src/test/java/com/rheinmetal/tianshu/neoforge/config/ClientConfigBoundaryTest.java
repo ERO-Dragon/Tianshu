@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.config;
 
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -51,7 +52,7 @@ final class ClientConfigBoundaryTest {
     void configHostNamesNoFeatureModule() throws Exception {
         String source = read(CONFIG_HOST);
 
-        assertFalse(source.contains("com.rheinmetal.tianshu."),
+        assertFalse(Pattern.compile("com\\.rheinmetal\\.tianshu\\.(intake|echo|weaving|dubhe|presence|lab)\\.").matcher(source).find(),
                 "a feature module contract in the config host is what forces the kernel to follow every module");
         assertFalse(source.contains("IntakeConfiguration"));
         assertFalse(source.contains("EchoConfiguration"));

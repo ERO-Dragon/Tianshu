@@ -1,12 +1,13 @@
 package com.rheinmetal.tianshu.neoforge.server;
 
+import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
+import com.rheinmetal.tianshu.mc.tool.ServerToolSession;
 import com.rheinmetal.tianshu.api.entity.EntityActionPort;
 import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
 import com.rheinmetal.tianshu.api.entity.EntityItemUsePort;
 import com.rheinmetal.tianshu.api.entity.EntityUsePort;
 import com.rheinmetal.tianshu.api.entity.EntityItemPort;
 import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
@@ -56,7 +57,6 @@ import com.rheinmetal.tianshu.mc.body.BodyCommands;
 import com.rheinmetal.tianshu.mc.body.ActionPlayerFactory;
 import com.rheinmetal.tianshu.mc.body.BodyRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
-import com.rheinmetal.tianshu.mc.body.BodyPersistence;
 import com.rheinmetal.tianshu.client.tool.routing.ActionRouter;
 import com.rheinmetal.tianshu.client.tool.routing.CraftRouter;
 import com.rheinmetal.tianshu.client.tool.routing.UseItemRouter;
@@ -89,7 +89,7 @@ public final class ServerToolHandler {
     private static final int OPERATOR_PERMISSION_LEVEL = 2;
 
     /** What the current server start installed, so the stop can take exactly that back. */
-    private static com.rheinmetal.tianshu.mc.tool.ServerRegistrations registrations;
+    private static final ServerToolSession SESSION = new ServerToolSession();
 
     private ServerToolHandler() {
     }
@@ -117,83 +117,61 @@ public final class ServerToolHandler {
     }
 
     private static void onServerStarting(ServerStartingEvent event) {
-        // A fresh session per world: whatever the last one installed has to be gone before this one starts, or the
-        // second world in one process sees ports pointing at the previous server.
-        if (registrations != null) {
-            registrations.close();
-        }
-        registrations = new com.rheinmetal.tianshu.mc.tool.ServerRegistrations();
-        ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
-        BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers, new com.rheinmetal.tianshu.neoforge.NeoForgePlayerBodies());
-        TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
-        registrations.port(PlayerAuthority.class, new ServerPlayerAuthority(event.getServer()));
-        // The operator's ceiling on server-side tools; read live from the config so a reload takes effect.
-        TianshuRuntimePorts.register(ServerAutonomyCeiling.class, ServerActionConfig::autonomyCeiling);
-        // The cheat-grade tools are server tools: the server owns their implementation and executes them here.
-        registrations.port(ServerActionExecutionPort.class,
-                new NeoForgeActionExecution(event.getServer()));
-        // What this server will actually allow, and from which file: the one line that settles "I edited it and
-        // nothing changed".
-        com.mojang.logging.LogUtils.getLogger().info("tianshu server config: file={} {}", 
-                net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("tianshu_ferry-server.toml"),
-                ServerActionConfig.describe());
-        for (var actionTool : com.rheinmetal.tianshu.client.tool.ServerActionTools.tools()) {
-            registrations.tool(actionTool);
-        }
-        // Only after registration: the advertised state belongs to a tool that exists in this registry.
-        com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(
-                action -> { var value = ServerActionConfig.switchFor(action); return value != null && value.get(); });
-        ServerTicks.INSTANCE.onNextTick(() -> BodyPersistence.load(event.getServer(), bodies));
-        registrations.port(LootQueryPort.class, new LootQuerySource(event.getServer()));
-        registrations.port(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
-        if (TianshuTools.find(RecipeQueryTool.ID) == null) {
-            TianshuTools.register(new RecipeQueryTool());
-        }
-        registrations.port(BlockInteractPort.class,
-                new InteractRouter(new BlockInteractSource(event.getServer(), bodies, actionPlayers)));
-        registrations.port(BlockPlacePort.class,
-                new PlaceRouter(new BlockPlaceSource(event.getServer(), bodies, actionPlayers)));
-        registrations.port(CraftPort.class, new CraftRouter(new CraftSource(event.getServer())));
-        registrations.port(ContainerTransferPort.class,
-                new TransferRouter(new ContainerTransferSource(event.getServer())));
-        registrations.port(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(event.getServer())));
-        TianshuRuntimePorts.register(EntityMotionPort.class, new MotionRouter());
-        TianshuRuntimePorts.register(EntityActionPort.class, new ActionRouter());
-        registrations.port(EntityQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));
-        registrations.port(EntityItemPort.class, new ItemRouter(new AgentItemSource(event.getServer(), bodies)));
-        TianshuRuntimePorts.register(EntityItemUsePort.class, new UseItemRouter());
-        TianshuRuntimePorts.register(EntityUsePort.class, new EntityUseRouter());
-        if (TianshuTools.find(LootQueryTool.ID) == null) {
-            TianshuTools.register(new LootQueryTool());
-        }
-        if (TianshuTools.find(BlockInteractTool.ID) == null) {
-            TianshuTools.register(new BlockInteractTool());
-        }
-        if (TianshuTools.find(CraftRecipeTool.ID) == null) {
-            TianshuTools.register(new CraftRecipeTool());
-        }
-        TianshuTools.setEnabled(BlockInteractTool.ID, ServerActionConfig.BLOCK_INTERACT.get());
-        if (TianshuTools.find(ContainerTransferTool.ID) == null) {
-            TianshuTools.register(new ContainerTransferTool());
-        }
-        TianshuTools.setEnabled(CraftRecipeTool.ID, ServerActionConfig.CRAFT_RECIPE.get());
-        if (TianshuTools.find(BlockMachineTool.ID) == null) {
-            TianshuTools.register(new BlockMachineTool());
-        }
-        TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
-        TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
-        registerBodyTools(ServerActionConfig.BODY_ACTIONS.get(), ServerActionConfig.BLOCK_PLACE.get());
+        SESSION.start(registrations -> {
+            ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
+            BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers, new com.rheinmetal.tianshu.neoforge.NeoForgePlayerBodies());
+            registrations.port(EntitySpawnPort.class, bodies);
+            registrations.port(ServerTickPort.class, ServerTicks.INSTANCE);
+            registrations.port(PlayerAuthority.class, new ServerPlayerAuthority(event.getServer()));
+            // The operator's ceiling on server-side tools; read live from the config so a reload takes effect.
+            registrations.port(ServerAutonomyCeiling.class, ServerActionConfig::autonomyCeiling);
+            // The cheat-grade tools are server tools: the server owns their implementation and executes them here.
+            registrations.port(ServerActionExecutionPort.class,
+                    new NeoForgeActionExecution(event.getServer()));
+            // What this server will actually allow, and from which file: the one line that settles "I edited it and
+            // nothing changed".
+            com.mojang.logging.LogUtils.getLogger().info("tianshu server config: file={} {}",
+                    net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("tianshu_ferry-server.toml"),
+                    ServerActionConfig.describe());
+            for (var actionTool : com.rheinmetal.tianshu.client.tool.ServerActionTools.tools()) {
+                registrations.tool(actionTool);
+            }
+            // Only after registration: the advertised state belongs to a tool that exists in this registry.
+            com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(
+                    action -> { var value = ServerActionConfig.switchFor(action); return value != null && value.get(); });
+            ServerTicks.INSTANCE.onNextTick(() -> bodies.persistence().load(event.getServer(), bodies));
+            registrations.port(LootQueryPort.class, new LootQuerySource(event.getServer()));
+            registrations.port(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
+            registrations.tool(new RecipeQueryTool());
+            registrations.port(BlockInteractPort.class,
+                    new InteractRouter(new BlockInteractSource(event.getServer(), bodies, actionPlayers)));
+            registrations.port(BlockPlacePort.class,
+                    new PlaceRouter(new BlockPlaceSource(event.getServer(), bodies, actionPlayers)));
+            registrations.port(CraftPort.class, new CraftRouter(new CraftSource(event.getServer())));
+            registrations.port(ContainerTransferPort.class,
+                    new TransferRouter(new ContainerTransferSource(event.getServer())));
+            registrations.port(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(event.getServer())));
+            registrations.port(EntityMotionPort.class, new MotionRouter());
+            registrations.port(EntityActionPort.class, new ActionRouter());
+            registrations.port(EntityQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));
+            registrations.port(EntityItemPort.class, new ItemRouter(new AgentItemSource(event.getServer(), bodies)));
+            registrations.port(EntityItemUsePort.class, new UseItemRouter());
+            registrations.port(EntityUsePort.class, new EntityUseRouter());
+            registrations.tool(new LootQueryTool());
+            registrations.tool(new BlockInteractTool());
+            registrations.tool(new CraftRecipeTool());
+            TianshuTools.setEnabled(BlockInteractTool.ID, ServerActionConfig.BLOCK_INTERACT.get());
+            registrations.tool(new ContainerTransferTool());
+            TianshuTools.setEnabled(CraftRecipeTool.ID, ServerActionConfig.CRAFT_RECIPE.get());
+            registrations.tool(new BlockMachineTool());
+            TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
+            TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
+            registerBodyTools(ServerActionConfig.BODY_ACTIONS.get(), ServerActionConfig.BLOCK_PLACE.get());
+        });
     }
 
     private static void onServerStopping(ServerStoppingEvent event) {
-        BodyRuntime.current().ifPresent(registry -> BodyPersistence.save(event.getServer(), registry));
-        BodyRuntime.stop();
-        ServerTicks.INSTANCE.clear();
-        // Ports capture this server; leaving them registered kept it reachable from the title screen.
-        if (registrations != null) {
-            registrations.close();
-            registrations = null;
-        }
+        SESSION.stop(event.getServer());
     }
 
     /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */
@@ -206,7 +184,7 @@ public final class ServerToolHandler {
         BodyRuntime.current().ifPresent(registry -> {
                 // Rebind unloaded carriers before the timer can save a registry that lost them.
                 registry.refreshCarriers(event.getServer());
-                BodyPersistence.tick(event.getServer(), registry);
+                registry.persistence().tick(event.getServer(), registry);
             });
     }
 
@@ -215,7 +193,8 @@ public final class ServerToolHandler {
     }
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.connection == null) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.connection == null
+                || !player.connection.hasChannel(ToolCatalogPacket.TYPE)) {
             return;
         }
         String playerId = player.getUUID().toString();
@@ -242,7 +221,7 @@ public final class ServerToolHandler {
             return;
         }
         server.execute(() -> {
-            if (player.connection != null) {
+            if (player.connection != null && player.connection.hasChannel(ToolCatalogPacket.TYPE)) {
                 PacketDistributor.sendToPlayer(player, new ToolCatalogPacket(tools));
             }
         });

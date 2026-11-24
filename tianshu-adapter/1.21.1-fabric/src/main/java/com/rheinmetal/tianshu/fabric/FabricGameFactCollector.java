@@ -161,8 +161,7 @@ public final class FabricGameFactCollector {
     /**
      * The one place that talks to the network.
      *
-     * <p>A client that did not register the channel gets nothing: {@code canSend} is asked rather than assumed, so a
-     * vanilla client on a modded server is not spammed with payloads it cannot read.</p>
+     * <p>Only send facts once the client has announced its play receiver.</p>
      */
     private void send(ServerPlayer player, String factId, Map<String, String> values) {
         if (player == null || player.connection == null) {
