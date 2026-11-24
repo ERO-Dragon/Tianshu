@@ -29,6 +29,14 @@ public final class WorldEventTypes {
     public static final String EVENT_DAMAGE_TAKEN = "damage_taken";
     /** Damage of one kind the player worries about specifically: falling. */
     public static final String EVENT_FALL_DAMAGE = "fall_damage";
+    /** The player went to bed. */
+    public static final String EVENT_SLEEP = "sleep";
+    /** The player came back: the other half of a death, and a different moment. */
+    public static final String EVENT_RESPAWN = "respawn";
+    /** Rain, thunder or clear: a world-wide change worth a line even when nothing else happened. */
+    public static final String EVENT_WEATHER_CHANGE = "weather_change";
+    /** Ate something; the item is what the line talks about. */
+    public static final String EVENT_EAT_FOOD = "eat_food";
     /** A pickup worth mentioning on its own: the item the game itself calls rare or better. */
     public static final String EVENT_RARE_ITEM = "rare_item";
     public static final String EVENT_EXP_LEVEL = "exp_level";
