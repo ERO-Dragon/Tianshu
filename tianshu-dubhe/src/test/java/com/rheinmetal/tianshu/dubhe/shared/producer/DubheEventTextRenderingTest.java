@@ -43,6 +43,23 @@ class DubheEventTextRenderingTest {
         }
     };
 
+    /** Knows the line keys and one value key, so "the key exists" and "the key is missing" are both observable. */
+    private static final DubheGameEventTextProvider ECHO_WITH_VALUES = new DubheGameEventTextProvider() {
+        @Override
+        public boolean exists(String key) {
+            return key != null && (key.startsWith("line.") || "value.weather.rain".equals(key));
+        }
+
+        @Override
+        public String text(String key, Object... args) {
+            StringBuilder rendered = new StringBuilder("value.weather.rain".equals(key) ? "rain-key" : key);
+            for (Object arg : args) {
+                rendered.append('[').append(arg).append(']');
+            }
+            return rendered.toString();
+        }
+    };
+
     @Test
     void aSelfReferencingTemplateStopsAtTheDepthCapInsteadOfOverflowingTheStack() {
         DubheEventText selfReferencing = nestedSelfReference(0);
@@ -59,6 +76,34 @@ class DubheEventTextRenderingTest {
         DubheEventText outer = DubheEventText.of("outer", List.of(DubheEventText.Arg.nested(inner)));
 
         assertEquals("outer[inner]", ECHO.render(outer));
+    }
+
+    /**
+     * A token the language table owns is worded there, not pasted into the sentence: this is what turns
+     * "天气变了：rain" into "天气变了：下雨".
+     */
+    @Test
+    void aLanguageReferenceIsResolvedInsteadOfLeaked() {
+        DubheEventText line = DubheEventText.of("line.weather", List.of(
+                DubheEventText.Arg.key("value.weather.rain", "rain")));
+
+        assertEquals("line.weather[rain-key]", ECHO_WITH_VALUES.render(line));
+    }
+
+    /** A key this build has no entry for — a modded dimension — still says something true. */
+    @Test
+    void aLanguageReferenceFallsBackToItsToken() {
+        DubheEventText line = DubheEventText.of("line.respawn", List.of(
+                DubheEventText.Arg.key("value.dimension.minecraft.twilightforest", "minecraft:twilightforest")));
+
+        assertEquals("line.respawn[minecraft:twilightforest]", ECHO_WITH_VALUES.render(line));
+    }
+
+    @Test
+    void anEmptyLanguageReferenceContributesNothing() {
+        DubheEventText line = DubheEventText.of("line.empty", List.of(DubheEventText.Arg.key("", "")));
+
+        assertEquals("line.empty[]", ECHO_WITH_VALUES.render(line));
     }
 
     @Test

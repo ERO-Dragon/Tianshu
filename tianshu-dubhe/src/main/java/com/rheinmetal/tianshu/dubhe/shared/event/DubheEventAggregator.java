@@ -146,6 +146,10 @@ final class DubheEventAggregator {
                 if (!isNumeric(value.text())) {
                     out.append('\u0000').append(value.text());
                 }
+            } else if (arg instanceof DubheEventText.Arg.Key reference) {
+                // A language reference is part of what makes two occurrences different: "weather changed to
+                // rain" and "to clear" must not share one count.
+                out.append('\u0000').append(reference.key());
             } else if (arg instanceof DubheEventText.Arg.Nested nested) {
                 out.append('\u0000');
                 appendIdentity(nested.text(), out, depth + 1);

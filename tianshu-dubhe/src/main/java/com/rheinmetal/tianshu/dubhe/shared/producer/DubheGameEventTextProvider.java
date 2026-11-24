@@ -65,6 +65,16 @@ public interface DubheGameEventTextProvider {
                 values.add(value.text());
                 continue;
             }
+            if (arg instanceof DubheEventText.Arg.Key reference) {
+                // The key is the wording; its fallback is the token, which is still true but raw. A key that a
+                // modded dimension has no entry for therefore reads "minecraft:twilightforest" rather than
+                // leaving a hole in the sentence.
+                String resolved = reference.key().isEmpty() || !exists(reference.key())
+                        ? reference.fallback()
+                        : text(reference.key());
+                values.add(resolved);
+                continue;
+            }
             if (arg instanceof DubheEventText.Arg.Nested nested) {
                 String fragment = render(nested.text(), depth + 1);
                 if (fragment.isBlank()) {

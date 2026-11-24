@@ -13,11 +13,12 @@ import java.util.Objects;
  * protocol has to send the resolved sentence (or its own schema), never this record: its arguments nest,
  * and nested language references only mean something inside the process that renders them.
  *
- * <p>An argument is either a {@link Arg.Value literal} — a number, a player name, an already localized
- * vanilla string — or a {@link Arg.Nested} reference to another {@link DubheEventText}, which is how a detail
- * fragment ("lost 3 health", a dimension name) stays a template instead of becoming a sentence inside the
- * producer. Nesting is capped at {@link #MAX_REF_DEPTH} because a language table that references itself
- * would otherwise recurse without end.
+ * <p>An argument is one of three things: a {@link Arg.Value literal} — a number, a player name, an
+ * already localized vanilla string; a {@link Arg.Nested} reference to another {@link DubheEventText},
+ * which is how a detail fragment ("lost 3 health", a dimension name) stays a template instead of becoming
+ * a sentence on its own; or a {@link Arg.Key language reference} for a token only the language table can
+ * word ("rain", "minecraft:overworld"). Nesting is capped at {@link #MAX_REF_DEPTH} because a language
+ * table that references itself would otherwise recurse without end.
  */
 public record DubheEventText(String key, List<Arg> args) {
     /** Deepest nesting a template may reach; a self referencing template stops here and renders empty. */
@@ -48,14 +49,29 @@ public record DubheEventText(String key, List<Arg> args) {
         return key.isEmpty();
     }
 
-    /** One argument of a template; see the class comment for why nesting exists. */
-    public sealed interface Arg permits Arg.Value, Arg.Nested {
+    /** One argument of a template; see the class comment for why three kinds exist. */
+    public sealed interface Arg permits Arg.Value, Arg.Nested, Arg.Key {
         static Arg value(String text) {
             return new Value(text);
         }
 
         static Arg nested(DubheEventText text) {
             return new Nested(text);
+        }
+
+        /**
+         * A language key resolved at render time, with the raw token as its fallback.
+         *
+         * <p>Some values a producer can only state as a token — a weather state, a dimension id — and putting
+         * that token straight into a sentence is how "weather changed: rain" happens inside a translated line. Naming
+         * a key instead keeps the wording in the language table; the fallback covers the case a key does not
+         * exist yet (a modded dimension), where the raw token still says something true.</p>
+         *
+         * @param key      language key to render
+         * @param fallback token shown when that key is missing; blank means the key is required
+         */
+        static Arg key(String key, String fallback) {
+            return new Key(key, fallback);
         }
 
         /** A concrete value substituted as is. */
@@ -71,5 +87,17 @@ public record DubheEventText(String key, List<Arg> args) {
                 Objects.requireNonNull(text, "nested event text is required");
             }
         }
+
+        /** A language key resolved at render time; see {@link #key(String, String)}. */
+        record Key(String key, String fallback) implements Arg {
+            public Key {
+                key = normalize(key);
+                fallback = fallback == null ? "" : fallback;
+            }
+        }
+    }
+
+    private static String normalize(String key) {
+        return key == null ? "" : key.trim();
     }
 }

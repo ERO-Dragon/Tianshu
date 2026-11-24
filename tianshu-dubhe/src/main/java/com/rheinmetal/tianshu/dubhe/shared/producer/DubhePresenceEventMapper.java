@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.dubhe.shared.producer;
 
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventText;
 import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventTexts;
+import com.rheinmetal.tianshu.dubhe.shared.event.DubheEventValues;
 import com.rheinmetal.tianshu.presence.payload.PresenceWorldEventPayload;
 
 import java.util.ArrayList;
@@ -74,7 +75,8 @@ public final class DubhePresenceEventMapper {
             Map.entry(PresenceWorldEventPayload.EVENT_DIMENSION_CHANGED,
                     new Rule("tianshu:dimension_enter", List.of(
                             PresenceWorldEventPayload.VALUE_DIMENSION_NAME,
-                            PresenceWorldEventPayload.VALUE_DIMENSION))),
+                            PresenceWorldEventPayload.VALUE_DIMENSION),
+                            ValueShape.DIMENSION)),
             Map.entry(PresenceWorldEventPayload.EVENT_EFFECT_GAINED,
                     new Rule("tianshu:effect_gained", List.of(PresenceWorldEventPayload.VALUE_EFFECT_NAME))),
             Map.entry(PresenceWorldEventPayload.EVENT_EFFECT_EXPIRED,
@@ -86,13 +88,15 @@ public final class DubhePresenceEventMapper {
             Map.entry(PresenceWorldEventPayload.EVENT_SLEEP,
                     new Rule("tianshu:sleep", List.of())),
             Map.entry(PresenceWorldEventPayload.EVENT_RESPAWN,
-                    new Rule("tianshu:respawn", List.of(PresenceWorldEventPayload.VALUE_DIMENSION))),
+                    new Rule("tianshu:respawn", List.of(PresenceWorldEventPayload.VALUE_DIMENSION),
+                            ValueShape.DIMENSION)),
             Map.entry(PresenceWorldEventPayload.EVENT_EAT_FOOD,
                     new Rule("tianshu:eat_food", List.of(
                             PresenceWorldEventPayload.VALUE_ITEM_NAME,
                             PresenceWorldEventPayload.VALUE_ITEM_ID))),
             Map.entry(PresenceWorldEventPayload.EVENT_WEATHER_CHANGE,
-                    new Rule("tianshu:weather_change", List.of(PresenceWorldEventPayload.VALUE_TYPE))),
+                    new Rule("tianshu:weather_change", List.of(PresenceWorldEventPayload.VALUE_TYPE),
+                            ValueShape.WEATHER)),
             Map.entry(PresenceWorldEventPayload.EVENT_RARE_ITEM,
                     new Rule("tianshu:rare_item", List.of(
                             PresenceWorldEventPayload.VALUE_ITEM_NAME,
@@ -161,14 +165,44 @@ public final class DubhePresenceEventMapper {
                 continue;
             }
             // A count of one is not worth saying ("1 个 探险时间"); it only appears once something repeated.
+            DubheEventText.Arg detailArg = toArg(rule.shape(), detail);
             parts.add(occurrence.count() > 1
-                    ? DubheEventText.of(BATCH_ENTRY_KEY, Integer.toString(occurrence.count()), detail)
-                    : DubheEventText.of(BATCH_ENTRY_PLAIN_KEY, detail));
+                    ? DubheEventText.of(BATCH_ENTRY_KEY,
+                            List.of(DubheEventText.Arg.value(Integer.toString(occurrence.count())), detailArg))
+                    : DubheEventText.of(BATCH_ENTRY_PLAIN_KEY, List.of(detailArg)));
         }
         return Optional.of(new Batch(rule.kind(), lineKey, parts, total, moreKeyFor(rule.kind())));
     }
 
-    /** One row of the table: the kind, and which values of the event may word the line, in preference order. */
-    private record Rule(String kind, List<String> valueKeys) {
+    /**
+     * The detail as an argument: a plain literal, or a language reference when the token is protocol vocabulary
+     * rather than language (a weather state, a dimension id).
+     */
+    private static DubheEventText.Arg toArg(ValueShape shape, String detail) {
+        return switch (shape) {
+            case WEATHER -> DubheEventValues.weather(detail);
+            case DIMENSION -> DubheEventValues.dimension(detail);
+            case TEXT -> DubheEventText.Arg.value(detail);
+        };
+    }
+
+    /** How the detail value is meant to be read; a value the language table must word is named, not pasted. */
+    private enum ValueShape {
+        /** Already language: an item name, a player name, a count. */
+        TEXT,
+        /** A protocol token the language table words: {@code rain} / {@code thunder} / {@code clear}. */
+        WEATHER,
+        /** A dimension id (or a name that must be shown as-is): {@code minecraft:overworld}. */
+        DIMENSION
+    }
+
+    /**
+     * One row of the table: the kind, which values of the event may word the line in preference order, and how
+     * that value is meant to be read.
+     */
+    private record Rule(String kind, List<String> valueKeys, ValueShape shape) {
+        private Rule(String kind, List<String> valueKeys) {
+            this(kind, valueKeys, ValueShape.TEXT);
+        }
     }
 }

@@ -182,8 +182,65 @@ class DubhePresenceEventMapperTest {
 
     /** A counted part is (count, name); a once-only part is just (name). */
     private static String detailOf(DubheEventText part) {
-        return part.args().size() == 1
-                ? ((DubheEventText.Arg.Value) part.args().get(0)).text()
-                : ((DubheEventText.Arg.Value) part.args().get(1)).text();
+        return detailArg(part.args().size() == 1 ? part.args().get(0) : part.args().get(1));
+    }
+
+    /** The value of a detail argument, whichever shape it carries: literal, or a key with its token as fallback. */
+    private static String detailArg(DubheEventText.Arg arg) {
+        if (arg instanceof DubheEventText.Arg.Value value) {
+            return value.text();
+        }
+        if (arg instanceof DubheEventText.Arg.Key key) {
+            return key.fallback();
+        }
+        return "";
+    }
+
+    private static PresenceWorldEventPayload weather(String state) {
+        return new PresenceWorldEventPayload(null, PresenceWorldEventPayload.EVENT_WEATHER_CHANGE,
+                "player", "minecraft:overworld", 1L,
+                Map.of(PresenceWorldEventPayload.VALUE_TYPE, state));
+    }
+
+    private static PresenceWorldEventPayload respawn(String dimensionId) {
+        return new PresenceWorldEventPayload(null, PresenceWorldEventPayload.EVENT_RESPAWN,
+                "player", dimensionId, 1L,
+                Map.of(PresenceWorldEventPayload.VALUE_DIMENSION, dimensionId));
+    }
+
+    /**
+     * Weather is protocol vocabulary, not language: the mapper has to name the value's key so the sentence can
+     * say "下雨" instead of "rain". The token still travels as the fallback, for a build with no entry yet.
+     */
+    @Test
+    void aWeatherStateBecomesALanguageReference() {
+        DubhePresenceEventMapper.Batch batch = batch(weather("rain"));
+
+        assertEquals("tianshu:weather_change", batch.kind());
+        DubheEventText.Arg detail = batch.parts().get(0).args().get(0);
+        DubheEventText.Arg.Key key = (DubheEventText.Arg.Key) detail;
+        assertEquals("tianshu.dubhe.shared.event.value.weather.rain", key.key());
+        assertEquals("rain", key.fallback());
+    }
+
+    @Test
+    void aRespawnDimensionBecomesALanguageReference() {
+        DubhePresenceEventMapper.Batch batch = batch(respawn("minecraft:the_nether"));
+
+        DubheEventText.Arg.Key key = (DubheEventText.Arg.Key) batch.parts().get(0).args().get(0);
+        assertEquals("tianshu.dubhe.shared.event.value.dimension.minecraft.the_nether", key.key());
+        assertEquals("minecraft:the_nether", key.fallback());
+    }
+
+    /** A dimension the client already resolved to a name has nothing to look up. */
+    @Test
+    void anAlreadyLocalizedNameStaysALiteral() {
+        DubhePresenceEventMapper.Batch batch = batch(new PresenceWorldEventPayload(null,
+                PresenceWorldEventPayload.EVENT_DIMENSION_CHANGED, "player", "minecraft:overworld", 1L,
+                Map.of(PresenceWorldEventPayload.VALUE_DIMENSION_NAME, "下界")));
+
+        assertTrue(batch.parts().get(0).args().get(0) instanceof DubheEventText.Arg.Value,
+                "a display name is already language; wrapping it in a key would guarantee a miss");
+        assertEquals("下界", detailOf(batch.parts().get(0)));
     }
 }
