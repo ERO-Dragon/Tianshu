@@ -38,4 +38,16 @@ public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, lo
     public ToolPolicy withPermission(ToolPermission newPermission) {
         return new ToolPolicy(enabledByDefault, newPermission, timeoutMillis);
     }
+
+    /**
+     * Whether the tool is offered before anyone configures it.
+     *
+     * <p>A tool that only does what the player could do by hand is a reasonable default; a tool that changes the world
+     * in ways the player could not is not. The category sets the default, and a tool may say it belongs on the other
+     * side of that line — the survival actions do, because they are exactly a player's own crafting and container work,
+     * still bounded by the player's rights and the server's claim rules.</p>
+     */
+    public ToolPolicy withEnabledByDefault(boolean enabled) {
+        return new ToolPolicy(enabled, permission, timeoutMillis);
+    }
 }

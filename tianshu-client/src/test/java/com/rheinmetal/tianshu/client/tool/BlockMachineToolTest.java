@@ -50,14 +50,11 @@ class BlockMachineToolTest {
             "{\"x\":1,\"y\":2,\"z\":3,\"operation\":\"insert_fuel\",\"playerSlot\":4}";
 
     @Test
-    void machineOpsAreOffUntilEnabled() throws Exception {
+    void aPlayerMayOperateAMachineWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(BlockMachinePort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new MachineOpResult("minecraft:furnace", request.operation(), "minecraft:coal", 1, "inserted")));
         TianshuTools.register(new BlockMachineTool());
 
-        assertEquals("DISABLED", envelope(FUEL, ToolCaller.player("p", true)).get("code").getAsString());
-
-        TianshuTools.setEnabled(BlockMachineTool.ID, true);
         JsonObject result = envelope(FUEL, ToolCaller.player("p", true));
         assertTrue(result.get("ok").getAsBoolean());
         assertEquals(1, result.getAsJsonObject("result").get("moved").getAsInt());

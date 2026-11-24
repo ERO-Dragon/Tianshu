@@ -49,16 +49,11 @@ class CraftRecipeToolTest {
     }
 
     @Test
-    void craftingIsOffUntilAnOperatorEnablesIt() throws Exception {
+    void aPlayerMayCraftWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(CraftPort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new CraftResult("minecraft:iron_pickaxe", 1, true, "crafted")));
         TianshuTools.register(new CraftRecipeTool());
 
-        JsonObject disabled = envelope("{\"recipeId\":\"minecraft:iron_pickaxe\"}", ToolCaller.player("p", true));
-        assertFalse(disabled.get("ok").getAsBoolean());
-        assertEquals("DISABLED", disabled.get("code").getAsString());
-
-        TianshuTools.setEnabled(CraftRecipeTool.ID, true);
         JsonObject crafted = envelope("{\"recipeId\":\"minecraft:iron_pickaxe\"}", ToolCaller.player("p", true));
         assertTrue(crafted.get("ok").getAsBoolean());
         assertEquals("minecraft:iron_pickaxe",

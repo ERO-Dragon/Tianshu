@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The actions a survival player can do by hand are ordinary-player calls, not operator ones.
@@ -27,8 +27,9 @@ class SurvivalToolPermissionTest {
             new BlockInteractTool(),
             new BlockPlaceTool());
 
+    /** What the player could do by hand: callable by them, and offered without anyone configuring it. */
     @Test
-    void everySurvivalActionIsCallableByAnOrdinaryPlayerButStartsOff() {
+    void everySurvivalActionIsAnOrdinaryPlayerActionThatIsOnByDefault() {
         for (TianshuTool<?, ?> tool : SURVIVAL_TOOLS) {
             ToolPolicy policy = tool.policy();
 
@@ -36,8 +37,8 @@ class SurvivalToolPermissionTest {
                     tool.id() + " is still a server-side world change");
             assertEquals(ToolPermission.EVERYONE, policy.permission(),
                     tool.id() + " is something a survival player does by hand, so it must not require an operator");
-            assertFalse(policy.enabledByDefault(),
-                    tool.id() + " is a world change: an operator opts in per server");
+            assertTrue(policy.enabledByDefault(),
+                    tool.id() + " is work a player does by hand, so it must not need configuring first");
         }
     }
 }

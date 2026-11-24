@@ -49,16 +49,12 @@ class BlockInteractToolTest {
     }
 
     @Test
-    void aWriteToolIsOffUntilAnOperatorEnablesIt() throws Exception {
+    void aPlayerMayOperateABlockWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(BlockInteractPort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new BlockInteractResult("minecraft:oak_door", true, "operated")));
         TianshuTools.register(new BlockInteractTool());
 
-        JsonObject disabled = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.player("p", true));
-        assertFalse(disabled.get("ok").getAsBoolean());
-        assertEquals("DISABLED", disabled.get("code").getAsString());
-
-        TianshuTools.setEnabled(BlockInteractTool.ID, true);
+        // On by default: pressing a door is what the player may do by hand, and no operator is involved.
         JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.player("p", true));
         assertTrue(allowed.get("ok").getAsBoolean());
         assertEquals("minecraft:oak_door",

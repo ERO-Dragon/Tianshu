@@ -51,15 +51,11 @@ class ContainerTransferToolTest {
             "{\"x\":1,\"y\":2,\"z\":3,\"containerSlot\":0,\"playerSlot\":0,\"count\":8,\"toPlayer\":true}";
 
     @Test
-    void transferIsOffUntilEnabledAndThenMoves() throws Exception {
+    void aPlayerMayTransferWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(ContainerTransferPort.class, (playerId, request) ->
                 CompletableFuture.completedFuture(new ContainerTransferResult("minecraft:iron_ingot", 8, "moved")));
         TianshuTools.register(new ContainerTransferTool());
 
-        JsonObject disabled = envelope(REQUEST, ToolCaller.player("p", true));
-        assertEquals("DISABLED", disabled.get("code").getAsString());
-
-        TianshuTools.setEnabled(ContainerTransferTool.ID, true);
         JsonObject moved = envelope(REQUEST, ToolCaller.player("p", true));
         assertTrue(moved.get("ok").getAsBoolean());
         assertEquals(8, moved.getAsJsonObject("result").get("moved").getAsInt());
