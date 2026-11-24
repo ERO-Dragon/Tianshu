@@ -127,6 +127,30 @@ public class HuggingFaceDownloader {
         return fallback;
     }
 
+    /**
+     * Adopts the host that actually answered.
+     *
+     * <p>The candidate list offered to one request contains both hosts, so a success deep inside the transport never
+     * passed through {@link #fallbackBaseUrl} — the session kept believing it was on the official host and every later
+     * file waited out the same failure again. This is the missing half: success reports its source, and the source wins.</p>
+     */
+    private void adoptAnsweringSource(URI source) {
+        if (source == null) {
+            return;
+        }
+        String base = baseOf(source);
+        if (!base.equals(activeBaseUrl)) {
+            adoptBaseUrl(base);
+            env.info("HF_DOWNLOAD_SOURCE_ADOPTED base=" + base);
+        }
+    }
+
+    /** {@code scheme://authority} — the host part a source and its base share, with no path. */
+    private static String baseOf(URI source) {
+        String authority = source.getAuthority();
+        return authority == null ? source.toString() : source.getScheme() + "://" + authority;
+    }
+
     /** Records the host the session is actually using, so later files skip both the probe and the failure. */
     private static synchronized void adoptBaseUrl(String baseUrl) {
         activeBaseUrl = baseUrl;
@@ -376,6 +400,8 @@ public class HuggingFaceDownloader {
                     adapt(control)
             );
         }
+        // The first page may have come from the mirror inside a single request; adopt it before any file is fetched.
+        adoptAnsweringSource(page.source());
         List<RepositoryFile> result = new ArrayList<>();
         // Follow every page: a repository whose weights land past the first page used to download as configuration
         // only, and the caller was told the model was complete.
@@ -389,6 +415,7 @@ public class HuggingFaceDownloader {
                 return List.copyOf(result);
             }
             page = http.readUtf8Page(List.of(page.next()), TREE_RETRY, adapt(control));
+            adoptAnsweringSource(page.source());
         }
         return List.copyOf(result);
     }
@@ -460,8 +487,8 @@ public class HuggingFaceDownloader {
         String filePath = file.path();
         List<URI> candidates = sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath);
         try {
-            downloadCandidates(candidates, target, file, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes);
+            adoptAnsweringSource(downloadCandidates(candidates, target, file, maxRetries, control, progress,
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes));
         } catch (IOException failure) {
             IOException rejected = verificationFailureIn(failure);
             if (rejected != null) {
@@ -475,10 +502,10 @@ public class HuggingFaceDownloader {
             String fallback = fallbackBaseUrl(preferredBase);
             env.warn("[model.download] file download died in transit on " + preferredBase
                     + "; retrying via " + fallback);
-            downloadCandidates(
+            adoptAnsweringSource(downloadCandidates(
                     sources.huggingFaceFileCandidates(fallback, repoId, revision, filePath),
                     target, file, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes);
+                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes));
         }
         env.info("HF_FILE_COMPLETE repo=" + repoId + " file=" + filePath);
     }
@@ -610,7 +637,8 @@ public class HuggingFaceDownloader {
         return hex.toString();
     }
 
-    private void downloadCandidates(
+    /** Downloads from whichever candidate answers, and returns the source that did. */
+    private URI downloadCandidates(
             List<URI> candidates,
             Path target,
             RepositoryFile file,
@@ -623,7 +651,7 @@ public class HuggingFaceDownloader {
             long fileStartBytes,
             long overallTotalBytes
     ) throws IOException {
-        http.download(
+        return http.download(
                 candidates,
                 target,
                 fileRetry(maxRetries),

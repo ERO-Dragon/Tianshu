@@ -74,10 +74,9 @@ class HuggingFaceDownloaderTest {
             assertEquals(1, resolvedFiles.get());
             assertEquals(1, official.requests(treePath));
             assertEquals(1, mirror.requests(treePath));
-            // Both hosts are candidates for one request, so the file still asks the official host first and switches
-            // on its 503. Recording which host answered — rather than which list was offered — is what would let the
-            // next request skip it.
-            assertEquals(1, official.requests(filePath));
+            // The tree was answered by the mirror, so the file goes straight there: one dead host costs one failure
+            // for the whole model, not one per file.
+            assertEquals(0, official.requests(filePath));
             assertEquals(1, mirror.requests(filePath));
         }
     }
@@ -216,5 +215,39 @@ class HuggingFaceDownloaderTest {
             hex.append(String.format("%02x", value));
         }
         return hex.toString();
+    }
+    @Test
+    void oneDeadHostCostsOneFailureForTheWholeModelNotOnePerFile() throws Exception {
+        try (ModelDownloadTestServer official = new ModelDownloadTestServer();
+             ModelDownloadTestServer mirror = new ModelDownloadTestServer()) {
+            String treePath = "/api/models/org/model/tree/main";
+            official.enqueue(treePath, ModelDownloadTestServer.text(503, "official unreachable"));
+            mirror.enqueue(treePath, ModelDownloadTestServer.text(200,
+                    "[{\"type\":\"file\",\"path\":\"a.onnx\"},{\"type\":\"file\",\"path\":\"b.onnx\"},"
+                            + "{\"type\":\"file\",\"path\":\"c.onnx\"}]"));
+            official.enqueue("/org/model/resolve/main/a.onnx", ModelDownloadTestServer.text(503, "unreachable"));
+            mirror.enqueue("/org/model/resolve/main/a.onnx", ModelDownloadTestServer.text(200, "a"));
+            mirror.enqueue("/org/model/resolve/main/b.onnx", ModelDownloadTestServer.text(200, "b"));
+            mirror.enqueue("/org/model/resolve/main/c.onnx", ModelDownloadTestServer.text(200, "c"));
+
+            HuggingFaceDownloader.resetDomainCache();
+            FakeGameEnvironment env = new FakeGameEnvironment();
+            HuggingFaceDownloader downloader = new HuggingFaceDownloader(
+                    env,
+                    new ModelDownloadSourcePolicy(official.baseUrl(), mirror.baseUrl()),
+                    new ModelDownloadHttpClient(env, request -> ExternalDecision.allow()),
+                    HuggingFaceDownloader::getActiveBaseUrl
+            );
+
+            downloader.downloadModelFiles("org/model", tempDir, "main", false, 1, () -> {}, null);
+
+            assertEquals("a", Files.readString(tempDir.resolve("a.onnx"), StandardCharsets.UTF_8));
+            assertEquals(0, official.requests("/org/model/resolve/main/a.onnx"),
+                    "the tree already proved the official host dead, so even the first file skips it");
+            assertEquals(0, official.requests("/org/model/resolve/main/b.onnx"),
+                    "the second file must start where the first one worked");
+            assertEquals(0, official.requests("/org/model/resolve/main/c.onnx"));
+            assertEquals(1, mirror.requests("/org/model/resolve/main/c.onnx"));
+        }
     }
 }

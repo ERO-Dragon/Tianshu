@@ -53,11 +53,11 @@ public final class ModelDownloadHttpClient {
     }
 
     public String readUtf8(List<URI> candidates, RetryPolicy policy, DownloadControl control) throws IOException {
-        return executeCandidates(candidates, policy, control, this::readUtf8Once);
+        return executeCandidates(candidates, policy, control, this::readUtf8Once).value();
     }
 
-    /** One page of text with the URL its {@code Link: rel="next"} header points at, or null on the last page. */
-    public record Page(String body, URI next) {
+    /** One page of text, where its next page is (null on the last), and which source served it. */
+    public record Page(String body, URI next, URI source) {
     }
 
     /**
@@ -68,7 +68,9 @@ public final class ModelDownloadHttpClient {
      * header here keeps the transport the only place that knows HTTP.</p>
      */
     public Page readUtf8Page(List<URI> candidates, RetryPolicy policy, DownloadControl control) throws IOException {
-        return executeCandidates(candidates, policy, control, this::readUtf8PageOnce);
+        Fetched<Page> fetched = executeCandidates(candidates, policy, control, this::readUtf8PageOnce);
+        // The body alone does not say which host answered; the caller needs that to stop retrying a dead one.
+        return new Page(fetched.value().body(), fetched.value().next(), fetched.source());
     }
 
     private Page readUtf8PageOnce(URI candidate, RetryPolicy policy) throws IOException {
@@ -88,7 +90,7 @@ public final class ModelDownloadHttpClient {
             }
             validateLength(candidate, expectedLength, bytes.length, false);
             return new Page(new String(bytes, StandardCharsets.UTF_8),
-                    nextPage(candidate, connection.getHeaderField("Link")));
+                    nextPage(candidate, connection.getHeaderField("Link")), candidate);
         } finally {
             close(connection);
         }
@@ -118,14 +120,15 @@ public final class ModelDownloadHttpClient {
         return null;
     }
 
-    public void download(
+    /** Downloads {@code target} and reports which source served it, so the next request can start there. */
+    public URI download(
             List<URI> candidates,
             Path target,
             RetryPolicy policy,
             DownloadControl control,
             ProgressListener progress
     ) throws IOException {
-        download(candidates, target, policy, control, progress, null);
+        return download(candidates, target, policy, control, progress, null);
     }
 
     /**
@@ -135,7 +138,7 @@ public final class ModelDownloadHttpClient {
      * proxied body is a failed attempt that re-downloads from scratch (the verifier deletes what it rejected), while a
      * file that never verified never reaches the final path where a concurrent model load could read it.</p>
      */
-    public void download(
+    public URI download(
             List<URI> candidates,
             Path target,
             RetryPolicy policy,
@@ -153,7 +156,7 @@ public final class ModelDownloadHttpClient {
         Path temporary = absoluteTarget.resolveSibling(absoluteTarget.getFileName() + ".downloading");
         Path metadataFile = absoluteTarget.resolveSibling(absoluteTarget.getFileName() + ".downloading.meta");
         try {
-            executeCandidates(candidates, policy, control, (candidate, retryPolicy) -> {
+            return executeCandidates(candidates, policy, control, (candidate, retryPolicy) -> {
                 downloadOnce(candidate, temporary, metadataFile, retryPolicy, control, progress);
                 if (verifier != null) {
                     verifier.verify(temporary);
@@ -161,7 +164,7 @@ public final class ModelDownloadHttpClient {
                 moveIntoPlace(temporary, absoluteTarget);
                 Files.deleteIfExists(metadataFile);
                 return Boolean.TRUE;
-            });
+            }).source();
         } catch (IOException failure) {
             cleanupUntrustedPartial(temporary, metadataFile, validateCandidates(candidates));
             throw failure;
@@ -407,7 +410,11 @@ public final class ModelDownloadHttpClient {
                 || message.contains("Read-only file system") || message.contains("Too many open files");
     }
 
-    private <T> T executeCandidates(
+    /** A value and the source that produced it: a caller that retries later should start where this one worked. */
+    public record Fetched<T>(T value, URI source) {
+    }
+
+    private <T> Fetched<T> executeCandidates(
             List<URI> candidates,
             RetryPolicy policy,
             DownloadControl control,
@@ -421,7 +428,7 @@ public final class ModelDownloadHttpClient {
             for (int attempt = 1; attempt <= retryPolicy.maxAttempts(); attempt++) {
                 checkControl(control);
                 try {
-                    return operation.run(candidate, retryPolicy);
+                    return new Fetched<>(operation.run(candidate, retryPolicy), candidate);
                 } catch (DownloadCancelledException cancelled) {
                     throw cancelled;
                 } catch (IOException failure) {
