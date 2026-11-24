@@ -41,11 +41,14 @@ class HuggingFaceDownloaderTest {
                     official.baseUrl(),
                     mirror.baseUrl()
             );
+            // The production supplier: it reads the host the session has adopted, which is what makes one dead host
+            // cost a single failure rather than one per file.
+            HuggingFaceDownloader.resetDomainCache();
             HuggingFaceDownloader downloader = new HuggingFaceDownloader(
                     env,
                     sources,
                     new ModelDownloadHttpClient(env, request -> ExternalDecision.allow()),
-                    official::baseUrl
+                    HuggingFaceDownloader::getActiveBaseUrl
             );
             AtomicInteger resolvedFiles = new AtomicInteger();
 
@@ -71,6 +74,9 @@ class HuggingFaceDownloaderTest {
             assertEquals(1, resolvedFiles.get());
             assertEquals(1, official.requests(treePath));
             assertEquals(1, mirror.requests(treePath));
+            // Both hosts are candidates for one request, so the file still asks the official host first and switches
+            // on its 503. Recording which host answered — rather than which list was offered — is what would let the
+            // next request skip it.
             assertEquals(1, official.requests(filePath));
             assertEquals(1, mirror.requests(filePath));
         }

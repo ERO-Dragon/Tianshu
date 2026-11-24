@@ -191,6 +191,8 @@ public class HuggingFaceDownloader {
         env.info("HF_REPOSITORY_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
         checkControl(control);
         List<RepositoryFile> allFiles = fetchFileTree(preferredBase, repoId, revision, control);
+        // The tree may have discovered that the preferred host is dead; every file should start where it worked.
+        preferredBase = preferredBaseSupplier.get();
         List<RepositoryFile> toDownload = allFiles.stream().filter(file -> !shouldSkipFile(file.path())).toList();
         long totalBytes = totalBytes(toDownload);
         long completedBytes = 0L;
@@ -226,6 +228,9 @@ public class HuggingFaceDownloader {
                     fileStartBytes,
                     totalBytes
             );
+            // A host that failed and then worked through the fallback is remembered; the next file starts there
+            // instead of waiting out the dead host's timeouts again.
+            preferredBase = preferredBaseSupplier.get();
             completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
     }
@@ -282,6 +287,9 @@ public class HuggingFaceDownloader {
                     fileStartBytes,
                     totalBytes
             );
+            // A host that failed and then worked through the fallback is remembered; the next file starts there
+            // instead of waiting out the dead host's timeouts again.
+            preferredBase = preferredBaseSupplier.get();
             completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
     }
