@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.mc.network.GameFactBatch;
 import com.rheinmetal.tianshu.mc.network.GameFactBatchPacket;
 import com.rheinmetal.tianshu.protocol.payload.WorldEventTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -54,6 +55,9 @@ public final class GameFactCollector {
      * list order is the production order; the receiver replays it as-is. All access is on the server thread.</p>
      */
     private final Map<ServerPlayer, List<GameFact>> pendingByPlayer = new LinkedHashMap<>();
+    private final Map<ServerPlayer, Boolean> sleepingOld = new java.util.HashMap<>();
+    private final Map<ServerPlayer, Boolean> eatingOld = new java.util.HashMap<>();
+    private final Map<ServerLevel, String> weatherOld = new java.util.HashMap<>();
 
     /** Subscribing is the whole registration; {@link #send} is the only network path. */
     public void register(IEventBus gameBus) {
@@ -73,6 +77,7 @@ public final class GameFactCollector {
         gameBus.addListener(this::onLivingDamage);
         gameBus.addListener(this::onItemPickup);
         gameBus.addListener(this::onTrade);
+        gameBus.addListener(this::onRespawn);
     }
 
     public void onLivingDamage(LivingDamageEvent.Post event) {
@@ -292,7 +297,63 @@ public final class GameFactCollector {
 
     /** End of the server tick: every buffered fact goes out in order, split into bounded packets. */
     public void onServerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        // Three facts have no event worth hooking on both loaders, so they are read as state transitions here:
+        // sleeping, eating and the weather. Reading a transition is the same cost as reading a flag.
+        for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+            sampleSleeping(player);
+            sampleEating(player);
+        }
+        for (ServerLevel level : event.getServer().getAllLevels()) {
+            sampleWeather(level);
+        }
         flush();
+    }
+
+    /** Sleeping on and off, per player: `sleep` is the moment they lay down. */
+    private void sampleSleeping(ServerPlayer player) {
+        boolean sleeping = player.isSleeping();
+        Boolean was = sleepingOld.put(player, sleeping);
+        if (was == null || was == sleeping) {
+            return;
+        }
+        if (sleeping) {
+            send(player, WorldEventTypes.EVENT_SLEEP, Map.of());
+        }
+    }
+
+    /** Eating has no completion event in common across loaders; the end of item use plus an edible item is the fact. */
+    private void sampleEating(ServerPlayer player) {
+        boolean using = player.isUsingItem() && player.getUseItem().get(net.minecraft.core.component.DataComponents.FOOD) != null;
+        Boolean was = eatingOld.put(player, using);
+        if (was == null || was == using) {
+            return;
+        }
+        if (!using && was) {
+            send(player, WorldEventTypes.EVENT_EAT_FOOD, itemValues(player.getUseItem().copy()));
+        }
+    }
+
+    /** Weather is world state: the transition is what the line reports, and the token names the new state. */
+    private void sampleWeather(ServerLevel level) {
+        String state = level.isThundering() ? "thunder" : level.isRaining() ? "rain" : "clear";
+        String before = weatherOld.put(level, state);
+        if (before == null || before.equals(state)) {
+            return;
+        }
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+            if (player.level() == level) {
+                send(player, WorldEventTypes.EVENT_WEATHER_CHANGE, Map.of(WorldEventTypes.VALUE_TYPE, state));
+            }
+        }
+    }
+
+    /** Coming back is its own moment: death is the fact, respawn is when play continues. */
+    public void onRespawn(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerRespawnEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        send(player, WorldEventTypes.EVENT_RESPAWN,
+                Map.of(WorldEventTypes.VALUE_DIMENSION, dimensionId(player.level())));
     }
 
     /**

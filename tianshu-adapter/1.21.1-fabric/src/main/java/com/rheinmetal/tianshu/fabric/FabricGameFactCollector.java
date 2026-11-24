@@ -70,6 +70,13 @@ public final class FabricGameFactCollector {
     /** Last vehicle seen per player: mount and dismount are state changes, not events in this loader's API. */
     private final Map<ServerPlayer, net.minecraft.world.entity.Entity> lastVehicles = new LinkedHashMap<>();
 
+    /** Sleeping and eating are read as transitions: this loader has no callback for either. */
+    private final Map<ServerPlayer, Boolean> sleepingOld = new LinkedHashMap<>();
+    private final Map<ServerPlayer, Boolean> eatingOld = new LinkedHashMap<>();
+
+    /** Weather is world state; the transition is the fact, and the token names the new state. */
+    private final Map<net.minecraft.server.level.ServerLevel, String> weatherOld = new LinkedHashMap<>();
+
     public void register() {
         net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
             if (player instanceof ServerPlayer serverPlayer
@@ -85,6 +92,8 @@ public final class FabricGameFactCollector {
             if (++inventoryTick % 4 == 0) {
                 publishPickups(server);
             }
+            publishSleepingAndEating(server);
+            publishWeather(server);
             flush();
         });
         ServerLivingEntityEvents.AFTER_DAMAGE.register(this::onDamage);
@@ -92,6 +101,42 @@ public final class FabricGameFactCollector {
         PlayerBlockBreakEvents.AFTER.register(this::onBlockBroken);
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerJoin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> onPlayerLeave(handler.getPlayer()));
+        net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
+                send(newPlayer, WorldEventTypes.EVENT_RESPAWN,
+                        Map.of(WorldEventTypes.VALUE_DIMENSION, dimensionId(newPlayer.level()))));
+    }
+
+    /** Lying down to sleep, and finishing a meal: both are state transitions in this loader. */
+    private void publishSleepingAndEating(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            boolean sleeping = player.isSleeping();
+            Boolean wasSleeping = sleepingOld.put(player, sleeping);
+            if (wasSleeping != null && !wasSleeping && sleeping) {
+                send(player, WorldEventTypes.EVENT_SLEEP, Map.of());
+            }
+            boolean eating = player.isUsingItem()
+                    && player.getUseItem().get(net.minecraft.core.component.DataComponents.FOOD) != null;
+            Boolean wasEating = eatingOld.put(player, eating);
+            if (wasEating != null && wasEating && !eating) {
+                send(player, WorldEventTypes.EVENT_EAT_FOOD, itemValues(player.getUseItem().copy()));
+            }
+        }
+    }
+
+    /** Weather changes once per world, not per player; each player in that world gets the line. */
+    private void publishWeather(MinecraftServer server) {
+        for (net.minecraft.server.level.ServerLevel level : server.getAllLevels()) {
+            String state = level.isThundering() ? "thunder" : level.isRaining() ? "rain" : "clear";
+            String before = weatherOld.put(level, state);
+            if (before == null || before.equals(state)) {
+                continue;
+            }
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                if (player.level() == level) {
+                    send(player, WorldEventTypes.EVENT_WEATHER_CHANGE, Map.of(WorldEventTypes.VALUE_TYPE, state));
+                }
+            }
+        }
     }
 
     private void onDamage(LivingEntity entity, DamageSource source, float baseDamage, float damageTaken, boolean blocked) {
@@ -230,6 +275,14 @@ public final class FabricGameFactCollector {
         }
     }
 
+    /** The two values every item-shaped fact carries, built the same way as the NeoForge collector's. */
+    private static Map<String, String> itemValues(net.minecraft.world.item.ItemStack stack) {
+        Map<String, String> values = new HashMap<>();
+        values.put(WorldEventTypes.VALUE_ITEM_ID,
+                net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+        values.put(WorldEventTypes.VALUE_ITEM_NAME, stack.getHoverName().getString());
+        return values;
+    }
     private static Map<String, String> entityValues(net.minecraft.world.entity.Entity entity) {
         Map<String, String> values = new HashMap<>();
         values.put(WorldEventTypes.VALUE_ENTITY_NAME, entity.getName().getString());
