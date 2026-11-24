@@ -16,13 +16,13 @@ class DubheEventTierTableTest {
     void builtinTableShipsTheDocumentedKinds() {
         DubheEventTierTable table = DubheEventTierTable.builtin();
 
-        assertEquals(40, table.size(), "chat is a presence world event type, and biome change has no exact source");
-        assertEquals(8, table.count(DubheEventTier.RARE));
+        assertEquals(42, table.size(), "chat is a presence world event type, and biome change has no exact source");
+        assertEquals(9, table.count(DubheEventTier.RARE));
         assertEquals(12, table.count(DubheEventTier.NORMAL));
-        assertEquals(20, table.count(DubheEventTier.FREQUENT));
-        assertEquals(14, table.count(DubheEventState.WEAKENED));
+        assertEquals(21, table.count(DubheEventTier.FREQUENT));
+        assertEquals(15, table.count(DubheEventState.WEAKENED));
         assertEquals(5, table.count(DubheEventState.EMPHASIS), "the shipped emphasis set is the actionable warnings");
-        assertEquals(21, table.count(DubheEventState.NORMAL));
+        assertEquals(22, table.count(DubheEventState.NORMAL));
     }
 
     @Test

@@ -48,6 +48,10 @@ public record PresenceWorldEventPayload(
     public static final String EVENT_DAMAGE_TAKEN = WorldEventTypes.EVENT_DAMAGE_TAKEN;
     public static final String EVENT_FALL_DAMAGE = WorldEventTypes.EVENT_FALL_DAMAGE;
     public static final String EVENT_RARE_ITEM = WorldEventTypes.EVENT_RARE_ITEM;
+    public static final String EVENT_SLEEP = WorldEventTypes.EVENT_SLEEP;
+    public static final String EVENT_RESPAWN = WorldEventTypes.EVENT_RESPAWN;
+    public static final String EVENT_WEATHER_CHANGE = WorldEventTypes.EVENT_WEATHER_CHANGE;
+    public static final String EVENT_EAT_FOOD = WorldEventTypes.EVENT_EAT_FOOD;
     public static final String EVENT_EXP_LEVEL = WorldEventTypes.EVENT_EXP_LEVEL;
     public static final String EVENT_FRIEND_JOIN = WorldEventTypes.EVENT_FRIEND_JOIN;
     public static final String EVENT_FRIEND_LEAVE = WorldEventTypes.EVENT_FRIEND_LEAVE;

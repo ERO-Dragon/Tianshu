@@ -232,7 +232,14 @@
         "FREQUENT": "normal"
       }
     },
-    "tianshu:sleep": {
+    "tianshu:respawn": {
+      "tier": "RARE",
+      "states": {"RARE": "normal", "NORMAL": "normal", "FREQUENT": "normal"}
+    },
+    "tianshu:eat_food": {
+      "tier": "FREQUENT",
+      "states": {"FREQUENT": "weakened"}
+    },    "tianshu:sleep": {
       "tier": "NORMAL",
       "states": {
         "NORMAL": "normal",

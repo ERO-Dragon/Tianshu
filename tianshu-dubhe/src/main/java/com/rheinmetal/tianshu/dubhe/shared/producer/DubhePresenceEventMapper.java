@@ -83,6 +83,16 @@ public final class DubhePresenceEventMapper {
                     new Rule("tianshu:damage_taken", List.of(PresenceWorldEventPayload.VALUE_AMOUNT))),
             Map.entry(PresenceWorldEventPayload.EVENT_FALL_DAMAGE,
                     new Rule("tianshu:fall_damage", List.of(PresenceWorldEventPayload.VALUE_AMOUNT))),
+            Map.entry(PresenceWorldEventPayload.EVENT_SLEEP,
+                    new Rule("tianshu:sleep", List.of())),
+            Map.entry(PresenceWorldEventPayload.EVENT_RESPAWN,
+                    new Rule("tianshu:respawn", List.of(PresenceWorldEventPayload.VALUE_DIMENSION))),
+            Map.entry(PresenceWorldEventPayload.EVENT_EAT_FOOD,
+                    new Rule("tianshu:eat_food", List.of(
+                            PresenceWorldEventPayload.VALUE_ITEM_NAME,
+                            PresenceWorldEventPayload.VALUE_ITEM_ID))),
+            Map.entry(PresenceWorldEventPayload.EVENT_WEATHER_CHANGE,
+                    new Rule("tianshu:weather_change", List.of(PresenceWorldEventPayload.VALUE_TYPE))),
             Map.entry(PresenceWorldEventPayload.EVENT_RARE_ITEM,
                     new Rule("tianshu:rare_item", List.of(
                             PresenceWorldEventPayload.VALUE_ITEM_NAME,
