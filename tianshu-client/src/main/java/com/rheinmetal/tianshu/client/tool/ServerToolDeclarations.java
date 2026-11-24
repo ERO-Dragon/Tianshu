@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.util.List;
@@ -37,17 +38,17 @@ public final class ServerToolDeclarations {
     }
 
     /** Registers the declarations the server named. Unknown ids are skipped; repeats are idempotent. */
-    public static void activate(List<String> serverToolIds) {
-        if (serverToolIds == null) {
+    public static void activate(List<ToolCatalogEntry> tools) {
+        if (tools == null) {
             return;
         }
-        for (String raw : serverToolIds) {
-            if (raw == null) {
+        for (ToolCatalogEntry entry : tools) {
+            if (entry == null) {
                 continue;
             }
             ToolId id;
             try {
-                id = ToolId.parse(raw);
+                id = ToolId.parse(entry.toolId());
             } catch (IllegalArgumentException malformed) {
                 continue;
             }
@@ -59,6 +60,8 @@ public final class ServerToolDeclarations {
                 TianshuTools.register(declaration);
                 REGISTERED.add(id);
             }
+            // The server owns the switch: it is the side that holds the world, the permissions and the workload.
+            TianshuTools.setEnabled(id, entry.enabled());
         }
     }
 
@@ -66,17 +69,17 @@ public final class ServerToolDeclarations {
      * Makes the active set match the catalogue exactly: activates new ids and withdraws ones the server no longer
      * names. Login and a periodic refresh both use this, so a removed tool does not linger after its server changed.
      */
-    public static void synchronize(List<String> serverToolIds) {
-        if (serverToolIds == null) {
+    public static void synchronize(List<ToolCatalogEntry> tools) {
+        if (tools == null) {
             return;
         }
         java.util.Set<ToolId> desired = new java.util.HashSet<>();
-        for (String raw : serverToolIds) {
-            if (raw == null) {
+        for (ToolCatalogEntry entry : tools) {
+            if (entry == null) {
                 continue;
             }
             try {
-                desired.add(ToolId.parse(raw));
+                desired.add(ToolId.parse(entry.toolId()));
             } catch (IllegalArgumentException malformed) {
                 // Ignore malformed ids; the server will correct them on the next catalogue.
             }
@@ -89,7 +92,7 @@ public final class ServerToolDeclarations {
             REGISTERED.remove(id);
             ACTIVATED.remove(id);
         }
-        activate(serverToolIds);
+        activate(tools);
     }
 
     /** Withdraws everything the catalog had activated; declarations stay, so the next server can re-activate. */

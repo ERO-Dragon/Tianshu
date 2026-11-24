@@ -44,8 +44,8 @@ public final class ToolCallClient implements ToolTransport {
         sender.send(requestId, id.toString(), args == null ? "{}" : args.toString());
     }
 
-    public void receiveCatalog(List<String> toolIds) {
-        ServerToolDeclarations.synchronize(toolIds);
+    public void receiveCatalog(List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> tools) {
+        ServerToolDeclarations.synchronize(tools);
         catalogReceived.set(true);
     }
 

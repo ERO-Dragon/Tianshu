@@ -125,7 +125,7 @@ class ConnectionToolChannelTest {
         CompletableFuture<Void> refresh = ConnectionToolChannel.refreshCatalog();
         assertEquals(ReservedToolCalls.CATALOG, lastToolId.get());
         ConnectionToolChannel.complete(lastRequestId.get(),
-                JsonParser.parseString("{\"tools\":[\"test:declared\"]}"));
+                JsonParser.parseString("{\"tools\":[{\"id\":\"test:declared\",\"enabled\":true}]}"));
 
         refresh.get(2, TimeUnit.SECONDS);
         assertEquals(DECLARED, TianshuTools.find(DECLARED).id());

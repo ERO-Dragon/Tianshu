@@ -120,7 +120,13 @@ public final class ServerToolDispatch {
 
     private static Reply catalogReply(ToolCaller caller, String requestId) {
         JsonArray ids = new JsonArray();
-        TianshuTools.catalog(caller, ToolSide.SERVER).forEach(spec -> ids.add(spec.id().toString()));
+        // The switch travels with the entry: a caller that only sees ids cannot tell an offered tool from a disabled one.
+        TianshuTools.catalog(caller, ToolSide.SERVER).forEach(spec -> {
+            JsonObject entry = new JsonObject();
+            entry.addProperty("id", spec.id().toString());
+            entry.addProperty("enabled", spec.enabled());
+            ids.add(entry);
+        });
         JsonObject result = new JsonObject();
         result.add("tools", ids);
         return Reply.of(requestId, true, result.toString(), "", "");

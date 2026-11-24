@@ -9,5 +9,6 @@ import java.util.List;
 @FunctionalInterface
 public interface ToolCatalogPush {
 
-    void push(String playerId, List<String> toolIds);
+    /** Hands one player the catalogue this server offers them, switch included. */
+    void push(String playerId, List<ToolCatalogEntry> tools);
 }

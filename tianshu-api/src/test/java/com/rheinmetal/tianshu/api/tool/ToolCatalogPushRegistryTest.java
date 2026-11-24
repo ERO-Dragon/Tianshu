@@ -29,10 +29,10 @@ class ToolCatalogPushRegistryTest {
     @Test
     void aSubscriberGetsTheVisibleCatalogueAndFollowsChanges() {
         TianshuTools.register(new PushTool(READ, ToolPermission.EVERYONE));
-        List<List<String>> seen = new ArrayList<>();
-        ToolCatalogPushRegistry.register("p1", false, (player, ids) -> seen.add(ids));
+        List<List<ToolCatalogEntry>> seen = new ArrayList<>();
+        ToolCatalogPushRegistry.register("p1", false, (player, tools) -> seen.add(tools));
 
-        assertTrue(seen.get(seen.size() - 1).contains(READ.toString()));
+        assertTrue(ids(seen.get(seen.size() - 1)).contains(READ.toString()));
 
         TianshuTools.register(new PushTool(OPERATOR, ToolPermission.OPERATOR));
         assertFalse(seen.get(seen.size() - 1).contains(OPERATOR.toString()),
@@ -43,10 +43,10 @@ class ToolCatalogPushRegistryTest {
     void anOperatorSubscriberSeesOperatorToolsAndUnregisterStopsPushes() {
         TianshuTools.register(new PushTool(READ, ToolPermission.EVERYONE));
         TianshuTools.register(new PushTool(OPERATOR, ToolPermission.OPERATOR));
-        List<List<String>> seen = new ArrayList<>();
-        ToolCatalogPushRegistry.register("op", true, (player, ids) -> seen.add(ids));
+        List<List<ToolCatalogEntry>> seen = new ArrayList<>();
+        ToolCatalogPushRegistry.register("op", true, (player, tools) -> seen.add(tools));
 
-        assertTrue(seen.get(seen.size() - 1).contains(OPERATOR.toString()));
+        assertTrue(ids(seen.get(seen.size() - 1)).contains(OPERATOR.toString()));
         int before = seen.size();
         ToolCatalogPushRegistry.unregister("op");
         TianshuTools.unregister(READ);
@@ -58,8 +58,8 @@ class ToolCatalogPushRegistryTest {
     @Test
     void aCatalogueChangeReachesTheSubscriberWithoutTheCallerPushing() throws Exception {
         TianshuTools.register(new PushTool(READ, ToolPermission.EVERYONE));
-        List<List<String>> seen = new CopyOnWriteArrayList<>();
-        ToolCatalogPushRegistry.register("p1", false, (player, ids) -> seen.add(ids));
+        List<List<ToolCatalogEntry>> seen = new CopyOnWriteArrayList<>();
+        ToolCatalogPushRegistry.register("p1", false, (player, tools) -> seen.add(tools));
         seen.clear();
 
         // A change-driven publish runs on the registry's own thread, so the caller must not have to do anything.
@@ -68,7 +68,7 @@ class ToolCatalogPushRegistryTest {
         for (int attempt = 0; attempt < 200 && seen.isEmpty(); attempt++) {
             Thread.sleep(5L);
         }
-        assertTrue(seen.stream().anyMatch(ids -> ids.contains(OPERATOR.toString())),
+        assertTrue(seen.stream().anyMatch(entries -> ids(entries).contains(OPERATOR.toString())),
                 "the change should have been pushed: " + seen);
     }
 
@@ -103,5 +103,10 @@ class ToolCatalogPushRegistryTest {
         public CompletableFuture<JsonObject> invoke(ToolContext context, JsonObject args) {
             return CompletableFuture.completedFuture(new JsonObject());
         }
+    }
+
+    /** The ids of a published catalogue; the switch is irrelevant to these assertions. */
+    private static List<String> ids(List<ToolCatalogEntry> entries) {
+        return entries.stream().map(ToolCatalogEntry::toolId).toList();
     }
 }

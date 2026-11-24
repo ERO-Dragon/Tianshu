@@ -29,7 +29,8 @@ class RecipeQueryDeclarationTest {
 
         assertNull(TianshuTools.find(RecipeQueryTool.ID), "recipe lookup must not be a local tool");
 
-        ServerToolDeclarations.activate(List.of(RecipeQueryTool.ID.toString()));
+        ServerToolDeclarations.activate(List.of(new com.rheinmetal.tianshu.api.tool.ToolCatalogEntry(
+                RecipeQueryTool.ID.toString(), true)));
 
         assertNotNull(TianshuTools.find(RecipeQueryTool.ID));
         assertEquals(ToolCategory.SERVER_READ, TianshuTools.find(RecipeQueryTool.ID).category());

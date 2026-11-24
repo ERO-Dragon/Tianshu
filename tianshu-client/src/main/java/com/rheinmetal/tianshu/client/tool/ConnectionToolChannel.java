@@ -88,13 +88,19 @@ public final class ConnectionToolChannel implements ServerToolChannel {
                         return;
                     }
                     JsonArray tools = result.getAsJsonArray("tools");
-                    List<String> ids = new ArrayList<>();
+                    List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> entries = new ArrayList<>();
                     for (JsonElement element : tools) {
-                        if (element.isJsonPrimitive()) {
-                            ids.add(element.getAsString());
+                        // Each entry carries the server switch; a bare id would leave the client on its own default.
+                        if (element.isJsonObject()) {
+                            JsonObject tool = element.getAsJsonObject();
+                            if (tool.has("id")) {
+                                entries.add(new com.rheinmetal.tianshu.api.tool.ToolCatalogEntry(
+                                        tool.get("id").getAsString(),
+                                        tool.has("enabled") && tool.get("enabled").getAsBoolean()));
+                            }
                         }
                     }
-                    ServerToolDeclarations.synchronize(ids);
+                    ServerToolDeclarations.synchronize(entries);
                 });
     }
 

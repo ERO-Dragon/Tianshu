@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.game.LootQueryResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -39,12 +40,17 @@ class ServerToolDeclarationsTest {
         TianshuRuntimePorts.clear();
     }
 
+    /** A catalogue entry that offers the tool and leaves it on, which is the ordinary case. */
+    private static ToolCatalogEntry entry(com.rheinmetal.tianshu.api.tool.ToolId id) {
+        return new ToolCatalogEntry(id.toString(), true);
+    }
+
     @Test
     void aDeclarationAppearsOnlyAfterTheServerNamesIt() {
         ServerToolDeclarations.declare(new StubTool());
         assertNull(TianshuTools.find(DECLARED), "declaring alone must not register the tool");
 
-        ServerToolDeclarations.activate(List.of(DECLARED.toString()));
+        ServerToolDeclarations.activate(List.of(entry(DECLARED)));
         assertTrue(TianshuTools.find(DECLARED) != null);
 
         ServerToolDeclarations.deactivateAll();
@@ -54,7 +60,10 @@ class ServerToolDeclarationsTest {
     @Test
     void unknownIdsAndMalformedIdsAreSkipped() {
         ServerToolDeclarations.declare(new StubTool());
-        ServerToolDeclarations.activate(List.of("test:unknown", "not-a-tool-id", DECLARED.toString()));
+        ServerToolDeclarations.activate(List.of(
+                new com.rheinmetal.tianshu.api.tool.ToolCatalogEntry("test:unknown", true),
+                new com.rheinmetal.tianshu.api.tool.ToolCatalogEntry("not-a-tool-id", true),
+                entry(DECLARED)));
         assertTrue(TianshuTools.find(DECLARED) != null);
         assertTrue(TianshuTools.find(ToolId.of("test", "unknown")) == null);
     }
@@ -62,8 +71,8 @@ class ServerToolDeclarationsTest {
     @Test
     void repeatedActivationIsIdempotent() {
         ServerToolDeclarations.declare(new StubTool());
-        ServerToolDeclarations.activate(List.of(DECLARED.toString()));
-        ServerToolDeclarations.activate(List.of(DECLARED.toString()));
+        ServerToolDeclarations.activate(List.of(entry(DECLARED)));
+        ServerToolDeclarations.activate(List.of(entry(DECLARED)));
         assertEquals(1, ServerToolDeclarations.activated().size());
     }
 

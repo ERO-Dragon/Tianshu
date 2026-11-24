@@ -97,31 +97,31 @@ public final class ToolCatalogPushRegistry {
         }
         // The visible set depends on the caller only through its operator flag, so it is computed twice per change
         // rather than once per player.
-        List<String> ordinary = visibleIds(false);
-        List<String> privileged = visibleIds(true);
+        List<ToolCatalogEntry> ordinary = visibleEntries(false);
+        List<ToolCatalogEntry> privileged = visibleEntries(true);
         for (Map.Entry<String, Subscriber> entry : SUBSCRIBERS.entrySet()) {
             Subscriber subscriber = entry.getValue();
             deliver(entry.getKey(), subscriber, subscriber.operator() ? privileged : ordinary);
         }
     }
 
-    private static List<String> visibleIds(boolean operator) {
-        List<String> ids = new ArrayList<>();
+    private static List<ToolCatalogEntry> visibleEntries(boolean operator) {
+        List<ToolCatalogEntry> entries = new ArrayList<>();
         for (ToolSpec spec : TianshuTools.catalog(ToolCaller.player("", operator), ToolSide.SERVER)) {
             if (spec.category().isServerSide()) {
-                ids.add(spec.id().toString());
+                entries.add(ToolCatalogEntry.of(spec));
             }
         }
-        return List.copyOf(ids);
+        return List.copyOf(entries);
     }
 
     private static void publish(String playerId, Subscriber subscriber) {
-        deliver(playerId, subscriber, visibleIds(subscriber.operator()));
+        deliver(playerId, subscriber, visibleEntries(subscriber.operator()));
     }
 
-    private static void deliver(String playerId, Subscriber subscriber, List<String> ids) {
+    private static void deliver(String playerId, Subscriber subscriber, List<ToolCatalogEntry> tools) {
         try {
-            subscriber.push().push(playerId, ids);
+            subscriber.push().push(playerId, tools);
         } catch (RuntimeException ignored) {
             // A broken adapter channel must not break the registry or another player's push.
         }

@@ -42,7 +42,8 @@ class ToolChannelDisconnectTest {
         ToolCallClient client = new ToolCallClient((requestId, toolId, argsJson) -> { });
         TianshuRuntimePortsHolder.install(client, new SilentToolTransport());
         // The server names the tool, which is what makes the channel reachable in the first place.
-        client.receiveCatalog(java.util.List.of(REMOTE.toString()));
+        client.receiveCatalog(java.util.List.of(
+                new com.rheinmetal.tianshu.api.tool.ToolCatalogEntry(REMOTE.toString(), true)));
 
         // A call is in flight when the player leaves: it must end with the connection, not fifteen seconds later.
         CompletableFuture<com.google.gson.JsonObject> abandoned = TianshuTools.callJson(REMOTE,
