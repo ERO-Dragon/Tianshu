@@ -109,7 +109,7 @@ Prompt 里的历史轮次只有一种包裹：`<event>…</event>`。所有非�
 | `suppress` | 否 | bool | 生产者逐次声明"不要出声"：等价于该次用 `weakened` |
 | `highlight` | 否 | bool | 生产者逐次声明"这次值得说"：**等价于该次用 `emphasis`，且优先于静态状态** |
 | `payload` | 是 | 对象 | `count`（≥1，默认 1）、`magnitude`（可选整数，语义由 kind 定义） |
-| `text` | 是 | 值对象 | 语言键 + 参数（`DubheEventText`），由接收侧渲染一次 |
+| `text` | 是 | 值对象 | 语言键 + 参数（`DubheEventText`），由接收侧渲染一次。参数三种形状：**字面量**（数字、名字、已本地化的原生串）、**嵌套模板**（另一条 `DubheEventText`）、**语言引用**（`Arg.Key`：语言键 + 原始 token 兜底，给 `rain` / `minecraft:overworld` 这类协议词汇用；缺键时落到 token，不留空） |
 | `fold` | 否 | enum | `NONE` / `COUNT` / `RANGE`，SILENT 融合时用哪种句式；默认 `NONE` |
 | `sourceId` | 否 | string | 提交方标识，仅用于日志与诊断，**不参与任何判定分支** |
 

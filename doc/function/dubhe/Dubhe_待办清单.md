@@ -103,7 +103,7 @@
 | `tianshu:weather_change` | 两端 tick 比对 `isRaining`/`isThundering` | 世界级状态，按世界比对、发给该世界内的玩家 |
 | `tianshu:eat_food` | 两端 tick 采样 `isUsingItem` + 食物组件 | 进食没有两端通用的"吃完"事件，结束使用 + 食物组件即事实 |
 
-**遗留一项**：`weather_change` 的详情是 `rain` / `thunder` / `clear` 这类**枚举词**，当前管线把值当字面量渲染，所以中文句子里会出现英文词。要彻底解决需要给 `DubheEventText` 的值加"语言引用"能力（现在只有字面量与嵌套模板两种），属于平台层改动，单独决策，不在本次接线里夹带。
+**遗留一项**：`weather_change` 的详情是 `rain` / `thunder` / `clear` 这类**枚举词**，当时管线把值当字面量渲染，中文句子里会出现英文词。**已解决**：见下文"接线后核对"里那条平台决策的落地——现在这些值走 `DubheEventText.Arg.Key`，由语言表出词。
 
 ### 接线后核对（2026-11-24，两端逐条看代码）
 
@@ -124,4 +124,4 @@
 2. ~~**Fabric 的 `rare_item` 缺 `itemName`**~~：只发 `itemId` + `count`，而天枢规则按 `(itemName, itemId)` 优先取名，详情退化成 `minecraft:diamond`。**已修**：稀有度与名字都从手上那格栈读，补 `VALUE_ITEM_NAME`。
 3. ~~**玩家离开后按玩家记的状态不清**~~：`sleepingOld` / `eatingOld` / 载具 / 背包增量 / 放置待定等按玩家记账的 Map 只清了待发包，重登会把上一会话的"判断"带进新会话。**已修**：DISCONNECT 时一并清。
 
-**留给平台决策的一条**：`respawn` 与 `weather_change` 的详情是**字面量**（`minecraft:overworld`、`rain`/`thunder`/`clear`），直接进 `你在 %s 重生` / `天气变了：%s`，中文句子里会夹英文。`DubheEventText` 目前的值只有"字面量"与"嵌套模板"两种，要彻底解决得加"语言引用"，属于平台层改动，与上面"遗留一项"同一件事，等它落地后一起改。
+**留给平台决策的一条 → 已落地（2026-11-24）**：`respawn` / `dimension_enter` / `weather_change` 的值不再当字面量拼进句子。`DubheEventText` 的参数新增第三种形状 `Arg.Key`（语言键 + 原始 token 兜底），`DubheEventValues` 把 token 换成键（`weather.rain`、`dimension.minecraft.overworld`），键在客户端语言表里解析；没有条目的模组维度退回原始 id，不留空。语言片段从"字面量 / 嵌套模板 / 语言引用"三种里选一种，落点仍是渲染那一处。旧的那条"字面量值"遗留项随之关闭。
