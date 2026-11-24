@@ -92,3 +92,15 @@
 | `tianshu:player_nearby_first` | **不做** | 需要按玩家×实体类型维护"第一次靠近"的持久状态并定时扫描，复杂度与收益不匹配 |
 
 **新增的原生事件候选**（都在已有钩子上，成本与上面两条同级，随时可接）：`sleep`（入睡）、`respawn`（重生，已有 `death` 但是两件事）、`item_break`（物品损坏，`PlayerDestroyItemEvent` / Fabric 无对应，需采样）、`enchant`（附魔，NeoForge 有事件、Fabric 无）、`weather_change`（天气变化，服务端可直接比对 `isRaining`）、`eat_food`（进食，两端的 `UseItem` 完成事件）。
+### 第二批接线（`sleep` / `respawn` / `weather_change` / `eat_food`）
+
+四条全部接线，采集形态按"两端都能一致"选：
+
+| 事件 | 采集方式 | 说明 |
+|---|---|---|
+| `tianshu:sleep` | NeoForge 走 tick 采样 `isSleeping` 翻转；Fabric 同 | 入睡是一次状态翻转，两端都没有稳定回调，采样与读标志同价 |
+| `tianshu:respawn` | NeoForge `PlayerRespawnEvent`、Fabric `ServerPlayerEvents.AFTER_RESPAWN` | 与 `death` 是两件事：死是事实，重生是继续游戏的那一刻 |
+| `tianshu:weather_change` | 两端 tick 比对 `isRaining`/`isThundering` | 世界级状态，按世界比对、发给该世界内的玩家 |
+| `tianshu:eat_food` | 两端 tick 采样 `isUsingItem` + 食物组件 | 进食没有两端通用的"吃完"事件，结束使用 + 食物组件即事实 |
+
+**遗留一项**：`weather_change` 的详情是 `rain` / `thunder` / `clear` 这类**枚举词**，当前管线把值当字面量渲染，所以中文句子里会出现英文词。要彻底解决需要给 `DubheEventText` 的值加"语言引用"能力（现在只有字面量与嵌套模板两种），属于平台层改动，单独决策，不在本次接线里夹带。
