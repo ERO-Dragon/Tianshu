@@ -61,6 +61,9 @@ class DubheBookJarSamplesTest {
             assertHasTitle(chinese, "魔力池");
             assertHasTitle(chinese, "游戏前期");
             assertHasBody(chinese, "法术卷轴");
+            assertTrue(chinese.mods().size() >= 3, "expected three sampled books, got " + chinese.mods());
+            assertTrue(chinese.mods().stream().anyMatch(mod -> chinese.find(mod, "魔力池").isPresent()),
+                    "the read-by-title path must resolve against a real book");
 
             assertHasTitle(DubheBookCatalog.load(ids, resources, List.of("en_us"), LogSink.SYSTEM), "Mana Pool");
         } finally {
