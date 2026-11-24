@@ -86,16 +86,27 @@
 - **端口**：`InstalledModIds` + `ModResources`（`tianshu-api/assembly`）。适配器实现，模块不接触加载器 API；两边共用的 IO 在 `mc.resource.ModResourceFiles`。
 - **技能**：`agent/skill/book/`——`book` 是技能 id，目录、语言回退、格式控制清理全在解析器里，模型只看到"问什么 → 标题 + 正文"。
 - **缓存挂在技能实例上**，不挂静态字段：模块停掉缓存即消失，测试也不会互相污染。
+- **真实 jar 回归**：`DubheBookJarSamplesTest` 读 `Tianshu-adapter/libs` 里的样本（jar 不入库），把 `DUBHE_BOOK_SAMPLES` 指向那个目录才跑，否则跳过。固定用例编码的是"我们以为书长什么样"，这个测的是"书实际长什么样"。
 
-**对"书长得不一样"的三条兜底**：
+**对"书长得不一样"的兜底**（全部由真实 jar 验证过）：
 
 | 差异 | 处理 |
 |---|---|
-| 正文页类型五花八门（`text` / `spotlight` / `entity` / 模组自造） | **按"有没有 `text` 字段"取，不按类型名取**。物品条目多是 `spotlight`，按类型筛会正好漏掉它们 |
-| 文本是翻译键还是直接写的 | 一条规则：语言表里有就用表的，没有就当正文 |
+| `book.json` 不在 `assets/` 而在 **`data/`** | **发现书目只看 `assets/<ns>/patchouli_books/<book>/<lang>/entries`**。实测 Botania / Ars Nouveau / Iron's Spells 三本都在 `data/`，按 `assets/` 找 `book.json` 会一本都找不到 |
+| 正文页类型五花八门（`text` / `patchouli:text` / `spotlight` / `entity` / 模组自造） | **按"有没有 `text` 字段"取，不按类型名取**。裸写和带 `patchouli:` 前缀的两种命名都有，按名字匹配会漏 |
+| 条目树的语言 ≠ 翻译的语言 | **分开选**：树取第一个存在的（Botania 只有 `en_us`），翻译取读者语言能用的（`zh_cn` 有就用）。两者绑死会得到"英文标题 + 没翻译" |
+| 一套语言树直写中文 | 同一条规则覆盖：`name` / `text` 查表查不到就用原文（Iron's Spells 就是这样） |
 | 条目没有 `name` | 退回文件名当标题，不整条丢掉 |
-| 书的语言 | 跟**客户端语言**走（`DubhePromptLanguageProvider`），不再写死中文 |
 | 文件异常 | 剥 BOM；单文件 >2MB 跳过；单条目坏掉只丢那条；总条目上限 2 万 |
+
+**实测三本真实手册**（1.20.1 / 1.21.1 的发布 jar）：
+
+| 手册 | 条目文件 | 形态 |
+|---|---|---|
+| Botania `lexicon` | 246 | 单 `en_us` 树 + 15 份 lang（含 `zh_cn`），键引用 |
+| Ars Nouveau `worn_notebook` | 262 | 单 `en_us` 树，页型带 `patchouli:` 前缀 |
+| Iron's Spells `iss_guide_book` | 8 | **四套语言树**（`en_us`/`ja_jp`/`zh_cn`/`zh_tw`），中文直写 |
+| Create / Ars Nouveau 5.x / Occultism | 0 | 不用 Patchouli（Ponder、自绘书），负样本 |
 
 **已知限制（本版不解决）**：只读**模组自带**的资源，读不到**资源包**里的书与汉化覆盖。汉化补丁常以资源包装的形式覆盖 `lang/zh_cn.json`，那种情况下我们会回退到模组自带语言，可能拿到英文原文。补这一层需要另一个端口（资源包视图 + 覆盖优先级），等真有玩家反馈再评估。
 
