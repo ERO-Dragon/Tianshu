@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>天枢事件九宫格 · 每行一格</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f26; --panel2: #232730; --line: #2e343f;
+    --text: #e6e9ef; --muted: #8b93a3;
+    --imm: #e5534b; --def: #d29922; --sil: #8b93a3; --fold: #58a6ff; --drp: #4b5563;
+    --ok: #3fb950; --a: #58a6ff; --b: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 24px 40px; background: var(--bg); color: var(--text);
+    font: 14px/1.55 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 6px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  .sub b { color: var(--text); }
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 1180px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .panel h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .filters button { background: var(--panel2); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer; }
+  .filters button.on { color: var(--text); border-color: #4b5563; background: #2b303a; }
+
+  .pool { max-height: 64vh; overflow: auto; padding-right: 4px; }
+  .cat { color: var(--muted); font-size: 11.5px; margin: 10px 0 5px; letter-spacing: .06em; }
+  .chip { display: flex; align-items: center; gap: 6px; background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 7px; padding: 4px 7px; margin-bottom: 4px;
+    cursor: grab; user-select: none; font-size: 12px; }
+  .chip:active { cursor: grabbing; }
+  .chip.sel { border-color: #58a6ff; box-shadow: 0 0 0 1px #58a6ff inset; }
+  .chip.changed { border-color: #3f5876; background: #1c2530; }
+  .chip .zh { flex: 1; }
+  .chip .id { color: var(--muted); font-size: 10px; font-family: Consolas, monospace; }
+  .badge { font-size: 10px; padding: 0 4px; border-radius: 4px; border: 1px solid transparent; white-space: nowrap; }
+  .badge.live { color: var(--ok); border-color: #1f6f33; background: #12261a; }
+  .badge.a { color: var(--a); border-color: #1f4f86; background: #10203a; }
+  .badge.b { color: var(--b); border-color: #4b2f86; background: #1d1533; }
+  .badge.c { color: var(--muted); border-color: #3b414d; background: #1a1d23; }
+
+  .grid { display: grid; grid-template-columns: 88px repeat(3, 1fr); gap: 8px; }
+  .corner, .colhead, .rowhead { display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 12px; text-align: center; }
+  .colhead b { color: var(--text); font-weight: 600; display: block; font-size: 12.5px; }
+  .colhead small, .rowhead small { display: block; color: var(--muted); font-size: 10.5px; }
+  .rowhead b { color: var(--text); display: block; font-size: 12.5px; }
+  .cell { min-height: 200px; max-height: 40vh; overflow: auto; border: 1px dashed var(--line);
+    border-radius: 9px; padding: 6px; background: #181b21; transition: border-color .12s, background .12s; }
+  .cell.over { border-color: #58a6ff; background: #1b2330; }
+  .cell.dead { opacity: .35; }
+  /* 链路高亮：选中事件所在的格子点亮，其余压暗 */
+  .grid.tracing .cell { opacity: .42; transition: opacity .12s; }
+  .grid.tracing .cell.traced {
+    opacity: 1; border-style: solid; border-color: #58a6ff; background: #16233a;
+    box-shadow: 0 0 0 1px #58a6ff inset, 0 0 14px rgba(88,166,255,.18);
+  }
+  .chip.traced { border-color: #58a6ff; background: #1b2c46; box-shadow: 0 0 0 1px #58a6ff inset; }
+  .cell-head { display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; margin-bottom: 5px; }
+  .beh { padding: 1px 6px; border-radius: 999px; font-weight: 600; font-size: 10px; }
+  .beh.IMMEDIATE { background: #3a1614; color: var(--imm); }
+  .beh.DEFERRED { background: #3a2c10; color: #e3b341; }
+  .beh.SILENT { background: #22262d; color: #98a1b0; }
+  .beh.FOLD { background: #10203a; color: var(--fold); }
+  .beh.DROP { background: #1a1d23; color: #5c6473; }
+  .cell-head .n { color: var(--muted); font-family: Consolas, monospace; }
+
+  .foot { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  .foot button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 12px; font-size: 12.5px; cursor: pointer; }
+  .foot button.primary { background: #1f6feb; border-color: #1f6feb; }
+  .foot .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .legend { color: var(--muted); font-size: 12px; margin-top: 12px; line-height: 1.75; }
+  .legend code { color: #c9d1d9; background: #1a1d23; padding: 0 4px; border-radius: 3px; }
+
+  .trace { margin-top: 18px; }
+  .trace-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .trace-head .title { font-size: 15px; font-weight: 600; }
+  .trace-head .id { color: var(--muted); font-family: Consolas, monospace; font-size: 12px; }
+  .trace-head .tier { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  .steps { display: grid; grid-template-columns: 1fr 26px 1fr 26px 1fr; gap: 8px; align-items: stretch; }
+  .step { background: #181b21; border: 1px dashed var(--line); border-radius: 9px; padding: 9px 10px; }
+  .step.on { border-style: solid; border-color: #3f5876; }
+  .step.off { opacity: .38; }
+  .step .row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
+  .step .row b { color: var(--text); font-size: 12.5px; }
+  .step select { margin: 8px 0 6px; width: 100%; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font-size: 12.5px; }
+  .step select:disabled { opacity: .6; }
+  .step .out { font-size: 11px; color: var(--muted); }
+  .step .out .beh { margin-left: 4px; }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 16px; }
+  .trace-empty { color: var(--muted); font-size: 12.5px; }
+  @media (max-width: 900px) {
+    .steps { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+<h1>天枢事件九宫格</h1>
+<div class="sub">
+  九宫格 = <b>矩阵</b>（行 = 频率，列 = 三态）；五个处置是<b>一维数组</b>，由固定映射表（反对角线同值）相连。
+  <b>每条事件在它可达的每一行各占一格</b>（频率只降不升，所以 RARE 事件有三格、FREQUENT 只有一格）。
+  共 <b id="total">0</b> 条 / <b id="inst">0</b> 格：<span class="badge live">已接通</span> <b id="nLive">0</b> ·
+  <span class="badge a">可接</span> <b id="nA">0</b> ·
+  <span class="badge b">待定</span> <b id="nB">0</b> ·
+  <span class="badge c">不做</span> <b id="nC">0</b>
+</div>
+
+<div class="layout">
+  <div class="panel">
+    <h2>事件池（拖到某格 = 只改那一行）</h2>
+    <div class="filters" id="filters">
+      <button data-f="all" class="on">全部</button>
+      <button data-f="live">已接通</button>
+      <button data-f="a">可接</button>
+      <button data-f="b">待定</button>
+      <button data-f="c">不做</button>
+      <button data-f="changed">已改动</button>
+    </div>
+    <div class="pool" id="pool"></div>
+  </div>
+
+  <div class="panel">
+    <h2>矩阵（行 = 频率 / 列 = 三态）</h2>
+    <div class="grid" id="grid"></div>
+    <div class="legend">
+      映射：<code>a11→立刻说</code>、<code>a12/a21→攒着说</code>、<code>a13/a22/a31→逐条进历史</code>、
+      <code>a23/a32→仅当前窗口</code>、<code>a33→丢弃</code>。频率门（30 秒窗口，3 次降一格、6 次再降一格）
+      <b>只换行</b>，处置由所在格子查表得到。按住 <b>Shift</b> 拖 = 套用到该事件的三个可达行。
+      <br>死亡反复触发也会按行降档（NORMAL→攒着说、FREQUENT→逐条）——行就是为这个设的。
+    </div>
+    <div class="foot">
+      <button class="primary" id="export">导出 JSON</button>
+      <button id="copy">复制 JSON</button>
+      <button id="reset">恢复初始</button>
+      <span class="hint" id="hint">拖完导出，可直接替换事件表</span>
+    </div>
+  </div>
+</div>
+
+<div class="panel trace" id="tracePanel">
+  <h2>事件链路（点任意事件查看：它在三个频率行上分别是什么）</h2>
+  <div id="traceBody" class="trace-empty">先点一个事件。</div>
+</div>
+
+<script>
+const TIERS = ["RARE", "NORMAL", "FREQUENT"];
+const STATES = ["EMPHASIS", "NORMAL", "WEAKENED"];
+const LEVELS = ["IMMEDIATE", "DEFERRED", "SILENT", "FOLD", "DROP"];
+const TIER_ZH = { RARE: "RARE", NORMAL: "NORMAL", FREQUENT: "FREQUENT" };
+const STATE_ZH = { EMPHASIS: "强调", NORMAL: "常规", WEAKENED: "削弱" };
+const STATE_HINT = { EMPHASIS: "更愿意开口", NORMAL: "按档位", WEAKENED: "更安静" };
+const LEVEL_ZH = { IMMEDIATE: "立刻说", DEFERRED: "攒着说", SILENT: "逐条进历史", FOLD: "仅当前窗口", DROP: "丢弃" };
+const TIER_ORDER = { RARE: 0, NORMAL: 1, FREQUENT: 2 };
+
+// 固定映射：行为层级 = 行序 + 列序（反对角线同值）
+function behaviorOf(tier, stateName) {
+  const i = TIERS.indexOf(tier), j = STATES.indexOf(stateName);
+  if (i < 0 || j < 0) return "DROP";
+  return LEVELS[Math.min(LEVELS.length - 1, i + j)];
+}
+
+const EVENTS = [
+    { k: "death", zh: "玩家死亡", tier: "RARE", base: "EMPHASIS", st: "live", cat: "玩家状态" },
+  { k: "health_critical", zh: "血量危急", tier: "RARE", base: "EMPHASIS", st: "a", cat: "玩家状态" },
+  { k: "health_change", zh: "血量变化", tier: "FREQUENT", base: "NORMAL", st: "live", cat: "玩家状态" },
+  { k: "hunger_critical", zh: "饥饿告急", tier: "FREQUENT", base: "NORMAL", st: "a", cat: "玩家状态" },
+  { k: "hunger_change", zh: "饥饿变化", tier: "FREQUENT", base: "WEAKENED", st: "a", cat: "玩家状态" },
+  { k: "damage_taken", zh: "你受伤了", tier: "NORMAL", base: "NORMAL", st: "live", cat: "玩家状态" },
+  { k: "effect_gained", zh: "获得效果", tier: "NORMAL", base: "NORMAL", st: "live", cat: "玩家状态" },
+  { k: "effect_expired", zh: "效果结束", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "玩家状态" },
+  { k: "exp_level", zh: "经验等级", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "玩家状态" },
+  { k: "on_fire", zh: "你着火了", tier: "RARE", base: "EMPHASIS", st: "a", cat: "玩家状态" },
+  { k: "drowning", zh: "你在溺水", tier: "RARE", base: "EMPHASIS", st: "a", cat: "玩家状态" },
+  { k: "fall_damage", zh: "你摔伤了", tier: "NORMAL", base: "NORMAL", st: "live", cat: "玩家状态" },
+  { k: "respawn", zh: "你重生了", tier: "RARE", base: "NORMAL", st: "live", cat: "玩家状态" },
+  { k: "sleep", zh: "你睡了一觉", tier: "NORMAL", base: "NORMAL", st: "live", cat: "玩家状态" },
+  { k: "dimension_enter", zh: "进入维度", tier: "RARE", base: "NORMAL", st: "live", cat: "移动与环境" },
+  { k: "structure_discovery", zh: "发现建筑", tier: "NORMAL", base: "NORMAL", st: "c", cat: "移动与环境" },
+  { k: "structure_enter", zh: "走进建筑", tier: "FREQUENT", base: "WEAKENED", st: "a", cat: "移动与环境" },
+  { k: "altitude_shift", zh: "高度变化", tier: "FREQUENT", base: "WEAKENED", st: "a", cat: "移动与环境" },
+  { k: "underwater", zh: "潜入水下", tier: "FREQUENT", base: "WEAKENED", st: "a", cat: "移动与环境" },
+  { k: "weather_change", zh: "天气变了", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "移动与环境" },
+  { k: "time_of_day", zh: "时间变化", tier: "FREQUENT", base: "WEAKENED", st: "a", cat: "移动与环境" },
+  { k: "rare_item", zh: "值得注意的收获", tier: "RARE", base: "NORMAL", st: "live", cat: "物品与背包" },
+  { k: "pickup", zh: "捡起", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "物品与背包" },
+  { k: "item_crafted", zh: "合成了", tier: "NORMAL", base: "NORMAL", st: "live", cat: "物品与背包" },
+  { k: "eat_food", zh: "吃了东西", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "物品与背包" },
+  { k: "durability_low", zh: "耐久不足", tier: "FREQUENT", base: "NORMAL", st: "c", cat: "物品与背包" },
+  { k: "inventory_full", zh: "背包满了", tier: "FREQUENT", base: "NORMAL", st: "a", cat: "物品与背包" },
+  { k: "recipe_unlock", zh: "解锁配方", tier: "FREQUENT", base: "NORMAL", st: "c", cat: "物品与背包" },
+  { k: "container_open", zh: "打开了容器", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "物品与背包" },
+  { k: "mob_killed", zh: "击杀", tier: "NORMAL", base: "NORMAL", st: "live", cat: "战斗与危险" },
+  { k: "boss_engage", zh: "遇到 boss", tier: "RARE", base: "EMPHASIS", st: "live", cat: "战斗与危险" },
+  { k: "tamed", zh: "你驯服了", tier: "RARE", base: "NORMAL", st: "live", cat: "战斗与危险" },
+  { k: "trade", zh: "交易完成", tier: "NORMAL", base: "NORMAL", st: "live", cat: "战斗与危险" },
+  { k: "fishing_catch", zh: "钓到", tier: "NORMAL", base: "NORMAL", st: "live", cat: "战斗与危险" },
+  { k: "friend_join", zh: "好友上线", tier: "NORMAL", base: "NORMAL", st: "live", cat: "社交" },
+  { k: "friend_leave", zh: "好友下线", tier: "FREQUENT", base: "NORMAL", st: "live", cat: "社交" },
+  { k: "player_nearby_first", zh: "附近出现新玩家", tier: "NORMAL", base: "NORMAL", st: "c", cat: "社交" },
+  { k: "advancement", zh: "达成进度", tier: "NORMAL", base: "NORMAL", st: "live", cat: "世界动作" },
+  { k: "mount", zh: "骑上了", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "世界动作" },
+  { k: "dismount", zh: "下来了", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "世界动作" },
+  { k: "block_place", zh: "放置了", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "世界动作" },
+  { k: "block_break", zh: "挖掉了", tier: "FREQUENT", base: "WEAKENED", st: "live", cat: "世界动作" }
+];
+
+// 每格的三态：kind -> { RARE, NORMAL, FREQUENT }；未写的行 = base
+const stateMap = new Map();
+// 改动标记：kind -> Set(row)
+const changed = new Map();
+
+let filter = "all";
+let selected = null;
+
+const pool = document.getElementById("pool");
+const grid = document.getElementById("grid");
+const hint = document.getElementById("hint");
+
+function byKind(k) { return EVENTS.find(e => e.k === k); }
+function reachable(kind, row) {
+  const e = byKind(kind);
+  return !!e && TIER_ORDER[row] >= TIER_ORDER[e.tier];
+}
+function stateOf(kind, row) {
+  const m = stateMap.get(kind);
+  if (m && m[row]) return m[row];
+  return byKind(kind).base;
+}
+function isChanged(kind, row) {
+  const s = changed.get(kind);
+  return !!(s && s.has(row));
+}
+function setState(kind, row, stateName, allRows) {
+  const e = byKind(kind);
+  if (!e) return;
+  const rows = allRows ? TIERS.filter(r => reachable(kind, r)) : [row];
+  let m = stateMap.get(kind);
+  if (!m) { m = {}; stateMap.set(kind, m); }
+  let c = changed.get(kind);
+  if (!c) { c = new Set(); changed.set(kind, c); }
+  for (const r of rows) {
+    if (stateName === e.base) { delete m[r]; c.delete(r); }
+    else { m[r] = stateName; c.add(r); }
+  }
+  if (Object.keys(m).length === 0) stateMap.delete(kind);
+  if (c.size === 0) changed.delete(kind);
+  selected = null;
+}
+
+function badge(st) {
+  if (st === "live") return '<span class="badge live">已接通</span>';
+  if (st === "a") return '<span class="badge a">可接</span>';
+  if (st === "c") return '<span class="badge c">不做</span>';
+  return '<span class="badge b">待定</span>';
+}
+
+function renderPool() {
+  pool.innerHTML = "";
+  const cats = [];
+  for (const e of EVENTS) {
+    if (filter === "changed" && !changed.has(e.k)) continue;
+    if (filter !== "all" && filter !== "changed" && e.st !== filter) continue;
+    if (!cats.includes(e.cat)) cats.push(e.cat);
+  }
+  for (const cat of cats) {
+    const h = document.createElement("div");
+    h.className = "cat";
+    h.textContent = cat;
+    pool.appendChild(h);
+    for (const e of EVENTS) {
+      if (e.cat !== cat) continue;
+      if (filter === "changed" && !changed.has(e.k)) continue;
+      if (filter !== "all" && filter !== "changed" && e.st !== filter) continue;
+      const chip = document.createElement("div");
+      chip.className = "chip" + (selected === e.k ? " sel" : "") + (changed.has(e.k) ? " changed" : "");
+      chip.draggable = true;
+      chip.dataset.k = e.k;
+      chip.innerHTML = '<span class="zh">' + e.zh + '</span><span class="id">' + e.k + '</span>' + badge(e.st);
+      chip.title = e.tier + " · 拖到格子改那一行，Shift = 三个可达行一起改";
+      chip.addEventListener("dragstart", ev => {
+        ev.dataTransfer.setData("text/plain", e.k);
+        ev.dataTransfer.setData("text/shift", ev.shiftKey ? "1" : "0");
+        ev.dataTransfer.effectAllowed = "move";
+      });
+      chip.addEventListener("click", () => {
+        selected = selected === e.k ? null : e.k;
+        renderAll();
+      });
+      pool.appendChild(chip);
+    }
+  }
+  if (!pool.children.length) pool.innerHTML = '<div class="cat">（这个筛选下没有事件）</div>';
+}
+
+function buildGrid() {
+  grid.innerHTML = "";
+  const corner = document.createElement("div");
+  corner.className = "corner";
+  grid.appendChild(corner);
+  for (const s of STATES) {
+    const h = document.createElement("div");
+    h.className = "colhead";
+    h.innerHTML = "<b>" + STATE_ZH[s] + "</b><small>" + STATE_HINT[s] + "</small>";
+    grid.appendChild(h);
+  }
+  for (const t of TIERS) {
+    const rh = document.createElement("div");
+    rh.className = "rowhead";
+    rh.innerHTML = "<b>" + TIER_ZH[t] + "</b><small>" + (t === "RARE" ? "少见" : t === "NORMAL" ? "常见" : "高频") + "</small>";
+    grid.appendChild(rh);
+    for (const s of STATES) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.dataset.tier = t;
+      cell.dataset.state = s;
+      cell.addEventListener("dragover", ev => { ev.preventDefault(); cell.classList.add("over"); });
+      cell.addEventListener("dragleave", () => cell.classList.remove("over"));
+      cell.addEventListener("drop", ev => {
+        ev.preventDefault();
+        cell.classList.remove("over");
+        const kind = ev.dataTransfer.getData("text/plain");
+        if (!reachable(kind, t)) {
+          hint.textContent = "「" + byKind(kind).zh + "」声明为 " + byKind(kind).tier + "，频率只降不升，到不了这一行";
+          return;
+        }
+        setState(kind, t, s, ev.shiftKey || ev.dataTransfer.getData("text/shift") === "1");
+        renderAll();
+      });
+      cell.addEventListener("click", ev => {
+        if (!selected) return;
+        if (!reachable(selected, t)) return;
+        setState(selected, t, s, ev.shiftKey);
+        renderAll();
+      });
+      grid.appendChild(cell);
+    }
+  }
+}
+
+function renderCells() {
+  grid.classList.toggle("tracing", !!selected);
+  for (const cell of grid.querySelectorAll(".cell")) {
+    const t = cell.dataset.tier, s = cell.dataset.state;
+    const beh = behaviorOf(t, s);
+    const items = EVENTS.filter(e => reachable(e.k, t) && stateOf(e.k, t) === s);
+    cell.classList.toggle("traced", !!selected && items.some(e => e.k === selected));
+    cell.innerHTML = "";
+    cell.classList.toggle("dead", items.length === 0 && t === "RARE" && s === "WEAKENED" && false);
+    const head = document.createElement("div");
+    head.className = "cell-head";
+    head.innerHTML = '<span class="beh ' + beh + '">' + LEVEL_ZH[beh] + '</span><span class="n">' + items.length + '</span>';
+    cell.appendChild(head);
+    for (const e of items) {
+      const chip = document.createElement("div");
+      chip.className = "chip" + (isChanged(e.k, t) ? " changed" : "") + (e.k === selected ? " traced" : "");
+      chip.draggable = true;
+      chip.dataset.k = e.k;
+      chip.innerHTML = '<span class="zh">' + e.zh + '</span><span class="id">' + e.k + '</span>';
+      chip.title = (isChanged(e.k, t) ? "本行已改" : "本行用默认") + " · " + t + " → " + LEVEL_ZH[beh];
+      chip.addEventListener("dragstart", ev => {
+        ev.dataTransfer.setData("text/plain", e.k);
+        ev.dataTransfer.setData("text/shift", ev.shiftKey ? "1" : "0");
+        ev.dataTransfer.effectAllowed = "move";
+      });
+      chip.addEventListener("click", ev => {
+        ev.stopPropagation();
+        selected = selected === e.k ? null : e.k;
+        renderAll();
+      });
+      cell.appendChild(chip);
+    }
+  }
+}
+
+function renderStats() {
+  const instances = EVENTS.reduce((n, e) => n + (3 - TIER_ORDER[e.tier]), 0);
+  document.getElementById("total").textContent = EVENTS.length;
+  document.getElementById("inst").textContent = instances;
+  document.getElementById("nLive").textContent = EVENTS.filter(e => e.st === "live").length;
+  document.getElementById("nA").textContent = EVENTS.filter(e => e.st === "a").length;
+  document.getElementById("nB").textContent = EVENTS.filter(e => e.st === "b").length;
+  document.getElementById("nC").textContent = EVENTS.filter(e => e.st === "c").length;
+}
+
+function renderTrace() {
+  const body = document.getElementById("traceBody");
+  if (!body) return;
+  if (!selected) {
+    body.className = "trace-empty";
+    body.textContent = "先点一个事件（池里或格子里都行），这里会画出它在三个频率行上的位置与处置。";
+    return;
+  }
+  const e = byKind(selected);
+  body.className = "";
+  const head = '<div class="trace-head"><span class="title">' + e.zh + '</span>' +
+    '<span class="id">tianshu:' + e.k + '</span>' +
+    '<span class="tier">声明 ' + e.tier + '</span>' + badge(e.st) + '</div>';
+  const parts = [];
+  TIERS.forEach((r, idx) => {
+    const reach = reachable(e.k, r);
+    const st = stateOf(e.k, r);
+    const beh = reach ? behaviorOf(r, st) : null;
+    parts.push('<div class="step ' + (reach ? 'on' : 'off') + '">' +
+      '<div class="row"><b>' + r + '</b><span>' + (reach ? (isChanged(e.k, r) ? '已改' : '默认') : '不可达') + '</span></div>' +
+      '<select data-row="' + r + '"' + (reach ? '' : ' disabled') + '>' +
+      STATES.map(s => '<option value="' + s + '"' + (s === st ? ' selected' : '') + '>' + STATE_ZH[s] + '</option>').join('') +
+      '</select>' +
+      '<div class="out">处置' + (reach ? '<span class="beh ' + beh + '">' + LEVEL_ZH[beh] + '</span>' : ' —') + '</div>' +
+      '</div>');
+    if (idx < TIERS.length - 1) parts.push('<div class="arrow">→</div>');
+  });
+  body.innerHTML = head + '<div class="steps">' + parts.join('') + '</div>';
+  for (const sel of body.querySelectorAll("select")) {
+    sel.addEventListener("change", ev => {
+      setState(e.k, ev.target.dataset.row, ev.target.value, false);
+      renderAll();
+    });
+  }
+}
+
+function renderAll() {
+  renderPool();
+  renderCells();
+  renderStats();
+  renderTrace();
+}
+
+function buildJson() {
+  const kinds = {};
+  for (const e of EVENTS.slice().sort((a, b) => a.k.localeCompare(b.k))) {
+    const rows = {};
+    for (const r of TIERS) if (reachable(e.k, r)) rows[r] = stateOf(e.k, r).toLowerCase();
+    kinds["tianshu:" + e.k] = { tier: e.tier, states: rows };
+  }
+  return JSON.stringify({ schemaVersion: 5, mapping: "anti-diagonal", kinds: kinds }, null, 2);
+}
+
+document.getElementById("filters").addEventListener("click", ev => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  filter = b.dataset.f;
+  for (const x of document.querySelectorAll("#filters button")) x.classList.toggle("on", x === b);
+  renderPool();
+});
+
+document.getElementById("export").addEventListener("click", () => {
+  const blob = new Blob([buildJson()], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "dubhe_event_table.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  hint.textContent = "已导出 dubhe_event_table.json";
+});
+
+document.getElementById("copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(buildJson());
+    hint.textContent = "已复制到剪贴板";
+  } catch (err) {
+    hint.textContent = "剪贴板不可用，请用导出";
+  }
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+  stateMap.clear();
+  changed.clear();
+  selected = null;
+  hint.textContent = "已恢复初始";
+  renderAll();
+});
+
+buildGrid();
+renderAll();
+</script>
+</body>
+</html>

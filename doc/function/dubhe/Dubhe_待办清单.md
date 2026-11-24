@@ -11,8 +11,8 @@
 
 | # | 事项 | 手上有什么 |
 |---|---|---|
-| 1 | **40 条事件在九宫格里的定位**（每行放哪个三态） | 已按迁移后的三态落表（schemaVersion 5）；如要调整，用事件分类工具导出的结果替换 |
-| 2 | 待定 6 条是否接线 | **已结案**：`fall_damage`、`rare_item` 已接线；其余 4 条明确不做，理由见下表 |
+| 1 | **事件在九宫格里的定位**（每行放哪个三态） | **已落表**：仓库表 `dubhe_event_tiers.json` 为 schemaVersion 5、**42 条** kind，每条按可达行各声明一个 `states`。`tools/event-matrix.html` 已按仓库表重建为同 42 条，并新增"不做"标记（已接通 28 / 可接 10 / 不做 4），可用它复核或导出 |
+| 2 | 待定 6 条是否接线 | **已结案并两端核对**：`fall_damage`、`rare_item` 已接线；其余 4 条明确不做，理由见下表 |
 | 3 | `chat_message` 落在哪一格 | 只能落"说话类"或"丢弃"，不能落历史类（否则同一句话出现两遍） |
 
 ### 产品层
@@ -37,7 +37,7 @@
 - [ ] **P3 simple 调度（角色层）**
 - [ ] **测试隔离债**：`IaModuleProtocolFlowTest` 在并行/顺序变化下偶发失败（单跑与重跑均通过），根因是跨用例静态注册残留；后续把每个用例改成自洽注册。：工具集恒为 `{delegate}`；`pending_work` 尾部块；承诺-兑现人设；触发源收敛；办事失败词表。
 - [ ] **P4 代理层 + 技能（执行层）**：技能注册表（开放集、可见性、自主权限）、代理循环（选择/重试/暂停恢复/任务内压缩）、办事报告、`skillsUsed`；simple 走内部派单路径。
-- [ ] **P5 事件层**：矩阵五档查表（G14）、三态改名（G15）、每行 `states`；A 组 9 条接线；H1 / H2 断言。
+- [ ] **P5 事件层**：矩阵五档查表（G14）、三态改名（G15）、每行 `states` 已完成；**舟楫侧 A 组与第二批接线已完成**（词汇 `Tianshu-ferry df0193d5`，采集器 `Tianshu-adapter 52bc64e7` 与 `5f0e9d20`，双端各一条）；剩 H1 / H2 断言与"字面量值"那一条（`weather_change` 的 `rain`/`clear`、`respawn` 的 `minecraft:overworld`）。
 - [ ] **P6 记忆**：`memory` 技能、压缩归属、播报过期、称呼延迟生效。
 - [ ] **P7 技能精修**：`agentActingForPlayer(moduleId, operator, tier)` + 档位设置页（`P0-2` 清零）；首个会动手的技能；外交技能（G28）。
 - [ ] **P8 对外接口**：`SEARCH` 一个下游技能；配额；第三方技能向内注册；接入指南。
@@ -76,7 +76,7 @@
 | 配额口径 | G23：玩家侧不设；外部并发 1 + 排队 4 |
 | 第三方技能 | G22：开放注册，三前提 |
 | 契约版本化 | `schemaVersion` + 新能力 id；字段只增不改 |
-| 九宫格工具 | `tools/event-matrix.html`，37 条与仓库配置逐条对齐，支持链路高亮 |
+| 九宫格工具 | `tools/event-matrix.html`，**42 条与仓库表逐条对齐**；已接通 28 / 可接 10 / 不做 4，支持链路高亮 |
 | 文档计数修正 | 事件表 41/44 → 40，删 `respawn` 行 |
 ### 事件接线结论（`fall_damage` / `rare_item` 等 6 条）
 
@@ -104,3 +104,24 @@
 | `tianshu:eat_food` | 两端 tick 采样 `isUsingItem` + 食物组件 | 进食没有两端通用的"吃完"事件，结束使用 + 食物组件即事实 |
 
 **遗留一项**：`weather_change` 的详情是 `rain` / `thunder` / `clear` 这类**枚举词**，当前管线把值当字面量渲染，所以中文句子里会出现英文词。要彻底解决需要给 `DubheEventText` 的值加"语言引用"能力（现在只有字面量与嵌套模板两种），属于平台层改动，单独决策，不在本次接线里夹带。
+
+### 接线后核对（2026-11-24，两端逐条看代码）
+
+舟楫侧已落地：词汇 `Tianshu-ferry df0193d5`（`WorldEventTypes` 新增 `sleep` / `respawn` / `weather_change` / `eat_food` / `fall_damage` / `rare_item`），采集器 `Tianshu-adapter 52bc64e7`（NeoForge `GameFactCollector` + Fabric `FabricGameFactCollector`，两端形态一致）。天枢侧映射（`DubhePresenceEventMapper`）、表行（`dubhe_event_tiers.json`）与文案键三条都已就位，**没有断链**。
+
+核对结论：
+
+| 项 | 结果 |
+|---|---|
+| `fall_damage` | 两端在（`LivingDamageEvent.Post` / `AFTER_DAMAGE`，按 `getMsgId()=="fall"` 判摔伤） |
+| `rare_item` | 两端在（N 端拾取钩子按 `Rarity` RARE/EPIC；F 端背包增量采样时顺带读稀有度） |
+| `durability_low` / `recipe_unlock` / `structure_discovery` / `player_nearby_first` | 确认**仍无生产者**（全仓 grep 0 处），与"不做"结论一致 |
+| `sleep` / `respawn` / `weather_change` / `eat_food` | 两端都在；`sleep`/`eat_food` 采样状态翻转，`weather_change` 按世界比对，`respawn` 走加载器事件 |
+
+**新发现并已修的三个缺口**（舟楫侧，本次直接改掉；另有一条留给平台决策）：
+
+1. ~~**`eat_food` 报成 Air**~~：采集点 `send(player, EVENT_EAT_FOOD, itemValues(player.getUseItem().copy()))` 发生在 `using` 由真变假的那一 tick；原版 `stopUsingItem()` 在吃完时已把 `useItem` 清空，读到的是空栈 → `minecraft:air` / `Air`。**已修**：进食期间记下食物栈，翻转时用它（两端同法，与 `sleepingOld` 同一种记账）。
+2. ~~**Fabric 的 `rare_item` 缺 `itemName`**~~：只发 `itemId` + `count`，而天枢规则按 `(itemName, itemId)` 优先取名，详情退化成 `minecraft:diamond`。**已修**：稀有度与名字都从手上那格栈读，补 `VALUE_ITEM_NAME`。
+3. ~~**玩家离开后按玩家记的状态不清**~~：`sleepingOld` / `eatingOld` / 载具 / 背包增量 / 放置待定等按玩家记账的 Map 只清了待发包，重登会把上一会话的"判断"带进新会话。**已修**：DISCONNECT 时一并清。
+
+**留给平台决策的一条**：`respawn` 与 `weather_change` 的详情是**字面量**（`minecraft:overworld`、`rain`/`thunder`/`clear`），直接进 `你在 %s 重生` / `天气变了：%s`，中文句子里会夹英文。`DubheEventText` 目前的值只有"字面量"与"嵌套模板"两种，要彻底解决得加"语言引用"，属于平台层改动，与上面"遗留一项"同一件事，等它落地后一起改。
