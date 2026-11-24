@@ -335,17 +335,27 @@ public final class CapabilityCatalog {
     /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */
     public static void setToolEnabled(ToolId id, boolean enabled) {
         CapabilityId capabilityId = CapabilityId.parse(id.toString());
-        Entry entry = TABLE.get().entries.get(capabilityId);
-        if (entry == null || !entry.descriptor().kind().isTool()) {
-            return;
+        while (true) {
+            Table current = TABLE.get();
+            Entry entry = current.entries.get(capabilityId);
+            if (entry == null || !entry.descriptor().kind().isTool()) {
+                return;
+            }
+            JsonObject attributes = entry.descriptor().attributes().deepCopy();
+            if (attributes.has("enabled") && attributes.get("enabled").getAsBoolean() == enabled) {
+                return;
+            }
+            attributes.addProperty("enabled", enabled);
+            CapabilityDescriptor updated = new CapabilityDescriptor(entry.descriptor().id(),
+                    entry.descriptor().kind(), entry.descriptor().binding(), entry.descriptor().description(),
+                    entry.descriptor().side(), entry.descriptor().permission(), entry.descriptor().provider(),
+                    attributes);
+            Table next = current.with(new Entry(updated, null));
+            if (TABLE.compareAndSet(current, next)) {
+                notifyListeners(CapabilityChange.Action.UPDATED, updated);
+                return;
+            }
         }
-        JsonObject attributes = entry.descriptor().attributes().deepCopy();
-        attributes.addProperty("enabled", enabled);
-        CapabilityDescriptor updated = new CapabilityDescriptor(entry.descriptor().id(), entry.descriptor().kind(),
-                entry.descriptor().binding(), entry.descriptor().description(), entry.descriptor().side(),
-                entry.descriptor().permission(), entry.descriptor().provider(), attributes);
-        update(table -> table.with(new Entry(updated, null)));
-        notifyListeners(CapabilityChange.Action.UPDATED, updated);
     }
 
     /** Tests only. */

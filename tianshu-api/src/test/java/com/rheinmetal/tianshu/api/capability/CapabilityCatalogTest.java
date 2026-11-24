@@ -97,6 +97,23 @@ class CapabilityCatalogTest {
     }
 
     @Test
+    void settingAToolToItsCurrentEnabledStateDoesNotPublishAChange() {
+        TianshuTools.register(new EchoTool());
+        List<CapabilityChange> changes = new ArrayList<>();
+        Runnable unsubscribe = CapabilityCatalog.subscribe(changes::add);
+        try {
+            long revision = CapabilityCatalog.revision();
+
+            TianshuTools.setEnabled(ECHO, true);
+
+            assertEquals(revision, CapabilityCatalog.revision());
+            assertTrue(changes.isEmpty());
+        } finally {
+            unsubscribe.run();
+        }
+    }
+
+    @Test
     void aThrowingListenerCannotBreakRegistration() {
         Runnable unsubscribe = CapabilityCatalog.subscribe(change -> {
             throw new IllegalStateException("consumer bug");

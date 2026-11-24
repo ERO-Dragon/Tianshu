@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
+import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.client.host.game.GameContainerEntry;
 import com.rheinmetal.tianshu.client.host.game.GameContainerView;
@@ -13,7 +14,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -65,7 +68,48 @@ class ContainerInspectToolTest {
         assertEquals(0, result.entries().size());
     }
 
+    @Test
+    void theContainerReadIsDispatchedToTheClientThread() throws Exception {
+        AtomicReference<Runnable> scheduled = new AtomicReference<>();
+        CountDownLatch queued = new CountDownLatch(1);
+        install(GameContainerView.EMPTY, new ClientScheduler() {
+            @Override
+            public void execute(Runnable task) {
+                scheduled.set(task);
+                queued.countDown();
+            }
+
+            @Override
+            public boolean isOnMainThread() {
+                return false;
+            }
+        });
+
+        var future = TianshuTools.handle(ContainerInspectTool.ID, EmptyArgs.class, ContainerInspectTool.View.class)
+                .call(new EmptyArgs(), ToolCaller.agent(true), ToolSide.CLIENT);
+
+        assertTrue(queued.await(2, TimeUnit.SECONDS));
+        assertFalse(future.isDone());
+        scheduled.get().run();
+        assertFalse(future.get(2, TimeUnit.SECONDS).open());
+    }
+
     private void install(GameContainerView view) {
+        install(view, new ClientScheduler() {
+            @Override
+            public void execute(Runnable task) {
+                task.run();
+            }
+
+            @Override
+            public boolean isOnMainThread() {
+                return true;
+            }
+        });
+    }
+
+    private void install(GameContainerView view, ClientScheduler scheduler) {
+        TianshuRuntimePorts.register(ClientScheduler.class, scheduler);
         TianshuRuntimePorts.register(ClientGameContextPort.class, new ClientGameContextPort() {
             @Override
             public String playerId() {

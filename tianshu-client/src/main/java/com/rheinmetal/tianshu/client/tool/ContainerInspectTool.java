@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.client.host.game.GameContainerEntry;
 
@@ -72,12 +73,13 @@ public final class ContainerInspectTool implements TianshuTool<EmptyArgs, Contai
     @Override
     public CompletableFuture<View> invoke(ToolContext context, EmptyArgs args) {
         ClientGameContextPort port = TianshuRuntimePorts.find(ClientGameContextPort.class).orElse(null);
-        if (port == null) {
+        ClientScheduler scheduler = TianshuRuntimePorts.find(ClientScheduler.class).orElse(null);
+        if (port == null || scheduler == null) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNSUPPORTED_SIDE,
-                    "this platform cannot read the open container"));
+                    "this platform cannot read the open container on the client thread"));
         }
-        var view = port.captureOpenContainer();
-        boolean open = !view.title().isBlank() || !view.entries().isEmpty();
-        return CompletableFuture.completedFuture(new View(open, view.title(), view.entries()));
+        return scheduler.supply(port::captureOpenContainer)
+                .thenApply(view -> new View(!view.title().isBlank() || !view.entries().isEmpty(),
+                        view.title(), view.entries()));
     }
 }
