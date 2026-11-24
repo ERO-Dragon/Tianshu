@@ -29,6 +29,7 @@ import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityBodies;
 import com.rheinmetal.tianshu.api.entity.EntityBodySpec;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.host.game.GameInventoryEntry;
 import com.rheinmetal.tianshu.model.ModelDownloadHttpClient;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
@@ -1381,31 +1382,34 @@ public final class LabAcceptanceCases {
             if (context == null) {
                 return AcceptanceOutcome.skip(id, title, "no game context is installed in this run");
             }
-            String player = context.playerId();
-            if (player == null || player.isBlank()) {
-                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no player to describe");
-            }
-            List<String> empty = new ArrayList<>();
-            if (context.capturePlayerStatus() == null) {
-                empty.add("status");
-            }
-            if (context.captureInventory() == null) {
-                empty.add("inventory");
-            }
-            if (context.captureEnvironment() == null) {
-                empty.add("environment");
-            }
-            if (context.capturePlayerPose() == null) {
-                empty.add("pose");
-            }
-            if (context.captureVitals() == null) {
-                empty.add("vitals");
-            }
-            if (empty.isEmpty()) {
-                return AcceptanceOutcome.pass(id, title, "player " + player + ", all captures present, "
-                        + context.captureInventory().size() + " inventory slots");
-            }
-            return AcceptanceOutcome.fail(id, title, "null captures: " + empty);
+            return AcceptanceEnvironment.readGame(game -> {
+                String player = game.playerId();
+                if (player == null || player.isBlank()) {
+                    return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no player to describe");
+                }
+                List<String> empty = new ArrayList<>();
+                if (game.capturePlayerStatus() == null) {
+                    empty.add("status");
+                }
+                List<GameInventoryEntry> inventory = game.captureInventory();
+                if (inventory == null) {
+                    empty.add("inventory");
+                }
+                if (game.captureEnvironment() == null) {
+                    empty.add("environment");
+                }
+                if (game.capturePlayerPose() == null) {
+                    empty.add("pose");
+                }
+                if (game.captureVitals() == null) {
+                    empty.add("vitals");
+                }
+                if (empty.isEmpty()) {
+                    return AcceptanceOutcome.pass(id, title, "player " + player + ", all captures present, "
+                            + inventory.size() + " inventory slots");
+                }
+                return AcceptanceOutcome.fail(id, title, "null captures: " + empty);
+            });
         });
     }
 
@@ -1425,21 +1429,23 @@ public final class LabAcceptanceCases {
                 return AcceptanceOutcome.skip(id, title, "no game context is installed in this run");
             }
             List<String> threw = new ArrayList<>();
-            captureThrowing("interaction", context::captureInteraction, threw);
-            captureThrowing("status", context::capturePlayerStatus, threw);
-            captureThrowing("inventory", context::captureInventory, threw);
-            captureThrowing("equipment", context::captureEquipment, threw);
-            captureThrowing("effects", context::captureEffects, threw);
-            captureThrowing("environment", context::captureEnvironment, threw);
-            captureThrowing("blockTarget", context::captureBlockTarget, threw);
-            captureThrowing("pose", context::capturePlayerPose, threw);
-            captureThrowing("vitals", context::captureVitals, threw);
-            captureThrowing("openContainer", context::captureOpenContainer, threw);
-            captureThrowing("playerList", context::capturePlayerList, threw);
-            if (threw.isEmpty()) {
-                return AcceptanceOutcome.pass(id, title, "all 11 captures answered");
-            }
-            return AcceptanceOutcome.fail(id, title, "threw: " + threw);
+            return AcceptanceEnvironment.readGame(game -> {
+                captureThrowing("interaction", game::captureInteraction, threw);
+                captureThrowing("status", game::capturePlayerStatus, threw);
+                captureThrowing("inventory", game::captureInventory, threw);
+                captureThrowing("equipment", game::captureEquipment, threw);
+                captureThrowing("effects", game::captureEffects, threw);
+                captureThrowing("environment", game::captureEnvironment, threw);
+                captureThrowing("blockTarget", game::captureBlockTarget, threw);
+                captureThrowing("pose", game::capturePlayerPose, threw);
+                captureThrowing("vitals", game::captureVitals, threw);
+                captureThrowing("openContainer", game::captureOpenContainer, threw);
+                captureThrowing("playerList", game::capturePlayerList, threw);
+                if (threw.isEmpty()) {
+                    return AcceptanceOutcome.pass(id, title, "all 11 captures answered");
+                }
+                return AcceptanceOutcome.fail(id, title, "threw: " + threw);
+            });
         });
     }
 
@@ -1737,7 +1743,7 @@ public final class LabAcceptanceCases {
             return null;
         }
         try {
-            String player = context.playerId();
+            String player = AcceptanceEnvironment.readGame(ClientGameContextPort::playerId);
             return player == null || player.isBlank() ? null : player;
         } catch (RuntimeException notReady) {
             return null;

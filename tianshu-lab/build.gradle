@@ -15,9 +15,10 @@ repositories {
 // adapter packaging task knows about it. It exists to give IA a participant to arbitrate against while the
 // player tests the speech module in a development client.
 dependencies {
-    api project(':tianshu-intake')
+    compileOnly project(':tianshu-intake')
     compileOnly 'com.google.code.gson:gson:2.10.1'
     compileOnly fileTree(rootProject.file('libs')) { include 'tianshu_foundry-*.jar' }
+    testImplementation project(':tianshu-intake')
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'com.google.code.gson:gson:2.10.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

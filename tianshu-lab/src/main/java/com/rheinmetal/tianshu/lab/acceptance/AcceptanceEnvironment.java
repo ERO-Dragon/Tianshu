@@ -1,7 +1,10 @@
 package com.rheinmetal.tianshu.lab.acceptance;
 
+import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+
+import java.util.function.Function;
 
 /**
  * The live handles a case needs but that only the module runtime can supply.
@@ -13,29 +16,44 @@ import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
  */
 public final class AcceptanceEnvironment {
 
-    private static volatile ModuleRuntimeAccess runtime;
-    private static volatile ClientGameContextPort gameContext;
+    private static volatile Binding binding = new Binding(null, null, null);
 
     private AcceptanceEnvironment() {
     }
 
-    public static void install(ModuleRuntimeAccess access, ClientGameContextPort context) {
-        runtime = access;
-        gameContext = context;
+    public static void install(ModuleRuntimeAccess access, ClientGameContextPort context,
+                               ClientScheduler clientScheduler) {
+        binding = new Binding(access, context, clientScheduler);
     }
 
     public static void clear() {
-        runtime = null;
-        gameContext = null;
+        binding = new Binding(null, null, null);
     }
 
     /** @return the module runtime, or {@code null} when this bench runs without one */
     public static ModuleRuntimeAccess runtime() {
-        return runtime;
+        return binding.runtime();
     }
 
     /** @return the game's read-only context, or {@code null} when this bench runs without a client */
     public static ClientGameContextPort gameContext() {
-        return gameContext;
+        return binding.gameContext();
+    }
+
+    /** Runs a live game read on the client thread while keeping the acceptance suite on its worker. */
+    public static <T> T readGame(Function<ClientGameContextPort, T> read) {
+        Binding current = binding;
+        ClientGameContextPort context = current.gameContext();
+        if (context == null) {
+            return null;
+        }
+        ClientScheduler clientScheduler = current.scheduler();
+        if (clientScheduler == null) {
+            throw new IllegalStateException("client scheduler is unavailable");
+        }
+        return clientScheduler.supply(() -> read.apply(context)).join();
+    }
+
+    private record Binding(ModuleRuntimeAccess runtime, ClientGameContextPort gameContext, ClientScheduler scheduler) {
     }
 }

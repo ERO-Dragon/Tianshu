@@ -11,10 +11,12 @@ import com.rheinmetal.tianshu.client.api.text.UiText;
 import com.rheinmetal.tianshu.client.host.ClientPresentationPort;
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.ClientTextProvider;
+import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRegistrationContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.ModuleRuntimeContext;
 import com.rheinmetal.tianshu.core.lifecycle.module.TianshuManagedModule;
-import com.rheinmetal.tianshu.ia.contract.DialogueDeliveryPayload;
+import com.rheinmetal.tianshu.lab.acceptance.AcceptanceEnvironment;
+import com.rheinmetal.tianshu.lab.bridge.intake.LabIntakeBridge;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -40,12 +42,14 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     private static final long AUTO_RUN_REGISTRY_WAIT_MILLIS = 30_000L;
     /** How long an auto-run asked for the world waits for a world and a player before reporting what it has. */
     private static final long AUTO_RUN_WORLD_WAIT_MILLIS = 180_000L;
+    private static final String INTAKE_UNAVAILABLE_MESSAGE =
+            "tianshu_intake is not installed; dialogue participants stay disabled";
 
     private final LabProtocolAdapter adapter;
     /** The runtime this module was assembled with; the acceptance bench borrows it for execution cases. */
     private final com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess runtime;
     /** Read-only view of the game; the acceptance bench borrows it for the world-context cases. */
-    private final com.rheinmetal.tianshu.client.host.game.ClientGameContextPort gameContext;
+    private final ClientGameContextPort gameContext;
     private final ClientPresentationPort presentation;
     private final ClientScheduler scheduler;
     private final ClientTextProvider texts;
@@ -99,7 +103,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
         if (context != null) {
             this.diagnostics = context.diagnostics();
         }
-        com.rheinmetal.tianshu.lab.acceptance.AcceptanceEnvironment.install(runtime, gameContext);
+        AcceptanceEnvironment.install(runtime, gameContext, scheduler);
         if (debugEnabled) {
             registerParticipants();
         }
@@ -163,7 +167,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     /** Whether a world is loaded and a player is in it; the world-context cases need both. */
     private boolean inWorld() {
         try {
-            String player = gameContext == null ? null : gameContext.playerId();
+            String player = AcceptanceEnvironment.readGame(ClientGameContextPort::playerId);
             return player != null && !player.isBlank();
         } catch (RuntimeException notReady) {
             return false;
@@ -179,6 +183,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
 
     @Override
     public void destroy() {
+        AcceptanceEnvironment.clear();
         sessionId = "";
         ownerParticipantId = "";
         lastDeliveryText = "";
@@ -275,7 +280,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
         if (!intakeInstalled()) {
             // Participants are Intake's vocabulary: registering them into nothing would leave the page claiming a
             // participant exists, which is the one thing the bench must never do.
-            lastError = "tianshu_intake is not installed; dialogue participants stay disabled";
+            lastError = INTAKE_UNAVAILABLE_MESSAGE;
             return;
         }
         List<String> registered = new ArrayList<>();
@@ -359,7 +364,13 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     // ---------------------------------------------------------------- delivery
 
     private void handleDelivery(TianshuEnvelope envelope, ProtocolContext context, String participantId) {
-        if (!(envelope.payload() instanceof DialogueDeliveryPayload payload)) {
+        if (!intakeInstalled()) {
+            lastError = INTAKE_UNAVAILABLE_MESSAGE;
+            context.fail(envelope.envelopeId(), "INTAKE_UNAVAILABLE", INTAKE_UNAVAILABLE_MESSAGE, null);
+            return;
+        }
+        LabIntakeBridge.Delivery payload = LabIntakeBridge.delivery(envelope).orElse(null);
+        if (payload == null) {
             lastError = "invalid delivery payload";
             context.fail(envelope.envelopeId(), "INVALID_PAYLOAD", "Lab dialogue delivery payload is invalid", null);
             return;
