@@ -191,7 +191,9 @@ public final class BodyCommands {
         CommandSourceStack source = context.getSource();
         String token = StringArgumentType.getString(context, "kind");
         BodyKind kind = BodyKind.parse(token).orElse(null);
-        if (kind == null || !BodyCarriers.available(kind)) {
+        if (kind == null) {
+            // The command only offers built-in shapes; whether this server can build the one asked for is the
+            // registry's answer, and it is the same answer a module would get.
             source.sendFailure(spawnFailure(BodyFailure.KIND_INVALID));
             return 0;
         }

@@ -181,11 +181,6 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
         return Optional.of(BodyFailure.PLAYER_DENIED.exception());
     }
 
-    /** Spawns a carrier for {@code owner} at the owner's position and returns the new body. */
-    public EntityActor spawn(ServerPlayer owner, BodyKind kind) {
-        return spawn(owner, kind, false);
-    }
-
     /**
      * Spawns a body, optionally player-backed.
      *
@@ -194,7 +189,8 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
      */
     public EntityActor spawn(ServerPlayer owner, BodyKind kind, boolean playerIdentity) {
         return spawn(ModIdentity.MOD_ID, owner.getUUID(), owner.hasPermissions(2),
-                kind, null, playerIdentity, owner.serverLevel(), owner.position(), owner.getYRot(), owner.getXRot());
+                BodyCarriers.resolve(ModIdentity.MOD_ID, kind.token()), playerIdentity, owner.serverLevel(),
+                owner.position(), owner.getYRot(), owner.getXRot());
     }
 
     @Override
@@ -202,24 +198,21 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
             ActorPosition position, boolean playerLike) {
         return CompletableFuture.supplyAsync(() -> {
             IdSegments.require(moduleId, "body", "owner module");
-            BodyKind carrier = BodyKind.parse(kind).orElse(null);
-            EntityType<WalkerBody> declared = carrier == null ? BodyCarriers.declared(moduleId, kind) : null;
+            BodyCarriers.Carrier carrier = BodyCarriers.resolve(moduleId, kind);
             var dimension = ResourceLocation.tryParse(position.dimension());
             var level = dimension == null ? null : server.getLevel(ResourceKey.create(
                     Registries.DIMENSION, dimension));
             if (level == null) {
                 throw BodyFailure.DIMENSION_UNAVAILABLE.exception();
             }
-            return spawn(moduleId, null, false, carrier == null ? BodyKind.WALKER : carrier, declared, playerLike, level,
+            return spawn(moduleId, null, false, carrier, playerLike, level,
                     new Vec3(position.x(), position.y(), position.z()), 0, 0);
         }, server);
     }
 
-    private EntityActor spawn(String ownerModule, UUID playerOwner, boolean operator, BodyKind kind,
-                              EntityType<WalkerBody> declared, boolean playerIdentity, ServerLevel level, Vec3 at, float yaw, float pitch) {
-        if (declared == null && !BodyCarriers.available(kind)) {
-            throw BodyFailure.KIND_INVALID.exception();
-        }
+    private EntityActor spawn(String ownerModule, UUID playerOwner, boolean operator, BodyCarriers.Carrier carrier,
+                              boolean playerIdentity, ServerLevel level, Vec3 at, float yaw, float pitch) {
+        BodyKind kind = carrier.kind();
         Entity entity;
         BodyIdentity identity;
         if (playerIdentity) {
@@ -239,7 +232,7 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
                     yield stand;
                 }
                 case WALKER -> {
-                    WalkerBody walker = (declared == null ? BodyCarriers.walker() : declared).create(level);
+                    WalkerBody walker = carrier.type().create(level);
                     if (walker == null) {
                         throw BodyFailure.SPAWN_FAILED.exception();
                     }

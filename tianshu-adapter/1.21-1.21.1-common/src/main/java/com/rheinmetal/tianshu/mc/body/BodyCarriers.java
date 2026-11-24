@@ -1,9 +1,8 @@
 package com.rheinmetal.tianshu.mc.body;
 
-import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.ModIdentity;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.entity.EntityTypeSpec;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 
@@ -55,19 +54,53 @@ public final class BodyCarriers {
         return kind != BodyKind.WALKER || types.containsKey(WALKER.id());
     }
 
-    /** Resolves only carrier types declared by this module. */
-    public static EntityType<WalkerBody> declared(String moduleId, String id) {
-        var key = ResourceLocation.tryParse(id);
-        if (key != null && key.getNamespace().equals(moduleId)) {
-            var type = types.get(key.toString());
-            if (type != null) {
-                return type;
-            }
-        }
-        throw BodyFailure.KIND_INVALID.exception();
+    /**
+     * What a spawn request resolved to: the shape the registry records, plus the type to instantiate.
+     *
+     * <p>{@code type} is non-null exactly when {@code kind} is {@link BodyKind#WALKER} — the other two shapes are
+     * vanilla entities the game already has. Whoever resolves a request once does not have to ask again downstream
+     * whether a type was named.</p>
+     */
+    public record Carrier(BodyKind kind, EntityType<WalkerBody> type) {
     }
 
+    /**
+     * Resolves a spawn request against the entity types registered <em>in this process</em>.
+     *
+     * <p>Two kinds of name are accepted, and the difference is the guard:</p>
+     * <ul>
+     *   <li>a built-in shape token ({@code marker}, {@code stand}, {@code walker}) — the adapter's own carriers, made
+     *       of vanilla types or of the type the adapter registers for itself, so any module may ask for one;</li>
+     *   <li>a namespaced type id ({@code <module>:<name>}) — and only the module that declared it may spawn it.</li>
+     * </ul>
+     *
+     * <p>The registry is the judge, not the caller's word. A type that exists only on the client has no entry here,
+     * so such a request never reaches the world however sure the client is that its type exists.</p>
+     *
+     * @throws com.rheinmetal.tianshu.api.tool.ToolException {@link BodyFailure#KIND_INVALID} when nothing on this
+     *         server can produce the name, {@link BodyFailure#KIND_FOREIGN} when the type exists but belongs to
+     *         another module
+     */
+    public static Carrier resolve(String moduleId, String kind) {
+        BodyKind builtin = CarrierName.builtin(kind).orElse(null);
+        if (builtin != null) {
+            return new Carrier(builtin, builtin == BodyKind.WALKER ? walker() : null);
+        }
+        CarrierName.requireWellFormed(kind);
+        EntityType<WalkerBody> type = types.get(kind);
+        if (type == null) {
+            throw BodyFailure.KIND_INVALID.exception();
+        }
+        CarrierName.requireOwned(moduleId, kind);
+        return new Carrier(BodyKind.WALKER, type);
+    }
+
+    /** The adapter's own walker, absent on a standalone Ferry that registered no entity types at all. */
     static EntityType<WalkerBody> walker() {
-        return declared(WALKER.modId(), WALKER.id());
+        EntityType<WalkerBody> type = types.get(WALKER.id());
+        if (type == null) {
+            throw BodyFailure.KIND_INVALID.exception();
+        }
+        return type;
     }
 }
