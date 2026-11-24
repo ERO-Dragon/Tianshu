@@ -1,9 +1,8 @@
 # Dubhe 事件系统
 
-> **本次改造后的现状（2026-11-23）**：五档 `IMMEDIATE / DEFERRED / SILENT / FOLD / DROP`；三态 `强调 / 常规 / 削弱`；处置由 9 格固定映射查得；频率门只换行；H1/H2 成立；内置表 40 条（schemaVersion 5）；`SILENT` 每次一条、`FOLD` 达阈值一条 `transient`、`DROP` 不写；文案全部来自资源。
-
-
-事件的完整链路：模组提交 → 定档与名单 → 频率修正 → 类别 → 落地（立即播报 / 冷却缓冲 / 融合进历史 / 丢弃）。本文以当前代码为准，不描述未实现的能力。
+> **要点**：五档 `IMMEDIATE / DEFERRED / SILENT / FOLD / DROP`；三态 `强调 / 常规 / 削弱`；
+> 处置由九格固定映射查得；频率门只换行；H1（高频不外放）/ H2（不插在对话中间）。
+> 内置表 42 条（schemaVersion 5）；`SILENT` 每次一条、`FOLD` 达阈值一条 `transient`。
 
 ## 1. 定位与范围
 
