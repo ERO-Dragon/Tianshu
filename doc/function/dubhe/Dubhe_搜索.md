@@ -57,31 +57,35 @@
 
 **官方 wiki 不设计成链路上的一环**：CF 的 `links` 实测为空（Create 就是空），Modrinth 的 `wiki_url` 实测常为 null（Botania 就是 null），「从发布站跳到官方 wiki」不可靠。已有 URL 时只作事后补充。
 
-## 5. 工具（4 个）
+## 5. 工具
 
-| 工具 | 覆盖 |
-|---|---|
-| `mc_wiki(site: en\|zh\|bwiki, action: search\|page, q)` | 三个 MediaWiki 站，同协议合一个工具 |
-| `mc_modrinth(action: search\|project, q)` | Modrinth 官方 API |
-| `mc_cf(action: search\|project, q)` | CurseForge 公开镜像 |
-| `mcmod(action: search\|page, q)` | MC百科 HTML |
+| 工具 | 覆盖 | 状态 |
+|---|---|---|
+| `book` | L1 本地手册 | **已实现**（§6） |
+| `mcmod(query)` | MC百科 HTML | 待做 |
+| `mc_wiki(site: zh\|en\|bwiki, query)` | 三个 MediaWiki 站，同协议合一个 | 待做 |
+| `mc_modrinth` / `mc_cf` | 英文分发站 | **第一版不做**：只回答"这模组是什么"，而 L1 手册与 MC百科 覆盖更好；真撞上"没词条且没装手册"再补 |
 
-- L1 本地手册走内部读取，不占工具名额（见 §6）。
 - **`search` 不进 simple 工具表**（A3）：simple 恒为 `{delegate}`，结构上没有这条路。
-- 前三个是 JSON、第四个是 HTML，失败模式不同，不合并——CF 镜像挂掉要能单独报，不拖累 Modrinth。
-- **纯内部**：这些工具名只在天枢内部出现，不对外发布（G66）。
+- **纯内部**：工具名只在天枢内部出现，不对外发布（G66）。
 
 ## 6. 本地手册（L1）：Patchouli
 
-数据在**模组自己的 jar**（`assets/<ns>/patchouli_books/<book>/`），不在 Patchouli 的 jar 里——**没装 Patchouli 也能读**，天枢已有读 jar 资源的能力。
+数据在**模组自己的 jar**（`assets/<ns>/patchouli_books/<book>/`），不在 Patchouli 的 jar 里——**没装 Patchouli 也能读**。
 
 两级检索，不整本进模型：
 
 | 步 | 做什么 |
 |---|---|
-| 索引 | 只取全部条目的 `name` + `category`，启动时扫一遍常驻内存 |
-| 匹配 | 玩家问法 → 索引命中 1–3 条 |
-| 取正文 | 只读命中条目的 `text` 页 |
+| 建索引 | **首次查询时**读一遍所有模组的书，常驻内存；没人问就不读 |
+| 匹配 | 问法切成词（英文按词、中文按二字滑窗），标题命中权重高于正文 |
+| 取正文 | 只回命中的 1–3 条，整次回答的正文上限 1800 字 |
+
+实现落点：
+
+- **端口**：`InstalledModIds` + `ModResources`（`tianshu-api/assembly`）。适配器实现，模块不接触加载器 API；两边共用的 IO 在 `mc.resource.ModResourceFiles`。
+- **技能**：`agent/skill/book/`——`book` 是技能 id，目录、语言回退、格式控制清理全在解析器里，模型只看到"问什么 → 标题 + 正文"。
+- **缓存挂在技能实例上**，不挂静态字段：模块停掉缓存即消失，测试也不会互相污染。
 
 实测（Botania `lexicon`，第 1 本）：
 
