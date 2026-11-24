@@ -391,18 +391,82 @@ class AudioCaptureServiceTest {
         }
     }
     @Test
-    void aVeryLongHoldStopsAtTheUtteranceCapInsteadOfGrowingWithIt() {
+    void aHeldUtteranceIsNotTruncatedByDefault() {
+        // Product decision: how long the player speaks is their business, so nothing is cut unless an operator asks.
         FakeAudioBridge bridge = new FakeAudioBridge();
         AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment());
 
         service.startPttCapture();
-        // Push well past the cap: an hour-long hold used to allocate ~115 MB and copy it again on release.
         for (int burst = 0; burst < 8; burst++) {
-            bridge.push(new byte[AudioCaptureService.MAX_PTT_BYTES / 2]);
+            bridge.push(new byte[1_000_000]);
         }
         byte[] captured = service.stopPttCapture();
 
-        assertEquals(AudioCaptureService.MAX_PTT_BYTES, captured.length,
-                "the buffer must stop at the cap: what was said is kept, the rest is not recorded");
+        assertEquals(8_000_000, captured.length, "the whole hold is kept when no limit is configured");
+    }
+
+    @Test
+    void aConfiguredLimitTruncatesAndSaysSo() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        RecordingEnvironment env = new RecordingEnvironment();
+        AudioCaptureService service = new AudioCaptureService(bridge, env,
+                com.rheinmetal.tianshu.intake.recognition.AsrSpeechSegmenter.disabled(), () -> 30);
+
+        service.startPttCapture();
+        // 30 seconds of 16 kHz mono 16-bit audio is 960 000 bytes; push twice that.
+        for (int burst = 0; burst < 4; burst++) {
+            bridge.push(new byte[480_000]);
+        }
+        byte[] captured = service.stopPttCapture();
+
+        assertEquals(960_000, captured.length, "a configured limit is a hard bound");
+        org.junit.jupiter.api.Assertions.assertTrue(env.warnings.stream().anyMatch(line -> line.contains("configured")),
+                "a cut must be reported, or it looks like a dead microphone: " + env.warnings);
+    }
+
+    /** Captures warnings so a test can see whether the player was told about a cut. */
+    private static final class RecordingEnvironment implements IGameEnvironment {
+        private final List<String> warnings = new ArrayList<>();
+        private final IGameEnvironment delegate = new FakeGameEnvironment();
+
+        @Override
+        public void warn(String msg) {
+            warnings.add(msg);
+        }
+
+        @Override
+        public void executeOnMainThread(Runnable task) {
+            delegate.executeOnMainThread(task);
+        }
+
+        @Override
+        public Path getGameDirectory() {
+            return delegate.getGameDirectory();
+        }
+
+        @Override
+        public boolean isClientSide() {
+            return delegate.isClientSide();
+        }
+
+        @Override
+        public void openFolder(Path dir) {
+            delegate.openFolder(dir);
+        }
+
+        @Override
+        public void info(String msg) {
+            delegate.info(msg);
+        }
+
+        @Override
+        public void error(String msg, Throwable t) {
+            delegate.error(msg, t);
+        }
+
+        @Override
+        public com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink diagnostics() {
+            return delegate.diagnostics();
+        }
     }
 }

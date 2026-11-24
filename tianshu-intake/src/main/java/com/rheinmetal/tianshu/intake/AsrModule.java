@@ -160,7 +160,8 @@ public final class AsrModule implements TianshuManagedModule, AsrModuleRuntimeCo
                 textRepairer.initialize(context.triggers(), context.diagnostics());
             AsrStateMachine stateMachine = new AsrStateMachine();
             AsrSessionManager sessionManager = new AsrSessionManager();
-            audioCapture = new AudioCaptureService(audioBridge, env);
+            audioCapture = new AudioCaptureService(audioBridge, env, com.rheinmetal.tianshu.intake.recognition.AsrSpeechSegmenter.disabled(),
+                    config::getMaxUtteranceSeconds);
             reconfigureAudioPipeline();
             AsrRecognitionService recognition = new AsrRecognitionService(env, this::asrEngine, adapter);
             controller = new AsrController(env, this::canAcceptVoiceInput, this::isAsrReady, interruptProcessing, adapter, stateMachine, sessionManager, audioCapture, recognition, this::publishModuleStatus, this::notReadyStatus);

@@ -24,11 +24,14 @@ public final class IntakeConfig implements IntakeConfiguration, IntakeSettingsAc
     private static final String KEY_GITHUB_PROXY = "githubProxyUrl";
     private static final String KEY_HIGH_PASS = "highPassFilterEnabled";
     private static final String KEY_CUSTOM_MODEL = "customModelName";
+    private static final String KEY_MAX_UTTERANCE_SECONDS = "maxUtteranceSeconds";
 
     private static final boolean DEFAULT_ENABLED = true;
     private static final String DEFAULT_SELECTED_MIC = "";
     private static final String DEFAULT_GITHUB_PROXY = "https://gh-proxy.org/";
     private static final boolean DEFAULT_HIGH_PASS = true;
+    /** Unlimited by default: holding the talk key is not supposed to truncate what the player says. */
+    private static final int DEFAULT_MAX_UTTERANCE_SECONDS = 0;
 
     private final ModuleConfigStore store;
     private final Path basePath;
@@ -86,6 +89,13 @@ public final class IntakeConfig implements IntakeConfiguration, IntakeSettingsAc
     @Override
     public Path getAsrBasePath() {
         return basePath;
+    }
+
+    @Override
+    public int getMaxUtteranceSeconds() {
+        // 0 is the product default: a held key records until it is released. A positive value is an operator's own
+        // guard, not something this module imposes.
+        return Math.max(0, store.getInt(KEY_MAX_UTTERANCE_SECONDS, DEFAULT_MAX_UTTERANCE_SECONDS));
     }
 
     @Override

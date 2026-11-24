@@ -20,13 +20,15 @@ import java.util.function.Consumer;
  */
 public final class AudioCaptureService {
     /**
-     * One push-to-talk utterance is capped at a minute of 16 kHz mono 16-bit audio.
+     * Guard for one held utterance, in bytes per second of 16 kHz mono 16-bit audio.
      *
-     * <p>A hold-to-talk key can be held indefinitely, and the buffer grew with the hold: an hour is ~115 MB, and the
-     * copy on release doubles the peak. The cap turns that into a known bound; what was said is kept, and the cut is
-     * reported so it is not mistaken for a silent microphone.</p>
+     * <p>Product decision: the length of what the player says is not capped, so {@code maxUtteranceSeconds == 0} keeps
+     * everything. When an operator does configure a limit, the cut is reported: a silently shortened sentence is
+     * indistinguishable from a broken microphone, and the player has no way to know which happened.</p>
      */
-    static final int MAX_PTT_BYTES = 16_000 * 2 * 60;
+    private final java.util.function.IntSupplier maxUtteranceSeconds;
+    private static final int BYTES_PER_SECOND = 16_000 * 2;
+    private volatile boolean limitReported;
     private final IAudioBridge audioBridge;
     private final IGameEnvironment env;
     private volatile AsrSpeechSegmenter speechSegmenter;
@@ -44,9 +46,16 @@ public final class AudioCaptureService {
     }
 
     public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env, AsrSpeechSegmenter speechSegmenter) {
+        this(audioBridge, env, speechSegmenter, () -> 0);
+    }
+
+    /** @param maxUtteranceSeconds the operator's own guard; {@code 0} keeps the whole hold */
+    public AudioCaptureService(IAudioBridge audioBridge, IGameEnvironment env, AsrSpeechSegmenter speechSegmenter,
+                               java.util.function.IntSupplier maxUtteranceSeconds) {
         this.audioBridge = audioBridge;
         this.env = env;
         this.speechSegmenter = speechSegmenter == null ? AsrSpeechSegmenter.disabled() : speechSegmenter;
+        this.maxUtteranceSeconds = maxUtteranceSeconds == null ? () -> 0 : maxUtteranceSeconds;
     }
 
     public void setSpeechSegmenter(AsrSpeechSegmenter speechSegmenter) {
@@ -163,16 +172,25 @@ public final class AudioCaptureService {
 
     /** Appends up to the utterance cap, reporting the cut once so a truncated hold is not read as a dead microphone. */
     private void appendCapped(ByteArrayOutputStream buffer, byte[] chunk) {
-        synchronized (buffer) {
-            int room = MAX_PTT_BYTES - buffer.size();
-            if (room <= 0) {
-                return;
+        int limit = maxUtteranceSeconds.getAsInt() * BYTES_PER_SECOND;
+        if (limit <= 0) {
+            // No configured limit: the whole hold is kept, which is the product default.
+            synchronized (buffer) {
+                buffer.write(chunk, 0, chunk.length);
             }
+            return;
+        }
+        synchronized (buffer) {
+            int room = Math.max(0, limit - buffer.size());
             int write = Math.min(room, chunk.length);
-            buffer.write(chunk, 0, write);
-            if (write < chunk.length) {
-                env.warn("push-to-talk hit its single-utterance limit of " + MAX_PTT_BYTES
-                        + " bytes; the rest of the hold was not recorded");
+            if (write > 0) {
+                buffer.write(chunk, 0, write);
+            }
+            // Either a partial write or a full one still leaves part of the hold unrecorded; say so once.
+            if (write < chunk.length && !limitReported) {
+                limitReported = true;
+                env.warn("push-to-talk hit the configured "
+                        + maxUtteranceSeconds.getAsInt() + "s limit; the rest of the hold was not recorded");
             }
         }
     }
