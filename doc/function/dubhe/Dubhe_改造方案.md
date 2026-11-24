@@ -443,6 +443,12 @@ loop step = 1..maxSteps:
 
 ### 4.5 事件表：18 条"有名无实"的 kind
 
+> **本节是 2026-11-23 的设计快照。** 现状（谁已接通、谁不做、剩余多少）以
+> [待办清单 §接线后核对](Dubhe_待办清单.md) 为准：`fall_damage` / `rare_item` 与第二批
+> `sleep` / `respawn` / `weather_change` / `eat_food` 已由舟楫接通，B 组因此只剩
+> `durability_low` / `recipe_unlock` / `structure_discovery` / `player_nearby_first`
+> 四条明确不做项。
+
 档位表有 40 行，但只有 22 个 kind 有生产者。没有生产者的 18 条按"数据源是否现成"分三类处置。
 **判定依据是数据源，不是重要性**——重要性已经由档位与名单表达过了。
 
