@@ -82,8 +82,9 @@ metadata:
 |---|---|---|
 | `search` | 对外已发布 SKILL（内容待路由表细化） | 联网技能族入口 |
 | `work` | **已建**（SKILL.md + 1 篇 reference） | 天枢的工作策略：顺序与边界；工具清单与三档细节引用平台技能 `tianshu:minecraft-tools`，不重复 |
+| `diplomacy` | **已建**（SKILL.md + 6 篇 references） | 外交：发现（`discovery`）/ 投递（`relay`）/ 查进度（`progress`）/ 权限 / 失败 / 示例；执行由 `relay` 工具（list/describe/submit/progress）完成 |
 | `memory` | 待建 | 记忆检索与压缩（当前压缩是内部维护服务） |
-| `diplomacy` | 已实现（代码形态，待迁包） | 对外投递与按需查询；`relay` 是它旗下的一类 reference |
+
 
 ## 7. 与平台实现的合并（已完成）
 

@@ -110,6 +110,7 @@
 | **G58** | 渐进式披露（2026-11-23 定） | 目录只放**一行摘要 + 最小 schema**；候选先 `list` 拿摘要，选中后才 `describe` 取完整属性与参考。`diplomacy` 的 `list / describe / submit / progress` 就是这套披露顺序，`relay` 只是其中一个引用。文件形态（`SKILL.md` + `references/`）见《Dubhe_技能包规范》。对外功能同样只给描述与 `attributes`，接入细节按需从《对外接入》取。**技能是内部执行单元，功能才是对外契约**，二者不混层 |
 | **G59** | 共享技能（平台 → 模组） | 三档与工具说明由舟楫注册成公共 SKILL（`tianshu:minecraft-tools`）；模组运行时通过 `tianshu:capability.read` 读取，不在本地保存副本。天枢用内部技能 `read-shared-skill` 封装读取，`work` 第 0 步先读平台技能再操作 |
 | **G60** | 宿主工具接进代理 | 代理目录 = 内部技能 + 宿主工具：`DubheHostToolSkills` 按 `TianshuTools.catalog(caller)` 适配（工具名下划线化、带 schema、调用走 `callJson`、返回 envelope 原样）；档位过滤、关闭工具与 `body.*` 排除；每次委派重取，改档位无需重启 |
+| **G61** | 外交＝技能 + 工具 | `diplomacy` 是技能（SKILL.md + references：discovery / relay / progress / permissions / failures / examples），`relay` 是执行工具（`list` / `describe` / `submit` / `progress`）；`relay` 是 `diplomacy` 旗下的一篇 reference，不是独立能力。投递只回收执（`taskId`），不轮询；发现分两个清单（`targets` 可读、`taskEntries` 可投） |
 
 ```text
 simple（角色层）
