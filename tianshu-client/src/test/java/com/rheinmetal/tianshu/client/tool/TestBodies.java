@@ -24,6 +24,11 @@ final class TestBodies {
             }
 
             @Override
+            public String ownerModule() {
+                return com.rheinmetal.tianshu.api.tool.ToolCaller.agent(false).id();
+            }
+
+            @Override
             public boolean operator() {
                 return true;
             }

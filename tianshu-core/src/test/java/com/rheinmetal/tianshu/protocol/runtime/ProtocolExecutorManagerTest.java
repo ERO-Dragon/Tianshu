@@ -48,6 +48,28 @@ class ProtocolExecutorManagerTest {
     }
 
     @Test
+    void cancellingAQueuedTaskDoesNotBlockTheNextTaskOrReplaceItsSettlementCallback() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch settled = new CountDownLatch(3);
+        AtomicBoolean cancelledRan = new AtomicBoolean();
+        executors.submit(spec("cancel", Priority.NORMAL, 1, 2), () -> {
+            started.countDown();
+            release.await(2, TimeUnit.SECONDS);
+            return null;
+        }, settled::countDown);
+        assertTrue(started.await(2, TimeUnit.SECONDS));
+        var queued = executors.submit(spec("cancel", Priority.NORMAL, 1, 2),
+                () -> cancelledRan.set(true), settled::countDown);
+        assertTrue(queued.cancel("cancel"));
+        executors.submit(spec("cancel", Priority.NORMAL, 1, 2), () -> {}, settled::countDown);
+        release.countDown();
+        assertTrue(settled.await(2, TimeUnit.SECONDS));
+        assertFalse(cancelledRan.get());
+        assertEquals(0, executors.activeTaskCount());
+    }
+
+    @Test
     void queueCapacityRejectsOverflowWithinConcurrencyGroup() throws Exception {
         CountDownLatch firstStarted = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);

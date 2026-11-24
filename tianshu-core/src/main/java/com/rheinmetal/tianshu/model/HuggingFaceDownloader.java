@@ -214,10 +214,9 @@ public class HuggingFaceDownloader {
         String preferredBase = preferredBaseSupplier.get();
         env.info("HF_REPOSITORY_RESOLVE repo=" + repoId + " preferred=" + preferredBase);
         checkControl(control);
-        List<RepositoryFile> allFiles = fetchFileTree(preferredBase, repoId, revision, control);
-        // The tree may have discovered that the preferred host is dead; every file should start where it worked.
-        preferredBase = preferredBaseSupplier.get();
-        List<RepositoryFile> toDownload = allFiles.stream().filter(file -> !shouldSkipFile(file.path())).toList();
+        RepositoryTree tree = fetchFileTree(preferredBase, repoId, revision, control);
+        preferredBase = tree.baseUrl();
+        List<RepositoryFile> toDownload = tree.files().stream().filter(file -> !shouldSkipFile(file.path())).toList();
         long totalBytes = totalBytes(toDownload);
         long completedBytes = 0L;
         if (progress != null) {
@@ -238,7 +237,7 @@ public class HuggingFaceDownloader {
                 continue;
             }
             long fileStartBytes = completedBytes;
-            downloadRepositoryFile(
+            preferredBase = downloadRepositoryFile(
                     preferredBase,
                     repoId,
                     revision,
@@ -252,9 +251,6 @@ public class HuggingFaceDownloader {
                     fileStartBytes,
                     totalBytes
             );
-            // A host that failed and then worked through the fallback is remembered; the next file starts there
-            // instead of waiting out the dead host's timeouts again.
-            preferredBase = preferredBaseSupplier.get();
             completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
     }
@@ -273,7 +269,9 @@ public class HuggingFaceDownloader {
         Files.createDirectories(vocoderDir);
         String preferredBase = preferredBaseSupplier.get();
         checkControl(control);
-        List<RepositoryFile> toDownload = fetchFileTree(preferredBase, VOCODER_REPO, MAIN_REVISION, control)
+        RepositoryTree tree = fetchFileTree(preferredBase, VOCODER_REPO, MAIN_REVISION, control);
+        preferredBase = tree.baseUrl();
+        List<RepositoryFile> toDownload = tree.files()
                 .stream()
                 .filter(file -> file.path().toLowerCase(Locale.ROOT).endsWith(".onnx"))
                 .filter(file -> !shouldSkipFile(file.path()))
@@ -297,7 +295,7 @@ public class HuggingFaceDownloader {
                 continue;
             }
             long fileStartBytes = completedBytes;
-            downloadRepositoryFile(
+            preferredBase = downloadRepositoryFile(
                     preferredBase,
                     VOCODER_REPO,
                     MAIN_REVISION,
@@ -311,9 +309,6 @@ public class HuggingFaceDownloader {
                     fileStartBytes,
                     totalBytes
             );
-            // A host that failed and then worked through the fallback is remembered; the next file starts there
-            // instead of waiting out the dead host's timeouts again.
-            preferredBase = preferredBaseSupplier.get();
             completedBytes += knownSize(repositoryFile.size(), Files.size(localPath));
         }
     }
@@ -374,7 +369,8 @@ public class HuggingFaceDownloader {
         );
     }
 
-    private List<RepositoryFile> fetchFileTree(
+    /** Lists all files and identifies the responding source for subsequent file transfers. */
+    public RepositoryTree fetchFileTree(
             String preferredBase,
             String repoId,
             String revision,
@@ -406,18 +402,17 @@ public class HuggingFaceDownloader {
         // Follow every page: a repository whose weights land past the first page used to download as configuration
         // only, and the caller was told the model was complete.
         int pages = 0;
-        while (page != null) {
+        while (true) {
             if (++pages > MAX_TREE_PAGES) {
                 throw new IOException("HF_TREE_TOO_MANY_PAGES repo=" + repoId + " pages=" + pages);
             }
             appendTreePage(page.body(), repoId, result);
             if (page.next() == null) {
-                return List.copyOf(result);
+                return new RepositoryTree(result, baseOf(page.source()));
             }
             page = http.readUtf8Page(List.of(page.next()), TREE_RETRY, adapt(control));
             adoptAnsweringSource(page.source());
         }
-        return List.copyOf(result);
     }
 
     /** Reads one tree response into {@code result}; throws when the body is not a JSON array at all. */
@@ -470,7 +465,7 @@ public class HuggingFaceDownloader {
         return oid == null || oid.isBlank() ? null : oid.trim();
     }
 
-    private void downloadRepositoryFile(
+    private String downloadRepositoryFile(
             String preferredBase,
             String repoId,
             String revision,
@@ -484,11 +479,24 @@ public class HuggingFaceDownloader {
             long fileStartBytes,
             long overallTotalBytes
     ) throws IOException {
+        return downloadRepositoryFile(preferredBase, repoId, revision, file, target, maxRetries, control,
+                (downloaded, total) -> {
+                    if (progress != null) {
+                        progress.onFileProgress(file.path(), fileIndex, totalFiles, downloaded, total);
+                        progress.onOverallProgress(fileStartBytes + downloaded, Math.max(0L, overallTotalBytes));
+                    }
+                });
+    }
+
+    /** Downloads a selected repository file to the caller's path and returns the source for the next file. */
+    public String downloadRepositoryFile(String preferredBase, String repoId, String revision, RepositoryFile file,
+                                         Path target, int maxRetries, DownloadControl control,
+                                         ModelDownloadHttpClient.ProgressListener progress) throws IOException {
         String filePath = file.path();
         List<URI> candidates = sources.huggingFaceFileCandidates(preferredBase, repoId, revision, filePath);
+        URI answeringSource;
         try {
-            adoptAnsweringSource(downloadCandidates(candidates, target, file, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes));
+            answeringSource = downloadCandidates(candidates, target, file, maxRetries, control, progress);
         } catch (IOException failure) {
             IOException rejected = verificationFailureIn(failure);
             if (rejected != null) {
@@ -502,12 +510,13 @@ public class HuggingFaceDownloader {
             String fallback = fallbackBaseUrl(preferredBase);
             env.warn("[model.download] file download died in transit on " + preferredBase
                     + "; retrying via " + fallback);
-            adoptAnsweringSource(downloadCandidates(
+            answeringSource = downloadCandidates(
                     sources.huggingFaceFileCandidates(fallback, repoId, revision, filePath),
-                    target, file, maxRetries, control, progress,
-                    filePath, fileIndex, totalFiles, fileStartBytes, overallTotalBytes));
+                    target, file, maxRetries, control, progress);
         }
+        adoptAnsweringSource(answeringSource);
         env.info("HF_FILE_COMPLETE repo=" + repoId + " file=" + filePath);
+        return baseOf(answeringSource);
     }
 
     /** The @return the verification failure anywhere in the aggregated cause tree, or null when there was none. */
@@ -644,27 +653,14 @@ public class HuggingFaceDownloader {
             RepositoryFile file,
             int maxRetries,
             DownloadControl control,
-            DownloadProgressListener progress,
-            String filePath,
-            int fileIndex,
-            int totalFiles,
-            long fileStartBytes,
-            long overallTotalBytes
+            ModelDownloadHttpClient.ProgressListener progress
     ) throws IOException {
         return http.download(
                 candidates,
                 target,
                 fileRetry(maxRetries),
                 adapt(control),
-                (downloaded, total) -> {
-                    if (progress != null) {
-                        progress.onFileProgress(filePath, fileIndex, totalFiles, downloaded, total);
-                        long effectiveFileTotal = total > 0L ? total : file.size();
-                        long overallDownloaded = fileStartBytes + downloaded;
-                        long overallTotal = overallTotalBytes > 0L ? overallTotalBytes : 0L;
-                        progress.onOverallProgress(overallDownloaded, overallTotal);
-                    }
-                },
+                progress,
                 // Verified while it is still the ".downloading" file: the promotion only happens for bytes that match
                 // the published size and digest, and a rejected body is deleted so the retry starts from zero.
                 temporary -> {
@@ -759,6 +755,12 @@ public class HuggingFaceDownloader {
         }
     }
 
-    private record RepositoryFile(String path, long size, String sha256) {
+    public record RepositoryTree(List<RepositoryFile> files, String baseUrl) {
+        public RepositoryTree {
+            files = List.copyOf(files);
+        }
+    }
+
+    public record RepositoryFile(String path, long size, String sha256) {
     }
 }

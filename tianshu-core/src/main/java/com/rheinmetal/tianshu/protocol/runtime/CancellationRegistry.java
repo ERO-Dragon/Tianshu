@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
@@ -25,14 +24,26 @@ public final class CancellationRegistry {
 
     public CancellationRegistry(EnvelopeLifecycleStore lifecycleStore) {
         this.lifecycleStore = lifecycleStore;
-        // Any terminal status releases the callbacks: a request that completes normally has no cancellation left to
-        // report, and keeping its callback pinned the registering module for the life of the process.
-        lifecycleStore.onTerminal(this::forget);
+        lifecycleStore.onTerminal(this::settle);
     }
 
-    /** Drops the callbacks of an envelope that ended by itself. Cancel takes them first and fires them. */
-    private void forget(String envelopeId) {
-        callbacks.remove(envelopeId);
+    private void settle(String envelopeId) {
+        List<Consumer<TianshuEnvelope>> registered;
+        synchronized (callbacks) {
+            registered = callbacks.remove(envelopeId);
+        }
+        if (registered != null && isCancelled(envelopeId)) {
+            lifecycleStore.findEnvelope(envelopeId).ifPresent(envelope ->
+                    registered.forEach(callback -> notifyCancellation(callback, envelope)));
+        }
+    }
+
+    private static void notifyCancellation(Consumer<TianshuEnvelope> callback, TianshuEnvelope envelope) {
+        try {
+            callback.accept(envelope);
+        } catch (RuntimeException ignored) {
+            // A subscriber cannot prevent other subscribers from observing the cancellation.
+        }
     }
 
     /** How many envelopes still have a pending cancellation callback; a diagnostic, also used by tests. */
@@ -41,7 +52,20 @@ public final class CancellationRegistry {
     }
 
     public void onCancel(String envelopeId, Consumer<TianshuEnvelope> callback) {
-        callbacks.computeIfAbsent(envelopeId, key -> new CopyOnWriteArrayList<>()).add(callback);
+        synchronized (callbacks) {
+            EnvelopeStatus status = lifecycleStore.statusOf(envelopeId);
+            if (!EnvelopeLifecycleStore.isTerminal(status)) {
+                if (lifecycleStore.findEnvelope(envelopeId).isEmpty()) {
+                    return;
+                }
+                callbacks.computeIfAbsent(envelopeId, key -> new java.util.ArrayList<>()).add(callback);
+                return;
+            }
+            if (status != EnvelopeStatus.CANCELLED) {
+                return;
+            }
+        }
+        lifecycleStore.findEnvelope(envelopeId).ifPresent(envelope -> notifyCancellation(callback, envelope));
     }
 
     public boolean isCancelled(String envelopeId) {
@@ -74,24 +98,6 @@ public final class CancellationRegistry {
     }
 
     private void cancelEnvelope(TianshuEnvelope envelope, String reasonCode, String message) {
-        EnvelopeStatus status = lifecycleStore.statusOf(envelope.envelopeId());
-        if (status == EnvelopeStatus.COMPLETED || status == EnvelopeStatus.CANCELLED
-                || status == EnvelopeStatus.DEAD_LETTERED) {
-            return;
-        }
-        // Take the callbacks before transitioning: the store's terminal observer removes whatever is left, and a
-        // cancel has to fire them rather than let them be dropped.
-        List<Consumer<TianshuEnvelope>> registered = callbacks.remove(envelope.envelopeId());
         lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.CANCELLED, reasonCode, message);
-        if (registered == null) {
-            return;
-        }
-        for (Consumer<TianshuEnvelope> callback : registered) {
-            try {
-                callback.accept(envelope);
-            } catch (RuntimeException failed) {
-                // One consumer must not stop the others from being told the call was cancelled.
-            }
-        }
     }
 }

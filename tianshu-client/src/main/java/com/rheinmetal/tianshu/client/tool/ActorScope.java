@@ -1,13 +1,12 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
-import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
-import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -35,19 +34,13 @@ final class ActorScope {
         this.refusal = refusal;
     }
 
-    static ActorScope of(ToolCaller caller, String bodyId, ToolId tool) {
-        boolean agent = caller.kind() == ToolCaller.Kind.AGENT;
-        if (caller.kind() != ToolCaller.Kind.PLAYER && caller.kind() != ToolCaller.Kind.BODY && !agent) {
-            return new ActorScope(null, new ToolException(ToolError.NO_PERMISSION,
-                    tool.name() + " runs as a player, an agent body or an agent driving one"));
-        }
+    static ActorScope of(ToolCaller caller, String bodyId) {
+        boolean module = caller.kind() == ToolCaller.Kind.AGENT || caller.kind() == ToolCaller.Kind.MOD;
         if (caller.kind() == ToolCaller.Kind.BODY) {
             // A body always runs as itself. Naming a different body used to be ignored silently, which meant a call
             // could look accepted while acting as someone else.
             if (bodyId != null && !bodyId.isBlank() && !bodyId.trim().equals(caller.id())) {
-                return new ActorScope(null, new ToolException(ToolError.INVALID_ARGS,
-                        tool.name() + " can only run as the calling body (" + caller.id() + "), not "
-                                + bodyId.trim()));
+                return new ActorScope(null, BodyFailure.WRONG_TARGET.exception());
             }
             return new ActorScope(ActorRef.of(caller), null);
         }
@@ -59,9 +52,8 @@ final class ActorScope {
             }
             return new ActorScope(ActorRef.body(trimmed, caller.operator()), null);
         }
-        if (agent) {
-            return new ActorScope(null, new ToolException(ToolError.INVALID_ARGS,
-                    tool.name() + " needs the body to act through (args.body)"));
+        if (module) {
+            return new ActorScope(null, BodyFailure.BODY_REQUIRED.exception());
         }
         return new ActorScope(ActorRef.of(caller), null);
     }

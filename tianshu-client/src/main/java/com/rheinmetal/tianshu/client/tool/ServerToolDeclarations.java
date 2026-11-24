@@ -37,6 +37,12 @@ public final class ServerToolDeclarations {
         }
     }
 
+    /** Epoch 3 originally sent IDs alone. Use the switch the client declaration supplied before servers reported it. */
+    public static ToolCatalogEntry legacyEntry(String id) {
+        var declaration = DECLARED.get(ToolId.parse(id));
+        return new ToolCatalogEntry(id, declaration != null && declaration.policy().enabledByDefault());
+    }
+
     /** Registers the declarations the server named. Unknown ids are skipped; repeats are idempotent. */
     public static void activate(List<ToolCatalogEntry> tools) {
         if (tools == null) {

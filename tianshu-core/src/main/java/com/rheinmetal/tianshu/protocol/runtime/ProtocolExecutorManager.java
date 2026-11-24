@@ -16,7 +16,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
@@ -88,30 +87,47 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         ProtocolTaskSpec effective = Objects.requireNonNull(spec, "spec");
         Callable<T> effectiveTask = Objects.requireNonNull(task, "task");
         ManagedTaskHandle handle = new ManagedTaskHandle(effective);
-        handle.setOnSettled(onSettled);
-        handle.setOnPrevented(() -> settle(handle));
+        handle.onSettled = onSettled;
+        handle.onPrevented = () -> settle(handle);
+        activeHandles.add(handle);
         if (closed.get()) {
             rejectClosed(handle);
             return handle;
         }
         if (effective.lane() == ExecutionLane.MAIN) {
-            activeHandles.add(handle);
-            handle.setState(ProtocolTaskState.QUEUED);
-            mainThreadExecutor.execute(() -> runManaged(handle, effectiveTask));
+            if (handle.state.compareAndSet(ProtocolTaskState.ACCEPTED, ProtocolTaskState.QUEUED)) {
+                try {
+                    mainThreadExecutor.execute(() -> runManaged(handle, effectiveTask));
+                } catch (RejectedExecutionException rejected) {
+                    handle.setFailureCause(rejected);
+                    handle.state.compareAndSet(ProtocolTaskState.QUEUED, ProtocolTaskState.REJECTED);
+                    settle(handle);
+                }
+            }
             return handle;
         }
         if (effective.lane() == ExecutionLane.SCHEDULED) {
             handle.setFailureCause(new RejectedExecutionException(
                     "SCHEDULED lane submit is not supported; use schedule"));
-            handle.setState(ProtocolTaskState.REJECTED);
+            handle.reject();
             settle(handle);
             return handle;
         }
-        activeHandles.add(handle);
-        TaskGroup group = taskGroups.computeIfAbsent(effective.concurrencyKey(), TaskGroup::new);
-        if (!group.offer(new QueuedTask<>(handle, effectiveTask))) {
-            handle.setState(ProtocolTaskState.REJECTED);
+        TaskGroup group;
+        boolean admitted;
+        synchronized (taskGroups) {
+            if (handle.isDone()) {
+                return handle;
+            }
+            group = taskGroups.computeIfAbsent(effective.concurrencyKey(), TaskGroup::new);
+            admitted = group.offer(new QueuedTask<>(handle, effectiveTask));
+        }
+        if (admitted) {
+            group.drain();
+        } else {
+            handle.reject();
             settle(handle);
+            group.drain();
         }
         return handle;
     }
@@ -125,26 +141,28 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         Objects.requireNonNull(task, "task");
         ProtocolTaskSpec effective = Objects.requireNonNull(spec, "spec");
         ManagedTaskHandle handle = new ManagedTaskHandle(effective);
-        handle.setOnSettled(onSettled);
-        handle.setOnPrevented(() -> settle(handle));
+        handle.onSettled = onSettled;
+        handle.onPrevented = () -> settle(handle);
+        activeHandles.add(handle);
         if (closed.get()) {
             rejectClosed(handle);
             return handle;
         }
-        activeHandles.add(handle);
         long delayMillis = Math.max(0L, delay == null ? 0L : delay.toMillis());
         Runnable wrapped = () -> runManaged(handle, () -> {
             task.run();
             return null;
         });
         try {
-            handle.setState(ProtocolTaskState.QUEUED);
+            if (!handle.state.compareAndSet(ProtocolTaskState.ACCEPTED, ProtocolTaskState.QUEUED)) {
+                return handle;
+            }
             ScheduledFuture<?> future = scheduledExecutor.schedule(wrapped, delayMillis, TimeUnit.MILLISECONDS);
             handle.setFuture(future);
             return handle;
         } catch (RejectedExecutionException exception) {
             handle.setFailureCause(exception);
-            handle.setState(ProtocolTaskState.REJECTED);
+            handle.reject();
             settle(handle);
             return handle;
         }
@@ -162,7 +180,14 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
             return;
         }
         activeHandles.remove(handle);
+        Runnable release = handle.releaseGroup;
         Runnable action = handle.onSettled;
+        handle.releaseGroup = null;
+        handle.onSettled = null;
+        handle.onPrevented = null;
+        if (release != null) {
+            release.run();
+        }
         if (action != null) {
             action.run();
         }
@@ -170,7 +195,7 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
 
     private void rejectClosed(ManagedTaskHandle handle) {
         handle.setFailureCause(new RejectedExecutionException("Protocol executor manager is closed"));
-        handle.setState(ProtocolTaskState.REJECTED);
+        handle.reject();
         settle(handle);
     }
 
@@ -204,22 +229,21 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
     }
 
     private <T> void runManaged(ManagedTaskHandle handle, Callable<T> task) {
-        if (handle.state() == ProtocolTaskState.CANCELLED) {
+        if (!handle.state.compareAndSet(ProtocolTaskState.QUEUED, ProtocolTaskState.RUNNING)) {
             settle(handle);
             return;
         }
-        handle.setState(ProtocolTaskState.RUNNING);
         try {
             task.call();
             if (handle.state() != ProtocolTaskState.CANCELLED) {
-                handle.setState(ProtocolTaskState.COMPLETED);
+                handle.state.compareAndSet(ProtocolTaskState.RUNNING, ProtocolTaskState.COMPLETED);
             }
         } catch (Throwable throwable) {
             // Every exit must leave a state behind: a handle stuck in RUNNING makes isDone() lie forever,
             // and native backends fail with Error (NoClassDefFoundError, OOM), not Exception.
             if (handle.state() != ProtocolTaskState.CANCELLED) {
                 handle.setFailureCause(throwable);
-                handle.setState(ProtocolTaskState.FAILED);
+                handle.state.compareAndSet(ProtocolTaskState.RUNNING, ProtocolTaskState.FAILED);
             }
             if (throwable instanceof Error error) {
                 throw error;
@@ -286,10 +310,16 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
                 if (queue.size() >= task.handle.spec.queueCapacity()) {
                     return false;
                 }
-                task.handle.setState(ProtocolTaskState.QUEUED);
+                if (!task.handle.state.compareAndSet(ProtocolTaskState.ACCEPTED, ProtocolTaskState.QUEUED)) {
+                    return false;
+                }
+                task.handle.releaseGroup = () -> finishOne(task);
+                if (task.handle.settled.get()) {
+                    task.handle.releaseGroup = null;
+                    return false;
+                }
                 queue.offer(task);
             }
-            drain();
             return true;
         }
 
@@ -313,10 +343,12 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
             } finally {
                 draining.set(false);
                 boolean shouldDrainAgain;
-                synchronized (this) {
-                    shouldDrainAgain = !queue.isEmpty() && inFlight.size() < queue.peek().handle.spec.maxConcurrency();
-                    if (inFlight.isEmpty() && queue.isEmpty()) {
-                        taskGroups.remove(key, this);
+                synchronized (taskGroups) {
+                    synchronized (this) {
+                        shouldDrainAgain = !queue.isEmpty() && inFlight.size() < queue.peek().handle.spec.maxConcurrency();
+                        if (inFlight.isEmpty() && queue.isEmpty()) {
+                            taskGroups.remove(key, this);
+                        }
                     }
                 }
                 if (shouldDrainAgain) {
@@ -327,22 +359,21 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
 
         private <T> void submitToLane(QueuedTask<T> task) {
             ThreadPoolExecutor executor = executorFor(task.handle.spec.lane());
-            // The slot comes back through settlement: the body exit, a cancel that prevented it, or a rejection.
-            task.handle.setOnSettled(() -> finishOne(task.handle));
-            task.handle.setOnPrevented(() -> settle(task.handle));
             try {
                 Future<?> future = executor.submit(() -> runManaged(task.handle, task.callable));
                 task.handle.setFuture(future);
             } catch (RejectedExecutionException exception) {
                 task.handle.setFailureCause(exception);
-                task.handle.setState(ProtocolTaskState.REJECTED);
+                task.handle.reject();
                 settle(task.handle);
             }
         }
 
-        private void finishOne(ProtocolTaskHandle handle) {
+        private void finishOne(QueuedTask<?> task) {
             synchronized (this) {
-                inFlight.remove(handle);
+                if (!inFlight.remove(task.handle)) {
+                    queue.remove(task);
+                }
             }
             drain();
         }
@@ -353,14 +384,7 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
             }
         }
 
-        private void cancelQueued(String reason) {
-            synchronized (this) {
-                QueuedTask<?> task;
-                while ((task = queue.poll()) != null) {
-                    task.handle.cancel(reason);
-                }
-            }
-        }
+
     }
 
     private static final class QueuedTask<T> implements Comparable<QueuedTask<?>> {
@@ -384,14 +408,16 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         }
     }
 
+    /** Maintenance shares this session's scheduler and ends with its executor. */
+    void scheduleMaintenance(Runnable task, long periodMillis) {
+        scheduledExecutor.scheduleWithFixedDelay(task, periodMillis, periodMillis, TimeUnit.MILLISECONDS);
+    }
+
     @Override
     public void close() {
         if (closed.compareAndSet(false, true)) {
             for (ManagedTaskHandle handle : activeHandles) {
                 handle.cancel("executor_closed");
-            }
-            for (TaskGroup group : taskGroups.values()) {
-                group.cancelQueued("executor_closed");
             }
             taskGroups.clear();
             for (ThreadPoolExecutor executor : executors.values()) {
@@ -432,6 +458,7 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
         private final AtomicBoolean settled = new AtomicBoolean();
         /** The caller's bookkeeping, run by {@code settle}. */
         private volatile Runnable onSettled;
+        private volatile Runnable releaseGroup;
         /**
          * Runs when a cancel prevents the work from ever starting.
          *
@@ -448,18 +475,14 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
 
         private void setFuture(Future<?> future) {
             this.future = future;
+            if (state() == ProtocolTaskState.CANCELLED) {
+                future.cancel(spec.interruptible());
+            }
         }
 
-        private void setOnPrevented(Runnable action) {
-            this.onPrevented = action;
-        }
-
-        private void setOnSettled(Runnable action) {
-            this.onSettled = action;
-        }
-
-        private void setState(ProtocolTaskState state) {
-            this.state.set(state);
+        private void reject() {
+            state.compareAndSet(ProtocolTaskState.ACCEPTED, ProtocolTaskState.REJECTED);
+            state.compareAndSet(ProtocolTaskState.QUEUED, ProtocolTaskState.REJECTED);
         }
 
         private void setFailureCause(Throwable failureCause) {
@@ -498,17 +521,25 @@ public final class ProtocolExecutorManager implements ModuleExecutionAccess, Aut
 
         @Override
         public boolean cancel(String reason) {
-            boolean wasRunning = state.get() == ProtocolTaskState.RUNNING;
-            setState(ProtocolTaskState.CANCELLED);
+            ProtocolTaskState previous;
+            do {
+                previous = state.get();
+                if (previous != ProtocolTaskState.ACCEPTED && previous != ProtocolTaskState.QUEUED
+                        && previous != ProtocolTaskState.RUNNING) {
+                    return false;
+                }
+            } while (!state.compareAndSet(previous, ProtocolTaskState.CANCELLED));
             Future<?> current = future;
-            boolean cancelled = current != null && current.cancel(spec.interruptible());
-            if (!wasRunning) {
-                Runnable action = onPrevented;
-                if (action != null) {
-                    action.run();
+            if (current != null) {
+                current.cancel(spec.interruptible());
+            }
+            if (previous != ProtocolTaskState.RUNNING) {
+                Runnable prevented = onPrevented;
+                if (prevented != null) {
+                    prevented.run();
                 }
             }
-            return cancelled;
+            return true;
         }
 
         @Override

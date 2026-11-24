@@ -230,14 +230,58 @@ class CapabilityCatalogTest {
         CapabilityId id = CapabilityId.of("test", "slow");
         JsonObject attributes = new JsonObject();
         attributes.addProperty("timeoutMillis", 100);
+        var response = new CompletableFuture<JsonObject>();
         CapabilityCatalog.register(new CapabilityDescriptor(id, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
                         "slow", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", attributes),
-                (context, args) -> new CompletableFuture<>());
+                (context, args) -> response);
 
         JsonObject result = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("m"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertFalse(result.get("ok").getAsBoolean());
         assertEquals("TIMEOUT", result.get("code").getAsString());
+        assertTrue(response.isCancelled());
+    }
+
+    @Test
+    void anExpiredQueuedInvocationNeverStarts() throws Exception {
+        var blockerId = CapabilityId.of("test", "blockers");
+        var queuedId = CapabilityId.of("test", "queued");
+        var release = new java.util.concurrent.CountDownLatch(1);
+        int workers = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
+        var started = new java.util.concurrent.CountDownLatch(workers);
+        CapabilityCatalog.register(descriptor(blockerId, CapabilityKind.SKILL, ToolPermission.EVERYONE, ToolSide.CLIENT),
+                (context, args) -> {
+                    started.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return CompletableFuture.completedFuture(new JsonObject());
+                });
+        var limits = new JsonObject();
+        limits.addProperty("timeoutMillis", 100);
+        var invoked = new java.util.concurrent.atomic.AtomicBoolean();
+        CapabilityCatalog.register(new CapabilityDescriptor(queuedId, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
+                "queued", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", limits), (context, args) -> {
+            invoked.set(true);
+            return CompletableFuture.completedFuture(new JsonObject());
+        });
+        var blockers = new ArrayList<CompletableFuture<JsonObject>>();
+        try {
+            for (int i = 0; i < workers; i++) {
+                blockers.add(CapabilityCatalog.invoke(blockerId, null, ToolCaller.mod("test"), ToolSide.CLIENT));
+            }
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+            var answer = CapabilityCatalog.invoke(queuedId, null, ToolCaller.mod("test"), ToolSide.CLIENT)
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals("TIMEOUT", answer.get("code").getAsString());
+            assertEquals(0, CapabilityCatalog.handlerQueueDepth());
+        } finally {
+            release.countDown();
+        }
+        CompletableFuture.allOf(blockers.toArray(CompletableFuture[]::new)).get(2, TimeUnit.SECONDS);
+        assertFalse(invoked.get());
     }
 
     @Test

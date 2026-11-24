@@ -19,7 +19,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -118,7 +119,7 @@ public final class CapabilityCatalog {
      * turn repeated timeouts into unbounded threads. A fixed pool caps how many can be stuck at once; the rest wait in
      * a queue that the same five-second budget covers, because the timeout starts when the future is created.</p>
      */
-    private static final ExecutorService HANDLERS = new java.util.concurrent.ThreadPoolExecutor(
+    private static final ThreadPoolExecutor HANDLERS = new ThreadPoolExecutor(
             Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)),
             Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)),
             30L, TimeUnit.SECONDS,
@@ -134,10 +135,7 @@ public final class CapabilityCatalog {
 
     /** How many handlers are executing or waiting; a diagnostic for "the table is stuck behind a slow provider". */
     public static int handlerQueueDepth() {
-        if (HANDLERS instanceof java.util.concurrent.ThreadPoolExecutor pool) {
-            return pool.getQueue().size();
-        }
-        return 0;
+        return HANDLERS.getQueue().size();
     }
 
     private CapabilityCatalog() {
@@ -234,17 +232,47 @@ public final class CapabilityCatalog {
         CapabilityHandler handler = entry.handler();
         JsonObject safeArgs = args == null ? new JsonObject() : args;
         CapabilityContext context = new CapabilityContext(caller, side);
-        CompletableFuture<CompletableFuture<JsonObject>> invocation;
+        CompletableFuture<JsonObject> answer = new CompletableFuture<>();
+        AtomicReference<CompletableFuture<JsonObject>> pending = new AtomicReference<>();
+        FutureTask<Void> invocation = new FutureTask<>(() -> {
+            if (answer.isDone()) {
+                return null;
+            }
+            try {
+                var response = Objects.requireNonNull(handler.invoke(context, safeArgs));
+                pending.set(response);
+                if (answer.isDone()) {
+                    response.cancel(true);
+                } else {
+                    response.whenComplete((value, failure) -> {
+                        if (failure == null) {
+                            answer.complete(value);
+                        } else {
+                            answer.completeExceptionally(failure);
+                        }
+                    });
+                }
+            } catch (Throwable failure) {
+                answer.completeExceptionally(failure);
+            }
+            return null;
+        });
         try {
-            invocation = CompletableFuture.supplyAsync(() -> handler.invoke(context, safeArgs), HANDLERS);
+            HANDLERS.execute(invocation);
         } catch (java.util.concurrent.RejectedExecutionException saturated) {
-            // Every worker is stuck behind a slow provider: say so instead of queuing behind work that cannot start.
             return CompletableFuture.completedFuture(error("BUSY", id + " is waiting behind slow providers"));
         }
-        return invocation
-                .thenCompose(result -> result)
-                .orTimeout(timeoutOf(descriptor), TimeUnit.MILLISECONDS)
-                .exceptionally(failure -> failureOf(failure));
+        return answer.orTimeout(timeoutOf(descriptor), TimeUnit.MILLISECONDS).handle((value, failure) -> {
+            if (failure instanceof TimeoutException) {
+                invocation.cancel(true);
+                HANDLERS.remove(invocation);
+                var response = pending.get();
+                if (response != null) {
+                    response.cancel(true);
+                }
+            }
+            return failure == null ? value : failureOf(failure);
+        });
     }
 
     /** Kernel use: mirrors one tool into the table. Not part of the consumer contract. */

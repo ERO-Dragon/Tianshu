@@ -32,8 +32,11 @@ public final class EnvelopeLifecycleStore {
         }
     }
 
-    public void accept(TianshuEnvelope envelope) {
-        envelopes.put(envelope.envelopeId(), envelope);
+    private long retainedBytes;
+
+    public synchronized void accept(TianshuEnvelope envelope) {
+        var previous = envelopes.put(envelope.envelopeId(), envelope);
+        retainedBytes += payloadBytes(envelope) - (previous == null ? 0L : payloadBytes(previous));
         traceIndex.computeIfAbsent(envelope.traceId(), key -> new CopyOnWriteArrayList<>()).add(envelope.envelopeId());
         if (envelope.parentId() != null) {
             parentIndex.computeIfAbsent(envelope.parentId(), key -> new CopyOnWriteArrayList<>()).add(envelope.envelopeId());
@@ -42,16 +45,16 @@ public final class EnvelopeLifecycleStore {
     }
 
     public void transition(String envelopeId, EnvelopeStatus status, String reasonCode, String message) {
-        EnvelopeStatus current = statuses.get(envelopeId);
-        if (current != null && isTerminal(current) && current != status) {
-            // Terminal is final. Letting a late transition overwrite it made the status run backwards — a completed
-            // envelope became failed, a rejected one became cancelled — and every observer that compares states saw
-            // an impossible sequence.
-            return;
+        synchronized (this) {
+            EnvelopeStatus current = statuses.get(envelopeId);
+            if (isTerminal(current)) {
+                return;
+            }
+            statuses.put(envelopeId, status);
+            transitions.computeIfAbsent(envelopeId, key -> new CopyOnWriteArrayList<>()).add(
+                    new EnvelopeTransition(envelopeId, status, reasonCode, message, System.currentTimeMillis()));
         }
-        statuses.put(envelopeId, status);
-        transitions.computeIfAbsent(envelopeId, key -> new CopyOnWriteArrayList<>()).add(new EnvelopeTransition(envelopeId, status, reasonCode, message, System.currentTimeMillis()));
-        if (isTerminal(status) && (current == null || !isTerminal(current))) {
+        if (isTerminal(status)) {
             for (java.util.function.Consumer<String> observer : terminalObservers) {
                 try {
                     observer.accept(envelopeId);
@@ -122,7 +125,7 @@ public final class EnvelopeLifecycleStore {
     }
 
     /** As above, with a byte budget for retained payloads; {@code maxRetainedBytes <= 0} means no byte limit. */
-    public int cleanupTerminalTraces(long maxAgeMillis, int maxRetainedTraces, long maxRetainedBytes) {
+    public synchronized int cleanupTerminalTraces(long maxAgeMillis, int maxRetainedTraces, long maxRetainedBytes) {
         long now = System.currentTimeMillis();
         int cap = Math.max(1, maxRetainedTraces);
         List<String> removable = new ArrayList<>();
@@ -163,7 +166,7 @@ public final class EnvelopeLifecycleStore {
         }
         // A byte budget on top of the age and count rules: a trace of synthesized audio is hundreds of kilobytes, and
         // "thirty minutes" alone can mean hundreds of megabytes. Oldest terminal traces go first.
-        dropPayloadsOverBudget(maxRetainedBytes);
+        trimTerminalPayloads(maxRetainedBytes);
         return removable.size();
     }
 
@@ -173,7 +176,7 @@ public final class EnvelopeLifecycleStore {
      * <p>Keeping the envelope means a trace stays inspectable and a later cancel still finds its target; only the large
      * body goes. A payload that does not declare a size is assumed small, so modules that never opt in are unaffected.</p>
      */
-    private void dropPayloadsOverBudget(long maxRetainedBytes) {
+    synchronized void trimTerminalPayloads(long maxRetainedBytes) {
         if (maxRetainedBytes <= 0L) {
             return;
         }
@@ -193,17 +196,14 @@ public final class EnvelopeLifecycleStore {
                 return;
             }
             total -= payloadBytes(envelope);
+            retainedBytes -= payloadBytes(envelope);
             envelopes.put(envelope.envelopeId(), new TianshuEnvelope(envelope.header(), null));
         }
     }
 
     /** Bytes the retained payloads occupy, counted through {@link com.rheinmetal.tianshu.protocol.SizedPayload}. */
-    public long retainedPayloadBytes() {
-        long total = 0L;
-        for (TianshuEnvelope envelope : envelopes.values()) {
-            total += payloadBytes(envelope);
-        }
-        return total;
+    public synchronized long retainedPayloadBytes() {
+        return retainedBytes;
     }
 
     private static long payloadBytes(TianshuEnvelope envelope) {
@@ -237,6 +237,9 @@ public final class EnvelopeLifecycleStore {
                 continue;
             }
             TianshuEnvelope envelope = envelopes.remove(id);
+            if (envelope != null) {
+                retainedBytes -= payloadBytes(envelope);
+            }
             statuses.remove(id);
             transitions.remove(id);
             String parentId = envelope == null ? null : envelope.parentId();
@@ -257,7 +260,7 @@ public final class EnvelopeLifecycleStore {
         }
     }
 
-    private boolean isTerminal(EnvelopeStatus status) {
+    static boolean isTerminal(EnvelopeStatus status) {
         return status == EnvelopeStatus.COMPLETED || status == EnvelopeStatus.CANCELLED || status == EnvelopeStatus.EXPIRED || status == EnvelopeStatus.FAILED || status == EnvelopeStatus.REJECTED || status == EnvelopeStatus.DEAD_LETTERED;
     }
 }

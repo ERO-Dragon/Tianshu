@@ -78,6 +78,11 @@ class BodyAccessTest {
                     }
 
                     @Override
+                    public String ownerModule() {
+                        return "module.test";
+                    }
+
+                    @Override
                     public boolean operator() {
                         return true;
                     }
@@ -158,11 +163,20 @@ class BodyAccessTest {
     }
 
     @Test
+    void anotherModuleCannotDriveTheBodyEvenWithOperatorStanding() throws Exception {
+        installGuardedBody();
+        JsonObject result = envelope("{\"body\":\"body-1\",\"x\":1,\"y\":64,\"z\":1}",
+                ToolCaller.agent("module.other", true, ToolAutonomy.FULL));
+        assertEquals("NO_PERMISSION", result.get("code").getAsString());
+        assertFalse(motionReached.get());
+    }
+
+    @Test
     void anAgentThatNamesNoBodyIsRefusedInsteadOfActingAsItself() {
         installGuardedBody();
 
         ToolException refusal = ActorScope.of(ToolCaller.agent("module.test", true, ToolAutonomy.CONSERVATIVE),
-                null, BodyMoveTool.ID).refusal().orElseThrow();
+                null).refusal().orElseThrow();
 
         assertEquals(ToolError.INVALID_ARGS, refusal.code());
         assertFalse(motionReached.get());
@@ -172,10 +186,10 @@ class BodyAccessTest {
     void aBodyNamingAnotherBodyIsRefusedInsteadOfIgnoringIt() {
         installGuardedBody();
 
-        ToolException refusal = ActorScope.of(ToolCaller.body("body-1", true), "body-2", BodyMoveTool.ID)
+        ToolException refusal = ActorScope.of(ToolCaller.body("body-1", true), "body-2")
                 .refusal().orElseThrow();
 
         assertEquals(ToolError.INVALID_ARGS, refusal.code());
-        assertTrue(refusal.getMessage().contains("body-2"), refusal.getMessage());
+        assertEquals("body.target.mismatch", refusal.getMessage());
     }
 }

@@ -86,7 +86,7 @@ class AgentBodiesTest {
         assertTrue(EntityActors.checkAccess(
                 com.rheinmetal.tianshu.api.tool.ToolCaller.player("p", true), "body-1").isPresent());
         assertTrue(EntityActors.checkAccess(
-                com.rheinmetal.tianshu.api.tool.ToolCaller.agent(true), "body-1").isEmpty());
+                com.rheinmetal.tianshu.api.tool.ToolCaller.agent(true), "body-1").isPresent());
     }
 
     @Test

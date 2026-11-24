@@ -54,13 +54,11 @@ public interface IAudioBridge {
      * predate the outcome: those only ever see {@link PlaybackOutcome#FINISHED}.</p>
      */
     default void setOnPlaybackFinished(Consumer<PlaybackOutcome> callback) {
+        setOnPlaybackFinished(callback == null ? (Runnable) null : () -> callback.accept(PlaybackOutcome.FINISHED));
     }
 
     /** Legacy registration: receives the completion, with failures indistinguishable from a finished utterance. */
     default void setOnPlaybackFinished(Runnable callback) {
-        if (callback != null) {
-            setOnPlaybackFinished((Consumer<PlaybackOutcome>) outcome -> callback.run());
-        }
     }
 
     void stopTtsPlayback();

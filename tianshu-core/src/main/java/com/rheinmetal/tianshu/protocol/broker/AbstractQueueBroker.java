@@ -103,6 +103,9 @@ public abstract class AbstractQueueBroker implements ProtocolBroker {
                             drain();
                         });
                 holder.set(handle);
+                if (interruptsRunningTasks() && task.runtime().cancellation().isCancelled(envelopeId)) {
+                    handle.cancel("CANCELLED");
+                }
                 if (handle.state() == ProtocolTaskState.REJECTED) {
                     // The submission never ran, so settlement already gave the slot back; the caller still has to be
                     // told why nothing happened.

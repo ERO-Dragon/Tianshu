@@ -92,7 +92,7 @@ public final class BodyCollectTool implements TianshuTool<BodyCollectTool.Args, 
     @Override
     public CompletableFuture<CollectResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body(), ID);
+        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }

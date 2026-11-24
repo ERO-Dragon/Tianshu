@@ -62,7 +62,7 @@ public final class ToolCatalogPushRegistry {
         }
     }
 
-    /** Tests only: forget every subscriber. */
+    /** Releases subscriptions when the hosting server stops. */
     public static void clear() {
         SUBSCRIBERS.clear();
         PENDING.set(false);

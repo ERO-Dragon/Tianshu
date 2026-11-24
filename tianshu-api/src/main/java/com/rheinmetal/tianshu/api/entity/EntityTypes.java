@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.api.entity;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,9 +58,8 @@ public final class EntityTypes {
         synchronized (LOCK) {
             closed = true;
             drained = List.copyOf(DECLARED.values());
-            List<EntityTypeSpec> drained = new ArrayList<>(DECLARED.values());
             DECLARED.clear();
-            return List.copyOf(drained);
+            return drained;
         }
     }
 

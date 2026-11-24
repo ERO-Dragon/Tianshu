@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonArray;
@@ -90,7 +91,10 @@ public final class ConnectionToolChannel implements ServerToolChannel {
                     JsonArray tools = result.getAsJsonArray("tools");
                     List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> entries = new ArrayList<>();
                     for (JsonElement element : tools) {
-                        // Each entry carries the server switch; a bare id would leave the client on its own default.
+                        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+                            entries.add(ServerToolDeclarations.legacyEntry(element.getAsString()));
+                            continue;
+                        }
                         if (element.isJsonObject()) {
                             JsonObject tool = element.getAsJsonObject();
                             if (tool.has("id")) {
@@ -131,6 +135,11 @@ public final class ConnectionToolChannel implements ServerToolChannel {
         if (transport.isEmpty()) {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.UNSUPPORTED_SIDE, "tool " + id + " needs the server component"));
+        }
+        // This wire authenticates the player only. A server module must drive its NPC on the authoritative side.
+        if (caller.kind() != ToolCaller.Kind.PLAYER && args != null && args.isJsonObject()
+                && args.getAsJsonObject().has("body")) {
+            return CompletableFuture.failedFuture(BodyFailure.CONTROLLER_UNVERIFIED.exception());
         }
         if (pending.size() >= MAX_PENDING) {
             return CompletableFuture.failedFuture(

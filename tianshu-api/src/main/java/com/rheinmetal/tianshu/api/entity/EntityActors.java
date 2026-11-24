@@ -69,15 +69,21 @@ public final class EntityActors {
     /**
      * Empty when {@code caller} may command {@code bodyId}; a refusal otherwise.
      *
-     * <p>Only player-driven calls are judged: the conversation runtime and the server already carry operator
-     * permission, and judging them here would deny the assistant its own bodies.</p>
+     * Module ownership and player access are distinct. Player permissions cannot authorize a module caller.
      */
     public static Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
-        if (caller == null || caller.kind() != ToolCaller.Kind.PLAYER) {
-            return Optional.empty();
+        if (caller == null || bodyId == null || bodyId.isBlank()) {
+            return Optional.of(BodyFailure.CONTROLLER_REQUIRED.exception());
         }
-        if (bodyId == null || bodyId.isBlank()) {
-            return Optional.empty();
+        if (caller.kind() == ToolCaller.Kind.AGENT || caller.kind() == ToolCaller.Kind.MOD) {
+            if (!caller.id().isBlank() && resolve(bodyId).map(EntityActor::ownerModule).filter(caller.id()::equals).isPresent()) {
+                return Optional.empty();
+            }
+            return Optional.of(BodyFailure.CONTROLLER_MISMATCH.exception());
+        }
+        if (caller.kind() == ToolCaller.Kind.BODY) {
+            return bodyId.equals(caller.id()) ? Optional.empty()
+                    : Optional.of(BodyFailure.SELF_ONLY.exception());
         }
         return owner(bodyId).flatMap(provider -> provider.checkAccess(caller, bodyId));
     }

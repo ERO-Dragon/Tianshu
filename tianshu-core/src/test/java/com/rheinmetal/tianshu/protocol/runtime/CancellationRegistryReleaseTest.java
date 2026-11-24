@@ -77,7 +77,19 @@ class CancellationRegistryReleaseTest {
 
         assertEquals(EnvelopeStatus.COMPLETED, store.statusOf("llm-turn-3"),
                 "a finished envelope cannot be cancelled after the fact");
-        assertTrue(registry.pendingRegistrations() <= 1, "no unbounded growth from late registrations");
+        assertEquals(0, registry.pendingRegistrations());
+    }
+
+    @Test
+    void registrationAfterCancelReceivesTheTerminalEnvelopeExactlyOnce() {
+        var store = new EnvelopeLifecycleStore();
+        var registry = new CancellationRegistry(store);
+        store.accept(envelope("late"));
+        registry.cancelSelf("late", "CANCELLED", "");
+        var fired = new AtomicInteger();
+        registry.onCancel("late", ignored -> fired.incrementAndGet());
+        assertEquals(1, fired.get());
+        assertEquals(0, registry.pendingRegistrations());
     }
 
     private static com.rheinmetal.tianshu.protocol.TianshuEnvelope envelope(String id) {

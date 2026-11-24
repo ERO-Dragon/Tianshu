@@ -29,8 +29,8 @@ public interface EntityProvider {
     /**
      * Empty when {@code caller} may command this body; otherwise the refusal to surface.
      *
-     * <p>Only player-driven calls are judged here; the caller runtime and the server already carry operator
-     * permission, and a provider without a policy allows everyone (the platform's historical behaviour).</p>
+     * <p>The platform checks module ownership through the resolved body's {@link EntityActor#ownerModule()}.
+     * Providers use this hook for their player access policy.</p>
      */
     default Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
         return Optional.empty();

@@ -24,6 +24,13 @@ public final class ModelDownloadTestServer implements AutoCloseable {
     private final Map<String, AtomicInteger> requestCounts = new ConcurrentHashMap<>();
     private final Map<String, String> lastRequestHeaders = new ConcurrentHashMap<>();
 
+    public static com.rheinmetal.tianshu.api.network.ExternalDecision allowLoopback(
+            com.rheinmetal.tianshu.api.network.ExternalRequest request) {
+        return "127.0.0.1".equals(request.url().getHost())
+                ? com.rheinmetal.tianshu.api.network.ExternalDecision.allow()
+                : com.rheinmetal.tianshu.api.network.ExternalDecision.deny("test server only");
+    }
+
     public ModelDownloadTestServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         executor = Executors.newCachedThreadPool();

@@ -112,6 +112,12 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         this.maxRetainedTraces = effectivePolicy.maxRetainedTraces();
         this.maxRetainedPayloadBytes = effectivePolicy.maxRetainedPayloadBytes();
         this.context = new RuntimeContext();
+        lifecycleStore.onTerminal(id -> {
+            if (maxRetainedPayloadBytes > 0 && lifecycleStore.retainedPayloadBytes() > maxRetainedPayloadBytes) {
+                lifecycleStore.trimTerminalPayloads(maxRetainedPayloadBytes);
+            }
+        });
+        executorManager.scheduleMaintenance(this::sweepRetention, Math.min(retainedEnvelopeMillis, 60_000L));
         subscribeModuleStatusCache();
     }
 
@@ -401,6 +407,10 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
         if (acceptedEnvelopes.incrementAndGet() % retentionSweepInterval != 0L) {
             return;
         }
+        sweepRetention();
+    }
+
+    private void sweepRetention() {
         if (!retentionSweepRunning.compareAndSet(false, true)) {
             return;
         }

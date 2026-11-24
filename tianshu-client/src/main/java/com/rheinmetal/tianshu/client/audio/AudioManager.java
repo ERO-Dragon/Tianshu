@@ -381,6 +381,11 @@ public class AudioManager implements IAudioBridge, ClientAudioDeviceCatalog {
     }
 
     @Override
+    public void setOnPlaybackFinished(Runnable callback) {
+        ttsChannel.setOnPlaybackFinished(callback == null ? null : outcome -> callback.run());
+    }
+
+    @Override
     public void setOnPlaybackFinished(java.util.function.Consumer<PlaybackOutcome> callback) {
         ttsChannel.setOnPlaybackFinished(callback);
     }

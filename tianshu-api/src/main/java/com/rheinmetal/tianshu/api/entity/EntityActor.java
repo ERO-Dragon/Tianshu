@@ -15,6 +15,11 @@ public interface EntityActor {
 
     boolean operator();
 
+    /** ID of the module that requested this NPC. An unassigned body has no module controller. */
+    default String ownerModule() {
+        return "";
+    }
+
     /**
      * Whether this entity is player-like: it takes part in player rules and inherits the server's player permissions.
      *
