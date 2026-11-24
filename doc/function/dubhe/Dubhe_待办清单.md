@@ -12,7 +12,7 @@
 | # | 事项 | 手上有什么 |
 |---|---|---|
 | 1 | **40 条事件在九宫格里的定位**（每行放哪个三态） | 已按迁移后的三态落表（schemaVersion 5）；如要调整，用事件分类工具导出的结果替换 |
-| 2 | 待定 6 条是否接线（`fall_damage` / `durability_low` / `rare_item` / `recipe_unlock` / `structure_discovery` / `player_nearby_first`） | 数据源缺，方案 §4.5 B 组 |
+| 2 | 待定 6 条是否接线 | **已结案**：`fall_damage`、`rare_item` 已接线；其余 4 条明确不做，理由见下表 |
 | 3 | `chat_message` 落在哪一格 | 只能落"说话类"或"丢弃"，不能落历史类（否则同一句话出现两遍） |
 
 ### 产品层
@@ -78,3 +78,17 @@
 | 契约版本化 | `schemaVersion` + 新能力 id；字段只增不改 |
 | 九宫格工具 | `tools/event-matrix.html`，37 条与仓库配置逐条对齐，支持链路高亮 |
 | 文档计数修正 | 事件表 41/44 → 40，删 `respawn` 行 |
+### 事件接线结论（`fall_damage` / `rare_item` 等 6 条）
+
+数据源盘点后的结论：**接线 2 条，其余 4 条明确不做**。判定依据是"现有钩子上能不能顺手拿到"，而不是"想不想要"。
+
+| 事件 | 结论 | 依据 |
+|---|---|---|
+| `tianshu:fall_damage` | **已接线** | 伤害钩子本来就在（NeoForge `LivingDamageEvent.Post`、Fabric `AFTER_DAMAGE`），采集器按 `DamageSource` 判定摔伤后发独立事件类型 `fall_damage`；天枢映射到既有 kind，九宫格与文案 `你摔伤了：%s` 早已存在 |
+| `tianshu:rare_item` | **已接线** | 拾取钩子本来就在（NeoForge `ItemEntityPickupEvent.Post`、Fabric 背包增量采样），按**原版稀有度 RARE/EPIC** 判定，命中则发 `rare_item` 而不是普通 `pickup`，避免同一件物品走两条策略行 |
+| `tianshu:durability_low` | **暂时不做** | 原版没有耐久变化事件，只能定时扫主/副手并记住"已提示过"，会引入新的轮询与阈值口径。等有人真的抱怨"快坏了也不提醒"再做，届时一并定阈值与扫描范围 |
+| `tianshu:recipe_unlock` | **不做** | 没有事件可挂，唯一路径是改字节码（mixin 进 `ServerPlayer#awardRecipes`）；为一个提示语动字节码不值得 |
+| `tianshu:structure_discovery` | **不做** | 没有事件，只能每几秒查一次结构并持久化"是否来过"；且"发现"的定义本身不清（每存档一次？每种结构一次？） |
+| `tianshu:player_nearby_first` | **不做** | 需要按玩家×实体类型维护"第一次靠近"的持久状态并定时扫描，复杂度与收益不匹配 |
+
+**新增的原生事件候选**（都在已有钩子上，成本与上面两条同级，随时可接）：`sleep`（入睡）、`respawn`（重生，已有 `death` 但是两件事）、`item_break`（物品损坏，`PlayerDestroyItemEvent` / Fabric 无对应，需采样）、`enchant`（附魔，NeoForge 有事件、Fabric 无）、`weather_change`（天气变化，服务端可直接比对 `isRaining`）、`eat_food`（进食，两端的 `UseItem` 完成事件）。
