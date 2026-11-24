@@ -100,7 +100,10 @@ public final class FabricGameFactCollector {
         }
         Map<String, String> values = new HashMap<>();
         values.put(WorldEventTypes.VALUE_AMOUNT, Integer.toString(Math.round(damageTaken)));
-        send(player, WorldEventTypes.EVENT_DAMAGE_TAKEN, values);
+        // Falling gets its own line here too; see the NeoForge collector for why the message id is the test.
+        send(player, source != null && "fall".equals(source.getMsgId())
+                ? WorldEventTypes.EVENT_FALL_DAMAGE
+                : WorldEventTypes.EVENT_DAMAGE_TAKEN, values);
     }
 
 
@@ -255,9 +258,33 @@ public final class FabricGameFactCollector {
                 Map<String, String> values = new HashMap<>();
                 values.put(WorldEventTypes.VALUE_ITEM_ID, itemId);
                 values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(count - before));
-                send(player, WorldEventTypes.EVENT_ITEM_PICKUP, values);
+                // Rare and above is a find, not noise; the sample below is the only place the item is in hand, so the
+                // rarity has to be read here rather than from the id.
+                send(player, rareIn(player, itemId)
+                        ? WorldEventTypes.EVENT_RARE_ITEM
+                        : WorldEventTypes.EVENT_ITEM_PICKUP, values);
             });
         }
+    }
+    /**
+     * Whether the picked-up item is rare or better by the game's own rarity.
+     *
+     * <p>The sampling loop only has the item id, so the rarity is read off the stack that produced the id. Rarer items
+     * are also the ones where "the game calls it rare" is the definition that keeps working with modded content.</p>
+     */
+    private static boolean rareIn(ServerPlayer player, String itemId) {
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            net.minecraft.world.item.ItemStack stack = player.getInventory().getItem(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            if (!net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().equals(itemId)) {
+                continue;
+            }
+            net.minecraft.world.item.Rarity rarity = stack.getRarity();
+            return rarity == net.minecraft.world.item.Rarity.RARE || rarity == net.minecraft.world.item.Rarity.EPIC;
+        }
+        return false;
     }
     private void flush() {
         if (pendingByPlayer.isEmpty()) {

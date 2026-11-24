@@ -81,7 +81,16 @@ public final class GameFactCollector {
         }
         Map<String, String> values = new HashMap<>();
         values.put(WorldEventTypes.VALUE_AMOUNT, Integer.toString(Math.round(event.getNewDamage())));
-        send(player, WorldEventTypes.EVENT_DAMAGE_TAKEN, values);
+        // Falling has its own line: the amount alone reads the same as any other hit, and "I fell" is the fact the
+        // player actually wants commented on.
+        send(player, isFall(event.getSource())
+                ? WorldEventTypes.EVENT_FALL_DAMAGE
+                : WorldEventTypes.EVENT_DAMAGE_TAKEN, values);
+    }
+
+    /** Whether the damage came from falling; the message id is the stable way to ask without a registry lookup. */
+    private static boolean isFall(net.minecraft.world.damagesource.DamageSource source) {
+        return source != null && "fall".equals(source.getMsgId());
     }
 
     public void onItemPickup(ItemEntityPickupEvent.Post event) {
@@ -101,7 +110,15 @@ public final class GameFactCollector {
         }
         Map<String, String> values = itemValues(original);
         values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(pickedCount));
-        send(player, WorldEventTypes.EVENT_ITEM_PICKUP, values);
+        // A rare find is its own event: it is worth a sentence even when the player picks up ten of something else,
+        // and reporting it as a plain pickup would put it through the "frequent, weakened" policy row.
+        send(player, rare(original) ? WorldEventTypes.EVENT_RARE_ITEM : WorldEventTypes.EVENT_ITEM_PICKUP, values);
+    }
+
+    /** The game's own rarity, rare and above: no curated list to keep in sync with mods. */
+    private static boolean rare(net.minecraft.world.item.ItemStack stack) {
+        net.minecraft.world.item.Rarity rarity = stack.getRarity();
+        return rarity == net.minecraft.world.item.Rarity.RARE || rarity == net.minecraft.world.item.Rarity.EPIC;
     }
 
     public void onTrade(TradeWithVillagerEvent event) {

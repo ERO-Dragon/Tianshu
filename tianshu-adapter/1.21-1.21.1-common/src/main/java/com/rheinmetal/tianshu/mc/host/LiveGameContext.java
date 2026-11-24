@@ -358,8 +358,8 @@ public final class LiveGameContext implements ClientGameContextPort {
         return key == null ? "" : key.toString();
     }
 
-    /** How far a crosshair entity is looked for, in blocks; four chunks. */
-    private static final double CROSSHAIR_ENTITY_RANGE = 64.0D;
+    /** How far a crosshair entity is looked for, in blocks; two chunks. */
+    private static final double CROSSHAIR_ENTITY_RANGE = 32.0D;
 
     private GameTarget crosshairTarget(Minecraft minecraft, Player player) {
         HitResult hitResult = minecraft.hitResult;
