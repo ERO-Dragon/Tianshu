@@ -85,13 +85,35 @@ public final class ContainerTransferSource implements ContainerTransferPort {
         }
         ItemStack moving = source.copy();
         moving.setCount(Math.min(request.count(), source.getCount()));
-        int moved = Inventories.add(inventory, moving, MAIN_INVENTORY_SIZE);
+        int moved = addToActorSlot(inventory, moving, request.playerSlot());
         if (moved <= 0) {
-            return failure("the actor's inventory is full");
+            return failure("the actor slot cannot accept that item");
         }
         source.shrink(moved);
         container.setChanged();
         return success(moving, moved);
+    }
+
+    static int addToActorSlot(Container inventory, ItemStack moving, int slot) {
+        ItemStack target = inventory.getItem(slot);
+        if (!target.isEmpty() && !ItemStack.isSameItemSameComponents(target, moving)) {
+            return 0;
+        }
+        int maxCount = Math.min(moving.getMaxStackSize(), inventory.getMaxStackSize());
+        int room = target.isEmpty() ? maxCount : maxCount - target.getCount();
+        int moved = Math.min(moving.getCount(), room);
+        if (moved <= 0) {
+            return 0;
+        }
+        if (target.isEmpty()) {
+            ItemStack placed = moving.copy();
+            placed.setCount(moved);
+            inventory.setItem(slot, placed);
+        } else {
+            target.grow(moved);
+        }
+        inventory.setChanged();
+        return moved;
     }
 
     private static ContainerTransferResult actorToContainer(Container inventory, Container container,
