@@ -2,6 +2,11 @@ package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -205,6 +210,31 @@ class TianshuToolsTest {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> TianshuTools.register(new EchoTool()));
         assertTrue(failure.getMessage().contains(ECHO.toString()));
+    }
+
+    @Test
+    void aCapabilityConflictDoesNotLeaveAToolRegisteredOrRemoveTheExistingCapability() {
+        ToolId conflictedId = ToolId.of("test", "resource-conflict");
+        CapabilityId capabilityId = CapabilityId.parse(conflictedId.toString());
+        CapabilityDescriptor resource = new CapabilityDescriptor(capabilityId, CapabilityKind.RESOURCE,
+                CapabilityBinding.LOCAL, "test resource", ToolSide.CLIENT, ToolPermission.EVERYONE,
+                "test-provider", new JsonObject());
+        CapabilityCatalog.register(resource, (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
+
+        try {
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> TianshuTools.register(new FixedResultTool(conflictedId, ToolCategory.LOCAL, "x")));
+            assertTrue(failure.getMessage().contains("already used"));
+
+            assertFalse(TianshuTools.catalog(ToolCaller.agent(false), ToolSide.CLIENT).stream()
+                    .anyMatch(spec -> spec.id().equals(conflictedId)));
+            assertEquals(resource, CapabilityCatalog.find(capabilityId).orElseThrow());
+
+            TianshuTools.unregister(conflictedId);
+            assertEquals(resource, CapabilityCatalog.find(capabilityId).orElseThrow());
+        } finally {
+            CapabilityCatalog.unregister(capabilityId);
+        }
     }
 
     @Test

@@ -56,12 +56,22 @@ public final class TianshuTools {
         if (existing != null && existing != tool) {
             throw new IllegalArgumentException("tool " + tool.id() + " is already registered");
         }
-        CapabilityCatalog.publishTool(tool);
+        try {
+            CapabilityCatalog.publishTool(tool);
+        } catch (RuntimeException failure) {
+            if (existing == null) {
+                TOOLS.remove(tool.id(), tool);
+            }
+            throw failure;
+        }
     }
 
     /** Removes a tool and its enable override. Intended for tests and for a mod that unloads. */
     public static void unregister(ToolId id) {
-        TOOLS.remove(id);
+        TianshuTool<?, ?> removed = TOOLS.remove(id);
+        if (removed == null) {
+            return;
+        }
         OVERRIDES.remove(id);
         CapabilityCatalog.removeTool(CapabilityId.parse(id.toString()));
         RATE_LIMITER.forget(id);

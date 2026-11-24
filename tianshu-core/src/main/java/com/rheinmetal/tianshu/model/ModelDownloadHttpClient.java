@@ -1,6 +1,10 @@
 package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.network.ExternalAccessPolicy;
+import com.rheinmetal.tianshu.api.network.ExternalDecision;
+import com.rheinmetal.tianshu.api.network.ExternalRequest;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -31,10 +35,21 @@ public final class ModelDownloadHttpClient {
     private static final Pattern UNSATISFIED_CONTENT_RANGE = Pattern.compile("bytes\\s+\\*/(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private final IGameEnvironment env;
+    private final java.util.function.Supplier<ExternalAccessPolicy> accessPolicy;
     private final Set<HttpURLConnection> activeConnections = ConcurrentHashMap.newKeySet();
 
     public ModelDownloadHttpClient(IGameEnvironment env) {
+        this(env, () -> TianshuRuntimePorts.find(ExternalAccessPolicy.class).orElse(null));
+    }
+
+    public ModelDownloadHttpClient(IGameEnvironment env, ExternalAccessPolicy accessPolicy) {
+        this(env, () -> accessPolicy);
+    }
+
+    private ModelDownloadHttpClient(IGameEnvironment env,
+                                    java.util.function.Supplier<ExternalAccessPolicy> accessPolicy) {
         this.env = Objects.requireNonNull(env, "env");
+        this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy");
     }
 
     public String readUtf8(List<URI> candidates, RetryPolicy policy, DownloadControl control) throws IOException {
@@ -308,30 +323,6 @@ public final class ModelDownloadHttpClient {
         }
         return downloaded;
     }
-
-
-    /**
-     * Real HTTP liveness probe. A 2xx answer means the host serves data; a TCP handshake does not, so the
-     * reachability verdict this build relies on is made here, in the transport, and not in a facade.
-     */
-    static boolean probeReachable(String url, int timeoutMillis) {
-        HttpURLConnection connection = null;
-        try {
-            connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(timeoutMillis);
-            connection.setReadTimeout(timeoutMillis);
-            connection.setRequestProperty("Accept", "application/json");
-            int status = connection.getResponseCode();
-            return status >= 200 && status < 300;
-        } catch (IOException | RuntimeException unreachable) {
-            return false;
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
     /**
      * Whether this failure came from the local filesystem rather than from the source.
      *
@@ -418,22 +409,67 @@ public final class ModelDownloadHttpClient {
     }
 
     private HttpURLConnection open(URI candidate, RetryPolicy policy, ResumeState resume) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) candidate.toURL().openConnection();
-        activeConnections.add(connection);
-        try {
-            connection.setConnectTimeout(policy.connectTimeoutMillis());
-            connection.setReadTimeout(policy.readTimeoutMillis());
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("User-Agent", "Tianshu-Model-Downloader/1.0");
-            if (resume != null) {
-                connection.setRequestProperty("Range", "bytes=" + resume.localLength() + "-");
-                connection.setRequestProperty("If-Range", resume.metadata().validator());
+        URI target = candidate;
+        for (int redirects = 0; redirects <= 10; redirects++) {
+            requireAllowed(target);
+            HttpURLConnection connection = (HttpURLConnection) target.toURL().openConnection();
+            activeConnections.add(connection);
+            try {
+                connection.setInstanceFollowRedirects(false);
+                connection.setConnectTimeout(policy.connectTimeoutMillis());
+                connection.setReadTimeout(policy.readTimeoutMillis());
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("User-Agent", "Tianshu-Model-Downloader/1.0");
+                if (resume != null && redirects == 0) {
+                    connection.setRequestProperty("Range", "bytes=" + resume.localLength() + "-");
+                    connection.setRequestProperty("If-Range", resume.metadata().validator());
+                }
+                int status = connection.getResponseCode();
+                if (!isRedirect(status)) {
+                    return connection;
+                }
+                String location = connection.getHeaderField("Location");
+                if (location == null || location.isBlank()) {
+                    throw new IOException("MODEL_DOWNLOAD_REDIRECT_WITHOUT_LOCATION source=" + target);
+                }
+                URI redirected;
+                try {
+                    redirected = target.resolve(location).normalize();
+                } catch (IllegalArgumentException invalidLocation) {
+                    throw new IOException("MODEL_DOWNLOAD_INVALID_REDIRECT source=" + target, invalidLocation);
+                }
+                close(connection);
+                target = redirected;
+            } catch (IOException | RuntimeException failure) {
+                close(connection);
+                throw failure;
             }
-            return connection;
-        } catch (IOException | RuntimeException failure) {
-            close(connection);
-            throw failure;
         }
+        throw new IOException("MODEL_DOWNLOAD_TOO_MANY_REDIRECTS source=" + candidate);
+    }
+
+    private void requireAllowed(URI target) throws IOException {
+        ExternalAccessPolicy policy = accessPolicy.get();
+        if (policy == null) {
+            throw new IOException("MODEL_DOWNLOAD_EXTERNAL_ACCESS_POLICY_MISSING");
+        }
+        ExternalDecision decision;
+        try {
+            decision = policy.check(new ExternalRequest(ExternalRequest.Kind.DOWNLOAD, target));
+        } catch (IllegalArgumentException invalidTarget) {
+            throw new IOException("MODEL_DOWNLOAD_TARGET_REJECTED target=" + target, invalidTarget);
+        }
+        if (decision == null || !decision.allowed()) {
+            throw new IOException("MODEL_DOWNLOAD_TARGET_DENIED target=" + target
+                    + " reason=" + (decision == null ? "policy returned no decision" : decision.reason()));
+        }
+    }
+
+    private static boolean isRedirect(int status) {
+        return status == HttpURLConnection.HTTP_MOVED_PERM
+                || status == HttpURLConnection.HTTP_MOVED_TEMP
+                || status == HttpURLConnection.HTTP_SEE_OTHER
+                || status == 307 || status == 308;
     }
 
     private static void requireSuccessful(HttpURLConnection connection, URI candidate) throws IOException {

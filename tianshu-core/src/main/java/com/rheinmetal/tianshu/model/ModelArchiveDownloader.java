@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.network.ExternalAccessPolicy;
 
 import java.io.IOException;
 import java.net.URI;
@@ -14,6 +15,10 @@ public final class ModelArchiveDownloader {
 
     public ModelArchiveDownloader(IGameEnvironment env) {
         this.http = new ModelDownloadHttpClient(Objects.requireNonNull(env, "env"));
+    }
+
+    public ModelArchiveDownloader(IGameEnvironment env, ExternalAccessPolicy accessPolicy) {
+        this.http = new ModelDownloadHttpClient(Objects.requireNonNull(env, "env"), accessPolicy);
     }
 
     public void downloadGithubArchive(

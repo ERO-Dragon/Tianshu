@@ -146,6 +146,7 @@ public final class BodyOperations {
             releaseOwned(actorId, stamp[0]);
             return CompletableFuture.failedFuture(new IllegalStateException("no operation started"));
         }
-        return future.whenComplete((value, failure) -> releaseOwned(actorId, stamp[0]));
+        future.whenComplete((value, failure) -> releaseOwned(actorId, stamp[0]));
+        return future.copy();
     }
 }

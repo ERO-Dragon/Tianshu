@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.testkit.ModelDownloadTestServer;
 import com.rheinmetal.tianshu.api.IGameEnvironment;
+import com.rheinmetal.tianshu.api.network.ExternalDecision;
 import com.rheinmetal.tianshu.testkit.WorkspacePaths;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -99,7 +100,7 @@ class ModelArchiveDownloaderTest {
     }
 
     private static ModelArchiveDownloader downloader() {
-        return new ModelArchiveDownloader(new FakeGameEnvironment());
+        return new ModelArchiveDownloader(new FakeGameEnvironment(), request -> ExternalDecision.allow());
     }
 
     private static ModelArchiveDownloader.RetryPolicy noBackoff() {

@@ -30,9 +30,6 @@ public class HuggingFaceDownloader {
     private static final String HF_MIRROR = "https://hf-mirror.com";
     private static final String VOCODER_REPO = "csukuangfj/sherpa-onnx-vocoders";
     private static final String MAIN_REVISION = "main";
-    /** Public API listing: a real HTTP answer, so a TLS-blocked host fails the probe instead of passing it. */
-    private static final String PROBE_PATH = "/api/models?limit=1";
-    private static final int PROBE_TIMEOUT_MILLIS = 3_000;
     private static final int FILE_CONNECT_TIMEOUT_MILLIS = 15_000;
     private static final int FILE_READ_TIMEOUT_MILLIS = 120_000;
     private static final long FILE_RETRY_BACKOFF_MILLIS = 1_000L;
@@ -95,24 +92,17 @@ public class HuggingFaceDownloader {
     }
 
     /**
-     * Decides which host a download starts from, by asking it for data rather than for a socket.
+     * Returns the selected host without making a network request.
      *
-     * <p>A TCP handshake says nothing about whether TLS and the data path work: on a filtered network the
-     * connect succeeds and every byte after it stalls, which used to mark the official host as usable and
-     * then fail the download. The probe therefore performs a real request against the public API and only
-     * accepts a 2xx answer. The result is cached, and {@link #resetDomainCache()} clears it so one wrong
-     * verdict cannot stick for the life of the process.
+     * <p>The first request goes to the official source. A failed transfer switches to the mirror. Keeping host
+     * selection free of network I/O ensures every request passes through the platform access policy.
      */
     public static synchronized String getActiveBaseUrl() {
         if (activeBaseUrl != null) {
             return activeBaseUrl;
         }
-        activeBaseUrl = probeReachable(HF_OFFICIAL) ? HF_OFFICIAL : HF_MIRROR;
+        activeBaseUrl = HF_OFFICIAL;
         return activeBaseUrl;
-    }
-
-    private static boolean probeReachable(String baseUrl) {
-        return ModelDownloadHttpClient.probeReachable(baseUrl + PROBE_PATH, PROBE_TIMEOUT_MILLIS);
     }
 
     public static synchronized void resetDomainCache() {

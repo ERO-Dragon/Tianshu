@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -83,5 +84,18 @@ class BodyOperationsTest {
 
         assertTrue(BodyOperations.acquire("body-1").isPresent(),
                 "a release from an older generation must not take the slot away from the current one");
+    }
+
+    @Test
+    void aCallerTimeoutDoesNotPreventTheUnderlyingOperationFromReleasingItsSlot() {
+        CompletableFuture<String> operation = new CompletableFuture<>();
+        CompletableFuture<String> result = BodyOperations.guarded("body-1", CancellationSignal.NEVER,
+                () -> operation);
+
+        result.orTimeout(1, TimeUnit.MILLISECONDS).exceptionally(failure -> null).join();
+        operation.complete("done");
+
+        assertTrue(BodyOperations.acquire("body-1").isEmpty(),
+                "completion of the underlying operation must release its slot after the caller timed out");
     }
 }

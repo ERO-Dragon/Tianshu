@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.testkit.ModelDownloadTestServer;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
+import com.rheinmetal.tianshu.api.network.ExternalDecision;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,7 +44,7 @@ class HuggingFaceDownloaderTest {
             HuggingFaceDownloader downloader = new HuggingFaceDownloader(
                     env,
                     sources,
-                    new ModelDownloadHttpClient(env),
+                    new ModelDownloadHttpClient(env, request -> ExternalDecision.allow()),
                     official::baseUrl
             );
             AtomicInteger resolvedFiles = new AtomicInteger();
@@ -90,7 +91,7 @@ class HuggingFaceDownloaderTest {
             HuggingFaceDownloader downloader = new HuggingFaceDownloader(
                     env,
                     new ModelDownloadSourcePolicy(official.baseUrl(), mirror.baseUrl()),
-                    new ModelDownloadHttpClient(env),
+                    new ModelDownloadHttpClient(env, request -> ExternalDecision.allow()),
                     official::baseUrl
             );
 
@@ -192,10 +193,11 @@ class HuggingFaceDownloaderTest {
 
     private static HuggingFaceDownloader downloader(ModelDownloadTestServer official, ModelDownloadTestServer mirror) {
         FakeGameEnvironment env = new FakeGameEnvironment();
+        HuggingFaceDownloader.resetDomainCache();
         return new HuggingFaceDownloader(
                 env,
                 new ModelDownloadSourcePolicy(official.baseUrl(), mirror.baseUrl()),
-                new ModelDownloadHttpClient(env),
+                new ModelDownloadHttpClient(env, request -> ExternalDecision.allow()),
                 official::baseUrl
         );
     }

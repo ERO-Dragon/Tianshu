@@ -182,15 +182,20 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
             deadLetterQueue.add(envelope, "TARGET_NOT_FOUND", "No registered handler for target", DeadLetterPolicy.LOG_ONLY);
             return;
         }
-        boolean childDelivery = registrations.size() > 1 || envelope.header().targetMode() == TargetMode.TOPIC;
-        for (HandlerRegistration registration : registrations) {
-            TianshuEnvelope deliveryEnvelope = createDeliveryEnvelope(envelope, childDelivery);
+        // A request has exactly one responder. With several registrations for the same target the first one wins,
+        // in registry order (which is registration order) — deterministic, and the same answer every time. Deriving a
+        // child envelope per provider was the opposite: each reply carried a fresh id that no caller was waiting on,
+        // so a second provider for one capability meant the caller received nothing at all.
+        boolean broadcast = envelope.header().targetMode() == TargetMode.TOPIC;
+        List<HandlerRegistration> recipients = broadcast ? registrations : List.of(registrations.get(0));
+        for (HandlerRegistration registration : recipients) {
+            TianshuEnvelope deliveryEnvelope = createDeliveryEnvelope(envelope, broadcast);
             if (deliveryEnvelope != envelope) {
                 lifecycleStore.accept(deliveryEnvelope);
             }
             dispatchToRegistration(deliveryEnvelope, registration);
         }
-        if (childDelivery) {
+        if (broadcast) {
             lifecycleStore.transition(envelope.envelopeId(), EnvelopeStatus.COMPLETED, "ROUTED", "Envelope routed to " + registrations.size() + " handler(s)");
         }
     }

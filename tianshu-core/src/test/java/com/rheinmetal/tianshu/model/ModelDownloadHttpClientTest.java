@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.model;
 
 import com.rheinmetal.tianshu.testkit.ModelDownloadTestServer;
 import com.rheinmetal.tianshu.testkit.FakeGameEnvironment;
+import com.rheinmetal.tianshu.api.network.ExternalDecision;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,6 +44,55 @@ class ModelDownloadHttpClientTest {
 
         assertEquals("new", Files.readString(target, StandardCharsets.UTF_8));
         assertFalse(Files.exists(source));
+    }
+
+    @Test
+    void rejectsRequestsWhenNoOutboundPolicyIsInstalled() throws Exception {
+        try (ModelDownloadTestServer server = new ModelDownloadTestServer()) {
+            server.enqueue("/model", ModelDownloadTestServer.text(200, "model"));
+            ModelDownloadHttpClient client = new ModelDownloadHttpClient(new FakeGameEnvironment(), null);
+
+            assertThrows(IOException.class, () -> client.readUtf8(List.of(server.uri("/model")), NO_BACKOFF, () -> {}));
+
+            assertEquals(0, server.requests("/model"));
+        }
+    }
+
+    @Test
+    void rejectsAnUnlistedRedirectTargetBeforeOpeningIt() throws Exception {
+        try (ModelDownloadTestServer source = new ModelDownloadTestServer();
+             ModelDownloadTestServer target = new ModelDownloadTestServer()) {
+            source.enqueue("/redirect", ModelDownloadTestServer.text(302, "")
+                    .withHeader("Location", target.uri("/model").toString()));
+            target.enqueue("/model", ModelDownloadTestServer.text(200, "model"));
+            int allowedPort = source.uri("/").getPort();
+            ModelDownloadHttpClient client = new ModelDownloadHttpClient(new FakeGameEnvironment(), request ->
+                    request.url().getPort() == allowedPort
+                            ? ExternalDecision.allow()
+                            : ExternalDecision.deny("redirect host is not allowed"));
+
+            assertThrows(IOException.class, () -> client.readUtf8(List.of(source.uri("/redirect")), NO_BACKOFF, () -> {}));
+
+            assertEquals(1, source.requests("/redirect"));
+            assertEquals(0, target.requests("/model"));
+        }
+    }
+
+    @Test
+    void followsARedirectWhenBothTargetsAreAllowed() throws Exception {
+        try (ModelDownloadTestServer source = new ModelDownloadTestServer();
+             ModelDownloadTestServer target = new ModelDownloadTestServer()) {
+            source.enqueue("/redirect", ModelDownloadTestServer.text(302, "")
+                    .withHeader("Location", target.uri("/model").toString()));
+            target.enqueue("/model", ModelDownloadTestServer.text(200, "model"));
+            ModelDownloadHttpClient client = new ModelDownloadHttpClient(new FakeGameEnvironment(),
+                    request -> ExternalDecision.allow());
+
+            assertEquals("model", client.readUtf8(List.of(source.uri("/redirect")), NO_BACKOFF, () -> {}));
+
+            assertEquals(1, source.requests("/redirect"));
+            assertEquals(1, target.requests("/model"));
+        }
     }
 
     @Test
@@ -396,6 +446,6 @@ class ModelDownloadHttpClientTest {
     }
 
     private ModelDownloadHttpClient client() {
-        return new ModelDownloadHttpClient(new FakeGameEnvironment());
+        return new ModelDownloadHttpClient(new FakeGameEnvironment(), request -> ExternalDecision.allow());
     }
 }
