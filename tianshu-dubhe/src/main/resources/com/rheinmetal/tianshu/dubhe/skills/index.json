@@ -6,6 +6,17 @@
       "references": [
         "references/boundaries.md"
       ]
+    },
+    {
+      "name": "diplomacy",
+      "references": [
+        "references/discovery.md",
+        "references/relay.md",
+        "references/progress.md",
+        "references/permissions.md",
+        "references/failures.md",
+        "references/examples.md"
+      ]
     }
   ]
 }

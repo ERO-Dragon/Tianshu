@@ -96,8 +96,9 @@ public final class DubheRelaySkill {
         schema.add("properties", properties);
         schema.add("required", stringArray("action"));
         return DubheSkillSpec.builder(ID,
-                        "hand a task to another known module, or ask it for progress")
+                        "转办：发现其他模组的入口、投递任务、按需查进度；流程见 diplomacy 技能")
                 .inputSchema(schema)
+                .promptProfile("skill.diplomacy")
                 .visibility(DubheSkillVisibility.INTERNAL)
                 .autonomy(ToolAutonomy.CONSERVATIVE)
                 .budget(DubheSkillBudget.of(TIMEOUT_MILLIS, 1))
