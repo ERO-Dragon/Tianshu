@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  */
 class DubheSystemPromptResourceBoundaryTest {
 
-    private static final List<String> WORKER_IDS = List.of("research", "memory", "diplomacy", "fallback");
+    private static final List<String> WORKER_IDS = List.of("research", "memory", "relay", "fallback");
 
     @Test
     void theSystemPromptNeverNamesAWorker() throws Exception {

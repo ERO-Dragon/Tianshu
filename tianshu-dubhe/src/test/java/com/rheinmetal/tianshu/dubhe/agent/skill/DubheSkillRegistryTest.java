@@ -72,9 +72,9 @@ class DubheSkillRegistryTest {
         DubheSkillRegistry registry = new DubheSkillRegistry();
         registry.register(skill("memory"));
         registry.register(skill("research"));
-        registry.register(skill("diplomacy"));
+        registry.register(skill("relay"));
 
-        assertEquals(List.of("memory", "research", "diplomacy"),
+        assertEquals(List.of("memory", "research", "relay"),
                 registry.all().stream().map(DubheSkill::id).toList());
     }
 

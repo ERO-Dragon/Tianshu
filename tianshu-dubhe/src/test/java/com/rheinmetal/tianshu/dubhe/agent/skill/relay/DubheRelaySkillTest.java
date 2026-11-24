@@ -1,4 +1,4 @@
-package com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy;
+package com.rheinmetal.tianshu.dubhe.agent.skill.relay;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -20,7 +20,7 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DubheDiplomacySkillTest {
+class DubheRelaySkillTest {
 
     private static final DubheScope SCOPE =
             new DubheScope("player", "world", "World", DubheScopeKind.LOCAL_WORLD, true);
@@ -28,9 +28,9 @@ class DubheDiplomacySkillTest {
 
     @Test
     void theSpecIsWellFormedForTheAgentDirectory() {
-        DubheSkillSpec spec = DubheDiplomacySkill.spec();
+        DubheSkillSpec spec = DubheRelaySkill.spec();
 
-        assertEquals("diplomacy", spec.id());
+        assertEquals("relay", spec.id());
         assertTrue(spec.reportSchema().contains("outcome"));
         assertTrue(spec.reportSchema().contains("progress"));
         assertTrue(spec.inputSchema().has("properties"));
@@ -38,7 +38,7 @@ class DubheDiplomacySkillTest {
 
     @Test
     void malformedArgumentsFailWithACodeInsteadOfCallingAnything() {
-        DubheSkill skill = new DubheDiplomacySkill(null).skill();
+        DubheSkill skill = new DubheRelaySkill(null).skill();
 
         assertEquals("INVALID_TARGET", outcome(skill, args("submit", "no-namespace", "做点事", "")));
         assertEquals("INVALID_ACTION", outcome(skill, args("explode", "mymod:task", "", "")));
@@ -53,7 +53,7 @@ class DubheDiplomacySkillTest {
         register(done, "DONE");
         register(odd, "ALMOST");
         try {
-            DubheSkill skill = new DubheDiplomacySkill(
+            DubheSkill skill = new DubheRelaySkill(
                     () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY))
                     .skill();
 
@@ -97,7 +97,7 @@ class DubheDiplomacySkillTest {
                                 }
                                 @Override public void set(String key, String value) { values.put(key, value); }
                             });
-            DubheSkill skill = new DubheDiplomacySkill(
+            DubheSkill skill = new DubheRelaySkill(
                     () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY),
                     consent).skill();
 
@@ -121,7 +121,7 @@ class DubheDiplomacySkillTest {
                 new com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository(
                         com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider.fixed(
                                 com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage.ZH_CN));
-        DubheSkill skill = new DubheDiplomacySkill(
+        DubheSkill skill = new DubheRelaySkill(
                 () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY),
                 null, texts).skill();
 
@@ -153,7 +153,7 @@ class DubheDiplomacySkillTest {
                 com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider.fixed(
                         com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage.ZH_CN)));
         try {
-            DubheSkill skill = new DubheDiplomacySkill(
+            DubheSkill skill = new DubheRelaySkill(
                     () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY))
                     .skill();
 
@@ -196,7 +196,7 @@ class DubheDiplomacySkillTest {
                         attributes),
                 (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
         try {
-            DubheSkill skill = new DubheDiplomacySkill(
+            DubheSkill skill = new DubheRelaySkill(
                     () -> ToolCaller.agent("dubhe", false, com.rheinmetal.tianshu.api.tool.ToolAutonomy.READ_ONLY))
                     .skill();
 

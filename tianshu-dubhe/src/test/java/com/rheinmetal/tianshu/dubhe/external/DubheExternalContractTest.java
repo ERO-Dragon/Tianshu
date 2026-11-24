@@ -70,8 +70,8 @@ class DubheExternalContractTest {
             assertFalse(id.endsWith(":task"), "a bare task entry is a generic entry: " + id);
         }
         assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "agent_task")).isEmpty());
-        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "diplomacy")).isEmpty(),
-                "the internal diplomacy skill is never published");
+        assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "relay")).isEmpty(),
+                "the internal relay skill is never published");
     }
 
     @Test

@@ -1,9 +1,11 @@
-package com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy;
+package com.rheinmetal.tianshu.dubhe.agent.skill.relay;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import com.rheinmetal.tianshu.api.capability.CapabilityExposure;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
@@ -41,9 +43,9 @@ import java.util.function.Supplier;
  * <p>调用方的档位由注册时注入的 {@link ToolCaller} 决定；舟楫会用它自己的自治度判定是否放行，
  * 本技能不自行放大权限。</p>
  */
-public final class DubheDiplomacySkill {
+public final class DubheRelaySkill {
 
-    public static final String ID = "diplomacy";
+    public static final String ID = "relay";
     private static final long TIMEOUT_MILLIS = 30_000L;
     private static final String OUTCOME_OK = "OK";
     private static final String OUTCOME_FAILED = "FAILED";
@@ -55,14 +57,14 @@ public final class DubheDiplomacySkill {
     private final com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent;
     private final com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository texts;
 
-    public DubheDiplomacySkill(Supplier<ToolCaller> caller) {
+    public DubheRelaySkill(Supplier<ToolCaller> caller) {
         this(caller, null, null);
     }
 
     /**
      * @param consent first-use gate; {@code null} disables the gate (tests and callers without settings)
      */
-    public DubheDiplomacySkill(Supplier<ToolCaller> caller,
+    public DubheRelaySkill(Supplier<ToolCaller> caller,
                                com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent) {
         this(caller, consent, null);
     }
@@ -70,7 +72,7 @@ public final class DubheDiplomacySkill {
     /**
      * @param texts resolves the player-facing sentence of an action failure; {@code null} leaves {@code block} out
      */
-    public DubheDiplomacySkill(Supplier<ToolCaller> caller,
+    public DubheRelaySkill(Supplier<ToolCaller> caller,
                                com.rheinmetal.tianshu.dubhe.settings.DubheAutonomyConsent consent,
                                com.rheinmetal.tianshu.dubhe.dialogue.output.DubheReplyTextRepository texts) {
         this.caller = caller;
@@ -151,15 +153,25 @@ public final class DubheDiplomacySkill {
             if (!descriptor.id().equals(id.capabilityId())) {
                 continue;
             }
-            JsonObject answer = new JsonObject();
-            answer.addProperty("outcome", OUTCOME_OK);
-            answer.addProperty("id", descriptor.id().toString());
-            answer.addProperty("kind", descriptor.kind().value());
-            answer.addProperty("description", descriptor.description());
-            answer.add("attributes", descriptor.attributes());
-            return answer;
+            return described(descriptor);
+        }
+        var connector = CapabilityCatalog.find(id.capabilityId()).orElse(null);
+        if (connector != null && CapabilityKind.CONNECTOR.equals(connector.kind())
+                && connector.attributes().has("taskEntry")
+                && connector.attributes().get("taskEntry").getAsBoolean()) {
+            return described(connector);
         }
         return failed("TARGET_UNKNOWN", DubheActionFailure.TARGET_UNKNOWN, "");
+    }
+
+    private static JsonObject described(CapabilityDescriptor descriptor) {
+        JsonObject answer = new JsonObject();
+        answer.addProperty("outcome", OUTCOME_OK);
+        answer.addProperty("id", descriptor.id().toString());
+        answer.addProperty("kind", descriptor.kind().value());
+        answer.addProperty("description", descriptor.description());
+        answer.add("attributes", descriptor.attributes());
+        return answer;
     }
 
     private JsonObject listTargets() {
@@ -172,17 +184,34 @@ public final class DubheDiplomacySkill {
             if (count >= 50) {
                 break;
             }
-            JsonObject row = new JsonObject();
-            row.addProperty("id", descriptor.id().toString());
-            row.addProperty("kind", descriptor.kind().value());
-            row.addProperty("description", descriptor.description());
-            targets.add(row);
+            targets.add(row(descriptor.id().toString(), descriptor.kind().value(), descriptor.description()));
             count++;
+        }
+        com.google.gson.JsonArray taskEntries = new com.google.gson.JsonArray();
+        for (CapabilityDescriptor descriptor : CapabilityCatalog.list()) {
+            if (!CapabilityKind.CONNECTOR.equals(descriptor.kind())) {
+                continue;
+            }
+            if (!"dubhe".equals(descriptor.provider())) {
+                if (descriptor.attributes().has("taskEntry")
+                        && descriptor.attributes().get("taskEntry").getAsBoolean()) {
+                    taskEntries.add(row(descriptor.id().toString(), "connector", descriptor.description()));
+                }
+            }
         }
         JsonObject answer = new JsonObject();
         answer.addProperty("outcome", OUTCOME_OK);
         answer.add("targets", targets);
+        answer.add("taskEntries", taskEntries);
         return answer;
+    }
+
+    private static JsonObject row(String id, String kind, String description) {
+        JsonObject row = new JsonObject();
+        row.addProperty("id", id);
+        row.addProperty("kind", kind);
+        row.addProperty("description", description);
+        return row;
     }
 
     private CompletableFuture<JsonObject> submit(IdRef id, String task) {

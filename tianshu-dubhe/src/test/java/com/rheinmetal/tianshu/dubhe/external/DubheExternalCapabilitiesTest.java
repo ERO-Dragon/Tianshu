@@ -61,7 +61,7 @@ class DubheExternalCapabilitiesTest {
         var descriptor = CapabilityCatalog.find(DubheExternalCapabilities.SEARCH).orElseThrow();
         assertEquals("skill", descriptor.kind().value(), "the whole retrieval is one shareable skill");
         assertTrue(CapabilityCatalog.find(CapabilityId.of("dubhe", "relay")).isEmpty(),
-                "relay is a reference inside the diplomacy skill, not an external capability");
+                "the relay skill is internal, not an external capability");
     }
 
     @Test

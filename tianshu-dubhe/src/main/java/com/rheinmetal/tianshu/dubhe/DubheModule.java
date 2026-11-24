@@ -40,7 +40,7 @@ import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheLlmAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
-import com.rheinmetal.tianshu.dubhe.agent.skill.diplomacy.DubheDiplomacySkill;
+import com.rheinmetal.tianshu.dubhe.agent.skill.relay.DubheRelaySkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.definition.DubheSkillPackageResourceLoader;
 import com.rheinmetal.tianshu.dubhe.agent.skill.shared.DubheSharedSkillReader;
 import com.rheinmetal.tianshu.dubhe.agent.skill.host.DubheHostToolSkills;
@@ -408,7 +408,7 @@ public final class DubheModule implements TianshuManagedModule {
             skillRegistry.register(packageSkill);
         }
         skillRegistry.register(DubheSharedSkillReader.skill());
-        skillRegistry.register(new DubheDiplomacySkill(
+        skillRegistry.register(new DubheRelaySkill(
                 () -> ToolCaller.agent("dubhe", false, assistantSettings.autonomy()),
                 assistantSettings.autonomyConsent(), replyTexts).skill());
         DubheAgentContextBudget agentBudget = DubheAgentContextBudget.forWindow(constructionFallbackPolicy.tier().maxTokens());
