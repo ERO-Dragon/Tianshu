@@ -317,7 +317,14 @@ public final class TtsPlaybackController {
     private void execute(PlaybackSlot slot, PlaybackCommand command) {
         switch (command.type) {
             case START -> {
-                audioBridge.setOnPlaybackFinished(() -> listener.onPlaybackFinished(slot.session));
+                // A device that could not open, write or drain is a failure of this sentence, not a finished one:
+                // the listener decides what a failed sentence means for the session, and the queue still advances.
+                audioBridge.setOnPlaybackFinished(outcome -> {
+                    if (outcome == IAudioBridge.PlaybackOutcome.FAILED) {
+                        env.warn("[tts.playback] device failed while playing " + slot.session.request().requestId());
+                    }
+                    listener.onPlaybackFinished(slot.session);
+                });
                 audioBridge.startTtsPlayback(slot.session.request().requestId(), command.sampleRate);
                 synchronized (this) {
                     slot.startedAtMillis = System.currentTimeMillis();
