@@ -88,6 +88,9 @@ public final class ServerToolHandler {
 
     private static final int OPERATOR_PERMISSION_LEVEL = 2;
 
+    /** What the current server start installed, so the stop can take exactly that back. */
+    private static com.rheinmetal.tianshu.mc.tool.ServerRegistrations registrations;
+
     private ServerToolHandler() {
     }
 
@@ -114,14 +117,20 @@ public final class ServerToolHandler {
     }
 
     private static void onServerStarting(ServerStartingEvent event) {
+        // A fresh session per world: whatever the last one installed has to be gone before this one starts, or the
+        // second world in one process sees ports pointing at the previous server.
+        if (registrations != null) {
+            registrations.close();
+        }
+        registrations = new com.rheinmetal.tianshu.mc.tool.ServerRegistrations();
         ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
         BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers, new com.rheinmetal.tianshu.neoforge.NeoForgePlayerBodies());
         TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
-        TianshuRuntimePorts.register(PlayerAuthority.class, new ServerPlayerAuthority(event.getServer()));
+        registrations.port(PlayerAuthority.class, new ServerPlayerAuthority(event.getServer()));
         // The operator's ceiling on server-side tools; read live from the config so a reload takes effect.
         TianshuRuntimePorts.register(ServerAutonomyCeiling.class, ServerActionConfig::autonomyCeiling);
         // The cheat-grade tools are server tools: the server owns their implementation and executes them here.
-        TianshuRuntimePorts.register(ServerActionExecutionPort.class,
+        registrations.port(ServerActionExecutionPort.class,
                 new NeoForgeActionExecution(event.getServer()));
         // What this server will actually allow, and from which file: the one line that settles "I edited it and
         // nothing changed".
@@ -129,29 +138,29 @@ public final class ServerToolHandler {
                 net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("tianshu_ferry-server.toml"),
                 ServerActionConfig.describe());
         for (var actionTool : com.rheinmetal.tianshu.client.tool.ServerActionTools.tools()) {
-            TianshuTools.register(actionTool);
+            registrations.tool(actionTool);
         }
         // Only after registration: the advertised state belongs to a tool that exists in this registry.
         com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(
                 action -> { var value = ServerActionConfig.switchFor(action); return value != null && value.get(); });
         ServerTicks.INSTANCE.onNextTick(() -> BodyPersistence.load(event.getServer(), bodies));
-        TianshuRuntimePorts.register(LootQueryPort.class, new LootQuerySource(event.getServer()));
-        TianshuRuntimePorts.register(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
+        registrations.port(LootQueryPort.class, new LootQuerySource(event.getServer()));
+        registrations.port(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
         if (TianshuTools.find(RecipeQueryTool.ID) == null) {
             TianshuTools.register(new RecipeQueryTool());
         }
-        TianshuRuntimePorts.register(BlockInteractPort.class,
+        registrations.port(BlockInteractPort.class,
                 new InteractRouter(new BlockInteractSource(event.getServer(), bodies, actionPlayers)));
-        TianshuRuntimePorts.register(BlockPlacePort.class,
+        registrations.port(BlockPlacePort.class,
                 new PlaceRouter(new BlockPlaceSource(event.getServer(), bodies, actionPlayers)));
-        TianshuRuntimePorts.register(CraftPort.class, new CraftRouter(new CraftSource(event.getServer())));
-        TianshuRuntimePorts.register(ContainerTransferPort.class,
+        registrations.port(CraftPort.class, new CraftRouter(new CraftSource(event.getServer())));
+        registrations.port(ContainerTransferPort.class,
                 new TransferRouter(new ContainerTransferSource(event.getServer())));
-        TianshuRuntimePorts.register(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(event.getServer())));
+        registrations.port(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(event.getServer())));
         TianshuRuntimePorts.register(EntityMotionPort.class, new MotionRouter());
         TianshuRuntimePorts.register(EntityActionPort.class, new ActionRouter());
-        TianshuRuntimePorts.register(EntityQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));
-        TianshuRuntimePorts.register(EntityItemPort.class, new ItemRouter(new AgentItemSource(event.getServer(), bodies)));
+        registrations.port(EntityQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));
+        registrations.port(EntityItemPort.class, new ItemRouter(new AgentItemSource(event.getServer(), bodies)));
         TianshuRuntimePorts.register(EntityItemUsePort.class, new UseItemRouter());
         TianshuRuntimePorts.register(EntityUsePort.class, new EntityUseRouter());
         if (TianshuTools.find(LootQueryTool.ID) == null) {
@@ -180,6 +189,11 @@ public final class ServerToolHandler {
         BodyRuntime.current().ifPresent(registry -> BodyPersistence.save(event.getServer(), registry));
         BodyRuntime.stop();
         ServerTicks.INSTANCE.clear();
+        // Ports capture this server; leaving them registered kept it reachable from the title screen.
+        if (registrations != null) {
+            registrations.close();
+            registrations = null;
+        }
     }
 
     /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */

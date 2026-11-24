@@ -81,6 +81,9 @@ public final class FabricServerToolHandler {
 
     private static final int OPERATOR_PERMISSION_LEVEL = 2;
 
+    /** What the current server start installed, so the stop can take exactly that back. */
+    private static com.rheinmetal.tianshu.mc.tool.ServerRegistrations registrations;
+
     private FabricServerToolHandler() {
     }
 
@@ -90,10 +93,14 @@ public final class FabricServerToolHandler {
                         entity.level().getGameRules().getBoolean(GameRules.RULE_KEEPINVENTORY)))
                 .orElse(true));
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            if (registrations != null) {
+                registrations.close();
+            }
+            registrations = new com.rheinmetal.tianshu.mc.tool.ServerRegistrations();
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             BodyRegistry bodies = BodyRuntime.start(server, actionPlayers, new FabricPlayerBodies());
             TianshuRuntimePorts.register(ServerTickPort.class, ServerTicks.INSTANCE);
-            TianshuRuntimePorts.register(PlayerAuthority.class, new ServerPlayerAuthority(server));
+            registrations.port(PlayerAuthority.class, new ServerPlayerAuthority(server));
             ServerTicks.INSTANCE.onNextTick(() -> BodyPersistence.load(server, bodies));
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             // The operator's ceiling on server-side tools, read from the same server config as the action switches.
@@ -151,6 +158,11 @@ public final class FabricServerToolHandler {
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             BodyRuntime.current().ifPresent(registry -> BodyPersistence.save(server, registry));
             BodyRuntime.stop();
+            // Ports capture this server; leaving them registered kept it reachable from the title screen.
+            if (registrations != null) {
+                registrations.close();
+                registrations = null;
+            }
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             ServerTicks.INSTANCE.fire();
