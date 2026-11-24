@@ -6,6 +6,15 @@ target   = 对方的任务入口 id（必须是 taskEntries 里的）
 task     = 一句话，脱离上下文也能读懂（不要"这个""刚才"）
 ```
 
+## 例子：投给女仆
+
+```
+relay {"action":"submit","target":"maid:task","task":"把主屋箱子里的原木搬到仓库"}
+→ {"outcome":"OK","taskId":"t-9","progress":"RUNNING"}
+```
+
+回答玩家："我跟女仆说了，让她搬。"（只能说"去办了"，不能说"搬完了"）
+
 ## 返回
 
 受理成功：
@@ -30,6 +39,16 @@ task     = 一句话，脱离上下文也能读懂（不要"这个""刚才"）
 | `CALL_FAILED` | 调用失败/超时 | 说"没办成，稍后再试" |
 | `INVALID_TARGET` | id 不是 `namespace:name` | 重新 `list` 找正确 id |
 | `INVALID_ARGS` | 少了 `task` | 补上一句话再投 |
+
+## 例子：投错了口子
+
+```
+relay {"action":"submit","target":"maid:guide","task":"把原木搬到仓库"}
+→ {"outcome":"FAILED","reason":"NO_TASK_ID"}
+```
+
+`maid:guide` 是说明书（在 `targets` 里），不是投递口。任务不会有人执行。
+正确做法：回 `list` 找 `taskEntries` 里的 `maid:task`。
 
 ## 硬规则
 

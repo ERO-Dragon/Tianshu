@@ -74,41 +74,6 @@ final class AcceptanceBodies implements EntityProvider {
                 "body " + bodyId + " belongs to " + OWNER + " (caller=" + actor + ", kind=" + caller.kind() + ")"));
     }
 
-    /** A commandable actor with a fixed identity, for the creation-port cases. */
-    static EntityActor actor(String bodyId, boolean playerLike) {
-        return new EntityActor() {
-            @Override
-            public String id() {
-                return bodyId;
-            }
-
-            @Override
-            public String ownerModule() {
-                return LabModuleRegistration.MOD_ID;
-            }
-
-            @Override
-            public boolean operator() {
-                return false;
-            }
-
-            @Override
-            public boolean playerLike() {
-                return playerLike;
-            }
-
-            @Override
-            public ActorPosition position() {
-                return new ActorPosition("minecraft:overworld", 0.5, 64.0, 0.5);
-            }
-
-            @Override
-            public Set<EntityCapability> capabilities() {
-                return EnumSet.of(EntityCapability.LOOK, EntityCapability.MOVE);
-            }
-        };
-    }
-
     private EntityActor body() {
         return new EntityActor() {
             @Override

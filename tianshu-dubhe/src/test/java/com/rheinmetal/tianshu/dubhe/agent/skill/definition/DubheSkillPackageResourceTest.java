@@ -36,7 +36,7 @@ class DubheSkillPackageResourceTest {
         assertTrue(work.body().contains("tianshu:minecraft-tools"), "tool usage lives in the platform skill");
 
         DubheSkillDefinition diplomacy = byName.get("diplomacy");
-        assertEquals(6, diplomacy.references().size(), "discovery / relay / progress / permissions / failures / examples");
+        assertEquals(5, diplomacy.references().size(), "discovery / relay / progress / permissions / failures");
         assertTrue(diplomacy.body().contains("references/relay.md"), "relay is a reference of diplomacy");
         assertTrue(diplomacy.reference("references/relay.md").contains("taskId"),
                 "the relay reference explains the acceptance receipt");
@@ -71,7 +71,7 @@ class DubheSkillPackageResourceTest {
         DubheSkill diplomacy = skill("diplomacy");
 
         JsonObject entry = diplomacy.executor().execute(CONTEXT, new JsonObject()).join();
-        assertTrue(entry.get("body").getAsString().contains("四步"), "the entry carries the procedure");
+        assertTrue(entry.get("body").getAsString().contains("完整往返"), "the entry carries one canonical round trip");
 
         JsonObject args = new JsonObject();
         args.addProperty("reference", "references/relay.md");

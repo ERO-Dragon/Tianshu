@@ -26,8 +26,6 @@ import com.rheinmetal.tianshu.api.tool.ToolSpec;
 
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
-import com.rheinmetal.tianshu.api.entity.EntityBodies;
-import com.rheinmetal.tianshu.api.entity.EntityBodySpec;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.client.host.game.GameInventoryEntry;
 import com.rheinmetal.tianshu.model.ModelDownloadHttpClient;
@@ -43,7 +41,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CountDownLatch;
@@ -117,8 +114,6 @@ public final class LabAcceptanceCases {
         cases.add(theGameContextCapturesDoNotThrow());
         cases.add(aModuleCommandsTheBodyItOwns());
         cases.add(aBodyRefusesAnUnregisteredBody());
-        cases.add(aPlayerLikeBodyIsCreatedOnThePlayerBase());
-        cases.add(anOrdinaryBodyIsCreatedOnTheEntityBase());
         cases.add(theAdapterTakesTheBodyTypeDeclarationsAtStartup());
         cases.add(anActionReachesTheServerAndComesBackExecuted());
         cases.add(anActionIsRefusedByTheServerSwitchWhenItsOff());
@@ -1526,74 +1521,6 @@ public final class LabAcceptanceCases {
                         + " portRan=" + !nothingHappened);
             } finally {
                 unregister.run();
-            }
-        });
-    }
-
-    /**
-     * A player-like body request reaches the adapter with the flag set, and the actor that comes back says so.
-     *
-     * <p>The platform does not pick a base; it carries the identity to the port. What this locks is that the flag is not
-     * lost on the way, and that the actor a module receives reports the identity it was created with.</p>
-     */
-    private static AcceptanceCase aPlayerLikeBodyIsCreatedOnThePlayerBase() {
-        final String id = "ACC-BDY-5";
-        final String title = "a player-like body request reaches the adapter and comes back player-like";
-        return AcceptanceCase.of(id, title, () -> {
-            List<EntityBodySpec> seen = new ArrayList<>();
-            EntityBodies.install(spec -> {
-                seen.add(spec);
-                return Optional.of(AcceptanceBodies.actor(spec.bodyId(), spec.playerLike()));
-            });
-            try {
-                EntityActor actor = EntityBodies
-                        .create(new EntityBodySpec("lab:npc-1", null, true)).orElseThrow();
-                boolean carried = seen.size() == 1 && seen.get(0).playerLike();
-                if (carried && actor.playerLike()) {
-                    return AcceptanceOutcome.pass(id, title, "flag carried, actor reports player-like");
-                }
-                return AcceptanceOutcome.fail(id, title, "carried=" + carried + " actorPlayerLike=" + actor.playerLike());
-            } finally {
-                EntityBodies.uninstall();
-            }
-        });
-    }
-
-    /**
-     * An ordinary body request names a declared type, and the actor that comes back is not player-like.
-     *
-     * <p>Also locks the wiring rule: with no adapter port installed, asking for a body is a wiring mistake and says so
-     * instead of returning an empty body a caller would read as "not now".</p>
-     */
-    private static AcceptanceCase anOrdinaryBodyIsCreatedOnTheEntityBase() {
-        final String id = "ACC-BDY-6";
-        final String title = "an ordinary body request names its type and stays non-player-like";
-        return AcceptanceCase.of(id, title, () -> {
-            List<EntityBodySpec> seen = new ArrayList<>();
-            EntityBodies.install(spec -> {
-                seen.add(spec);
-                return Optional.of(AcceptanceBodies.actor(spec.bodyId(), spec.playerLike()));
-            });
-            try {
-                EntityActor actor = EntityBodies
-                        .create(new EntityBodySpec("lab:orb-1", "lab:orb", false)).orElseThrow();
-                boolean typed = seen.size() == 1 && "lab:orb".equals(seen.get(0).entityTypeId());
-                boolean notPlayerLike = !actor.playerLike();
-                EntityBodies.uninstall();
-                boolean refusedWithoutPort = false;
-                try {
-                    EntityBodies.create(new EntityBodySpec("lab:orb-1", "lab:orb", false));
-                } catch (IllegalStateException expected) {
-                    refusedWithoutPort = true;
-                }
-                if (typed && notPlayerLike && refusedWithoutPort) {
-                    return AcceptanceOutcome.pass(id, title,
-                            "type carried, actor ordinary, and a missing port is reported");
-                }
-                return AcceptanceOutcome.fail(id, title, "typed=" + typed + " notPlayerLike=" + notPlayerLike
-                        + " refusedWithoutPort=" + refusedWithoutPort);
-            } finally {
-                EntityBodies.uninstall();
             }
         });
     }

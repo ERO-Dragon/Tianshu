@@ -6,11 +6,28 @@ target   = 对方注册的读工具 id
 taskId   = 投递时拿到的回执
 ```
 
-## 返回三态
+## 例子：三种回答
 
-```json
-{ "outcome": "OK", "taskId": "t-9", "progress": "RUNNING" }
 ```
+relay {"action":"progress","target":"maid:reader","taskId":"t-9"}
+→ {"outcome":"OK","taskId":"t-9","progress":"RUNNING"}
+```
+
+回答："还在搬。"
+
+```
+→ {"outcome":"OK","taskId":"t-9","progress":"DONE"}
+```
+
+回答："搬完了。"
+
+```
+→ {"outcome":"OK","taskId":"t-9","progress":"UNKNOWN"}
+```
+
+回答："女仆没说进展，要不我再去问问？"（**不猜"办完了"**）
+
+## 返回三态
 
 | 进度 | 含义 | 对玩家怎么说 |
 |---|---|---|

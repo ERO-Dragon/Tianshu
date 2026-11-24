@@ -6,6 +6,26 @@ description: 外交：把一件事交给别的模组办，或按需查进度。�
 
 你要让别人办事时用本技能。你没有实体，也不直接构造协议消息——你只做四件事：**发现、看参数、投递、查进度**，都通过 `relay` 工具完成。
 
+## 完整往返
+
+```
+1) relay {"action":"list"}
+   → targets=[maid:guide(说明)], taskEntries=[maid:task(入口)]
+
+2) relay {"action":"describe","target":"maid:task"}
+   → attributes={"taskEntry":true,"accepts":"task","returns":"taskId"}
+
+3) relay {"action":"submit","target":"maid:task","task":"把主屋箱子里的原木搬到仓库"}
+   → {"outcome":"OK","taskId":"t-9"}
+   回答玩家："我跟女仆说了，让她搬。"   ← 只能说"去办了"
+
+4) 玩家问进度：
+   relay {"action":"progress","target":"maid:reader","taskId":"t-9"}
+   → {"progress":"DONE"}   回答："搬完了。"
+   → {"progress":"RUNNING"} 回答："还在搬。"
+   → {"progress":"UNKNOWN"} 回答："女仆没说进展。"  ← 不猜完成
+```
+
 ## 四步
 
 | 步 | `relay` 的 action | 参数 | 拿到什么 |
@@ -29,15 +49,16 @@ description: 外交：把一件事交给别的模组办，或按需查进度。�
 - `targets`：可**读**的材料（技能/资源/提示词）——读它，**不能**投任务；
 - `taskEntries`：可**投**的任务入口（`kind=connector` 且带 `taskEntry`）——`submit` 只认这个清单。
 
-把"说明书"当投递口，任务会被当文字丢掉。细节见 `references/discovery.md`。
+把"说明书"当投递口，任务会被当文字丢掉。
 
 ## 按需参考
+
+每篇都自带例子，读哪篇就看哪篇：
 
 - 发现两个清单：`references/discovery.md`
 - **投递（relay）**：`references/relay.md`
 - 查进度与三态：`references/progress.md`
 - 权限与边界：`references/permissions.md`
 - 失败怎么说：`references/failures.md`
-- 一次完整往返：`references/examples.md`
 
 读法：带参数 `{"reference": "references/relay.md"}` 再调用一次本技能；不要一次全读。

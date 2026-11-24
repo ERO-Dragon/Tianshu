@@ -13,6 +13,23 @@
 | 任务 id 未知 | "这个任务对方说不知道" |
 | 调用失败 | "没办成，稍后再试" |
 
+## 例子：被拒
+
+```
+relay {"action":"progress","target":"maid:ghost","taskId":"t-9"}
+→ {"outcome":"FAILED","reason":"CALL_REFUSED","block":"没找到能办这事的对象。"}
+```
+
+回答：照 `block` 说——"没找到能办这事的对象。"
+
+## 例子：调用失败
+
+```
+→ {"outcome":"FAILED","reason":"CALL_FAILED"}
+```
+
+回答："没办成，稍后再试。"
+
 ## 规则
 
 - `reason` / `code` 只用来自己判断，不要念出来；
