@@ -57,6 +57,14 @@ public final class GameFactCollector {
     private final Map<ServerPlayer, List<GameFact>> pendingByPlayer = new LinkedHashMap<>();
     private final Map<ServerPlayer, Boolean> sleepingOld = new java.util.HashMap<>();
     private final Map<ServerPlayer, Boolean> eatingOld = new java.util.HashMap<>();
+
+    /**
+     * The food stack as it was while it was being eaten.
+     *
+     * <p>The completion clears {@code useItem} before this tick's sample reads it, so the stack has to be remembered at
+     * the moment eating starts; reading it at the transition reports air.</p>
+     */
+    private final Map<ServerPlayer, ItemStack> eatingItem = new java.util.HashMap<>();
     private final Map<ServerLevel, String> weatherOld = new java.util.HashMap<>();
 
     /** Subscribing is the whole registration; {@link #send} is the only network path. */
@@ -178,6 +186,11 @@ public final class GameFactCollector {
         }
         // The connection is already going away; buffered facts cannot be delivered and must not leak.
         pendingByPlayer.remove(leaving);
+        // The per-player transition memories belong to that player alone; keeping them would carry a stale
+        // "was sleeping / was eating / held this stack" into the next session of the same account.
+        sleepingOld.remove(leaving);
+        eatingOld.remove(leaving);
+        eatingItem.remove(leaving);
         String name = leaving.getGameProfile().getName();
         for (ServerPlayer other : leaving.getServer().getPlayerList().getPlayers()) {
             if (other != leaving) {
@@ -325,12 +338,19 @@ public final class GameFactCollector {
     private void sampleEating(ServerPlayer player) {
         boolean using = player.isUsingItem() && player.getUseItem().get(net.minecraft.core.component.DataComponents.FOOD) != null;
         Boolean was = eatingOld.put(player, using);
-        if (was == null || was == using) {
+        if (using) {
+            // Remember the stack while it is still in hand; the completion clears it before the next sample.
+            eatingItem.put(player, player.getUseItem().copy());
             return;
         }
-        if (!using && was) {
-            send(player, WorldEventTypes.EVENT_EAT_FOOD, itemValues(player.getUseItem().copy()));
+        if (was == null || !was) {
+            eatingItem.remove(player);
+            return;
         }
+        // The transition is where the fact is, but not where the item is any more.
+        ItemStack eaten = eatingItem.remove(player);
+        send(player, WorldEventTypes.EVENT_EAT_FOOD,
+                itemValues(eaten == null || eaten.isEmpty() ? player.getUseItem().copy() : eaten));
     }
 
     /** Weather is world state: the transition is what the line reports, and the token names the new state. */

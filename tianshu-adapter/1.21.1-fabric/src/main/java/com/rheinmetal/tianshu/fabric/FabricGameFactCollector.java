@@ -74,6 +74,14 @@ public final class FabricGameFactCollector {
     private final Map<ServerPlayer, Boolean> sleepingOld = new LinkedHashMap<>();
     private final Map<ServerPlayer, Boolean> eatingOld = new LinkedHashMap<>();
 
+    /**
+     * The food stack as it was while it was being eaten.
+     *
+     * <p>The completion clears {@code useItem} before this tick's sample reads it, so the stack has to be remembered at
+     * the moment eating starts; reading it at the transition reports air.</p>
+     */
+    private final Map<ServerPlayer, net.minecraft.world.item.ItemStack> eatingItem = new LinkedHashMap<>();
+
     /** Weather is world state; the transition is the fact, and the token names the new state. */
     private final Map<net.minecraft.server.level.ServerLevel, String> weatherOld = new LinkedHashMap<>();
 
@@ -117,10 +125,23 @@ public final class FabricGameFactCollector {
             boolean eating = player.isUsingItem()
                     && player.getUseItem().get(net.minecraft.core.component.DataComponents.FOOD) != null;
             Boolean wasEating = eatingOld.put(player, eating);
-            if (wasEating != null && wasEating && !eating) {
-                send(player, WorldEventTypes.EVENT_EAT_FOOD, itemValues(player.getUseItem().copy()));
+            if (eating) {
+                // Remember the stack while it is still in hand; the completion clears it before the next sample.
+                eatingItem.put(player, player.getUseItem().copy());
+                continue;
             }
+            if (wasEating == null || !wasEating) {
+                eatingItem.remove(player);
+                continue;
+            }
+            send(player, WorldEventTypes.EVENT_EAT_FOOD, itemValues(eatenStack(player)));
         }
+    }
+
+    /** The stack that was being eaten; falls back to the held stack if the transition was missed. */
+    private net.minecraft.world.item.ItemStack eatenStack(ServerPlayer player) {
+        net.minecraft.world.item.ItemStack remembered = eatingItem.remove(player);
+        return remembered == null || remembered.isEmpty() ? player.getUseItem().copy() : remembered;
     }
 
     /** Weather changes once per world, not per player; each player in that world gets the line. */
@@ -198,6 +219,14 @@ public final class FabricGameFactCollector {
         }
         // The connection is already going away; buffered facts cannot be delivered and must not leak.
         pendingByPlayer.remove(leaving);
+        // The per-player transition memories belong to that player alone; keeping them would carry a stale
+        // "was sleeping / was eating / held this stack" into the next session of the same account.
+        sleepingOld.remove(leaving);
+        eatingOld.remove(leaving);
+        eatingItem.remove(leaving);
+        lastVehicles.remove(leaving);
+        lastInventory.remove(leaving);
+        pendingPlacements.remove(leaving);
         String name = leaving.getGameProfile().getName();
         for (ServerPlayer other : server.getPlayerList().getPlayers()) {
             if (other != leaving) {
@@ -308,36 +337,48 @@ public final class FabricGameFactCollector {
                 if (count <= before) {
                     return;
                 }
+                // Rare and above is a find, not noise; the stack is also where the name comes from, so both
+                // facts are read in the same pass instead of reporting a bare registry id.
+                net.minecraft.world.item.ItemStack stack = stackIn(player, itemId);
                 Map<String, String> values = new HashMap<>();
                 values.put(WorldEventTypes.VALUE_ITEM_ID, itemId);
                 values.put(WorldEventTypes.VALUE_COUNT, Integer.toString(count - before));
-                // Rare and above is a find, not noise; the sample below is the only place the item is in hand, so the
-                // rarity has to be read here rather than from the id.
-                send(player, rareIn(player, itemId)
+                if (stack != null) {
+                    values.put(WorldEventTypes.VALUE_ITEM_NAME, stack.getHoverName().getString());
+                }
+                send(player, rare(stack)
                         ? WorldEventTypes.EVENT_RARE_ITEM
                         : WorldEventTypes.EVENT_ITEM_PICKUP, values);
             });
         }
     }
+
     /**
-     * Whether the picked-up item is rare or better by the game's own rarity.
+     * The picked-up stack behind {@code itemId}, or {@code null} when it is no longer in the inventory.
      *
-     * <p>The sampling loop only has the item id, so the rarity is read off the stack that produced the id. Rarer items
-     * are also the ones where "the game calls it rare" is the definition that keeps working with modded content.</p>
+     * <p>The sampling loop only carries the id, so rarity and the display name are read off the stack that produced
+     * it. "The game calls it rare" is the definition that keeps working with modded content.</p>
      */
-    private static boolean rareIn(ServerPlayer player, String itemId) {
+    private static net.minecraft.world.item.ItemStack stackIn(ServerPlayer player, String itemId) {
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             net.minecraft.world.item.ItemStack stack = player.getInventory().getItem(slot);
             if (stack.isEmpty()) {
                 continue;
             }
-            if (!net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().equals(itemId)) {
-                continue;
+            if (net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString().equals(itemId)) {
+                return stack;
             }
-            net.minecraft.world.item.Rarity rarity = stack.getRarity();
-            return rarity == net.minecraft.world.item.Rarity.RARE || rarity == net.minecraft.world.item.Rarity.EPIC;
         }
-        return false;
+        return null;
+    }
+
+    /** The game's own rarity, rare and above. */
+    private static boolean rare(net.minecraft.world.item.ItemStack stack) {
+        if (stack == null) {
+            return false;
+        }
+        net.minecraft.world.item.Rarity rarity = stack.getRarity();
+        return rarity == net.minecraft.world.item.Rarity.RARE || rarity == net.minecraft.world.item.Rarity.EPIC;
     }
     private void flush() {
         if (pendingByPlayer.isEmpty()) {
