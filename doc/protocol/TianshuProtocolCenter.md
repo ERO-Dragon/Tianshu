@@ -193,18 +193,18 @@ CREATED -> ACCEPTED -> QUEUED -> DISPATCHED -> RUNNING -> COMPLETED
 | `SELF_ONLY` | 只取消当前信封。 |
 | `CHILDREN` | 取消当前信封及子链路。 |
 | `TRACE` | 取消整条追踪链路。 |
-| `RESOURCE` | 取消同一资源上的低优先级任务。 |
+| `RESOURCE` | **当前只取消该信封本身**：运行时没有"按资源聚合任务"的索引，`RESOURCE` 与 `SELF_ONLY` 同义。需要同资源取消的模块应自己维护资源到信封的映射并发起取消。 |
 
 失败由 `FailurePolicy` 决定后续动作：
 
 | Policy | 行为 |
 |---|---|
-| `PROPAGATE_CANCEL` | 按取消范围传播。 |
-| `FALLBACK` | 允许模块派生降级信封。 |
+| `PROPAGATE_CANCEL` | 失败按取消范围传播（目前唯一有执行语义的策略）。 |
+| `FALLBACK` | 允许模块派生降级信封；派生由模块自己做，运行时只负责继续投递。 |
 
 模块卸载由宿主统一调用 `ProtocolRuntime.unregisterModule(moduleId)`。协议中心会同时清理该模块的 capability provider、topic subscription、未完成请求的 response handler、voice trigger 和 module descriptor；如果某个 capability、topic 或 request 仍有其他模块的登记，只移除目标模块的条目，不得影响其他 provider / subscriber / handler。该清理可用于世界退出后的模块重装配，不要求业务模块直接修改协议内部注册表。
 | `IGNORE` | 只清理当前信封。 |
-| `RETRY` | 在 Broker 允许时重试。 |
+| `RETRY` | **保留但没有实现**：运行时不会自动重试；需要重试的模块应自己重新提交信封。协议不承诺调度级重试。 |
 | `REPORT_ONLY` | 记录和上报，不传播取消。 |
 
 `cancelEnvelope(...)` 不是公开直投，它会生成协议取消信封，并由协议中心按目标信封和取消范围处理。
