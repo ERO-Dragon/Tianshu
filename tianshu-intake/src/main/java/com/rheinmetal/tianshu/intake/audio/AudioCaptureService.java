@@ -19,6 +19,14 @@ import java.util.function.Consumer;
  * continuous-input extension point; their only current callers are tests, and no setting can reach them.</p>
  */
 public final class AudioCaptureService {
+    /**
+     * One push-to-talk utterance is capped at a minute of 16 kHz mono 16-bit audio.
+     *
+     * <p>A hold-to-talk key can be held indefinitely, and the buffer grew with the hold: an hour is ~115 MB, and the
+     * copy on release doubles the peak. The cap turns that into a known bound; what was said is kept, and the cut is
+     * reported so it is not mistaken for a silent microphone.</p>
+     */
+    static final int MAX_PTT_BYTES = 16_000 * 2 * 60;
     private final IAudioBridge audioBridge;
     private final IGameEnvironment env;
     private volatile AsrSpeechSegmenter speechSegmenter;
@@ -78,9 +86,7 @@ public final class AudioCaptureService {
             }
             byte[] processed = processChunk(chunk);
             if (processed != null && processed.length > 0) {
-                synchronized (buffer) {
-                    buffer.write(processed, 0, processed.length);
-                }
+                appendCapped(buffer, processed);
             }
         });
     }
@@ -152,6 +158,22 @@ public final class AudioCaptureService {
             cleanup.run();
         } catch (RuntimeException | LinkageError failure) {
             env.error(diagnosticCode, failure);
+        }
+    }
+
+    /** Appends up to the utterance cap, reporting the cut once so a truncated hold is not read as a dead microphone. */
+    private void appendCapped(ByteArrayOutputStream buffer, byte[] chunk) {
+        synchronized (buffer) {
+            int room = MAX_PTT_BYTES - buffer.size();
+            if (room <= 0) {
+                return;
+            }
+            int write = Math.min(room, chunk.length);
+            buffer.write(chunk, 0, write);
+            if (write < chunk.length) {
+                env.warn("push-to-talk hit its single-utterance limit of " + MAX_PTT_BYTES
+                        + " bytes; the rest of the hold was not recorded");
+            }
         }
     }
 

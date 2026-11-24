@@ -1,10 +1,11 @@
 package com.rheinmetal.tianshu.echo.contract;
 
 import com.rheinmetal.tianshu.protocol.ITianshuPayload;
+import com.rheinmetal.tianshu.protocol.SizedPayload;
 
 import java.util.Arrays;
 
-public final class TtsAudioPayload implements ITianshuPayload {
+public final class TtsAudioPayload implements ITianshuPayload, SizedPayload {
     private final String requestId;
     private final byte[] audio;
     private final int sampleRate;
@@ -31,6 +32,12 @@ public final class TtsAudioPayload implements ITianshuPayload {
 
     public int channels() {
         return channels;
+    }
+
+    /** The PCM bytes are the whole cost of retaining this envelope; the history budgets by this number. */
+    @Override
+    public int retainedBytes() {
+        return audio.length;
     }
 
 }

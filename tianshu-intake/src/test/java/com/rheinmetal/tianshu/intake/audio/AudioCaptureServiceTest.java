@@ -390,4 +390,19 @@ class AudioCaptureServiceTest {
             return com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink.NOOP;
         }
     }
+    @Test
+    void aVeryLongHoldStopsAtTheUtteranceCapInsteadOfGrowingWithIt() {
+        FakeAudioBridge bridge = new FakeAudioBridge();
+        AudioCaptureService service = new AudioCaptureService(bridge, new FakeGameEnvironment());
+
+        service.startPttCapture();
+        // Push well past the cap: an hour-long hold used to allocate ~115 MB and copy it again on release.
+        for (int burst = 0; burst < 8; burst++) {
+            bridge.push(new byte[AudioCaptureService.MAX_PTT_BYTES / 2]);
+        }
+        byte[] captured = service.stopPttCapture();
+
+        assertEquals(AudioCaptureService.MAX_PTT_BYTES, captured.length,
+                "the buffer must stop at the cap: what was said is kept, the rest is not recorded");
+    }
 }
