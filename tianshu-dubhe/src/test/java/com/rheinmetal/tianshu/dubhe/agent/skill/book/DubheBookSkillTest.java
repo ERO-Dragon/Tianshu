@@ -6,6 +6,8 @@ import com.rheinmetal.tianshu.api.assembly.ModResources;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillContext;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheBookSkillTest {
+
+    private static final DubhePromptLanguageProvider LANGUAGE =
+            DubhePromptLanguageProvider.fixed(DubhePromptLanguage.ZH_CN);
 
     @AfterEach
     void clearPorts() {
@@ -88,7 +93,7 @@ class DubheBookSkillTest {
                 .getAsJsonObject().get("text").getAsString();
 
         assertTrue(text.length() <= 1800, "one answer must not flood the agent's context: " + text.length());
-        assertTrue(text.endsWith("…"), "a cut body is marked as cut");
+        assertTrue(text.endsWith("\u2026"), "a cut body is marked as cut");
     }
 
     private static void register(ModResources resources) {
@@ -103,7 +108,7 @@ class DubheBookSkillTest {
     }
 
     private static JsonObject invoke(JsonObject args) {
-        DubheSkill skill = DubheBookSkill.skill();
+        DubheSkill skill = DubheBookSkill.skill(LANGUAGE);
         return skill.executor().execute(new DubheSkillContext(null, null, null), args).join();
     }
 }

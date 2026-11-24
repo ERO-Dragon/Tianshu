@@ -407,7 +407,7 @@ public final class DubheModule implements TianshuManagedModule {
         }
         skillRegistry.register(DubheSharedSkillReader.skill());
         // 已装模组自带的手册：不联网的第一站，内容和玩家正在跑的版本天然一致。
-        skillRegistry.register(DubheBookSkill.skill());
+        skillRegistry.register(DubheBookSkill.skill(promptLanguageProvider));
         skillRegistry.register(new DubheRelaySkill(
                 () -> ToolCaller.agent(DubheModule.MOD_ID, false, assistantSettings.autonomy()),
                 assistantSettings.autonomyConsent(), replyTexts).skill());

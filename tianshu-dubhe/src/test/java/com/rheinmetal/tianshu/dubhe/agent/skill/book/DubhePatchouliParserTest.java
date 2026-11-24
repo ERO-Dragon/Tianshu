@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DubhePatchouliParserTest {
 
     private static final String BOOK = "assets/testmod/patchouli_books/guide";
+    private static final List<String> LANGUAGES = List.of("zh_cn", "en_us");
 
     @Test
     void resolvesTranslationKeysAndKeepsLiteralText() {
@@ -28,7 +29,7 @@ class DubhePatchouliParserTest {
                 .build();
 
         List<DubheBookEntry> entries =
-                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LogSink.SYSTEM);
+                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LANGUAGES, LogSink.SYSTEM);
 
         assertEquals(1, entries.size(), "one entry file is one entry");
         DubheBookEntry entry = entries.get(0);
@@ -49,7 +50,7 @@ class DubhePatchouliParserTest {
                 .build();
 
         List<DubheBookEntry> entries =
-                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LogSink.SYSTEM);
+                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LANGUAGES, LogSink.SYSTEM);
 
         assertEquals(1, entries.size());
         assertEquals("祭坛", entries.get(0).title());
@@ -68,7 +69,7 @@ class DubhePatchouliParserTest {
                 .build();
 
         List<DubheBookEntry> entries =
-                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LogSink.SYSTEM);
+                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LANGUAGES, LogSink.SYSTEM);
 
         assertEquals(1, entries.size(), "a recipe-only entry and a broken one contribute nothing");
         assertEquals("Real", entries.get(0).title());
@@ -86,6 +87,40 @@ class DubhePatchouliParserTest {
         assertTrue(DubhePatchouliParser.bookIds(mods, "testmod", "other").isEmpty(),
                 "a directory without book.json is not a book");
         assertTrue(DubhePatchouliParser.bookIds(mods, "testmod", "absent").isEmpty());
+    }
+
+    @Test
+    void takesProseFromAnyPageThatCarriesText() {
+        // Most item entries are spotlight pages, and mods invent page types of their own: keying on a
+        // fixed list of type names would silently drop exactly the entries players ask about.
+        ModResources mods = FakeModResources.builder()
+                .put("testmod", BOOK + "/book.json", "{}")
+                .put("testmod", BOOK + "/en_us/entries/spot.json",
+                        "{\"name\":\"Spot\",\"pages\":["
+                                + "{\"type\":\"spotlight\",\"item\":\"testmod:thing\",\"text\":\"spotlight prose\"},"
+                                + "{\"type\":\"testmod:custom\",\"text\":\"custom prose\"}]}")
+                .build();
+
+        List<DubheBookEntry> entries =
+                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LANGUAGES, LogSink.SYSTEM);
+
+        assertEquals(1, entries.size());
+        assertEquals("spotlight prose\n\ncustom prose", entries.get(0).text());
+    }
+
+    @Test
+    void fallsBackToTheFileNameWhenAnEntryHasNoName() {
+        ModResources mods = FakeModResources.builder()
+                .put("testmod", BOOK + "/book.json", "{}")
+                .put("testmod", BOOK + "/en_us/entries/unnamed.json",
+                        "{\"pages\":[{\"type\":\"text\",\"text\":\"body\"}]}")
+                .build();
+
+        List<DubheBookEntry> entries =
+                DubhePatchouliParser.parse("testmod", "testmod", "guide", mods, LANGUAGES, LogSink.SYSTEM);
+
+        assertEquals(1, entries.size(), "an entry without a name is still content");
+        assertEquals("unnamed", entries.get(0).title());
     }
 
     @Test

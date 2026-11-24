@@ -12,7 +12,10 @@ import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillBudget;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillLane;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillSpec;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillVisibility;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguage;
+import com.rheinmetal.tianshu.dubhe.dialogue.system.DubhePromptLanguageProvider;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -38,7 +41,7 @@ public final class DubheBookSkill {
     private DubheBookSkill() {
     }
 
-    public static DubheSkill skill() {
+    public static DubheSkill skill(DubhePromptLanguageProvider languages) {
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
         JsonObject properties = new JsonObject();
@@ -55,7 +58,7 @@ public final class DubheBookSkill {
                 .retry(false)
                 .lane(DubheSkillLane.PLAYER)
                 .build();
-        Cache cache = new Cache();
+        Cache cache = new Cache(languages);
         return new DubheSkill(spec, (context, args) -> CompletableFuture.completedFuture(search(cache, args)));
     }
 
@@ -160,7 +163,12 @@ public final class DubheBookSkill {
      */
     private static final class Cache {
 
+        private final DubhePromptLanguageProvider languages;
         private volatile DubheBookCatalog catalog;
+
+        Cache(DubhePromptLanguageProvider languages) {
+            this.languages = languages;
+        }
 
         DubheBookCatalog get() {
             DubheBookCatalog current = catalog;
@@ -172,10 +180,25 @@ public final class DubheBookSkill {
                     catalog = DubheBookCatalog.load(
                             TianshuRuntimePorts.find(InstalledModIds.class).orElseGet(InstalledModIds::none),
                             TianshuRuntimePorts.find(ModResources.class).orElseGet(ModResources::none),
+                            preferredLanguages(),
                             LogSink.SYSTEM);
                 }
                 return catalog;
             }
+        }
+
+        /** The player's own language first, then the rest: a book in their language reads better than one they cannot. */
+        private List<String> preferredLanguages() {
+            DubhePromptLanguage current = languages == null
+                    ? DubhePromptLanguage.BASE : languages.currentLanguage();
+            List<String> codes = new ArrayList<>();
+            codes.add(current.code());
+            for (DubhePromptLanguage language : DubhePromptLanguage.values()) {
+                if (language != current) {
+                    codes.add(language.code());
+                }
+            }
+            return List.copyOf(codes);
         }
     }
 }

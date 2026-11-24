@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DubheBookCatalogTest {
 
     private static final InstalledModIds ONE_MOD = () -> List.of("testmod");
+    private static final List<String> LANGUAGES = List.of("zh_cn", "en_us");
 
     private static DubheBookCatalog catalog() {
         ModResources mods = FakeModResources.builder()
@@ -24,7 +25,7 @@ class DubheBookCatalogTest {
                 .put("testmod", "assets/testmod/patchouli_books/guide/en_us/entries/unrelated.json",
                         "{\"name\":\"Unrelated\",\"pages\":[{\"type\":\"text\",\"text\":\"nothing here\"}]}")
                 .build();
-        return DubheBookCatalog.load(ONE_MOD, mods, LogSink.SYSTEM);
+        return DubheBookCatalog.load(ONE_MOD, mods, LANGUAGES, LogSink.SYSTEM);
     }
 
     @Test
@@ -54,6 +55,7 @@ class DubheBookCatalogTest {
 
     @Test
     void emptyInstalledModsYieldsEmptyCatalog() {
-        assertTrue(DubheBookCatalog.load(InstalledModIds.none(), ModResources.none(), LogSink.SYSTEM).isEmpty());
+        assertTrue(DubheBookCatalog.load(InstalledModIds.none(), ModResources.none(), LANGUAGES, LogSink.SYSTEM)
+                .isEmpty());
     }
 }

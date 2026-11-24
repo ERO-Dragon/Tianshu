@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -28,20 +29,22 @@ import java.util.regex.Pattern;
  * the literal text. One rule covers both — <b>look the value up in the language table, and when it is not
  * there, use it as it stands</b>. That also tolerates a key that nobody translated yet.</p>
  *
- * <p>Only {@code text} pages carry prose. Recipe pages ({@code crafting}, {@code spotlight} and every
- * mod-defined page type) describe items, not behaviour, and recipes are answered from the save rather than
- * from prose, so they are skipped rather than flattened into half-sentences.</p>
+ * <p>Prose is taken from <b>any page that carries a {@code text} field</b>, not from a fixed list of page
+ * types. Books in the wild use {@code text}, {@code spotlight}, {@code entity} and page types the mod invents
+ * itself, and almost every one of them puts its prose in {@code text}; selecting by type would silently drop
+ * the entries that describe items, which is most of them. Recipe-only pages carry {@code recipe} instead and
+ * are therefore skipped without a special case — and a recipe is better answered from the save anyway.</p>
  */
 final class DubhePatchouliParser {
 
-    /** Preferred first: the client ships Chinese, and a Chinese entry reads better than an English one. */
-    private static final List<String> LANGUAGES = List.of("zh_cn", "en_us");
-
-    /** Patchouli format controls: {@code $(l:link)label$(/l)}, {@code $(0)}, {@code $(k)}, … */
-    private static final Pattern FORMAT_CONTROL = Pattern.compile("\\$\\([^)]*\\)");
+    /** A single resource is a book entry, not a dataset: anything larger is not prose we should hold. */
+    private static final int MAX_FILE_CHARS = 2_000_000;
 
     /** Deep enough for the deepest real book, shallow enough to stop a malformed one. */
     private static final int MAX_DEPTH = 8;
+
+    /** Patchouli format controls: {@code $(l:link)label$(/l)}, {@code $(0)}, {@code $(k)}, … */
+    private static final Pattern FORMAT_CONTROL = Pattern.compile("\\$\\([^)]*\\)");
 
     private DubhePatchouliParser() {
     }
@@ -59,11 +62,17 @@ final class DubhePatchouliParser {
         return books;
     }
 
-    /** Every readable entry of one book, in file order; empty when the book has no text pages at all. */
+    /**
+     * Every readable entry of one book, in file order.
+     *
+     * @param languages the reader's languages, best first: the entry tree and the translations are both taken
+     *                  from the first language the book actually ships, so a player gets the book in the same
+     *                  language as the rest of their game
+     */
     static List<DubheBookEntry> parse(String modId, String namespace, String bookId,
-                                      ModResources resources, LogSink log) {
+                                      ModResources resources, List<String> languages, LogSink log) {
         String root = "assets/" + namespace + "/patchouli_books/" + bookId;
-        for (String language : LANGUAGES) {
+        for (String language : languages) {
             List<String> files = new ArrayList<>();
             collectEntries(resources, modId, root + "/" + language + "/entries", files, 0);
             if (files.isEmpty()) {
@@ -88,32 +97,31 @@ final class DubhePatchouliParser {
             String path = directory + "/" + name;
             if (name.endsWith(".json")) {
                 sink.add(path);
-            } else if (!name.contains(".")) {
+            } else {
                 collectEntries(resources, modId, path, sink, depth + 1);
             }
         }
     }
 
-    private static java.util.Optional<DubheBookEntry> readEntry(String modId, String path,
-                                                                Map<String, String> table,
-                                                                ModResources resources, LogSink log) {
-        String json = resources.read(modId, path).orElse(null);
-        if (json == null) {
-            return java.util.Optional.empty();
+    private static Optional<DubheBookEntry> readEntry(String modId, String path, Map<String, String> table,
+                                                      ModResources resources, LogSink log) {
+        String json = resources.read(modId, path).map(DubhePatchouliParser::stripBom).orElse(null);
+        if (json == null || json.length() > MAX_FILE_CHARS) {
+            return Optional.empty();
         }
         try {
             JsonObject entry = JsonParser.parseString(json).getAsJsonObject();
             String title = plain(resolve(table, string(entry, "name")));
             if (title.isEmpty()) {
-                return java.util.Optional.empty();
+                // An entry nobody named is still content; its file name is the only name available.
+                title = fileStem(path);
             }
             String text = pages(entry, table);
-            return text.isEmpty() ? java.util.Optional.empty()
-                    : java.util.Optional.of(new DubheBookEntry(modId, title, text));
+            return text.isEmpty() ? Optional.empty() : Optional.of(new DubheBookEntry(modId, title, text));
         } catch (RuntimeException failure) {
             // One malformed entry must not cost the mod its whole book.
             log.warn("book.entry.invalid mod=" + modId + " path=" + path, failure);
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 
@@ -128,9 +136,6 @@ final class DubhePatchouliParser {
                 continue;
             }
             JsonObject page = element.getAsJsonObject();
-            if (!"text".equals(string(page, "type"))) {
-                continue;
-            }
             String paragraph = plain(resolve(table, string(page, "text")));
             if (paragraph.isEmpty()) {
                 continue;
@@ -145,7 +150,9 @@ final class DubhePatchouliParser {
 
     private static Map<String, String> languageTable(String modId, String namespace, String language,
                                                      ModResources resources, LogSink log) {
-        String json = resources.read(modId, "assets/" + namespace + "/lang/" + language + ".json").orElse(null);
+        String json = resources.read(modId, "assets/" + namespace + "/lang/" + language + ".json")
+                .map(DubhePatchouliParser::stripBom)
+                .orElse(null);
         if (json == null) {
             return Map.of();
         }
@@ -183,6 +190,17 @@ final class DubhePatchouliParser {
                 .replace("$(br)", "\n")
                 .replace("$(p)", "\n\n");
         return FORMAT_CONTROL.matcher(text).replaceAll("").trim();
+    }
+
+    private static String stripBom(String text) {
+        return !text.isEmpty() && text.charAt(0) == '\uFEFF' ? text.substring(1) : text;
+    }
+
+    private static String fileStem(String path) {
+        int slash = path.lastIndexOf('/');
+        String name = slash < 0 ? path : path.substring(slash + 1);
+        int dot = name.lastIndexOf('.');
+        return dot < 0 ? name : name.substring(0, dot);
     }
 
     private static String string(JsonObject object, String name) {

@@ -25,26 +25,36 @@ import java.util.regex.Pattern;
  */
 public final class DubheBookCatalog {
 
+    private static final int MAX_ENTRIES = 20_000;
+
     private final List<DubheBookEntry> entries;
 
     private DubheBookCatalog(List<DubheBookEntry> entries) {
         this.entries = List.copyOf(entries);
     }
 
-    /** Reads every installed mod's books. A mod without books, or with a broken one, simply contributes nothing. */
-    public static DubheBookCatalog load(InstalledModIds ids, ModResources resources, LogSink log) {
+    /**
+     * Reads every installed mod's books. A mod without books, or with a broken one, simply contributes nothing.
+     *
+     * @param languages the reader's languages, best first; a book that ships the first one is read in it
+     */
+    public static DubheBookCatalog load(InstalledModIds ids, ModResources resources,
+                                        List<String> languages, LogSink log) {
         List<DubheBookEntry> all = new ArrayList<>();
         for (String modId : ids.all()) {
+            if (all.size() >= MAX_ENTRIES) {
+                break;
+            }
             for (String namespace : resources.children(modId, "assets")) {
                 if (namespace.contains(".")) {
                     continue;
                 }
                 for (String book : DubhePatchouliParser.bookIds(resources, modId, namespace)) {
-                    all.addAll(DubhePatchouliParser.parse(modId, namespace, book, resources, log));
+                    all.addAll(DubhePatchouliParser.parse(modId, namespace, book, resources, languages, log));
                 }
             }
         }
-        return new DubheBookCatalog(all);
+        return new DubheBookCatalog(all.size() > MAX_ENTRIES ? all.subList(0, MAX_ENTRIES) : all);
     }
 
     public int size() {
