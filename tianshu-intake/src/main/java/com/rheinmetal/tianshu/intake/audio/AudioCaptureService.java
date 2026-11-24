@@ -28,12 +28,11 @@ public final class AudioCaptureService {
      */
     private final java.util.function.IntSupplier maxUtteranceSeconds;
     private static final int BYTES_PER_SECOND = 16_000 * 2;
-    private volatile boolean limitReported;
     private final IAudioBridge audioBridge;
     private final IGameEnvironment env;
     private volatile AsrSpeechSegmenter speechSegmenter;
     private volatile AudioFrameProcessor frameProcessor = AudioFrameProcessor.identity();
-    private volatile ByteArrayOutputStream pttBuffer;
+    private volatile PttCapture pttCapture;
     private final AtomicLong captureGeneration = new AtomicLong();
     private volatile long activeStreamSessionId;
 
@@ -87,15 +86,15 @@ public final class AudioCaptureService {
         frameProcessor.reset();
         long generation = captureGeneration.incrementAndGet();
         activeStreamSessionId = 0L;
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        pttBuffer = buffer;
+        PttCapture capture = new PttCapture();
+        pttCapture = capture;
         audioBridge.startStreamRecording(chunk -> {
             if (!isCurrentGeneration(generation)) {
                 return;
             }
             byte[] processed = processChunk(chunk);
             if (processed != null && processed.length > 0) {
-                appendCapped(buffer, processed);
+                appendCapped(capture, processed);
             }
         });
     }
@@ -103,13 +102,13 @@ public final class AudioCaptureService {
     public byte[] stopPttCapture() {
         audioBridge.stopStreamRecording();
         captureGeneration.incrementAndGet();
-        ByteArrayOutputStream buffer = pttBuffer;
-        pttBuffer = null;
-        if (buffer == null) {
+        PttCapture capture = pttCapture;
+        pttCapture = null;
+        if (capture == null) {
             return new byte[0];
         }
-        synchronized (buffer) {
-            return buffer.toByteArray();
+        synchronized (capture) {
+            return capture.audio.toByteArray();
         }
     }
 
@@ -154,7 +153,7 @@ public final class AudioCaptureService {
         attemptCleanup("asr.audio.ptt_stop_failed", audioBridge::stopRecording);
         attemptCleanup("asr.audio.stream_stop_failed", audioBridge::stopStreamRecording);
         speechSegmenter.reset();
-        pttBuffer = null;
+        pttCapture = null;
     }
 
     public void releaseHardware() {
@@ -171,24 +170,24 @@ public final class AudioCaptureService {
     }
 
     /** Appends up to the utterance cap, reporting the cut once so a truncated hold is not read as a dead microphone. */
-    private void appendCapped(ByteArrayOutputStream buffer, byte[] chunk) {
+    private void appendCapped(PttCapture capture, byte[] chunk) {
         int limit = maxUtteranceSeconds.getAsInt() * BYTES_PER_SECOND;
         if (limit <= 0) {
             // No configured limit: the whole hold is kept, which is the product default.
-            synchronized (buffer) {
-                buffer.write(chunk, 0, chunk.length);
+            synchronized (capture) {
+                capture.audio.write(chunk, 0, chunk.length);
             }
             return;
         }
-        synchronized (buffer) {
-            int room = Math.max(0, limit - buffer.size());
+        synchronized (capture) {
+            int room = Math.max(0, limit - capture.audio.size());
             int write = Math.min(room, chunk.length);
             if (write > 0) {
-                buffer.write(chunk, 0, write);
+                capture.audio.write(chunk, 0, write);
             }
             // Either a partial write or a full one still leaves part of the hold unrecorded; say so once.
-            if (write < chunk.length && !limitReported) {
-                limitReported = true;
+            if (write < chunk.length && !capture.limitReported) {
+                capture.limitReported = true;
                 env.warn("push-to-talk hit the configured "
                         + maxUtteranceSeconds.getAsInt() + "s limit; the rest of the hold was not recorded");
             }
@@ -201,5 +200,10 @@ public final class AudioCaptureService {
 
     private boolean isCurrentGeneration(long generation) {
         return captureGeneration.get() == generation;
+    }
+
+    private static final class PttCapture {
+        private final ByteArrayOutputStream audio = new ByteArrayOutputStream();
+        private boolean limitReported;
     }
 }

@@ -412,15 +412,18 @@ class AudioCaptureServiceTest {
         AudioCaptureService service = new AudioCaptureService(bridge, env,
                 com.rheinmetal.tianshu.intake.recognition.AsrSpeechSegmenter.disabled(), () -> 30);
 
-        service.startPttCapture();
-        // 30 seconds of 16 kHz mono 16-bit audio is 960 000 bytes; push twice that.
-        for (int burst = 0; burst < 4; burst++) {
-            bridge.push(new byte[480_000]);
+        for (int turn = 0; turn < 2; turn++) {
+            service.startPttCapture();
+            // 30 seconds of 16 kHz mono 16-bit audio is 960 000 bytes; push twice that.
+            for (int burst = 0; burst < 4; burst++) {
+                bridge.push(new byte[480_000]);
+            }
+            byte[] captured = service.stopPttCapture();
+            assertEquals(960_000, captured.length, "a configured limit is a hard bound");
         }
-        byte[] captured = service.stopPttCapture();
 
-        assertEquals(960_000, captured.length, "a configured limit is a hard bound");
-        org.junit.jupiter.api.Assertions.assertTrue(env.warnings.stream().anyMatch(line -> line.contains("configured")),
+        assertEquals(2, env.warnings.size(), "each truncated turn must report its own cut");
+        org.junit.jupiter.api.Assertions.assertTrue(env.warnings.stream().allMatch(line -> line.contains("configured")),
                 "a cut must be reported, or it looks like a dead microphone: " + env.warnings);
     }
 
