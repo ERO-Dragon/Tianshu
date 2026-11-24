@@ -64,10 +64,16 @@ public final class ToolCallClient implements ToolTransport {
         ConnectionToolChannel.fail(requestId, codeOf(errorCode), message);
     }
 
-    /** The client left the server; server tools become unreachable and their declarations are withdrawn. */
+    /**
+     * The client left the server; server tools become unreachable and their declarations are withdrawn.
+     *
+     * <p>Pending calls belong to the connection that just closed: they are ended here with {@code UNAVAILABLE} instead of
+     * waiting out their timeouts, which kept the previous server's work holding this caller's concurrency slots.</p>
+     */
     public void onDisconnect() {
         catalogReceived.set(false);
         ServerToolDeclarations.deactivateAll();
+        ConnectionToolChannel.abandonConnection("the connection to that server ended");
     }
 
     private static ToolError codeOf(String code) {

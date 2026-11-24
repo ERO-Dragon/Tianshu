@@ -64,7 +64,8 @@ public final class ProtocolRuntimePolicy {
      * Bytes of retained payload bodies the history may hold; zero means no byte limit.
      *
      * <p>The age rule alone is not a memory rule: half an hour of synthesized sentences is a hundred megabytes. The
-     * default is 32 MiB — enough for recent audio to be inspected or replayed, small enough not to accumulate.</p>
+     * default is 8 MiB: the history is a trace, not a media store, so it keeps the last few utterances for inspection
+     * and drops the rest long before the age rule would.</p>
      */
     public long maxRetainedPayloadBytes() {
         return maxRetainedPayloadBytes;
@@ -78,7 +79,7 @@ public final class ProtocolRuntimePolicy {
         private long retainedEnvelopeMillis = 30L * 60L * 1000L;
         private int retentionSweepInterval = 1024;
         private int maxRetainedTraces = 8192;
-        private long maxRetainedPayloadBytes = 32L * 1024L * 1024L;
+        private long maxRetainedPayloadBytes = 8L * 1024L * 1024L;
 
         private Builder() {
         }

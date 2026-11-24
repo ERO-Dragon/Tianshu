@@ -50,6 +50,17 @@ public final class ConnectionToolChannel implements ServerToolChannel {
         TianshuTools.installServerChannel(INSTANCE);
     }
 
+    /**
+     * Ends every call that was waiting on the connection that just closed.
+     *
+     * <p>A call belongs to the connection it was sent on. Left pending, it kept its per-caller slot until its own timeout,
+     * so a quick switch of servers answered {@code BUSY} to the first calls on the new one, and a late packet from the
+     * old server could still complete a request the new one knew nothing about.</p>
+     */
+    public static void abandonConnection(String message) {
+        INSTANCE.abandonAll(message);
+    }
+
     /** Drops the channel and fails every pending call with {@code UNSUPPORTED_SIDE}. */
     public static void uninstall() {
         INSTANCE.failAll(new ToolException(ToolError.UNSUPPORTED_SIDE, "the server connection is closed"));
@@ -164,6 +175,18 @@ public final class ConnectionToolChannel implements ServerToolChannel {
         future.completeExceptionally(new ToolException(ToolError.CANCELLED, "the call was cancelled"));
         notifyServerCancel(requestId, caller);
         return true;
+    }
+
+    private void abandonAll(String message) {
+        String reason = message == null || message.isBlank() ? "the connection ended" : message;
+        for (String requestId : List.copyOf(pending.keySet())) {
+            CompletableFuture<JsonElement> future = pending.remove(requestId);
+            if (future != null) {
+                future.completeExceptionally(new ToolException(ToolError.UNAVAILABLE, reason));
+            }
+        }
+        // Nothing can answer them any more, so their slots go with them rather than expiring later.
+        inFlight.clear();
     }
 
     private static void notifyServerCancel(String requestId, ToolCaller caller) {
