@@ -40,6 +40,7 @@ import com.rheinmetal.tianshu.dubhe.agent.delegate.DubheLlmAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentCompactor;
 import com.rheinmetal.tianshu.dubhe.agent.loop.DubheAgentContextBudget;
 import com.rheinmetal.tianshu.dubhe.agent.skill.DubheSkillRegistry;
+import com.rheinmetal.tianshu.dubhe.agent.skill.book.DubheBookSkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.relay.DubheRelaySkill;
 import com.rheinmetal.tianshu.dubhe.agent.skill.definition.DubheSkillPackageResourceLoader;
 import com.rheinmetal.tianshu.dubhe.agent.skill.shared.DubheSharedSkillReader;
@@ -405,6 +406,8 @@ public final class DubheModule implements TianshuManagedModule {
             skillRegistry.register(packageSkill);
         }
         skillRegistry.register(DubheSharedSkillReader.skill());
+        // 已装模组自带的手册：不联网的第一站，内容和玩家正在跑的版本天然一致。
+        skillRegistry.register(DubheBookSkill.skill());
         skillRegistry.register(new DubheRelaySkill(
                 () -> ToolCaller.agent(DubheModule.MOD_ID, false, assistantSettings.autonomy()),
                 assistantSettings.autonomyConsent(), replyTexts).skill());
