@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.lab;
 
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
+import com.rheinmetal.tianshu.api.assembly.InstalledMods;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -270,6 +272,12 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
             lastError = "debug switch is off";
             return;
         }
+        if (!intakeInstalled()) {
+            // Participants are Intake's vocabulary: registering them into nothing would leave the page claiming a
+            // participant exists, which is the one thing the bench must never do.
+            lastError = "tianshu_intake is not installed; dialogue participants stay disabled";
+            return;
+        }
         List<String> registered = new ArrayList<>();
         StringBuilder errors = new StringBuilder();
         try {
@@ -387,6 +395,18 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
         return texts.hasKey(key) ? texts.text(UiText.key(key)) : key;
     }
 
+    /**
+     * Whether Intake is installed.
+     *
+     * <p>The bench's three dialogue participants are Intake vocabulary: without Intake there is no arbitration to
+     * register them with, and pretending otherwise would make the page show participants that can never be delivered
+     * to. The platform port answers {@code false} when nothing is registered, which is the safe reading.</p>
+     */
+    private static boolean intakeInstalled() {
+        return TianshuRuntimePorts.find(InstalledMods.class)
+                .orElseGet(InstalledMods::none)
+                .isLoaded("tianshu_intake");
+    }
     private static void appendError(StringBuilder errors, String participant, RuntimeException failure) {
         if (errors.length() > 0) {
             errors.append("; ");
