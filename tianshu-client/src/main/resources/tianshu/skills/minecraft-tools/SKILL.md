@@ -10,7 +10,7 @@ description: Minecraft 工具调用说明：一次调用输出什么参数、返
 
 - 工具 id 形如 `tianshu:recipe.query`；
 - 参数是一个 JSON 对象，字段名必须与工具 schema 一致；
-- 返回：成功 `{ "ok": true, "result": { ... } }`，失败 `{ "ok": false, "code": "...", "message": "..." }`；
+- 返回：成功 `{ "ok": true, "result": { ... }, "durationMs": 12 }`，失败 `{ "ok": false, "code": "...", "message": "..." }`；
 - **不要用自然语言代替调用**：说"搬好了"之前，必须真的调过 `container.transfer`；
 - 参数不确定：先调保留工具 `tianshu:tool.catalog` 取 schema，不要猜字段名；
 - 读文档：`tianshu:capability.read`（不带 `id` 列目录；带**工具 id** 读这个工具自己的文档；带技能 id 读技能正文；带 `file` 读参考、长文带 `page`）。
@@ -23,7 +23,7 @@ description: Minecraft 工具调用说明：一次调用输出什么参数、返
 | 合成、熔炉、搬容器、按按钮/开门、放方块、玩家身份说话 | `CONSERVATIVE` | `references/conservative.md` |
 | 传送、天气、时间、给物品、生成实体、广播、经验等 | `FULL` | `references/full.md` |
 
-判断完档位只读那一篇；不要一次把三篇都读进来。
+判断完档位只读那一篇；不要一次把三篇都读进来。单个能力自己的用法在 `tianshu:body-tools` 的 `references/<能力 id>.md`，用 `capability.read` 带能力 id 读。
 
 ## 3. 最小例子
 
@@ -55,6 +55,6 @@ description: Minecraft 工具调用说明：一次调用输出什么参数、返
 
 ## 5. 边界
 
-- `body` 参数只给"有身体"的调用方；天枢没有实体，**不要传**；
+- `body` 参数只给"有身体"的调用方；没有身体就不要传，传了会被拒；
 - 没有"通用写世界"入口；`server.*` 之外不要期望任意世界写入；
 - 档位不够就说做不了，不要绕过权限。
