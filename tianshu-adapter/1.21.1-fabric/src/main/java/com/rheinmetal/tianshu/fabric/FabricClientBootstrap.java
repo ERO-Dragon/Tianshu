@@ -176,6 +176,9 @@ public final class FabricClientBootstrap {
             session.own(audioManager::shutdown);
 
             MainThreadScheduler clientScheduler = new MainThreadScheduler();
+            // A client host service, like the game context beside it: a kernel tool that needs the main thread finds
+            // it here; the assembly's ClientPorts are only for modules.
+            TianshuRuntimePorts.register(com.rheinmetal.tianshu.client.host.ClientScheduler.class, clientScheduler);
             SwingFilePicker clientFilePicker = new SwingFilePicker(clientTexts);
             session.own(clientFilePicker::close);
             UiHost clientUiHost = new UiHost(() -> settingsModule);

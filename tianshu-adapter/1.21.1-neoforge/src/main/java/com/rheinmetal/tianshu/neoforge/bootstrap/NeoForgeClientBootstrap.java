@@ -221,6 +221,10 @@ public final class NeoForgeClientBootstrap {
             ClientSession.Ownership audioOwnership = startingSession.own(audioManager::shutdown);
 
             MainThreadScheduler clientScheduler = new MainThreadScheduler();
+            // The scheduler is a client host service like the game context beside it: a client tool that needs the
+            // main thread (`container.inspect` reads what the player has open) finds it here, not through the assembly,
+            // which a kernel tool never sees.
+            TianshuRuntimePorts.register(com.rheinmetal.tianshu.client.host.ClientScheduler.class, clientScheduler);
             SwingFilePicker clientFilePicker = new SwingFilePicker(clientTexts);
             startingSession.own(clientFilePicker::close);
             UiHost clientUiHost = new UiHost(() -> settingsModule);
