@@ -20,6 +20,10 @@ public final class FabricToolConfig {
     private static final String BLOCK_MACHINE = "block_machine";
     private static final String BODY_ACTIONS = "body_actions";
     private static final String BLOCK_PLACE = "block_place";
+    private static final String COMMAND_RUN = "command_run";
+
+    /** Level an approved command runs with; 0 keeps it a plain player's command. */
+    private static final String COMMAND_PERMISSION_LEVEL = "command_permission_level";
 
     private static final Properties VALUES = new Properties();
 
@@ -30,6 +34,8 @@ public final class FabricToolConfig {
         VALUES.setProperty(BLOCK_MACHINE, "false");
         VALUES.setProperty(BODY_ACTIONS, "false");
         VALUES.setProperty(BLOCK_PLACE, "false");
+        VALUES.setProperty(COMMAND_RUN, "false");
+        VALUES.setProperty(COMMAND_PERMISSION_LEVEL, "0");
     }
 
     private FabricToolConfig() {
@@ -58,6 +64,21 @@ public final class FabricToolConfig {
 
     public static boolean blockInteract() {
         return Boolean.parseBoolean(VALUES.getProperty(BLOCK_INTERACT, "false").trim());
+    }
+
+    /** Whether the assistant may ask to run commands; approval still decides whether one runs. */
+    public static boolean commandRun() {
+        return Boolean.parseBoolean(VALUES.getProperty(COMMAND_RUN, "false").trim());
+    }
+
+    /** The permission level an approved command runs with, clamped to what a command source can carry. */
+    public static int commandPermissionLevel() {
+        String value = VALUES.getProperty(COMMAND_PERMISSION_LEVEL, "0").trim();
+        try {
+            return Math.max(0, Math.min(4, Integer.parseInt(value)));
+        } catch (NumberFormatException unreadable) {
+            return 0;
+        }
     }
 
     public static boolean craftRecipe() {

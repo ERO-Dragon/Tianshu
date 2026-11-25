@@ -220,6 +220,15 @@ public final class ServerToolHandler {
             TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
             TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
             registerBodyTools(ServerActionConfig.BODY_ACTIONS.get(), ServerActionConfig.BLOCK_PLACE.get());
+            // Asking to run a command is allowed to anyone; running it needs an operator's one-shot approval, so the
+            // tool itself is not operator-only — an operator-only tool could never be asked for in the first place.
+            registrations.port(com.rheinmetal.tianshu.api.game.CommandExecutionPort.class,
+                    new com.rheinmetal.tianshu.mc.command.CommandExecutionSource(event.getServer(),
+                            com.rheinmetal.tianshu.api.game.CommandApprovals.shared(),
+                            () -> ServerActionConfig.COMMAND_PERMISSION_LEVEL.get()));
+            registrations.tool(new com.rheinmetal.tianshu.client.tool.CommandRunTool());
+            TianshuTools.setEnabled(com.rheinmetal.tianshu.client.tool.CommandRunTool.ID,
+                    ServerActionConfig.COMMAND_RUN.get());
         });
         // Now that the switch has a table to act on, a reload can keep it honest. The listener lives exactly as long as
         // the session: on a client connected to a server the same config file is loaded, and flipping the state of a
@@ -245,6 +254,8 @@ public final class ServerToolHandler {
         if (modBus != null) {
             modBus.unregister(SWITCH_RELOAD);
         }
+        // An approval belongs to the session that asked for it; the next one must not start pre-approved.
+        com.rheinmetal.tianshu.api.game.CommandApprovals.shared().clear();
         SESSION.stop(event.getServer());
     }
 
@@ -276,6 +287,9 @@ public final class ServerToolHandler {
 
     private static void onRegisterCommands(RegisterCommandsEvent event) {
         BodyCommands.register(event.getDispatcher());
+        // The human half of command.run: only this creates an approval, and it needs permission level 2.
+        com.rheinmetal.tianshu.mc.command.TianshuCommandApprovalCommands.register(event.getDispatcher(),
+                com.rheinmetal.tianshu.api.game.CommandApprovals.shared());
     }
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {

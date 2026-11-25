@@ -182,6 +182,15 @@ public final class FabricServerToolHandler {
             TianshuTools.setEnabled(ContainerTransferTool.ID, FabricToolConfig.containerTransfer());
             TianshuTools.setEnabled(BlockMachineTool.ID, FabricToolConfig.blockMachine());
             registerBodyTools(FabricToolConfig.bodyActions(), FabricToolConfig.blockPlace());
+            // Asking is open to anyone; running needs one operator approval per command, so the tool is not
+            // operator-only — an operator-only tool could never be asked for.
+            registrations.port(com.rheinmetal.tianshu.api.game.CommandExecutionPort.class,
+                    new com.rheinmetal.tianshu.mc.command.CommandExecutionSource(server,
+                            com.rheinmetal.tianshu.api.game.CommandApprovals.shared(),
+                            FabricToolConfig::commandPermissionLevel));
+            registrations.tool(new com.rheinmetal.tianshu.client.tool.CommandRunTool());
+            TianshuTools.setEnabled(com.rheinmetal.tianshu.client.tool.CommandRunTool.ID,
+                    FabricToolConfig.commandRun());
         }));
         ServerPlayNetworking.registerGlobalReceiver(ToolCallRequestPacket.TYPE, (packet, context) ->
                 context.server().execute(() -> respond(context.player(), packet)));
@@ -193,7 +202,11 @@ public final class FabricServerToolHandler {
         });
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> onPlayerLogin(handler.getPlayer()));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> onPlayerLogout(handler.getPlayer()));
-        ServerLifecycleEvents.SERVER_STOPPED.register(SESSION::stop);
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            // An approval belongs to the session that asked for it; the next one must not start pre-approved.
+            com.rheinmetal.tianshu.api.game.CommandApprovals.shared().clear();
+            SESSION.stop(server);
+        });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             ServerTicks.INSTANCE.fire();
             BodyRuntime.current().ifPresent(registry -> {
@@ -202,8 +215,12 @@ public final class FabricServerToolHandler {
                 registry.persistence().tick(server, registry);
             });
         });
-        CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) ->
-                BodyCommands.register(dispatcher));
+        CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> {
+            BodyCommands.register(dispatcher);
+            // The human half of command.run: only this creates an approval, and it needs permission level 2.
+            com.rheinmetal.tianshu.mc.command.TianshuCommandApprovalCommands.register(dispatcher,
+                    com.rheinmetal.tianshu.api.game.CommandApprovals.shared());
+        });
     }
 
     /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */

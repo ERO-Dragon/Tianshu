@@ -34,6 +34,8 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue BLOCK_MACHINE;
     public static final ModConfigSpec.BooleanValue BODY_ACTIONS;
     public static final ModConfigSpec.BooleanValue BLOCK_PLACE;
+    public static final ModConfigSpec.BooleanValue COMMAND_RUN;
+    public static final ModConfigSpec.IntValue COMMAND_PERMISSION_LEVEL;
     public static final ModConfigSpec.ConfigValue<String> AUTONOMY_CEILING;
 
     static {
@@ -75,6 +77,14 @@ public final class ServerActionConfig {
         BLOCK_PLACE = builder
                 .comment("Let the assistant place blocks from the actor's inventory, with vanilla orientation and consumption.")
                 .define("block_place", false);
+        COMMAND_RUN = builder
+                .comment("Let the assistant ASK to run a command. Nothing runs until an operator approves the exact line",
+                        "with /tianshu approve <token>: one token runs one command once.")
+                .define("command_run", false);
+        COMMAND_PERMISSION_LEVEL = builder
+                .comment("The permission level an approved command runs with: 0 = as a plain player (default),",
+                        "2 = what an operator would use, 4 = anything. Raise it only if you mean to.")
+                .defineInRange("command_permission_level", 0, 0, 4);
         builder.pop();
         builder.comment("How much an agent may do on this server, whatever the client configures for itself.")
                 .push("autonomy");

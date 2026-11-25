@@ -23,6 +23,10 @@ import com.rheinmetal.tianshu.api.game.ActorStatusPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectRequest;
 import com.rheinmetal.tianshu.api.game.BlockInspectResult;
+import com.rheinmetal.tianshu.api.game.CommandApprovals;
+import com.rheinmetal.tianshu.api.game.CommandExecutionPort;
+import com.rheinmetal.tianshu.api.game.CommandRequest;
+import com.rheinmetal.tianshu.api.game.CommandResult;
 import com.rheinmetal.tianshu.api.game.BlockBreakPort;
 import com.rheinmetal.tianshu.api.game.BlockBreakRequest;
 import com.rheinmetal.tianshu.api.game.BlockBreakResult;
@@ -51,6 +55,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.projectile.Snowball;
@@ -829,6 +834,76 @@ public final class PlayerSupportGameTests {
         // Every read here completes inline on this thread (server.execute runs the task when it is already the server
         // thread), so the assertions above ran against real answers and the test can end.
         helper.succeed();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void aCommandRunsOnlyAfterAnOperatorApprovesThatExactLine(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        // The source is built with the level an operator would configure; the packaged default is 0 (a plain player),
+        // which would make "time" look like an unknown command rather than a forbidden one.
+        CommandExecutionPort port = new com.rheinmetal.tianshu.mc.command.CommandExecutionSource(
+                helper.getLevel().getServer(), CommandApprovals.shared(), () -> 2);
+        ActorRef actor = ActorRef.player(player.getUUID().toString(), true);
+        ServerLevel level = player.serverLevel();
+
+        // First call: nothing runs, and it says so with a token. A world change here would mean the approval is a
+        // formality.
+        CommandResult asked = awaitCommand(helper, port, actor, CommandRequest.pending("time set day"));
+        if (asked.status() != CommandResult.Status.PENDING_APPROVAL || asked.approvalToken().isBlank()) {
+            helper.fail("the first call did not ask for approval: " + asked);
+            return;
+        }
+
+        // Retrying without the operator's yes must still not run.
+        CommandResult unapproved = awaitCommand(helper, port, actor,
+                CommandRequest.pending("time set day").withApproval(asked.approvalToken()));
+        if (unapproved.status() != CommandResult.Status.REJECTED) {
+            helper.fail("an unapproved token ran the command: " + unapproved);
+            return;
+        }
+
+        CommandApprovals.shared().approve(asked.approvalToken());
+        CommandResult ran = awaitCommand(helper, port, actor,
+                CommandRequest.pending("time set day").withApproval(asked.approvalToken()));
+        if (!ran.ran()) {
+            helper.fail("an approved command did not run: " + ran.status() + " " + ran.message());
+            return;
+        }
+        long dayTime = level.getDayTime() % 24000L;
+        if (dayTime != 1000L) {
+            helper.fail("the command ran but the world did not change: dayTime=" + dayTime);
+            return;
+        }
+
+        // And the token is burned: the same approval cannot run a second command.
+        CommandResult again = awaitCommand(helper, port, actor,
+                CommandRequest.pending("time set day").withApproval(asked.approvalToken()));
+        if (again.status() != CommandResult.Status.REJECTED) {
+            helper.fail("a consumed approval ran again: " + again);
+            return;
+        }
+    }
+
+    private static CommandResult awaitCommand(GameTestHelper helper, CommandExecutionPort port, ActorRef actor,
+                                              CommandRequest request) {
+        AtomicReference<CommandResult> read = new AtomicReference<>();
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        port.run(actor, request).whenComplete((result, error) -> {
+            if (error != null) {
+                refused.set(error);
+                return;
+            }
+            read.set(result);
+        });
+        helper.startSequence()
+                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "command.run"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("running a command failed: " + reasonOf(refused.get()));
+                    }
+                })
+                .thenSucceed();
+        return read.get();
     }
 
     private static ServerPlayer mockPlayer(GameTestHelper helper) {
