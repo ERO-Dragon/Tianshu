@@ -882,28 +882,18 @@ public final class PlayerSupportGameTests {
             helper.fail("a consumed approval ran again: " + again);
             return;
         }
+        helper.succeed();
     }
 
+    /** The port runs on the server thread when it is already there, so this does not need a tick sequence. */
     private static CommandResult awaitCommand(GameTestHelper helper, CommandExecutionPort port, ActorRef actor,
                                               CommandRequest request) {
-        AtomicReference<CommandResult> read = new AtomicReference<>();
-        AtomicReference<Throwable> refused = new AtomicReference<>();
-        port.run(actor, request).whenComplete((result, error) -> {
-            if (error != null) {
-                refused.set(error);
-                return;
-            }
-            read.set(result);
-        });
-        helper.startSequence()
-                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "command.run"))
-                .thenExecute(() -> {
-                    if (refused.get() != null) {
-                        helper.fail("running a command failed: " + reasonOf(refused.get()));
-                    }
-                })
-                .thenSucceed();
-        return read.get();
+        try {
+            return port.run(actor, request).get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception failure) {
+            helper.fail("running a command failed: " + failure);
+            throw new IllegalStateException(failure);
+        }
     }
 
     private static ServerPlayer mockPlayer(GameTestHelper helper) {

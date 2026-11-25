@@ -118,7 +118,7 @@ public final class FabricServerToolHandler {
                         entity.level().getGameRules().getBoolean(GameRules.RULE_KEEPINVENTORY)))
                 .orElse(true));
         // Declarations that cannot work are reported once modules have published; an empty audit logs nothing.
-        ServerLifecycleEvents.SERVER_STARTED.register(server -> com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> com.rheinmetal.tianshu.api.capability.CapabilityDiagnostics
                 .report(problem -> org.slf4j.LoggerFactory.getLogger("tianshu").warn("tianshu: {}", problem)));
         ServerLifecycleEvents.SERVER_STARTING.register(server -> SESSION.start(registrations -> {
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();

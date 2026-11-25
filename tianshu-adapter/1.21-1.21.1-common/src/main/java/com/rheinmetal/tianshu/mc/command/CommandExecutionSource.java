@@ -46,6 +46,11 @@ public final class CommandExecutionSource implements CommandExecutionPort {
 
     @Override
     public CompletableFuture<CommandResult> run(ActorRef actor, CommandRequest request) {
+        // Commands must run on the server thread, but hopping there when we are already there costs a deadlock: a caller
+        // that blocks on the result from the same thread waits for a task queued behind itself.
+        if (server.isSameThread()) {
+            return CompletableFuture.completedFuture(runNow(actor, request));
+        }
         CompletableFuture<CommandResult> result = new CompletableFuture<>();
         server.execute(() -> result.complete(runNow(actor, request)));
         return result;

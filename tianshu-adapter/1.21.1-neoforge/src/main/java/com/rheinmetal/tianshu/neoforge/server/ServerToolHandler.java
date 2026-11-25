@@ -247,7 +247,7 @@ public final class ServerToolHandler {
      */
     private static void onServerStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
         var logger = com.mojang.logging.LogUtils.getLogger();
-        com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.report(problem -> logger.warn("tianshu: {}", problem));
+        com.rheinmetal.tianshu.api.capability.CapabilityDiagnostics.report(problem -> logger.warn("tianshu: {}", problem));
     }
 
     private static void onServerStopping(ServerStoppingEvent event) {
