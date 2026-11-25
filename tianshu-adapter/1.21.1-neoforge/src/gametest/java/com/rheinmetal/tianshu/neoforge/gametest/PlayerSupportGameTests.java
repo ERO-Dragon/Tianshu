@@ -23,6 +23,9 @@ import com.rheinmetal.tianshu.api.game.ActorStatusPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectRequest;
 import com.rheinmetal.tianshu.api.game.BlockInspectResult;
+import com.rheinmetal.tianshu.api.game.BlockBreakPort;
+import com.rheinmetal.tianshu.api.game.BlockBreakRequest;
+import com.rheinmetal.tianshu.api.game.BlockBreakResult;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.CraftPort;
@@ -697,6 +700,61 @@ public final class PlayerSupportGameTests {
                 .thenExecute(() -> {
                     if (refused.get() != null) {
                         helper.fail("listing craftable recipes failed: " + reasonOf(refused.get()));
+                    }
+                })
+                .thenSucceed();
+        return read.get();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void breakingABlockAsAPlayerRemovesIt(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        BlockPos pos = new BlockPos(2, 1, 2);
+        helper.setBlock(pos, Blocks.STONE);
+        BlockPos at = helper.absolutePos(pos);
+        BlockBreakPort port = port(BlockBreakPort.class, helper);
+        ActorRef actor = ActorRef.player(player.getUUID().toString(), true);
+
+        // Out of reach first: a refusal must not look like "there was nothing there".
+        BlockPos far = helper.absolutePos(new BlockPos(40, 1, 40));
+        BlockBreakResult tooFar = awaitBreak(helper, port, actor, new BlockBreakRequest(far.getX(), far.getY(), far.getZ()));
+        if (tooFar.broken()) {
+            helper.fail("a block 50 blocks away was broken");
+            return;
+        }
+        if (tooFar.message().isBlank()) {
+            helper.fail("an out-of-reach break gave no reason");
+            return;
+        }
+
+        BlockBreakResult broken = awaitBreak(helper, port, actor, new BlockBreakRequest(at.getX(), at.getY(), at.getZ()));
+        if (!broken.broken()) {
+            helper.fail("the break was refused: " + broken.message());
+            return;
+        }
+        if (!"minecraft:stone".equals(broken.blockId())) {
+            helper.fail("broke " + broken.blockId() + " instead of stone");
+            return;
+        }
+        helper.assertBlockNotPresent(Blocks.STONE, pos);
+    }
+
+    private static BlockBreakResult awaitBreak(GameTestHelper helper, BlockBreakPort port, ActorRef actor,
+                                               BlockBreakRequest request) {
+        AtomicReference<BlockBreakResult> read = new AtomicReference<>();
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        port.breakBlock(actor, request).whenComplete((result, error) -> {
+            if (error != null) {
+                refused.set(error);
+                return;
+            }
+            read.set(result);
+        });
+        helper.startSequence()
+                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "block.break"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("breaking failed: " + reasonOf(refused.get()));
                     }
                 })
                 .thenSucceed();
