@@ -68,7 +68,26 @@ public final class CapabilityExposure {
             }
             rows.add(descriptor);
         }
-        return List.copyOf(rows);
+        // A manual whose capabilities are all invisible here is not this caller's business either: it would describe
+        // tools the caller cannot call. A general manual and one that declares no coverage are kept — the first is
+        // about the format, the second does not claim any capability in particular.
+        java.util.Set<CapabilityId> visibleCapabilities = new java.util.HashSet<>();
+        for (CapabilityDescriptor row : rows) {
+            if (!CapabilityKind.SKILL.equals(row.kind())) {
+                visibleCapabilities.add(row.id());
+            }
+        }
+        List<CapabilityDescriptor> kept = new ArrayList<>(rows.size());
+        for (CapabilityDescriptor row : rows) {
+            if (CapabilityKind.SKILL.equals(row.kind()) && !SkillCoverage.isGeneral(row)) {
+                java.util.Set<CapabilityId> covered = SkillCoverage.coversOf(row);
+                if (!covered.isEmpty() && covered.stream().noneMatch(visibleCapabilities::contains)) {
+                    continue;
+                }
+            }
+            kept.add(row);
+        }
+        return List.copyOf(kept);
     }
 
     private static boolean reachable(CapabilityDescriptor descriptor, ToolSide side) {

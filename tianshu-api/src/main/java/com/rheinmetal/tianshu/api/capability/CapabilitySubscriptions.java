@@ -52,22 +52,6 @@ public final class CapabilitySubscriptions {
         RULES.clear();
     }
 
-
-    /**
-     * Hands every problem {@link #audit()} found to {@code warn}; nothing to report says nothing.
-     *
-     * <p>This exists so the audit has a caller in production: a diagnostic nobody asks for is the same as no
-     * diagnostic, and a module subscribing to a provider that shares nothing otherwise just sees an empty list.</p>
-     */
-    public static synchronized void report(java.util.function.Consumer<String> warn) {
-        if (warn == null) {
-            return;
-        }
-        for (String problem : audit()) {
-            warn.accept(problem);
-        }
-    }
-
     /**
      * Sentences describing declarations that cannot work.
      *

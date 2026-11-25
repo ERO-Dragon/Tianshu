@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.api.capability;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import org.junit.jupiter.api.AfterEach;
@@ -44,15 +45,37 @@ class SkillCoverageManyToManyTest {
     }
 
     @Test
-    void oneCapabilityCanHaveSeveralManuals() {
+    void twoManualsForOneCapabilityConflictAndTheFirstKeepsIt() {
         CapabilityDescriptor mine = capability("tianshu:body.mine");
-        skill("test:mining", "tianshu:body.mine");
-        skill("test:safety", "tianshu:body.mine");
+        CapabilityDescriptor first = skill("test:mining", "tianshu:body.mine");
+        CapabilityDescriptor second = skill("test:safety", "tianshu:body.mine");
 
-        String block = CapabilityExposure.describe(List.of(mine, CapabilityCatalog.find(CapabilityId.parse("test:mining"))
-                .orElseThrow(), CapabilityCatalog.find(CapabilityId.parse("test:safety")).orElseThrow()));
+        // One capability gets one specific manual: two manuals for the same tool leave the reader choosing which to
+        // believe, and the second author's work silently disappears from the list either way.
+        List<String> conflicts = SkillCoverage.conflicts(List.of(first, second, mine));
+        assertEquals(1, conflicts.size(), conflicts.toString());
+        assertTrue(conflicts.get(0).contains("test:mining") && conflicts.get(0).contains("test:safety"),
+                conflicts.get(0));
 
-        assertTrue(block.contains("test:mining") && block.contains("test:safety"), block);
+        String block = CapabilityExposure.describe(List.of(mine, first, second));
+        assertTrue(block.contains("how to use: test:mining"), block);
+        assertFalse(block.contains("how to use: test:mining, test:safety"),
+                "the losing claim must not be listed on the row: " + block);
+    }
+
+    @Test
+    void aManualWhoseCapabilitiesAreAllInvisibleIsHidden() {
+        // The skill row is open by its provider, but the only capability it documents belongs to a module that shares
+        // nothing with this consumer.
+        skill("test:orphan", "modx:body.mine");
+        register("tianshu:body.visible", CapabilityKind.RESOURCE, new JsonObject());
+
+        var exposed = CapabilityExposure.exposed(ToolCaller.agent(true), ToolSide.CLIENT).stream()
+                .map(row -> row.id().toString()).toList();
+
+        assertTrue(exposed.contains("tianshu:body.visible"), exposed.toString());
+        assertFalse(exposed.contains("test:orphan"),
+                "a manual for nothing this caller can use is not its business: " + exposed);
     }
 
     @Test
@@ -102,6 +125,18 @@ class SkillCoverageManyToManyTest {
         int capabilityAt = block.indexOf("- tianshu:body.mine");
         int manualAt = block.indexOf("- test:manual");
         assertTrue(capabilityAt >= 0 && manualAt > capabilityAt, block);
+    }
+
+    @Test
+    void aCoverageLineThatNamesNothingIsReported() {
+        CapabilityDescriptor manual = skill("test:typo", "tianshu:body.mien");
+        register("tianshu:body.mine", CapabilityKind.RESOURCE, new JsonObject());
+
+        List<String> unknown = SkillCoverage.unknown(CapabilityCatalog.snapshot().descriptors());
+
+        assertEquals(1, unknown.size(), unknown.toString());
+        assertTrue(unknown.get(0).contains("tianshu:body.mien"), "the typo itself must be named: " + unknown);
+        assertTrue(manual.id().toString().contains("typo"));
     }
 
     private CapabilityDescriptor capability(String id) {

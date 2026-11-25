@@ -34,7 +34,7 @@ class CapabilitySubscriptionReportTest {
         CapabilitySubscriptions.declare("changsui", CapabilitySubscription.atomicFrom("modA"));
 
         List<String> reported = new ArrayList<>();
-        CapabilitySubscriptions.report(reported::add);
+        CapabilityDiagnostics.report(reported::add);
 
         assertEquals(1, reported.size(), reported.toString());
         assertTrue(reported.get(0).contains("modA") && reported.get(0).contains("shares nothing"), reported.get(0));
@@ -46,7 +46,7 @@ class CapabilitySubscriptionReportTest {
         CapabilitySubscriptions.declare("changsui", CapabilitySubscription.atomicFrom("modA"));
 
         List<String> reported = new ArrayList<>();
-        CapabilitySubscriptions.report(reported::add);
+        CapabilityDiagnostics.report(reported::add);
 
         assertTrue(reported.isEmpty(), reported.toString());
     }
@@ -56,7 +56,7 @@ class CapabilitySubscriptionReportTest {
         register("test:base", "tianshu", false);
 
         List<String> reported = new ArrayList<>();
-        CapabilitySubscriptions.report(reported::add);
+        CapabilityDiagnostics.report(reported::add);
 
         assertTrue(reported.isEmpty(), "the base's own rows never need a subscription: " + reported);
     }
@@ -65,7 +65,7 @@ class CapabilitySubscriptionReportTest {
     void aNullSinkIsNotACrash() {
         CapabilitySubscriptions.declare("changsui", CapabilitySubscription.atomicFrom("modGhost"));
 
-        CapabilitySubscriptions.report(null);
+        CapabilityDiagnostics.report(null);
     }
 
     private void register(String id, String provider, boolean open) {

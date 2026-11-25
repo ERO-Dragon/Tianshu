@@ -128,7 +128,10 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
                         if (text.isBlank() && envelope.has("data")) {
                             text = envelope.get("data").toString();
                         }
-                        return CompletableFuture.completedFuture(new Reply(text));
+                        // A manual that documents several capabilities may describe ones this caller cannot use. Saying
+                        // which of them it does have is the difference between "the manual lied" and "that part does
+                        // not apply here yet" — and it costs one line rather than rewriting the prose per reader.
+                        return CompletableFuture.completedFuture(new Reply(text + availableSubset(descriptor.get(), caller, side)));
                     }
                     String code = envelope.has("code") ? envelope.get("code").getAsString() : "FAILED";
                     String message = envelope.has("message") ? envelope.get("message").getAsString() : code;
@@ -137,5 +140,34 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
                                     code, com.rheinmetal.tianshu.api.tool.ToolError.FAILED),
                             code + ": " + message));
                 });
+    }
+
+    /**
+     * What of this manual actually applies here: the documented capabilities the caller can see.
+     *
+     * <p>Empty (and therefore silent) for a skill that documents no particular capability, because then everything
+     * in it applies or none of it does 鈥?there is nothing to enumerate.</p>
+     */
+    private static String availableSubset(CapabilityDescriptor descriptor, ToolCaller caller, ToolSide side) {
+        java.util.Set<com.rheinmetal.tianshu.api.capability.CapabilityId> documented =
+                com.rheinmetal.tianshu.api.capability.SkillCoverage.coversOf(descriptor);
+        if (documented.isEmpty()) {
+            return "";
+        }
+        java.util.Set<com.rheinmetal.tianshu.api.capability.CapabilityId> visible = new java.util.LinkedHashSet<>();
+        for (CapabilityDescriptor row : CapabilityExposure.exposed(caller, side)) {
+            visible.add(row.id());
+        }
+        java.util.List<String> applicable = new java.util.ArrayList<>();
+        for (com.rheinmetal.tianshu.api.capability.CapabilityId capability : documented) {
+            if (visible.contains(capability)) {
+                applicable.add(capability.toString());
+            }
+        }
+        if (applicable.isEmpty()) {
+            return "";
+        }
+        return "\\n\\n---\\n" + "Of the " + documented.size() + " capabilities this documents, you can use: "
+                + String.join(", ", applicable);
     }
 }

@@ -94,16 +94,71 @@ public final class SkillCoverage {
         return manuals;
     }
 
-    /** Skill id → the capabilities it covers, from the rows given. */
+    /**
+     * Skill id → the capabilities it covers, from the rows given.
+     *
+     * <p>One specific manual per capability: when two skills claim the same capability the first one in the given
+     * order keeps it and the later claim is dropped, because two manuals for one capability leave the reader choosing
+     * which to believe. The dropped claims are reported by {@link #conflicts(List)} rather than silently lost.</p>
+     */
     public static Map<CapabilityId, Set<CapabilityId>> index(List<CapabilityDescriptor> rows) {
         Map<CapabilityId, Set<CapabilityId>> index = new LinkedHashMap<>();
+        java.util.Set<CapabilityId> claimed = new java.util.LinkedHashSet<>();
         for (CapabilityDescriptor row : rows) {
-            Set<CapabilityId> covered = coversOf(row);
+            java.util.Set<CapabilityId> covered = new java.util.LinkedHashSet<>();
+            for (CapabilityId capability : coversOf(row)) {
+                if (claimed.add(capability)) {
+                    covered.add(capability);
+                }
+            }
             if (!covered.isEmpty()) {
                 index.put(row.id(), covered);
             }
         }
         return index;
+    }
+
+    /**
+     * Coverage lines that name nothing: a manual for a capability no module publishes.
+     *
+     * <p>Silent typos are the failure this catches. An id that does not resolve documents nothing, and nothing about
+     * the result says so 鈥?the row simply never appears next to the capability the author meant.</p>
+     */
+    public static List<String> unknown(List<CapabilityDescriptor> rows) {
+        java.util.Set<CapabilityId> published = new java.util.LinkedHashSet<>();
+        for (CapabilityDescriptor row : rows) {
+            published.add(row.id());
+        }
+        List<String> problems = new java.util.ArrayList<>();
+        for (CapabilityDescriptor row : rows) {
+            for (CapabilityId capability : coversOf(row)) {
+                if (!published.contains(capability)) {
+                    problems.add(row.id() + " documents " + capability + ", which no module publishes");
+                }
+            }
+        }
+        return List.copyOf(problems);
+    }
+
+    /**
+     * Declarations that cannot be honoured, as sentences: a capability claimed by more than one manual.
+     *
+     * <p>Reported rather than thrown: rejecting the registration would take a whole skill down for one wrong line,
+     * and the platform can still say precisely which capability is contended.</p>
+     */
+    public static List<String> conflicts(List<CapabilityDescriptor> rows) {
+        Map<CapabilityId, CapabilityId> owner = new LinkedHashMap<>();
+        List<String> problems = new java.util.ArrayList<>();
+        for (CapabilityDescriptor row : rows) {
+            for (CapabilityId capability : coversOf(row)) {
+                CapabilityId first = owner.putIfAbsent(capability, row.id());
+                if (first != null && !first.equals(row.id())) {
+                    problems.add(capability + " is documented by both " + first + " and " + row.id()
+                            + "; " + first + " keeps it");
+                }
+            }
+        }
+        return List.copyOf(problems);
     }
 
 
