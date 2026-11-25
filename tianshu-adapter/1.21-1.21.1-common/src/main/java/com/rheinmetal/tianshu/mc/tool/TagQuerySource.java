@@ -17,7 +17,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The tag source behind {@code tianshu:tag.query}. Item and block tags are synced to the client, so the lookup is
+ * The tag source behind {@code minecraft:tag.query}. Item and block tags are synced to the client, so the lookup is
  * local; the work runs on the client thread because the registries belong to the running game.
  */
 public final class TagQuerySource implements TagQueryPort {

@@ -27,7 +27,7 @@ public final class TianshuGameTests {
     /** A 3x3 stone platform: {@code data/tianshu_ferry/structure/plaza.nbt}, the fixture every test stands on. */
     private static final String PLAZA = "plaza";
     /** The one tool whose registration is a fact about the server session, not about any module being installed. */
-    private static final ToolId SERVER_TOOL = ToolId.parse("tianshu:server.xp");
+    private static final ToolId SERVER_TOOL = ToolId.parse("minecraft:server.xp");
 
     /**
      * The harness can run at all: a server world exists, the session installed its tool channel, and a server tool is
