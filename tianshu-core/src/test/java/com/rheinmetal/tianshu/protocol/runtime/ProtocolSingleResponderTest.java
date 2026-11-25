@@ -21,6 +21,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -34,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ProtocolSingleResponderTest {
 
     @Test
-    void aRequestWithTwoProvidersIsAnsweredByTheFirstOneUnderTheOriginalId() {
+    void aSecondDeclarerIsRefusedAndTheOwnerStillAnswersUnderTheOriginalId() {
         ProtocolRuntime runtime = new ProtocolRuntime(Runnable::run, ProtocolRuntimePolicy.defaults());
         List<String> firstHandled = new ArrayList<>();
         List<String> secondHandled = new ArrayList<>();
@@ -45,10 +46,13 @@ class ProtocolSingleResponderTest {
             context.complete(envelope.envelopeId());
             firstHandledRequest.countDown();
         });
-        runtime.registerModule(module("test.second"), (envelope, context) -> {
-            secondHandled.add(envelope.envelopeId());
-            context.complete(envelope.envelopeId());
-        });
+        IllegalStateException refused = assertThrows(IllegalStateException.class,
+                () -> runtime.registerModule(module("test.second"), (envelope, context) -> {
+                    secondHandled.add(envelope.envelopeId());
+                    context.complete(envelope.envelopeId());
+                }));
+        assertTrue(refused.getMessage().contains("test.shared"), "the refusal names the capability: " + refused.getMessage());
+        assertTrue(refused.getMessage().contains("test.first"), "the refusal names its owner: " + refused.getMessage());
 
         runtime.submit(command("caller-request-1"));
 

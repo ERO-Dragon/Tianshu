@@ -29,19 +29,21 @@ class ModuleRuntimeAccessTest {
     void exposesRegistrationCountsWithoutExposingRegistries() {
         try (ProtocolRuntime runtime = ProtocolBootstrap.create(Runnable::run)) {
             ModuleRuntimeAccess access = runtime;
-            CapabilityDescriptor capability = capability("TEST.SHARED");
-            access.registerModule(module("module.first", List.of(capability)), (envelope, context) -> {
+            // One capability per module: a capability id belongs to one module, so two declarers of one id would be
+            // refused rather than counted. What this test is about is the counts, not the ownership rule.
+            access.registerModule(module("module.first", List.of(capability("TEST.FIRST"))), (envelope, context) -> {
             });
-            access.registerModule(module("module.second", List.of(capability)), (envelope, context) -> {
+            access.registerModule(module("module.second", List.of(capability("TEST.SECOND"))), (envelope, context) -> {
             });
             TopicSubscriptionDescriptor subscription = topic("TEST.TOPIC");
             access.subscribeTopic(module("module.first", List.of()), subscription, (envelope, context) -> {
             });
 
-            assertEquals(2, access.capabilityProviderCount("TEST.SHARED"));
+            assertEquals(1, access.capabilityProviderCount("TEST.FIRST"));
+            assertEquals(1, access.capabilityProviderCount("TEST.SECOND"));
             assertEquals(
-                    List.of("module.first", "module.second"),
-                    access.capabilityRegistrations("TEST.SHARED").stream()
+                    List.of("module.first"),
+                    access.capabilityRegistrations("TEST.FIRST").stream()
                             .map(ProtocolCapabilityRegistration::moduleId)
                             .toList()
             );

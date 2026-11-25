@@ -122,6 +122,8 @@ public final class ProtocolRuntime implements ModuleRuntimeAccess, RuntimeInterr
     }
 
     public void registerModule(ModuleDescriptor descriptor, com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler handler) {
+        // Ask first: a declaration that cannot be installed must not leave its module recorded as if it had been.
+        capabilityRegistry.requireAvailable(descriptor);
         moduleRegistry.register(descriptor);
         capabilityRegistry.register(descriptor, handler);
     }

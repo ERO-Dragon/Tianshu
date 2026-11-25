@@ -14,6 +14,32 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CapabilityRegistry {
     private final Map<String, List<HandlerRegistration>> capabilityHandlers = new ConcurrentHashMap<>();
 
+    /**
+     * Refuses a declaration whose capability id another module already owns.
+     *
+     * <p>A capability id names one service. Letting a second module claim it either shadows the first (silently, which
+     * looks like a successful integration until nothing arrives) or splits one submission across two handlers, and
+     * neither is something a caller can be expected to reason about. The same module re-declaring its own capability
+     * stays allowed: that is how a module replaces its own handler.</p>
+     *
+     * @throws IllegalStateException when another module already declared one of these capability ids
+     */
+    public void requireAvailable(ModuleDescriptor moduleDescriptor) {
+        for (CapabilityDescriptor capability : moduleDescriptor.capabilities()) {
+            List<HandlerRegistration> existing = capabilityHandlers.get(capability.capabilityId());
+            if (existing == null) {
+                continue;
+            }
+            for (HandlerRegistration current : existing) {
+                String owner = current.moduleDescriptor().moduleId();
+                if (!owner.equals(moduleDescriptor.moduleId())) {
+                    throw new IllegalStateException("capability " + capability.capabilityId()
+                            + " is already declared by " + owner);
+                }
+            }
+        }
+    }
+
     public void register(ModuleDescriptor moduleDescriptor, EnvelopeHandler handler) {
         for (CapabilityDescriptor capability : moduleDescriptor.capabilities()) {
             HandlerRegistration registration = new HandlerRegistration(moduleDescriptor, capability, handler);
