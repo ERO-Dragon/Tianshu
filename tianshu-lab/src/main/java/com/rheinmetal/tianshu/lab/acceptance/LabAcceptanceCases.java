@@ -24,9 +24,14 @@ import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
 
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.client.host.game.GamePlayerPose;
 import com.rheinmetal.tianshu.client.host.game.GameInventoryEntry;
 import com.rheinmetal.tianshu.model.ModelDownloadHttpClient;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
@@ -47,7 +52,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CountDownLatch;
-import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -79,6 +83,8 @@ public final class LabAcceptanceCases {
     private static final String CODE = "code";
     private static final String MESSAGE = "message";
     private static final long CALL_TIMEOUT_SECONDS = 5L;
+    /** The type this bench declares in {@code META-INF/tianshu/body_types.json}; the namespace is the module's. */
+    private static final String DECLARED_BODY_TYPE = LabModuleRegistration.MOD_ID + ":acceptance_orb";
 
     private LabAcceptanceCases() {
     }
@@ -119,6 +125,7 @@ public final class LabAcceptanceCases {
         cases.add(theGameContextCapturesDoNotThrow());
         cases.add(aPlayerCommandsTheBodyItOwns());
         cases.add(aClientModuleCannotDriveAnNpc());
+        cases.add(aModuleSpawnsAndReleasesTheTypeItDeclared());
         cases.add(aBodyRefusesAnUnregisteredBody());
         cases.add(theAdapterTakesTheBodyTypeDeclarationsAtStartup());
         cases.add(anActionReachesTheServerAndComesBackExecuted());
@@ -1540,6 +1547,81 @@ public final class LabAcceptanceCases {
                 unregister.run();
             }
         });
+    }
+
+    /**
+     * A module brings a body of the type it declared into the world, and takes it out again.
+     *
+     * <p>This is the whole outside-module story for entities in one case: the type comes from the module's own
+     * {@code body_types.json}, the spawn goes through the server port, the record is the platform's, and only the module
+     * that asked for it may release it. Needs the authoritative side, so a client connected to a server skips it.</p>
+     */
+    private static AcceptanceCase aModuleSpawnsAndReleasesTheTypeItDeclared() {
+        final String id = "ACC-ENT-2";
+        final String title = "a module spawns a body of the type it declared and releases it again";
+        return AcceptanceCase.of(id, title, () -> {
+            EntitySpawnPort port = TianshuRuntimePorts.find(EntitySpawnPort.class).orElse(null);
+            if (port == null) {
+                return AcceptanceOutcome.skip(id, title,
+                        "no spawn port on this side: the port belongs to the authoritative side of a session");
+            }
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is nowhere to put a body");
+            }
+            EntityActor actor;
+            try {
+                actor = port.spawn(LabModuleRegistration.MOD_ID, DECLARED_BODY_TYPE,
+                        new ActorPosition(pose.dimensionId(), pose.x(), pose.y() + 1.0D, pose.z()), false)
+                        .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (Exception refused) {
+                return AcceptanceOutcome.fail(id, title, "the spawn was refused: " + reasonOf(refused));
+            }
+            try {
+                if (!LabModuleRegistration.MOD_ID.equals(actor.ownerModule())) {
+                    return AcceptanceOutcome.fail(id, title,
+                            "the body was attributed to '" + actor.ownerModule() + "' instead of the asking module");
+                }
+                if (EntityActors.resolve(actor.id()).isEmpty()) {
+                    return AcceptanceOutcome.fail(id, title,
+                            "the spawned body is not resolvable through the provider registry");
+                }
+                // Ownership is the rule, not a convention: another module naming this id must be refused.
+                String foreign = releaseRefusal(port, LabModuleRegistration.MOD_ID + ".intruder", actor.id());
+                if (foreign == null || !foreign.contains(BodyFailure.CONTROLLER_MISMATCH.id())) {
+                    return AcceptanceOutcome.fail(id, title,
+                            "a foreign module's release was not refused with " + BodyFailure.CONTROLLER_MISMATCH.id()
+                                    + ": " + foreign);
+                }
+                port.release(LabModuleRegistration.MOD_ID, actor.id()).get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                if (EntityActors.resolve(actor.id()).isPresent()) {
+                    return AcceptanceOutcome.fail(id, title, "the released body is still resolvable");
+                }
+                return AcceptanceOutcome.pass(id, title,
+                        "spawned a declared type, refused a foreign release, released its own");
+            } finally {
+                // A failing assertion above must not leave the carrier behind for the next run to stumble over.
+                releaseRefusal(port, LabModuleRegistration.MOD_ID, actor.id());
+            }
+        });
+    }
+
+    /** The refusal message of one release attempt, or null when it was allowed (in which case it already happened). */
+    private static String releaseRefusal(EntitySpawnPort port, String moduleId, String bodyId) {
+        try {
+            port.release(moduleId, bodyId).get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return null;
+        } catch (Exception refused) {
+            return reasonOf(refused);
+        }
+    }
+
+    private static String reasonOf(Throwable failure) {
+        Throwable cause = failure;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return String.valueOf(cause.getMessage());
     }
 
     /**
