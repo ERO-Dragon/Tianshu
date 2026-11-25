@@ -139,13 +139,9 @@ public final class TianshuNeoForge {
         TianshuRuntimePorts.register(ToolTransport.class, toolCalls);
         modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
                 TianshuNetwork.register(registerPayloads, toolCalls));
-        // Server-side action switches: independent of the client config, off by default, reloaded with the server.
-        // A reloaded switch must change what the catalogue advertises, or the client keeps offering a dead tool.
-        modEventBus.addListener((net.neoforged.fml.event.config.ModConfigEvent.Reloading event) ->
-                com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(action -> {
-                    var value = com.rheinmetal.tianshu.neoforge.config.ServerActionConfig.switchFor(action);
-                    return value != null && value.get();
-                }));
+        // Server-side action switches: independent of the client config, off by default. The side that registers those
+        // tools applies them, including on a reload — this class is created on clients too, and a client that merely
+        // loaded the server's config file must not try to flip a switch for a tool it does not have.
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER,
                 com.rheinmetal.tianshu.neoforge.config.ServerActionConfig.SPEC);
         // The collector is registered on both distributions: in single player the integrated server lives in this
@@ -153,7 +149,7 @@ public final class TianshuNeoForge {
         // act on {@code ServerPlayer}, so on a client connected to a remote server they simply never fire.
         serverCollector = new GameFactCollector();
         serverCollector.register(NeoForge.EVENT_BUS);
-        com.rheinmetal.tianshu.neoforge.server.ServerToolHandler.register(NeoForge.EVENT_BUS);
+        com.rheinmetal.tianshu.neoforge.server.ServerToolHandler.register(NeoForge.EVENT_BUS, modEventBus);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             NeoForge.EVENT_BUS.addListener(
                     (net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut event) ->

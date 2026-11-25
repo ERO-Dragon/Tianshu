@@ -141,33 +141,49 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
-// A development run installs only this adapter: a feature module is discovered by its own manifest, so a
-// development run picks it up by its jar in `run/mods`, not by a classpath entry. That is why this task has no
-// module-set logic of its own here, unlike the NeoForge adapter, whose `mods {}` block resolves source sets.
-
-// Development runs from the adapter load the kernel alone; a full assembly is started from the repository root, which
-// is where every feature module is meant to be exercised together. The bench is NeoForge-only, so it is absent here.
-def devFeatureJars = [':tianshu-intake', ':tianshu-echo', ':tianshu-weaving', ':tianshu-dubhe', ':tianshu-presence'].collect { path ->
-    project(path).tasks.named('jar').flatMap { it.archiveFile }
+// A development run installs this adapter plus the feature modules it names: a module is discovered by its own
+// manifest, so on Fabric a feature reaches the run as its jar in `run/mods`, not as a classpath entry.
+//
+// One composition rule, the same property the NeoForge adapter reads: `-PfeatureMods=intake,echo,...,lab` states
+// exactly what the run installs, and absent means the kernel alone. It used to be implicit — "anything a previous
+// run left in run/mods" — and the shelf was never actually cleaned (the delete patterns said `tianshu-intake*` while
+// the jars are `tianshu_intake-*.jar`), so an "adapter only" run quietly kept every feature and a stale bench from a
+// month earlier. The module set is now a stated input, and the bench is a peer of the features rather than a jar
+// that happened to be lying around.
+def devModules = ['intake', 'echo', 'weaving', 'dubhe', 'presence', 'lab']
+def devFeatureMods = {
+    def explicit = providers.gradleProperty('featureMods').getOrNull()
+    if (explicit != null) {
+        return explicit.split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+    }
+    // A full assembly started from the repository root brings every module that ships, plus the bench.
+    def fullAssembly = gradle.startParameter.taskNames.any { name ->
+        name == ':runClient' || name == ':runServer' || name == ':runClientFabric' || name == ':runServerFabric'
+    }
+    return fullAssembly ? devModules : []
+}()
+def unknownModules = devFeatureMods - devModules
+if (!unknownModules.isEmpty()) {
+    throw new GradleException("unknown feature module(s) ${unknownModules.join(', ')}; known: ${devModules.join(', ')}")
 }
-def fullAssemblyRun = gradle.startParameter.taskNames.any { name ->
-    name == ':runClient' || name == ':runServer' || name == ':runClientFabric' || name == ':runServerFabric'
+devFeatureMods.each { feature -> project.evaluationDependsOn(":tianshu-${feature}") }
+def devModuleJars = devFeatureMods.collect { feature ->
+    project(":tianshu-${feature}").tasks.named('jar').flatMap { it.archiveFile }
 }
 tasks.register('prepareDevMods', Copy) {
-    from(devFeatureJars)
+    from(devModuleJars)
     into layout.projectDirectory.dir('run/mods')
 }
-// A core run has to start from a clean shelf: jars copied by an earlier full run would keep every feature installed
-// and quietly turn the "adapter only" profile back into the full assembly.
+// A run has to start from a clean shelf, or a jar copied by an earlier run decides this run's composition. Every jar
+// in `run/mods` is placed there by `prepareDevMods`, so the shelf is emptied wholesale: matching names by hand got
+// this wrong once already (a module's jar is named after its mod id, not after its project).
 tasks.register('clearDevMods', Delete) {
-    delete fileTree(layout.projectDirectory.dir('run/mods')) {
-        include 'tianshu-intake*.jar', 'tianshu-echo*.jar', 'tianshu-weaving*.jar',
-                'tianshu-dubhe*.jar', 'tianshu-presence*.jar'
-    }
+    delete fileTree(layout.projectDirectory.dir('run/mods')) { include '*.jar' }
 }
 ['runClient', 'runServer'].each { name ->
-    tasks.named(name) { dependsOn fullAssemblyRun ? 'prepareDevMods' : 'clearDevMods' }
+    tasks.named(name) { dependsOn 'clearDevMods', 'prepareDevMods' }
 }
+tasks.named('prepareDevMods') { mustRunAfter 'clearDevMods' }
 
 // Unattended verification. The dedicated server keeps its own run directory (Fabric's processedMods cache is
 // exclusive), and the dev client joins with a fixed name so the server's offline profile matches ops.json.

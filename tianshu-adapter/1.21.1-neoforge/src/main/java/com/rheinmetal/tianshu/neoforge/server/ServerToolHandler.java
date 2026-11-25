@@ -91,11 +91,17 @@ public final class ServerToolHandler {
     /** What the current server start installed, so the stop can take exactly that back. */
     private static final ServerToolSession SESSION = new ServerToolSession();
 
+    /** Handles a config reload only while this process is serving, because only then are these tools registered. */
+    private static final SwitchReload SWITCH_RELOAD = new SwitchReload();
+
+    private static IEventBus modBus;
+
     private ServerToolHandler() {
     }
 
     /** Sends the catalog when a player joins, like the action channel does. */
-    public static void register(IEventBus gameBus) {
+    public static void register(IEventBus gameBus, IEventBus modBus) {
+        ServerToolHandler.modBus = modBus;
         gameBus.addListener(ServerToolHandler::onPlayerLogin);
         gameBus.addListener(ServerToolHandler::onPlayerLogout);
         gameBus.addListener(ServerToolHandler::onServerStarting);
@@ -168,10 +174,31 @@ public final class ServerToolHandler {
             TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
             registerBodyTools(ServerActionConfig.BODY_ACTIONS.get(), ServerActionConfig.BLOCK_PLACE.get());
         });
+        // Now that the switch has a table to act on, a reload can keep it honest. The listener lives exactly as long as
+        // the session: on a client connected to a server the same config file is loaded, and flipping the state of a
+        // tool this process never registered is an error, not a no-op.
+        if (modBus != null) {
+            modBus.register(SWITCH_RELOAD);
+        }
     }
 
     private static void onServerStopping(ServerStoppingEvent event) {
+        if (modBus != null) {
+            modBus.unregister(SWITCH_RELOAD);
+        }
         SESSION.stop(event.getServer());
+    }
+
+    /** A switch edited while the server runs changes what the catalogue advertises, or the client keeps a dead tool. */
+    public static final class SwitchReload {
+
+        @net.neoforged.bus.api.SubscribeEvent
+        public void onReload(net.neoforged.fml.event.config.ModConfigEvent.Reloading event) {
+            com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(action -> {
+                var value = ServerActionConfig.switchFor(action);
+                return value != null && value.get();
+            });
+        }
     }
 
     /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */
