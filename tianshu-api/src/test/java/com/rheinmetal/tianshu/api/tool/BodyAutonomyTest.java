@@ -3,82 +3,95 @@ package com.rheinmetal.tianshu.api.tool;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Type;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The two autonomy scales, and the comparison that makes them one decision.
+ * The body scale: two levels, and the policy that says what a server's ceiling means for bodies.
  *
  * <p>The case this file exists for: a body write declares survival-level body work, so a server set to "reads only"
- * refuses it. Before the body scale existed, that call was judged only on the player scale, which says nothing about a
+ * refuses it. Before the body scale existed, that call was judged only on the player scale, which has no opinion about a
  * carrier mining — and a {@code READ_ONLY} server happily let it dig.</p>
  */
 class BodyAutonomyTest {
 
     @Test
-    void bodyScaleMirrorsTheServerKnobLevelForLevel() {
-        for (ToolAutonomy autonomy : ToolAutonomy.values()) {
-            assertEquals(autonomy, BodyAutonomy.from(autonomy).asToolAutonomy(),
-                    "the two scales must rank the same knob: " + autonomy);
-        }
+    void theServerCeilingDecidesWhatBodiesMayDo() {
+        assertNull(BodyAutonomy.allowedBy(ToolAutonomy.READ_ONLY), "read-only means no body work at all");
+        assertEquals(BodyAutonomy.SURVIVAL, BodyAutonomy.allowedBy(ToolAutonomy.CONSERVATIVE));
+        assertEquals(BodyAutonomy.PRIVILEGED, BodyAutonomy.allowedBy(ToolAutonomy.FULL));
     }
 
     @Test
     void permitsIsMonotonic() {
-        assertTrue(BodyAutonomy.PRIVILEGED.permits(BodyAutonomy.PRIVILEGED));
-        assertTrue(BodyAutonomy.PRIVILEGED.permits(BodyAutonomy.SURVIVAL));
-        assertTrue(BodyAutonomy.PRIVILEGED.permits(BodyAutonomy.READ));
-        assertTrue(BodyAutonomy.SURVIVAL.permits(BodyAutonomy.READ));
         assertTrue(BodyAutonomy.SURVIVAL.permits(BodyAutonomy.SURVIVAL));
         assertFalse(BodyAutonomy.SURVIVAL.permits(BodyAutonomy.PRIVILEGED));
-        assertFalse(BodyAutonomy.READ.permits(BodyAutonomy.SURVIVAL));
-        assertFalse(BodyAutonomy.READ.permits(BodyAutonomy.PRIVILEGED));
+        assertTrue(BodyAutonomy.PRIVILEGED.permits(BodyAutonomy.SURVIVAL));
+        assertTrue(BodyAutonomy.PRIVILEGED.permits(BodyAutonomy.PRIVILEGED));
     }
 
     @Test
-    void aBodyWriteIsJudgedAsSurvivalWorkNotAsARead() {
+    void aBodyWriteDeclaresSurvivalWork() {
         FakeTool bodyWrite = new FakeTool(ToolCategory.BODY_WRITE);
 
+        assertEquals(BodyAutonomy.SURVIVAL, bodyWrite.requiredBodyAutonomy());
         assertEquals(ToolAutonomy.READ_ONLY, bodyWrite.requiredAutonomy(),
                 "the player scale says nothing about a carrier acting as itself");
-        assertEquals(BodyAutonomy.SURVIVAL, bodyWrite.requiredBodyAutonomy());
-        assertEquals(ToolAutonomy.CONSERVATIVE, bodyWrite.requiredLevel(),
-                "a body write must need survival level, so READ_ONLY refuses it");
-        assertFalse(ToolAutonomy.READ_ONLY.permits(bodyWrite.requiredLevel()));
     }
 
     @Test
-    void aReadStaysAReadOnBothScales() {
-        FakeTool read = new FakeTool(ToolCategory.SERVER_READ);
-
-        assertEquals(BodyAutonomy.READ, read.requiredBodyAutonomy());
-        assertEquals(ToolAutonomy.READ_ONLY, read.requiredLevel());
-        assertTrue(ToolAutonomy.READ_ONLY.permits(read.requiredLevel()));
+    void aReadDeclaresNothingOnTheBodyScale() {
+        assertNull(new FakeTool(ToolCategory.SERVER_READ).requiredBodyAutonomy(),
+                "a read is not something the body does to the world");
+        assertNull(new FakeTool(ToolCategory.SERVER_WRITE).requiredBodyAutonomy(),
+                "a player-only write says nothing about bodies either");
     }
 
     @Test
-    void aServerWriteIsStillSurvivalWorkForThePlayerScale() {
-        FakeTool write = new FakeTool(ToolCategory.SERVER_WRITE);
+    void aReadOnlyServerRefusesABodyWrite() {
+        FakeTool bodyWrite = new FakeTool(ToolCategory.BODY_WRITE);
+        BodyAutonomy allowed = BodyAutonomy.allowedBy(ToolAutonomy.READ_ONLY);
 
-        assertEquals(ToolAutonomy.CONSERVATIVE, write.requiredLevel());
-        assertTrue(ToolAutonomy.CONSERVATIVE.permits(write.requiredLevel()));
-        assertFalse(ToolAutonomy.READ_ONLY.permits(write.requiredLevel()));
+        // This is the defect the scale exists to close: the player scale alone would have let it through.
+        assertTrue(ToolAutonomy.READ_ONLY.permits(bodyWrite.requiredAutonomy()));
+        assertFalse(allowed != null && allowed.permits(bodyWrite.requiredBodyAutonomy()));
     }
 
     @Test
-    void theStricterOfTwoDeclarationsDecides() {
-        FakeTool privilegedBodyRead = new FakeTool(ToolCategory.BODY_WRITE) {
+    void aConservativeServerAllowsSurvivalWorkButNotPrivilegedWork() {
+        BodyAutonomy allowed = BodyAutonomy.allowedBy(ToolAutonomy.CONSERVATIVE);
+
+        assertTrue(allowed.permits(BodyAutonomy.SURVIVAL));
+        assertFalse(allowed.permits(BodyAutonomy.PRIVILEGED));
+
+        FakeTool privileged = new FakeTool(ToolCategory.BODY_WRITE) {
             @Override
             public BodyAutonomy requiredBodyAutonomy() {
                 return BodyAutonomy.PRIVILEGED;
             }
         };
+        assertFalse(allowed.permits(privileged.requiredBodyAutonomy()));
+    }
 
-        assertEquals(ToolAutonomy.FULL, privilegedBodyRead.requiredLevel());
-        assertFalse(ToolAutonomy.CONSERVATIVE.permits(privilegedBodyRead.requiredLevel()));
+    @Test
+    void theContextReportsTheSameLevelTheRegistryEnforces() {
+        ToolCaller full = ToolCaller.agent("test-mod", false, ToolAutonomy.FULL);
+        ToolCaller conservative = ToolCaller.agent("test-mod", false, ToolAutonomy.CONSERVATIVE);
+
+        // Client side, because that is where the caller's own tier is what decides. On the server side the configured
+        // ceiling port decides and the caller's claim is ignored, which is the documented rule: a caller may narrow what
+        // it offers, never widen what the server allows.
+        Optional<BodyAutonomy> onFull = new ToolContext(full, ToolSide.CLIENT).allowedBodyAutonomy();
+        Optional<BodyAutonomy> onConservative =
+                new ToolContext(conservative, ToolSide.CLIENT).allowedBodyAutonomy();
+
+        assertEquals(Optional.of(BodyAutonomy.PRIVILEGED), onFull);
+        assertEquals(Optional.of(BodyAutonomy.SURVIVAL), onConservative);
     }
 
     /** The smallest tool that only answers the two scale questions. */

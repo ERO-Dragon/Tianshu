@@ -45,34 +45,21 @@ public interface TianshuTool<A, R> {
     }
 
     /**
-     * The risk tier this tool needs when it acts <strong>through a body</strong>.
+     * The risk tier this tool needs when it acts <strong>through a body</strong>; {@code null} when the body scale has
+     * nothing to say about it.
      *
-     * <p>A body write is a survival action: a carrier mining is the body doing its job, not the player cheating. That is
-     * why the default follows the category instead of the player scale, and why a read stays a read.</p>
+     * <p>A body write is survival work: a carrier mining is the body doing its job. A read declares nothing — it is not
+     * something the body does to the world, and a server that refuses all body work must still let a model look at what
+     * the body is holding.</p>
      *
-     * <p>A tool whose body use is privileged has to say so — either here, when the whole tool is privileged, or, when
-     * only one of its sub-modes is (a move mode that flies or teleports), by checking
-     * {@link ToolContext#allowedBodyAutonomy()} for that sub-mode. Walking is fine; a teleport is not.</p>
+     * <p>A tool whose body use is privileged says so here, or — when only one of its sub-modes is (a move that flies or
+     * teleports) — checks {@link ToolContext#allowedBodyAutonomy()} for that sub-mode, because a static declaration
+     * cannot express "this one step goes further".</p>
      *
-     * <p>A tool that can serve both actor kinds declares both scales: {@code block.place} is survival work either way, so
-     * it names {@link BodyAutonomy#SURVIVAL} here as well.</p>
+     * <p>A tool that serves both actor kinds declares this too: {@code block.place} is survival work either way.</p>
      */
     default BodyAutonomy requiredBodyAutonomy() {
-        return category() == ToolCategory.BODY_WRITE ? BodyAutonomy.SURVIVAL : BodyAutonomy.READ;
-    }
-
-    /**
-     * The level that actually has to be permitted for a call: the stricter of the two declarations.
-     *
-     * <p>Both scales rank the server's one policy knob, so the stricter requirement is the one that decides. A tool that
-     * only acts as a player declares {@link BodyAutonomy#READ} and is unaffected; a body write declares
-     * {@link BodyAutonomy#SURVIVAL} and is therefore refused by a {@code READ_ONLY} server — which is the defect this
-     * method exists to close.</p>
-     */
-    default ToolAutonomy requiredLevel() {
-        ToolAutonomy player = requiredAutonomy();
-        ToolAutonomy body = requiredBodyAutonomy().asToolAutonomy();
-        return player.permits(body) ? player : body;
+        return category() == ToolCategory.BODY_WRITE ? BodyAutonomy.SURVIVAL : null;
     }
 
     /** The policy this tool runs under; by default it follows the category. */

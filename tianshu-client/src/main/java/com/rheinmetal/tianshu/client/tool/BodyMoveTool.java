@@ -115,10 +115,11 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
             case FLY, TELEPORT -> BodyAutonomy.PRIVILEGED;
             default -> BodyAutonomy.SURVIVAL;
         };
-        if (!context.allowedBodyAutonomy().permits(needed)) {
+        Optional<com.rheinmetal.tianshu.api.tool.BodyAutonomy> allowed = context.allowedBodyAutonomy();
+        if (allowed.isEmpty() || !allowed.get().permits(needed)) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
                     "moving by " + mode.name().toLowerCase(Locale.ROOT) + " needs " + needed
-                            + " autonomy; this call allows " + context.allowedBodyAutonomy()));
+                            + " body autonomy; this call allows " + allowed.orElse(null)));
         }
         ActorPosition target = BodyTargets.position(BodyTargets.dimension(args.dimension(), body.position().dimension()), args.x(), args.y(), args.z());
         return ActorScope.guarded(scope.actor(), context,

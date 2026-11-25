@@ -1,37 +1,30 @@
 package com.rheinmetal.tianshu.api.tool;
 
 /**
- * How much an action may do <em>to</em> or <em>through</em> an agent body.
+ * How much an action may do <em>through an agent body</em>.
  *
- * <p>This is a second scale on purpose, and it is not a synonym of {@link ToolAutonomy}. Both answer "how far may this
- * go here", but they answer it about different things:</p>
+ * <p>Two levels, and the question is not "is this cheating":</p>
  *
  * <ul>
- *   <li>{@link ToolAutonomy} asks <em>is this something a player may do without cheating</em> — it bounds a tool that
- *   acts <strong>as the player</strong>, which is why teleporting and granting items sit at the privileged end.</li>
- *   <li>{@code BodyAutonomy} asks <em>is this something a body could physically do</em> — a carrier mining is not
- *   cheating, it is the body doing its job, so mining belongs at {@link #SURVIVAL}; flying, teleporting and running
- *   commands are what a body cannot do by itself, so those belong at {@link #PRIVILEGED}.</li>
+ *   <li>{@link #SURVIVAL} — what a body can do with its own hands: walk, mine, place, attack, use, pick up, equip.</li>
+ *   <li>{@link #PRIVILEGED} — what a body cannot do by itself: fly, teleport, run commands.</li>
  * </ul>
  *
- * <p>Folding the two together was the defect this scale exists to fix: a body write declared only "read only", so a
- * server set to {@code READ_ONLY} — "reads only, writes are hidden and refused" — still let a carrier mine and attack,
- * because the player scale said nothing about it.</p>
+ * <p>A carrier mining is not a cheat, it is the body doing its job, so it is survival work. That is why this scale is
+ * separate from {@link ToolAutonomy} instead of reusing it: the player scale answers "may a player do this without
+ * cheating", and the answer for mining is yes — the wrong answer for a body on a read-only server.</p>
  *
- * <p>The scale mirrors {@link ToolAutonomy} level for level, because a server has one policy knob, not two. Keeping the
- * types separate is about <em>what a tool declares</em>, and about being able to say "this is a survival action for a
- * body" without also claiming "this is a survival action for a player".</p>
+ * <p>There is deliberately no "read" level here. Reads are not something a body does <em>to</em> the world; they are
+ * declared by not stating a requirement at all (see {@link TianshuTool#requiredBodyAutonomy()}), and "this server lets
+ * bodies do nothing" is expressed by {@link #allowedBy} returning null, not by a third level.</p>
  */
 public enum BodyAutonomy {
 
-    /** Observes: reading the body, its inventory, or what is around it. Nothing changes. */
-    READ(0),
-
     /** What a player can do with their own hands: walk, mine, place, attack, use, pick up, equip. */
-    SURVIVAL(1),
+    SURVIVAL(0),
 
-    /** What a body cannot do by itself: fly, teleport, run commands, be spawned or granted things. */
-    PRIVILEGED(2);
+    /** What a body cannot do by itself: fly, teleport, run commands. */
+    PRIVILEGED(1);
 
     private final int rank;
 
@@ -39,19 +32,17 @@ public enum BodyAutonomy {
         this.rank = rank;
     }
 
-    /** The level a tool needs, expressed on the scale a server configures. */
-    public ToolAutonomy asToolAutonomy() {
-        return switch (this) {
-            case READ -> ToolAutonomy.READ_ONLY;
-            case SURVIVAL -> ToolAutonomy.CONSERVATIVE;
-            case PRIVILEGED -> ToolAutonomy.FULL;
-        };
-    }
-
-    /** The same level, read as a body requirement — what a provider's ceiling means for bodies. */
-    public static BodyAutonomy from(ToolAutonomy autonomy) {
-        return switch (autonomy) {
-            case READ_ONLY -> READ;
+    /**
+     * What bodies may do on a server configured with {@code ceiling}; {@code null} when they may do nothing at all.
+     *
+     * <p>The server has one policy knob, and this is the one place that says what it means for bodies: read-only means no
+     * body work, conservative means survival work, full means privileged work too. Stated here as a policy rather than
+     * derived from the player scale, because the two scales do not line up: the player scale calls mining "survival"
+     * and teleporting "privileged", but it has no opinion about a body acting at all.</p>
+     */
+    public static BodyAutonomy allowedBy(ToolAutonomy ceiling) {
+        return switch (ceiling) {
+            case READ_ONLY -> null;
             case CONSERVATIVE -> SURVIVAL;
             case FULL -> PRIVILEGED;
         };
