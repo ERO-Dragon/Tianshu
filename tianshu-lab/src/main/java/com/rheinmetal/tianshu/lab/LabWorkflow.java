@@ -57,7 +57,7 @@ public final class LabWorkflow {
     /** Publishes the reference workflow; the returned action removes it again. */
     public static Runnable install() {
         return WorkflowInstaller.install(gather(), LabModuleRegistration.MOD_ID, ToolSide.SERVER,
-                ToolPermission.EVERYONE);
+                ToolPermission.EVERYONE, com.rheinmetal.tianshu.api.capability.CapabilitySharing.ALL);
     }
 
     private static WorkflowStep step(String capability) {

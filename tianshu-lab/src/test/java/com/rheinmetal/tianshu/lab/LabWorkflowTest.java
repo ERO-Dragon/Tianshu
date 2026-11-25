@@ -21,6 +21,11 @@ class LabWorkflowTest {
 
     private static final ToolCaller CALLER = ToolCaller.agent("tianshu", false, ToolAutonomy.CONSERVATIVE);
 
+    @org.junit.jupiter.api.AfterEach
+    void cleanSubscriptions() {
+        com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.clear();
+    }
+
     @Test
     void thePlanIsWrittenInTheBasesOwnCapabilities() {
         WorkflowDeclaration gather = LabWorkflow.gather();
@@ -44,6 +49,10 @@ class LabWorkflowTest {
 
     @Test
     void installingItLeavesOneWorkflowRowAndOneToolAndRemovalTakesBothOut() {
+        // Subscribing is the consumer half; the bench workflow itself is published openly, which is why the consumer's
+        // declaration is what makes it appear here.
+        com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.declare("tianshu",
+                com.rheinmetal.tianshu.api.capability.CapabilitySubscription.everythingFrom("tianshu_lab"));
         Runnable removal = LabWorkflow.install();
         try {
             var row = CapabilityCatalog.find(LabWorkflow.gather().id()).orElseThrow();
