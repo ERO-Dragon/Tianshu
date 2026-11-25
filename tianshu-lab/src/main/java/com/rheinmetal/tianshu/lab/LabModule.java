@@ -57,6 +57,8 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
     private final ClientScheduler scheduler;
     private final ClientTextProvider texts;
     private final boolean debugEnabled;
+    /** Removes the reference workflow this module published; null when it was never installed. */
+    private Runnable workflowRemoval;
 
     private volatile boolean participantsRegistered;
     private volatile boolean autoRelease = true;
@@ -156,6 +158,11 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
             this.diagnostics = context.diagnostics();
         }
         AcceptanceEnvironment.install(runtime, gameContext, scheduler, this);
+        // The bench's reference composite capability: published through the same path a module would use, and removed
+        // again on stop. It lives here rather than in the base because the base ships the channel, not workflows.
+        if (workflowRemoval == null) {
+            workflowRemoval = LabWorkflow.install();
+        }
         if (debugEnabled) {
             registerParticipants();
         }
@@ -338,6 +345,12 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
     public void stop() {
         if (participantsRegistered) {
             unregisterParticipants();
+        }
+        if (workflowRemoval != null) {
+            // Both registrations go: a stopped module must not leave a tool the model can call, nor a row pointing at
+            // a handler whose module is gone.
+            workflowRemoval.run();
+            workflowRemoval = null;
         }
     }
 
