@@ -29,12 +29,28 @@ public final class ToolDocs {
     private ToolDocs() {
     }
 
-    /** The document for this tool, or empty when the tool ships without one. */
+    /**
+     * The document for this tool, or empty when the tool ships without one.
+     *
+     * <p>Two spellings, tried in order: the bare name ({@code references/block.break.md}) and the fully qualified
+     * one ({@code references/tianshu.block.break.md}). The bare name is the normal case — a skill belongs to one
+     * namespace, so repeating it in every file name is noise — and the qualified form stays available for a module
+     * that would rather be explicit.</p>
+     */
     public static Optional<String> of(CapabilityId id) {
         if (id == null) {
             return Optional.empty();
         }
-        String file = fileNameOf(id);
+        for (String file : fileNamesOf(id)) {
+            Optional<String> found = find(file);
+            if (found.isPresent()) {
+                return found;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> find(String file) {
         for (String skill : skills()) {
             String resource = SKILLS + skill + REFERENCES + file;
             ClassLoader loader = ToolDocs.class.getClassLoader();
@@ -53,12 +69,12 @@ public final class ToolDocs {
 
     /** Where a document for this id would live; used in the refusal message when there is none. */
     public static String pathOf(CapabilityId id) {
-        return SKILLS + "<skill>" + REFERENCES + (id == null ? "" : fileNameOf(id));
+        return SKILLS + "<skill>" + REFERENCES + (id == null ? "" : fileNamesOf(id).get(0));
     }
 
-    /** {@code tianshu:body.mine} → {@code tianshu.body.mine.md}. */
-    private static String fileNameOf(CapabilityId id) {
-        return id.toString().replace(':', '.') + SUFFIX;
+    /** {@code tianshu:body.mine} → {@code body.mine.md}, then {@code tianshu.body.mine.md}. */
+    private static java.util.List<String> fileNamesOf(CapabilityId id) {
+        return java.util.List.of(id.name() + SUFFIX, id.namespace() + "." + id.name() + SUFFIX);
     }
 
     /** The skill directories the base ships, in index order; unreadable index means no documents. */

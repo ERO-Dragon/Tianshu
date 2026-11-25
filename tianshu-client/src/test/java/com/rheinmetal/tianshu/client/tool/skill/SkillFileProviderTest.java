@@ -117,8 +117,8 @@ class SkillFileProviderTest {
         assertTrue(CapabilityCatalog.find(id).isPresent(), "the classpath index must list the built-in skill");
         assertTrue(text(invoke(id, new JsonObject())).contains("Minecraft 工具"));
         JsonObject reference = new JsonObject();
-        reference.addProperty("file", "references/read-only.md");
-        assertTrue(text(invoke(id, reference)).contains("READ_ONLY"), "references are read on demand");
+        reference.addProperty("file", "references/recipe.query.md");
+        assertTrue(text(invoke(id, reference)).contains("recipe.query"), "references are read on demand");
     }
 
     private JsonObject invoke(CapabilityId id, JsonObject args) throws Exception {
