@@ -348,3 +348,15 @@ idea {
 tasks.named('processResources') {
     dependsOn tasks.named('generateTianshuBuildProfile')
 }
+
+// A game-test world is a fixture, not a save. An interrupted run (or a crash) leaves session.lock in it, and the next
+// run then spins at startup printing progress bars instead of failing — a ten-minute mystery that looks like a hang in
+// the code under test. Deleting the world first makes every run start from the same state, which is the only thing a
+// test world should ever do.
+tasks.matching { it.name == 'runGameTestServer' }.configureEach {
+    // Resolved at configuration time: the configuration cache refuses to let a task body reach back into the script.
+    def worldDir = file('run-gametest/world')
+    doFirst {
+        worldDir.deleteDir()
+    }
+}

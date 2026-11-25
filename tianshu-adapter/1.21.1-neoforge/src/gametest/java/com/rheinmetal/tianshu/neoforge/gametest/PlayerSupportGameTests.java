@@ -27,6 +27,12 @@ import com.rheinmetal.tianshu.api.game.BlockBreakPort;
 import com.rheinmetal.tianshu.api.game.BlockBreakRequest;
 import com.rheinmetal.tianshu.api.game.BlockBreakResult;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.EntityInspectPort;
+import com.rheinmetal.tianshu.api.game.EntityInspectRequest;
+import com.rheinmetal.tianshu.api.game.EntityInspectResult;
+import com.rheinmetal.tianshu.api.game.ItemInspectPort;
+import com.rheinmetal.tianshu.api.game.ItemInspectRequest;
+import com.rheinmetal.tianshu.api.game.ItemInspectResult;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftableRecipe;
@@ -759,6 +765,70 @@ public final class PlayerSupportGameTests {
                 })
                 .thenSucceed();
         return read.get();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void readingAnEntityAndAStackReportsWhatDecisionsNeed(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        EntityInspectPort entityPort = port(EntityInspectPort.class, helper);
+        ItemInspectPort itemPort = port(ItemInspectPort.class, helper);
+        ActorRef actor = ActorRef.player(player.getUUID().toString(), true);
+
+        // The entity half: the player is the one entity the test always has, and it is a living entity with health.
+        AtomicReference<EntityInspectResult> entityRead = new AtomicReference<>();
+        entityPort.inspect(actor, new EntityInspectRequest(player.getUUID().toString()))
+                .whenComplete((read, error) -> entityRead.set(read));
+        if (entityRead.get() == null || !entityRead.get().read()) {
+            helper.fail("the player could not be inspected: "
+                    + (entityRead.get() == null ? "no answer" : entityRead.get().message()));
+            return;
+        }
+        if (!"minecraft:player".equals(entityRead.get().typeId())) {
+            helper.fail("read type " + entityRead.get().typeId() + " instead of a player");
+            return;
+        }
+        if (entityRead.get().health() != entityRead.get().maxHealth()) {
+            helper.fail("a fresh player should be at full health: "
+                    + entityRead.get().health() + "/" + entityRead.get().maxHealth());
+            return;
+        }
+        if (entityRead.get().baby() || entityRead.get().tamed()) {
+            helper.fail("a player was reported as a baby or as tamed");
+            return;
+        }
+
+        // The stack half: a used pickaxe must report what is left, which is the number the decision needs.
+        ItemStack pickaxe = new ItemStack(Items.STONE_PICKAXE);
+        pickaxe.setDamageValue(3);
+        player.getInventory().setItem(0, pickaxe);
+        AtomicReference<ItemInspectResult> itemRead = new AtomicReference<>();
+        itemPort.inspect(actor, new ItemInspectRequest(0)).whenComplete((read, error) -> itemRead.set(read));
+        if (itemRead.get() == null || !itemRead.get().read()) {
+            helper.fail("the pickaxe could not be inspected: "
+                    + (itemRead.get() == null ? "no answer" : itemRead.get().message()));
+            return;
+        }
+        if (!itemRead.get().damageable() || itemRead.get().damage() != 3) {
+            helper.fail("damage was not reported: damageable=" + itemRead.get().damageable()
+                    + " damage=" + itemRead.get().damage());
+            return;
+        }
+        if (itemRead.get().remainingDurability() != itemRead.get().maxDamage() - 3) {
+            helper.fail("remaining durability is wrong: " + itemRead.get().remainingDurability()
+                    + " of " + itemRead.get().maxDamage());
+            return;
+        }
+
+        // An empty slot is a refusal with a reason, not a stack with no name.
+        AtomicReference<ItemInspectResult> emptyRead = new AtomicReference<>();
+        itemPort.inspect(actor, new ItemInspectRequest(5)).whenComplete((read, error) -> emptyRead.set(read));
+        if (emptyRead.get() == null || emptyRead.get().read() || emptyRead.get().message().isBlank()) {
+            helper.fail("an empty slot did not come back as a refusal with a reason");
+            return;
+        }
+        // Every read here completes inline on this thread (server.execute runs the task when it is already the server
+        // thread), so the assertions above ran against real answers and the test can end.
+        helper.succeed();
     }
 
     private static ServerPlayer mockPlayer(GameTestHelper helper) {
