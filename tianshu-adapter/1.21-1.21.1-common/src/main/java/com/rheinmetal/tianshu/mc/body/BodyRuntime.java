@@ -20,9 +20,10 @@ public final class BodyRuntime {
     }
 
     public static synchronized BodyRegistry start(MinecraftServer server, ActionPlayerFactory actionPlayers,
-                                                  PlayerBodyFactory playerBodies) {
+                                                  PlayerBodyFactory playerBodies,
+                                                  com.rheinmetal.tianshu.mc.tool.BlockStorageProbe probe) {
         stop();
-        registry = new BodyRegistry(server, actionPlayers, playerBodies);
+        registry = new BodyRegistry(server, actionPlayers, playerBodies, probe);
         unregister = EntityActors.register(registry);
         return registry;
     }

@@ -33,6 +33,17 @@ public interface BlockStorageProbe {
         }
     };
 
+    /**
+     * The block's item storage when it exposes one beyond the vanilla container contract, or null when it does not.
+     *
+     * <p>Null, not {@link ItemStore#NONE}: "this loader has nothing to add" and "this block has no items" must stay
+     * distinguishable, because the caller's next step differs — one falls back to the vanilla container, the other
+     * reports an empty block.</p>
+     */
+    default ItemStore items(ServerLevel level, BlockPos pos) {
+        return null;
+    }
+
     List<FluidTankView> fluids(ServerLevel level, BlockPos pos);
 
     EnergyView energy(ServerLevel level, BlockPos pos);

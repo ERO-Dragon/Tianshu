@@ -3,11 +3,13 @@ package com.rheinmetal.tianshu.neoforge.integration;
 import com.rheinmetal.tianshu.api.game.EnergyView;
 import com.rheinmetal.tianshu.api.game.FluidTankView;
 import com.rheinmetal.tianshu.mc.tool.BlockStorageProbe;
+import com.rheinmetal.tianshu.mc.tool.ItemStore;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
@@ -23,6 +25,12 @@ import java.util.List;
  * answers that way, and a machine that exposes nothing answers nothing.</p>
  */
 public final class NeoForgeBlockStorageProbe implements BlockStorageProbe {
+
+    @Override
+    public ItemStore items(ServerLevel level, BlockPos pos) {
+        IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, pos, null);
+        return handler == null ? null : new NeoForgeItemStore(handler);
+    }
 
     @Override
     public List<FluidTankView> fluids(ServerLevel level, BlockPos pos) {

@@ -5,22 +5,24 @@ import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferRequest;
 import com.rheinmetal.tianshu.api.game.ContainerTransferResult;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The 1.21.1 container transfer: one container slot and one actor slot, as the requesting actor.
+ * The 1.21.1 container transfer: one block-side slot and one actor slot, as the requesting actor.
  *
- * <p>Moves are computed against both inventories before anything is written, and the amount moved is what actually
- * fit. A mismatched target slot is refused instead of overwritten. A player and an agent body differ only in which
- * 36-slot store sits behind {@code actorSlot}.</p>
+ * <p>Both sides are {@link ItemStore}s. That is what makes a vanilla chest and a modded machine's item handler the same
+ * operation: before the store existed, the block side was read through {@code Container} only, so a machine exposing
+ * nothing but a loader item handler could not be moved into at all — it was refused as "not a container".</p>
+ *
+ * <p>Slot numbers are the ones {@code container.inspect} reports, because both sides resolve the block through
+ * {@link ItemStores}: two resolutions that disagreed would let a caller move items into a slot it was never shown.</p>
+ *
+ * <p>The amount moved is what actually fit, and a slot holding a different item is refused rather than overwritten.</p>
  */
 public final class ContainerTransferSource implements ContainerTransferPort {
 
@@ -28,9 +30,11 @@ public final class ContainerTransferSource implements ContainerTransferPort {
     private static final int MAIN_INVENTORY_SIZE = 36;
 
     private final MinecraftServer server;
+    private final BlockStorageProbe probe;
 
-    public ContainerTransferSource(MinecraftServer server) {
+    public ContainerTransferSource(MinecraftServer server, BlockStorageProbe probe) {
         this.server = server;
+        this.probe = probe == null ? BlockStorageProbe.NONE : probe;
     }
 
     @Override
@@ -64,84 +68,58 @@ public final class ContainerTransferSource implements ContainerTransferPort {
         if (distanceSquared(holder.position(), pos) > MAX_DISTANCE_SQUARED) {
             return failure("the container is out of reach");
         }
-        BlockEntity blockEntity = holder.level().getBlockEntity(pos);
-        if (!(blockEntity instanceof Container container)) {
+        ItemStore block = ItemStores.of(holder.level(), pos, probe);
+        if (block.size() <= 0) {
             return failure("that block is not a container");
         }
-        if (request.containerSlot() < 0 || request.containerSlot() >= container.getContainerSize()
+        if (request.containerSlot() < 0 || request.containerSlot() >= block.size()
                 || request.playerSlot() < 0 || request.playerSlot() >= MAIN_INVENTORY_SIZE) {
             return failure("that slot does not exist");
         }
+        ItemStore actorStore = new ContainerStore(inventory);
         return request.toPlayer()
-                ? containerToActor(inventory, container, request)
-                : actorToContainer(inventory, container, request);
+                ? blockToActor(actorStore, block, request)
+                : actorToBlock(actorStore, block, request);
     }
 
-    private static ContainerTransferResult containerToActor(Container inventory, Container container,
-                                                            ContainerTransferRequest request) {
-        ItemStack source = container.getItem(request.containerSlot());
+    private static ContainerTransferResult blockToActor(ItemStore actor, ItemStore block,
+                                                        ContainerTransferRequest request) {
+        ItemStack source = block.stackIn(request.containerSlot());
         if (source.isEmpty()) {
             return failure("the container slot is empty");
         }
         ItemStack moving = source.copy();
         moving.setCount(Math.min(request.count(), source.getCount()));
-        int moved = addToActorSlot(inventory, moving, request.playerSlot());
+        int moved = actor.insert(request.playerSlot(), moving);
         if (moved <= 0) {
             return failure("the actor slot cannot accept that item");
         }
-        source.shrink(moved);
-        container.setChanged();
+        block.extract(request.containerSlot(), moved);
+        block.changed();
+        actor.changed();
         return success(moving, moved);
     }
 
-    static int addToActorSlot(Container inventory, ItemStack moving, int slot) {
-        ItemStack target = inventory.getItem(slot);
-        if (!target.isEmpty() && !ItemStack.isSameItemSameComponents(target, moving)) {
-            return 0;
-        }
-        int maxCount = Math.min(moving.getMaxStackSize(), inventory.getMaxStackSize());
-        int room = target.isEmpty() ? maxCount : maxCount - target.getCount();
-        int moved = Math.min(moving.getCount(), room);
-        if (moved <= 0) {
-            return 0;
-        }
-        if (target.isEmpty()) {
-            ItemStack placed = moving.copy();
-            placed.setCount(moved);
-            inventory.setItem(slot, placed);
-        } else {
-            target.grow(moved);
-        }
-        inventory.setChanged();
-        return moved;
-    }
-
-    private static ContainerTransferResult actorToContainer(Container inventory, Container container,
-                                                            ContainerTransferRequest request) {
-        ItemStack source = inventory.getItem(request.playerSlot());
+    private static ContainerTransferResult actorToBlock(ItemStore actor, ItemStore block,
+                                                        ContainerTransferRequest request) {
+        ItemStack source = actor.stackIn(request.playerSlot());
         if (source.isEmpty()) {
             return failure("the actor slot is empty");
         }
-        ItemStack target = container.getItem(request.containerSlot());
+        ItemStack target = block.stackIn(request.containerSlot());
         if (!target.isEmpty() && !ItemStack.isSameItemSameComponents(target, source)) {
             return failure("the container slot holds a different item");
         }
-        int room = target.isEmpty() ? source.getMaxStackSize() : source.getMaxStackSize() - target.getCount();
-        int moved = Math.min(Math.min(request.count(), source.getCount()), room);
+        ItemStack moving = source.copy();
+        moving.setCount(Math.min(request.count(), source.getCount()));
+        int moved = block.insert(request.containerSlot(), moving);
         if (moved <= 0) {
             return failure("the container slot is full");
         }
-        if (target.isEmpty()) {
-            ItemStack placed = source.copy();
-            placed.setCount(moved);
-            container.setItem(request.containerSlot(), placed);
-        } else {
-            target.grow(moved);
-        }
-        source.shrink(moved);
-        container.setChanged();
-        inventory.setChanged();
-        return success(source, moved);
+        actor.extract(request.playerSlot(), moved);
+        actor.changed();
+        block.changed();
+        return success(moving, moved);
     }
 
     private static double distanceSquared(Vec3 from, BlockPos pos) {
@@ -152,8 +130,8 @@ public final class ContainerTransferSource implements ContainerTransferPort {
     }
 
     private static ContainerTransferResult success(ItemStack stack, int moved) {
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        return new ContainerTransferResult(id == null ? "" : id.toString(), moved, "moved");
+        String itemId = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+        return new ContainerTransferResult(itemId, moved, "moved " + moved);
     }
 
     private static ContainerTransferResult failure(String message) {

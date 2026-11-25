@@ -144,7 +144,11 @@ public final class ServerToolHandler {
     private static void onServerStarting(ServerStartingEvent event) {
         SESSION.start(registrations -> {
             ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
-            BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers, new com.rheinmetal.tianshu.neoforge.NeoForgePlayerBodies());
+            // One probe for the whole session: the block side of inspect and transfer must resolve the same store.
+            com.rheinmetal.tianshu.mc.tool.BlockStorageProbe blockProbe =
+                    new com.rheinmetal.tianshu.neoforge.integration.NeoForgeBlockStorageProbe();
+            BodyRegistry bodies = BodyRuntime.start(event.getServer(), actionPlayers,
+                    new com.rheinmetal.tianshu.neoforge.NeoForgePlayerBodies(), blockProbe);
             registrations.port(EntitySpawnPort.class, bodies);
             registrations.port(ServerTickPort.class, ServerTicks.INSTANCE);
             registrations.port(PlayerAuthority.class, new ServerPlayerAuthority(event.getServer()));
@@ -174,10 +178,10 @@ public final class ServerToolHandler {
                     new PlaceRouter(new BlockPlaceSource(event.getServer(), bodies, actionPlayers)));
             registrations.port(CraftPort.class, new CraftRouter(new CraftSource(event.getServer())));
             registrations.port(ContainerTransferPort.class,
-                    new TransferRouter(new ContainerTransferSource(event.getServer())));
+                    new TransferRouter(new ContainerTransferSource(event.getServer(), blockProbe)));
             registrations.port(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(event.getServer())));
             registrations.port(BlockInspectPort.class,
-                    new BlockInspectSource(event.getServer(), new NeoForgeBlockStorageProbe()));
+                    new BlockInspectSource(event.getServer(), blockProbe));
             registrations.port(ActorStatusPort.class, new ActorStatusSource(event.getServer()));
             registrations.port(WorldInfoPort.class, new WorldInfoSource(event.getServer()));
             registrations.port(WorldLocatePort.class, new WorldLocateSource(event.getServer()));

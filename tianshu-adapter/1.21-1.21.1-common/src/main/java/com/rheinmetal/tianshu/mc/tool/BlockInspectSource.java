@@ -11,7 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.Container;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -79,21 +79,26 @@ public final class BlockInspectSource implements BlockInspectPort {
         String blockEntityId = blockEntity == null
                 ? "" : idOrEmpty(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()));
 
-        List<InventoryEntry> items = itemsOf(blockEntity);
+        List<InventoryEntry> items = itemsAt(holder.level(), pos);
         List<FluidTankView> fluids = probe.fluids(holder.level(), pos);
         EnergyView energy = probe.energy(holder.level(), pos);
 
         return new BlockInspectResult(blockId, blockEntityId, stateOf(state), items, fluids, energy, "inspected");
     }
 
-    /** The vanilla container contract, which covers vanilla chests and every modded machine that implements it. */
-    private static List<InventoryEntry> itemsOf(BlockEntity blockEntity) {
-        if (!(blockEntity instanceof Container container)) {
+    /**
+     * Items through the shared store resolution, so the slot numbers reported here are the ones {@code container.transfer}
+     * accepts. Reading the block entity directly covered vanilla containers only — which is how a modded machine with a
+     * loader item handler ended up looking empty.
+     */
+    private List<InventoryEntry> itemsAt(ServerLevel level, BlockPos pos) {
+        ItemStore store = ItemStores.of(level, pos, probe);
+        if (store.size() <= 0) {
             return List.of();
         }
         List<InventoryEntry> entries = new ArrayList<>();
-        for (int slot = 0; slot < container.getContainerSize(); slot++) {
-            ItemStack stack = container.getItem(slot);
+        for (int slot = 0; slot < store.size(); slot++) {
+            ItemStack stack = store.stackIn(slot);
             if (stack.isEmpty()) {
                 continue;
             }

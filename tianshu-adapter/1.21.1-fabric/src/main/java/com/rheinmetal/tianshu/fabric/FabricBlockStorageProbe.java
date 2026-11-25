@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.fabric;
 import com.rheinmetal.tianshu.api.game.EnergyView;
 import com.rheinmetal.tianshu.api.game.FluidTankView;
 import com.rheinmetal.tianshu.mc.tool.BlockStorageProbe;
+import com.rheinmetal.tianshu.mc.tool.ItemStore;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidStorage;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
 import net.fabricmc.fabric.api.transfer.v1.storage.Storage;
@@ -29,6 +30,17 @@ import java.util.List;
  * dependency is worth taking on.</p>
  */
 public final class FabricBlockStorageProbe implements BlockStorageProbe {
+
+    /**
+     * Null on purpose: Fabric''s transfer API exposes storages as a sequence of views, not as indexed slots, and the tool
+     * contract is slot-addressed (inspect reports a slot index, transfer moves by it). Mapping view order onto slot
+     * numbers would look like it works and then move items into a slot the caller was never shown, so this side keeps
+     * the vanilla container contract instead and reports that it adds nothing.
+     */
+    @Override
+    public ItemStore items(ServerLevel level, BlockPos pos) {
+        return null;
+    }
 
     @Override
     public List<FluidTankView> fluids(ServerLevel level, BlockPos pos) {

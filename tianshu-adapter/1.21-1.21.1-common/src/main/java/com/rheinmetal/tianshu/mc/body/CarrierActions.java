@@ -45,7 +45,8 @@ public final class CarrierActions implements EntityActions {
     private final EntityItemUsePort itemUse;
     private final EntityUsePort entityUse;
 
-    public CarrierActions(MinecraftServer server, BodyRegistry bodies, ActionPlayerFactory actionPlayers) {
+    public CarrierActions(MinecraftServer server, BodyRegistry bodies, ActionPlayerFactory actionPlayers,
+                          com.rheinmetal.tianshu.mc.tool.BlockStorageProbe probe) {
         this.motion = new AgentMotionSource(server, bodies);
         this.action = new AgentActionSource(server, bodies, actionPlayers);
         this.items = new AgentItemSource(server, bodies);
@@ -53,7 +54,7 @@ public final class CarrierActions implements EntityActions {
         this.placement = new BlockPlaceSource(server, bodies, actionPlayers);
         this.interaction = new BlockInteractSource(server, bodies, actionPlayers);
         this.craft = new CraftSource(server);
-        this.transfer = new ContainerTransferSource(server);
+        this.transfer = new ContainerTransferSource(server, probe);
         this.machine = new BlockMachineSource(server);
         this.itemUse = new AgentItemUseSource(server, bodies, actionPlayers);
         this.entityUse = new AgentEntityUseSource(server, bodies, actionPlayers);

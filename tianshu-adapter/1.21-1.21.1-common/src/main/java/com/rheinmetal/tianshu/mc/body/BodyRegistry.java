@@ -59,6 +59,7 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
     private final Map<UUID, EnumMap<EntitySlot, ItemStack>> equipment = new LinkedHashMap<>();
     private final MinecraftServer server;
     private final ActionPlayerFactory actionPlayers;
+    private final com.rheinmetal.tianshu.mc.tool.BlockStorageProbe probe;
     private final PlayerBodyFactory playerBodies;
     private EntityActions actions;
     private final BodyPersistence persistence = new BodyPersistence();
@@ -67,7 +68,9 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
         return persistence;
     }
 
-    public BodyRegistry(MinecraftServer server, ActionPlayerFactory actionPlayers, PlayerBodyFactory playerBodies) {
+    public BodyRegistry(MinecraftServer server, ActionPlayerFactory actionPlayers, PlayerBodyFactory playerBodies,
+                        com.rheinmetal.tianshu.mc.tool.BlockStorageProbe probe) {
+        this.probe = probe == null ? com.rheinmetal.tianshu.mc.tool.BlockStorageProbe.NONE : probe;
         this.server = server;
         this.actionPlayers = actionPlayers;
         this.playerBodies = playerBodies;
@@ -551,7 +554,7 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
             return Optional.empty();
         }
         if (actions == null) {
-            actions = new CarrierActions(server, this, actionPlayers);
+            actions = new CarrierActions(server, this, actionPlayers, probe);
         }
         return Optional.of(actions);
     }
