@@ -121,6 +121,18 @@ final class DownloadFixtures {
         }
     }
 
+    /**
+     * The gate the download cases run behind.
+     *
+     * <p>They test the transport — verify, retry, promote — not the host list, and a loopback fixture is precisely what
+     * the real policy exists to refuse. Without this the cases would "pass" because every request was denied before it
+     * left, which is why one of them reported an install failure that had nothing to do with retrying. The gate itself
+     * is pinned by {@code HostAllowListPolicyTest}.</p>
+     */
+    static com.rheinmetal.tianshu.api.network.ExternalAccessPolicy loopbackPolicy() {
+        return request -> com.rheinmetal.tianshu.api.network.ExternalDecision.allow();
+    }
+
     static String sha256(Path file) throws IOException {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

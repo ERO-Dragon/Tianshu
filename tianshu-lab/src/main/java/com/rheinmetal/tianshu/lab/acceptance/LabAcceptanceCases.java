@@ -117,7 +117,8 @@ public final class LabAcceptanceCases {
         cases.add(aCorruptBodyIsRetriedBeforeTheInstallFails());
         cases.add(theGameContextDescribesALoadedWorld());
         cases.add(theGameContextCapturesDoNotThrow());
-        cases.add(aModuleCommandsTheBodyItOwns());
+        cases.add(aPlayerCommandsTheBodyItOwns());
+        cases.add(aClientModuleCannotDriveAnNpc());
         cases.add(aBodyRefusesAnUnregisteredBody());
         cases.add(theAdapterTakesTheBodyTypeDeclarationsAtStartup());
         cases.add(anActionReachesTheServerAndComesBackExecuted());
@@ -1295,7 +1296,8 @@ public final class LabAcceptanceCases {
             try (DownloadFixtures.ScriptedServer server = new DownloadFixtures.ScriptedServer()) {
                 server.enqueue("wrong-content");
                 ModelDownloadHttpClient client = new ModelDownloadHttpClient(
-                        new DownloadFixtures.StubEnvironment(target.getParent()));
+                        new DownloadFixtures.StubEnvironment(target.getParent()),
+                        DownloadFixtures.loopbackPolicy());
                 boolean refused = false;
                 try {
                     client.download(List.of(server.uri()), target, retryPolicy(1), () -> {
@@ -1339,7 +1341,8 @@ public final class LabAcceptanceCases {
                 server.enqueue("wrong-content");
                 server.enqueue("model-content");
                 ModelDownloadHttpClient client = new ModelDownloadHttpClient(
-                        new DownloadFixtures.StubEnvironment(target.getParent()));
+                        new DownloadFixtures.StubEnvironment(target.getParent()),
+                        DownloadFixtures.loopbackPolicy());
                 boolean installed = false;
                 try {
                     client.download(List.of(server.uri()), target, retryPolicy(2), () -> {
@@ -1352,7 +1355,9 @@ public final class LabAcceptanceCases {
                     installed = true;
                 } catch (IOException failure) {
                     return AcceptanceOutcome.fail(id, title, "the retry did not rescue the install: "
-                            + failure.getMessage());
+                            + failure.getMessage() + " served=" + server.servedCount()
+                            + (failure.getSuppressed().length == 0 ? ""
+                                    : " cause=" + failure.getSuppressed()[0].getMessage()));
                 }
                 String content = installed && Files.exists(target)
                         ? Files.readString(target, java.nio.charset.StandardCharsets.UTF_8) : "";
@@ -1450,14 +1455,15 @@ public final class LabAcceptanceCases {
     }
 
     /**
-     * A module that registers its own body can command it, and the command reaches the body's port.
+     * A player commands a body it owns, and the command reaches the body's port.
      *
-     * <p>The owner is the caller, so nothing is impersonated and no permission is relaxed — this is the production
-     * path a brain module takes. Needs no world: the body here is in memory.</p>
+     * <p>This is the path the tools actually have: body tools are server tools, and the wire carries a player. The
+     * command therefore executes on the authoritative side as that player, which is also what an assistant looks like
+     * from the server's point of view.</p>
      */
-    private static AcceptanceCase aModuleCommandsTheBodyItOwns() {
+    private static AcceptanceCase aPlayerCommandsTheBodyItOwns() {
         final String id = "ACC-BDY-3";
-        final String title = "a module commands the body it registered, and the command reaches the body port";
+        final String title = "a player commands the body it owns through the wire, and the command reaches the port";
         return AcceptanceCase.of(id, title, () -> {
             String owner = localPlayerId();
             if (owner == null) {
@@ -1472,19 +1478,64 @@ public final class LabAcceptanceCases {
                 args.addProperty("y", 64);
                 args.addProperty("z", 10);
                 JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.look"), args,
-                        ToolCaller.body(AcceptanceBodies.BODY_ID, true));
+                        ToolCaller.player(owner, true));
                 String code = codeOf(envelope);
                 boolean ok = envelope.has("ok") && envelope.get("ok").getAsBoolean();
                 boolean reachedPort = !bodies.looks().isEmpty();
                 if (ok && reachedPort) {
                     return AcceptanceOutcome.pass(id, title, "the owner's look reached the body port");
                 }
-                if ("UNAVAILABLE".equals(code) && shortEnvelope(envelope).contains("not present")) {
+                if ("UNAVAILABLE".equals(code) || "UNSUPPORTED_SIDE".equals(code)) {
                     return AcceptanceOutcome.skip(id, title,
-                            "the bench's body provider runs in this process, so a remote server has no such body");
+                            "no authoritative side in this session: " + shortEnvelope(envelope));
                 }
                 return AcceptanceOutcome.fail(id, title, "ok=" + ok + " reachedPort=" + reachedPort
                         + " envelope=" + shortEnvelope(envelope));
+            } finally {
+                unregister.run();
+            }
+        });
+    }
+
+    /**
+     * A client-side module cannot drive an NPC: the wire authenticates players only.
+     *
+     * <p>The rule is the whole reason a body argument is not a way to reach someone else's NPC. A module that owns
+     * bodies drives them on the authoritative side, in-process; here what has to hold is the refusal, taken before any
+     * port runs.</p>
+     */
+    private static AcceptanceCase aClientModuleCannotDriveAnNpc() {
+        final String id = "ACC-BDY-7";
+        final String title = "a client-side module's body call is refused before any port runs";
+        return AcceptanceCase.of(id, title, () -> {
+            String owner = localPlayerId();
+            if (owner == null) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no body to drive");
+            }
+            AcceptanceBodies bodies = new AcceptanceBodies(owner);
+            Runnable unregister = EntityActors.register(bodies);
+            try {
+                JsonObject args = new JsonObject();
+                args.addProperty("body", AcceptanceBodies.BODY_ID);
+                args.addProperty("x", 10);
+                args.addProperty("y", 64);
+                args.addProperty("z", 10);
+                JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.look"), args,
+                        ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolAutonomy.FULL));
+                boolean refused = envelope.has("ok") && !envelope.get("ok").getAsBoolean();
+                String text = String.valueOf(envelope);
+                // Two refusals are correct here and which one arrives depends on whether the server has body tools
+                // switched on: the switch is checked first, and the wire's rule is what stops the call when it is on.
+                // What the case locks is that neither reaches the port on a module's word.
+                boolean named = text.contains("body.controller.unverified") || text.contains("is switched off");
+                boolean nothingHappened = bodies.looks().isEmpty();
+                if (refused && named && nothingHappened) {
+                    return AcceptanceOutcome.pass(id, title, "refused before the port: "
+                            + codeOf(envelope) + " " + (text.contains("body.controller.unverified")
+                                    ? "body.controller.unverified" : "tool switched off"));
+                }
+                return AcceptanceOutcome.fail(id, title, "refused=" + refused + " named=" + named
+                        + " portRan=" + !nothingHappened + " envelope=" + shortEnvelope(envelope));
             } finally {
                 unregister.run();
             }
