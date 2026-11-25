@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -64,16 +63,6 @@ public final class SkillCoverage {
         return index;
     }
 
-    /** The skills that teach {@code capability}, from the rows given. Empty when it has no manual. */
-    public static List<CapabilityId> skillsCovering(List<CapabilityDescriptor> rows, CapabilityId capability) {
-        List<CapabilityId> covering = new ArrayList<>();
-        for (CapabilityDescriptor row : rows) {
-            if (coversOf(row).contains(capability)) {
-                covering.add(row.id());
-            }
-        }
-        return covering;
-    }
 
     /** The declaration as an attribute value, for a provider building its skill row. */
     public static JsonElement attribute(String... capabilities) {

@@ -26,9 +26,6 @@ public record CapabilitySubscription(boolean allProviders, Set<String> providers
         providers = providers == null ? Set.of() : Set.copyOf(providers);
     }
 
-    public static CapabilitySubscription baseOnly() {
-        return DEFAULT;
-    }
 
     /** Accepts atomic capabilities from these providers, no compositions. */
     public static CapabilitySubscription atomicFrom(String... providers) {
@@ -40,15 +37,7 @@ public record CapabilitySubscription(boolean allProviders, Set<String> providers
         return new CapabilitySubscription(false, new java.util.LinkedHashSet<>(java.util.List.of(providers)), true, true);
     }
 
-    /** Accepts both kinds from everyone who is willing to share. */
-    public static CapabilitySubscription everything() {
-        return new CapabilitySubscription(true, Set.of(), true, true);
-    }
 
-    /** Adds compositions from the same providers this rule already names. */
-    public CapabilitySubscription withComposites() {
-        return new CapabilitySubscription(allProviders, providers, atomic, true);
-    }
 
     /** Whether this consumer accepts that row at all (its provider's sharing is checked separately). */
     public boolean accepts(CapabilityDescriptor descriptor) {
