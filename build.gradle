@@ -141,6 +141,62 @@ def devRunFeatureEdges = [
         'adapter': ['lab'],
 ]
 ext.devRunFeatureEdges = devRunFeatureEdges
+
+// Which modules a development run installs. Decided here, once, because it is a property of the module matrix and
+// not of a loader: the two adapters used to decide it separately and drifted (one read the matrix, the other kept a
+// hardcoded list and a shelf that was never cleaned).
+//
+//   repository root  -> every feature, plus the bench
+//   an adapter       -> the kernel plus that adapter's bench, so a loader change is visible on its own
+//   a feature module -> that feature, the modules it requires, plus its bench
+//
+// `-PfeatureMods=` states the set outright; an empty value is the kernel alone.
+def featureModuleNames = ['intake', 'echo', 'weaving', 'dubhe', 'presence']
+ext.featureModuleNames = featureModuleNames
+ext.devRunModules = { Project caller, List<String> taskNames, File currentDir ->
+    def explicit = caller.findProperty('featureMods')
+    if (explicit != null) {
+        def requested = explicit.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+        def known = (featureModuleNames + devRunFeatureEdges.values().flatten()).unique()
+        def unknown = requested - known
+        if (!unknown.isEmpty()) {
+            throw new GradleException("unknown dev module(s) ${unknown.join(', ')}; known: ${known.sort().join(', ')}")
+        }
+        return requested
+    }
+    def startedFrom = { ->
+        def explicitFeature = taskNames.findResult { name ->
+            def match = name =~ /^:?(tianshu-(intake|echo|weaving|dubhe|presence)):run(Client|Server)$/
+            match.find() ? match.group(2) : null
+        }
+        if (explicitFeature != null) {
+            return explicitFeature
+        }
+        if (taskNames.any { name -> name == ':runClient' || name == ':runServer' }) {
+            return 'root'
+        }
+        if (taskNames.any { name -> (name.endsWith('runClient') || name.endsWith('runServer')) && name.contains('tianshu-adapter') }) {
+            return 'adapter'
+        }
+        // A bare `runClient` carries no path: the directory it was typed in decides.
+        def owner = ([caller] + featureModuleNames.collect { rootProject.project(":tianshu-${it}") })
+                .find { it.projectDir == currentDir }
+        if (owner == null) {
+            return 'root'
+        }
+        return owner == caller ? 'adapter' : (owner.name - 'tianshu-')
+    }()
+    def base
+    if (startedFrom == 'root') {
+        base = featureModuleNames
+    } else if (startedFrom == 'adapter') {
+        base = []
+    } else {
+        // A feature run boots its required partners too: without them it cannot assemble at all.
+        base = [startedFrom] + (requiredFeatureEdges[startedFrom] ?: [])
+    }
+    return (base + (devRunFeatureEdges[startedFrom] ?: [])).unique()
+}
 // Shipped kernel modules. tianshu-testkit is not one: it is a dev-only fixtures artifact that never enters
 // a mod jar, so it is allowed to speak the feature modules' vocabulary on purpose.
 def hostModules = ['tianshu-api', 'tianshu-core', 'tianshu-client', 'tianshu-adapter']

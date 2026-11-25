@@ -147,14 +147,9 @@ neoForge {
         }
     }
 
-    // Which mods a development run installs:
-    //   repository root  -> every feature (the full assembly)
-    //   this adapter     -> every feature plus the development bench (the full assembly, from the adapter)
-    //   a feature module -> that feature plus the modules it requires, never its optional partners
-    // so launching `runClient` from echo installs kernel+echo, and launching it from dubhe installs
-    // kernel+dubhe+intake+weaving (its hard dependencies) but not echo (an optional integration).
-    // `-PfeatureMods=` overrides the whole thing: `-PfeatureMods=` is the kernel alone.
-    def runFeatureNames = ['intake', 'echo', 'weaving', 'dubhe', 'presence']
+    // Which mods a development run installs is decided in the root build, from the module matrix and where the run was
+    // started from; both adapters read that one answer. `-PfeatureMods=` overrides it (`-PfeatureMods=` is the kernel
+    // alone).
     def startedFrom = {
         def startParameter = gradle.startParameter
         def explicitFeature = startParameter.taskNames.findResult { name ->
@@ -175,34 +170,15 @@ neoForge {
             return 'adapter'
         }
         // A bare `runClient` carries no path: the directory it was typed in decides.
-        def currentDir = startParameter.currentDir
-        def owner = ([project] + runFeatureNames.collect { rootProject.project(":tianshu-${it}") })
-                .find { it.projectDir == currentDir }
+        def owner = ([project] + rootProject.featureModuleNames.collect { rootProject.project(":tianshu-${it}") })
+                .find { it.projectDir == startParameter.currentDir }
         if (owner == null) {
             return 'root'
         }
         return owner == project ? 'adapter' : (owner.name - 'tianshu-')
     }()
-    def devFeatureMods = {
-        def explicit = findProperty('featureMods')
-        if (explicit != null) {
-            return explicit.toString().split(',').collect { it.trim() }.findAll { !it.isEmpty() }
-        }
-        if (startedFrom == 'adapter') {
-            // The adapter's own run is the kernel plus its bench: a loader change should be observable without every
-            // feature module in the way. A full assembly is one click up, from the repository root.
-            return (rootProject.devRunFeatureEdges['adapter'] ?: []).unique()
-        }
-        def base
-        if (startedFrom == 'root') {
-            base = runFeatureNames
-        } else {
-            // A feature run boots its required partners too: without them it cannot assemble at all.
-            base = [startedFrom] + (rootProject.requiredFeatureEdges[startedFrom] ?: [])
-        }
-        // Development benches ride along with the feature they exercise; they are not features themselves.
-        return (base + (rootProject.devRunFeatureEdges[startedFrom] ?: [])).unique()
-    }()
+    def devFeatureMods = rootProject.devRunModules(project, gradle.startParameter.taskNames,
+            gradle.startParameter.currentDir)
     if (gradle.startParameter.taskNames.any { name ->
                 name.endsWith('runClient') || name.endsWith('runServer')
             }) {

@@ -150,22 +150,12 @@ tasks.withType(JavaCompile).configureEach {
 // the jars are `tianshu_intake-*.jar`), so an "adapter only" run quietly kept every feature and a stale bench from a
 // month earlier. The module set is now a stated input, and the bench is a peer of the features rather than a jar
 // that happened to be lying around.
-def devModules = ['intake', 'echo', 'weaving', 'dubhe', 'presence', 'lab']
-def devFeatureMods = {
-    def explicit = providers.gradleProperty('featureMods').getOrNull()
-    if (explicit != null) {
-        return explicit.split(',').collect { it.trim() }.findAll { !it.isEmpty() }
-    }
-    // A full assembly started from the repository root brings every module that ships, plus the bench.
-    def fullAssembly = gradle.startParameter.taskNames.any { name ->
-        name == ':runClient' || name == ':runServer' || name == ':runClientFabric' || name == ':runServerFabric'
-    }
-    return fullAssembly ? devModules : []
-}()
-def unknownModules = devFeatureMods - devModules
-if (!unknownModules.isEmpty()) {
-    throw new GradleException("unknown feature module(s) ${unknownModules.join(', ')}; known: ${devModules.join(', ')}")
-}
+// The module set comes from the root build, the same answer the NeoForge adapter reads: an adapter-started run is the
+// kernel plus its bench, the repository root brings every module, and `-PfeatureMods=` states the set outright.
+// On Fabric a feature reaches the run as its jar in `run/mods`; the lab's jar carries both loader entries, so the
+// bench is a peer of the features rather than a jar that happened to be lying on the shelf.
+def devFeatureMods = rootProject.devRunModules(project, gradle.startParameter.taskNames,
+        gradle.startParameter.currentDir)
 devFeatureMods.each { feature -> project.evaluationDependsOn(":tianshu-${feature}") }
 def devModuleJars = devFeatureMods.collect { feature ->
     project(":tianshu-${feature}").tasks.named('jar').flatMap { it.archiveFile }
