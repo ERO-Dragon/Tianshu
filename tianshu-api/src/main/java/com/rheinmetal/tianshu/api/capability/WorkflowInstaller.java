@@ -45,6 +45,11 @@ public final class WorkflowInstaller {
 
         JsonObject attributes = new JsonObject();
         attributes.addProperty("steps", plan.stepCount());
+        // The step list travels with the row so the composition can be read without running it: "what does this
+        // workflow actually do" must be answerable from data, or the only way to find out is to execute it.
+        com.google.gson.JsonArray steps = new com.google.gson.JsonArray();
+        plan.steps().forEach(step -> steps.add(step.capability().toString()));
+        attributes.add("stepList", steps);
         attributes.addProperty("expectedSeconds", plan.expectedSeconds());
         attributes.addProperty("changesWorld", plan.changesWorld());
         CapabilityDescriptor descriptor = new CapabilityDescriptor(
