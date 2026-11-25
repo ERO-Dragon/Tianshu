@@ -15,6 +15,18 @@ public record CapabilityKind(String value) implements Comparable<CapabilityKind>
     public static final CapabilityKind RESOURCE = new CapabilityKind("resource");
     public static final CapabilityKind PROMPT = new CapabilityKind("prompt");
     public static final CapabilityKind CONNECTOR = new CapabilityKind("connector");
+    /**
+     * A capability made of other capabilities: one call, several steps.
+     *
+     * <p>The kind exists so a consumer can subscribe to "原子" and "分子" separately — it is a classification, not a
+     * different entry point: a workflow is invoked exactly like any other capability, by its id.</p>
+     *
+     * <p>A provider may publish its steps as data, in which case the base's executor runs them and can bound the run and
+     * stop between steps. A provider may also keep its steps to itself; then the capability is an ordinary handler and
+     * the base can only rely on cancellation and the call timeout. Both are legal — see {@code WorkflowDeclaration} for
+     * the declared cost every composite has to state either way.</p>
+     */
+    public static final CapabilityKind WORKFLOW = new CapabilityKind("workflow");
 
     public CapabilityKind {
         Objects.requireNonNull(value, "value");
