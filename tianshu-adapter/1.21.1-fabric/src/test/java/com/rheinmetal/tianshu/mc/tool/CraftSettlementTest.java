@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.mc.tool;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.ItemStack;
@@ -30,6 +31,8 @@ class CraftSettlementTest {
         public Vec3 position() { return Vec3.ZERO; }
         public boolean operator() { return false; }
         public ServerLevel level() { return null; }
+        // This double exists for the inventory arithmetic only, so it is never asked for the living entity behind it.
+        public LivingEntity living() { return null; }
         public void drop(ItemStack stack) { dropped.add(stack); }
     }
 

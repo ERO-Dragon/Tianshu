@@ -18,6 +18,8 @@ import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferRequest;
+import com.rheinmetal.tianshu.api.game.ActorStatus;
+import com.rheinmetal.tianshu.api.game.ActorStatusPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectRequest;
 import com.rheinmetal.tianshu.api.game.BlockInspectResult;
@@ -27,6 +29,8 @@ import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
 import com.rheinmetal.tianshu.api.game.CraftResult;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
+import com.rheinmetal.tianshu.api.game.WorldInfo;
+import com.rheinmetal.tianshu.api.game.WorldInfoPort;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
@@ -436,6 +440,110 @@ public final class PlayerSupportGameTests {
                     }
                 })
                 .thenSucceed();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void readingAnActorsOwnStateReportsLiveHealth(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        ActorStatusPort port = port(ActorStatusPort.class, helper);
+        String actorId = player.getUUID().toString();
+
+        // The read is taken twice on purpose: the second one is after the body's state was changed, so a status that was
+        // cached once or filled with defaults cannot pass. Health is set rather than dealt as damage because a mock
+        // player is invulnerable, and "damage did nothing" would test the harness instead of the read.
+        ActorStatus first = awaitStatus(helper, port, actorId);
+        player.setHealth(15.0F);
+        player.getFoodData().setFoodLevel(4);
+        ActorStatus afterChange = awaitStatus(helper, port, actorId);
+
+        if (!actorId.equals(afterChange.id())) {
+            helper.fail("read status for " + afterChange.id() + " instead of the player");
+            return;
+        }
+        if (!"survival".equals(afterChange.gameMode())) {
+            helper.fail("expected survival, read " + afterChange.gameMode());
+            return;
+        }
+        if (!afterChange.alive()) {
+            helper.fail("the player is alive but the status says otherwise");
+            return;
+        }
+        if (!(first.health() > afterChange.health())) {
+            helper.fail("health did not follow the change: " + first.health() + " then " + afterChange.health());
+        }
+        if (afterChange.health() != 15.0F) {
+            helper.fail("health was set to 15 but the status reads " + afterChange.health());
+            return;
+        }
+        if (afterChange.foodLevel() != 4) {
+            helper.fail("hunger was set to 4 but the status reads " + afterChange.foodLevel());
+        }
+        if (afterChange.dimension().isBlank()) {
+            helper.fail("the status has no dimension");
+        }
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void readingTheWorldAroundAnActorReportsItsPositionAndTime(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        WorldInfoPort port = port(WorldInfoPort.class, helper);
+        String expectedDimension = player.serverLevel().dimension().location().toString();
+
+        AtomicReference<WorldInfo> read = new AtomicReference<>();
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        port.info(ActorRef.player(player.getUUID().toString(), true)).whenComplete((info, error) -> {
+            if (error != null) {
+                refused.set(error);
+                return;
+            }
+            read.set(info);
+        });
+        helper.startSequence()
+                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "world.info"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("the world could not be read: " + reasonOf(refused.get()));
+                        return;
+                    }
+                    WorldInfo info = read.get();
+                    if (!expectedDimension.equals(info.dimension())) {
+                        helper.fail("read dimension " + info.dimension() + " instead of " + expectedDimension);
+                        return;
+                    }
+                    if (info.biome().isBlank()) {
+                        helper.fail("the world read has no biome");
+                        return;
+                    }
+                    if (info.difficulty().isBlank()) {
+                        helper.fail("the world read has no difficulty");
+                        return;
+                    }
+                    if (info.lightLevel() < 0 || info.lightLevel() > 15) {
+                        helper.fail("light level out of range: " + info.lightLevel());
+                    }
+                })
+                .thenSucceed();
+    }
+
+    private static ActorStatus awaitStatus(GameTestHelper helper, ActorStatusPort port, String actorId) {
+        AtomicReference<ActorStatus> read = new AtomicReference<>();
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        port.status(ActorRef.player(actorId, true)).whenComplete((status, error) -> {
+            if (error != null) {
+                refused.set(error);
+                return;
+            }
+            read.set(status);
+        });
+        helper.startSequence()
+                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "body.status"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("the status could not be read: " + reasonOf(refused.get()));
+                    }
+                })
+                .thenSucceed();
+        return read.get();
     }
 
     private static ServerPlayer mockPlayer(GameTestHelper helper) {

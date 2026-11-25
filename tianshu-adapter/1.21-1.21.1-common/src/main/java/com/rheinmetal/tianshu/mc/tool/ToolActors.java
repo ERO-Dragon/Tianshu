@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 
@@ -57,6 +58,11 @@ public final class ToolActors {
         }
 
         @Override
+        public LivingEntity living() {
+            return player;
+        }
+
+        @Override
         public Container inventory() {
             return player.getInventory();
         }
@@ -82,6 +88,11 @@ public final class ToolActors {
         @Override
         public Vec3 position() {
             return state.position();
+        }
+
+        @Override
+        public LivingEntity living() {
+            return state.entity() instanceof LivingEntity living ? living : null;
         }
 
         @Override
