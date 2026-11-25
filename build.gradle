@@ -1043,9 +1043,10 @@ tasks.register('verifyEveryToolHasADocument') {
                 if (!seen.add(id)) {
                     return
                 }
-                def expected = "${namespace}.${name}.md".toString()
-                if (!documented.contains(expected)) {
-                    missing << "${id} (expected references/${expected})"
+                def bare = "${name}.md".toString()
+                def qualified = "${namespace}.${name}.md".toString()
+                if (!documented.contains(bare) && !documented.contains(qualified)) {
+                    missing << "${id} (expected references/${bare})".toString()
                 }
             }
         }
