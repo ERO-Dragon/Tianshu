@@ -32,6 +32,11 @@ public enum BodyFailure {
         return new ToolException(code, id);
     }
 
+    /** The stable id a caller can compare against — the same one {@link #fromId} parses and the wire carries. */
+    public String id() {
+        return id;
+    }
+
     public String translationKey() {
         return "tianshu." + id;
     }
