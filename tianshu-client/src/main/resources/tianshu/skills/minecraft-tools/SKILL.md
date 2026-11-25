@@ -13,7 +13,7 @@ description: Minecraft 工具调用说明：一次调用输出什么参数、返
 - 返回：成功 `{ "ok": true, "result": { ... } }`，失败 `{ "ok": false, "code": "...", "message": "..." }`；
 - **不要用自然语言代替调用**：说"搬好了"之前，必须真的调过 `container.transfer`；
 - 参数不确定：先调保留工具 `tianshu:tool.catalog` 取 schema，不要猜字段名；
-- 读文档：`tianshu:capability.read`（不带 `id` 列目录；带**工具 id** 读这个工具自己的文档；带技能 id 读技能正文；带 `file` 读参考、长文带 `page`）。`tianshu:block.break` 的文档就是 `references/tianshu.block.break.md`。
+- 读文档：`tianshu:capability.read`（不带 `id` 列目录；带**工具 id** 读这个工具自己的文档；带技能 id 读技能正文；带 `file` 读参考、长文带 `page`）。
 
 ## 2. 先判断档位，再读对应参考
 
@@ -58,7 +58,3 @@ description: Minecraft 工具调用说明：一次调用输出什么参数、返
 - `body` 参数只给"有身体"的调用方；天枢没有实体，**不要传**；
 - 没有"通用写世界"入口；`server.*` 之外不要期望任意世界写入；
 - 档位不够就说做不了，不要绕过权限。
-
-## 5. 每个工具一份文档
-
-本技能 eferences/ 下按工具 id 命名（	ianshu.<工具>.md），一个工具一份：什么时候用、调用的 JSON、返回长什么样、失败之后做什么。要读时用 capability.read 带工具 id，不必在这里列全。
