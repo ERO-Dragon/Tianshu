@@ -29,8 +29,12 @@ class CapabilityReadToolTest {
     @BeforeEach
     void setUp() {
         TianshuTools.register(new CapabilityReadTool());
+        // The row below belongs to a module, so the consumer half of the sharing declaration is needed for the
+        // listing case: an undeclared subscription sees the base only.
+        com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.declare("tianshu",
+                com.rheinmetal.tianshu.api.capability.CapabilitySubscription.everythingFrom("test"));
         CapabilityCatalog.register(new CapabilityDescriptor(SKILL, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
-                        "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", new JsonObject()),
+                        "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", shared()),
                 (context, args) -> {
                     JsonObject envelope = new JsonObject();
                     envelope.addProperty("ok", true);
@@ -43,6 +47,7 @@ class CapabilityReadToolTest {
     void clean() {
         TianshuTools.unregister(CapabilityReadTool.ID);
         CapabilityCatalog.unregister(SKILL);
+        com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.clear();
     }
 
     @Test
@@ -68,5 +73,12 @@ class CapabilityReadToolTest {
         return TianshuTools.callJson(CapabilityReadTool.ID, JsonParser.parseString(json),
                         ToolCaller.agent(true), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
+    }
+
+    /** The provider half of the sharing declaration: this row is opened to everyone. */
+    private static com.google.gson.JsonObject shared() {
+        com.google.gson.JsonObject attributes = new com.google.gson.JsonObject();
+        attributes.addProperty("share", "all");
+        return attributes;
     }
 }

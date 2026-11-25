@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.Gson;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.capability.CapabilityAccess;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.google.gson.GsonBuilder;
@@ -136,6 +137,10 @@ public final class TianshuTools {
                 continue;
             }
             if (!bodyWorkAllowed(tool, allowed)) {
+                continue;
+            }
+            if (!CapabilityAccess.visibleToolTo(
+                    CapabilityCatalog.find(CapabilityId.parse(tool.id().toString())).orElse(null), caller)) {
                 continue;
             }
             if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {

@@ -37,6 +37,7 @@ class WorkflowInstallerTest {
         }
         installed.forEach(CapabilityCatalog::unregister);
         installed.clear();
+        CapabilitySubscriptions.clear();
     }
 
     @Test
@@ -107,7 +108,11 @@ class WorkflowInstallerTest {
                                         WorkflowStep... steps) {
         WorkflowDeclaration plan = new WorkflowDeclaration(CapabilityId.parse(id), description, List.of(steps),
                 seconds, changesWorld);
-        removal = WorkflowInstaller.install(plan, "provider-lab", ToolSide.SERVER, ToolPermission.EVERYONE);
+        // Publishing openly plus the consumer's subscription: the workflow row carries the provider's half of the
+        // sharing declaration, and this is the consumer's half.
+        CapabilitySubscriptions.declare("tianshu", CapabilitySubscription.everythingFrom("provider-lab"));
+        removal = WorkflowInstaller.install(plan, "provider-lab", ToolSide.SERVER, ToolPermission.EVERYONE,
+                CapabilitySharing.ALL);
         return plan;
     }
 

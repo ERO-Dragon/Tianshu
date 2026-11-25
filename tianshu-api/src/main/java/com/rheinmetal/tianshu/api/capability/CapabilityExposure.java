@@ -60,7 +60,8 @@ public final class CapabilityExposure {
             }
             if (!reachable(descriptor, side)
                     || !permitted(descriptor, caller)
-                    || !autonomyAllows(descriptor, allowed)) {
+                    || !autonomyAllows(descriptor, allowed)
+                    || !sharedWithConsumer(descriptor, caller)) {
                 continue;
             }
             rows.add(descriptor);
@@ -74,6 +75,39 @@ public final class CapabilityExposure {
 
     private static boolean permitted(CapabilityDescriptor descriptor, ToolCaller caller) {
         return descriptor.permission() != ToolPermission.OPERATOR || caller.operator();
+    }
+
+    /**
+     * Whether the provider shares this row with this consumer <em>and</em> the consumer accepts it.
+     *
+     * <p>Both halves are required. A provider opening a capability to a module that never asked for it would still be
+     * invisible to that module (the subscription decides), and a module asking for something nobody shares gets nothing
+     * (the declaration decides). That is what keeps "who opened what to whom" answerable.</p>
+     *
+     * <p>Player and body callers are not modules: sharing is a module-to-module arrangement, so it does not narrow a
+     * human's own session — what bounds that is the tier and the permission, checked above. A module's own rows are
+     * always visible to it, or a provider could not use what it published.</p>
+     */
+    private static boolean sharedWithConsumer(CapabilityDescriptor descriptor, ToolCaller caller) {
+        String consumer = consumerModuleOf(caller);
+        if (consumer == null) {
+            return true;
+        }
+        if (consumer.equals(descriptor.provider())) {
+            return true;
+        }
+        if (!CapabilitySharing.of(descriptor).permits(consumer)) {
+            return false;
+        }
+        return CapabilitySubscriptions.ruleFor(consumer).accepts(descriptor);
+    }
+
+    /** The module id behind a caller, or null when the caller is a player or a body rather than a module. */
+    private static String consumerModuleOf(ToolCaller caller) {
+        return switch (caller.kind()) {
+            case MOD, AGENT -> caller.id() == null || caller.id().isBlank() ? null : caller.id().trim();
+            case PLAYER, BODY -> null;
+        };
     }
 
     /**

@@ -36,7 +36,16 @@ class CapabilityCatalogTest {
     @AfterEach
     void clean() {
         CapabilityCatalog.clear();
+        CapabilitySubscriptions.clear();
         TianshuTools.unregister(ECHO);
+    }
+
+    /** A row from a module, opened to everyone: the provider half of the sharing declaration. */
+    private static CapabilityDescriptor openRow(CapabilityId id, CapabilityKind kind) {
+        com.google.gson.JsonObject attributes = new com.google.gson.JsonObject();
+        attributes.addProperty("share", "all");
+        return new CapabilityDescriptor(id, kind, CapabilityBinding.LOCAL, "a test capability",
+                ToolSide.CLIENT, ToolPermission.EVERYONE, "test", attributes);
     }
 
     private static CapabilityDescriptor descriptor(CapabilityId id, CapabilityKind kind,
@@ -334,13 +343,14 @@ class CapabilityCatalogTest {
 
     @Test
     void exposureExcludesConnectorsAndRendersTheRemainingKinds() {
-        CapabilityCatalog.register(descriptor(CapabilityId.of("test", "skill"), CapabilityKind.SKILL,
-                ToolPermission.EVERYONE, ToolSide.CLIENT), textHandler("skill"));
-        CapabilityCatalog.register(descriptor(CapabilityId.of("test", "resource"), CapabilityKind.RESOURCE,
-                ToolPermission.EVERYONE, ToolSide.CLIENT), textHandler("resource"));
-        CapabilityCatalog.register(descriptor(CapabilityId.of("test", "connector"), CapabilityKind.CONNECTOR,
-                ToolPermission.EVERYONE, ToolSide.CLIENT), textHandler("connector"));
+        CapabilityCatalog.register(openRow(CapabilityId.of("test", "skill"), CapabilityKind.SKILL),
+                textHandler("skill"));
+        CapabilityCatalog.register(openRow(CapabilityId.of("test", "resource"), CapabilityKind.RESOURCE),
+                textHandler("resource"));
+        CapabilityCatalog.register(openRow(CapabilityId.of("test", "connector"), CapabilityKind.CONNECTOR),
+                textHandler("connector"));
 
+        CapabilitySubscriptions.declare("m", CapabilitySubscription.everythingFrom("test"));
         String block = CapabilityExposure.describe(
                 CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT));
         assertTrue(block.contains("test:skill"));

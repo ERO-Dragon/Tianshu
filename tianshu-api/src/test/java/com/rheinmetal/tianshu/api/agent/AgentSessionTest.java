@@ -5,6 +5,8 @@ import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -36,13 +38,14 @@ class AgentSessionTest {
         TianshuTools.unregister(TOOL);
         CapabilityCatalog.unregister(SKILL);
         CapabilityCatalog.unregister(CapabilityId.of("test", "session.extra"));
+        CapabilitySubscriptions.clear();
     }
 
     @Test
     void theSessionComposesDiscoveryInvocationReadsAndChanges() throws Exception {
         TianshuTools.register(new SessionTool());
         CapabilityCatalog.register(new CapabilityDescriptor(SKILL, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
-                        "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", new JsonObject()),
+                        "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", shared()),
                 (context, args) -> {
                     JsonObject envelope = new JsonObject();
                     envelope.addProperty("ok", true);
@@ -50,6 +53,7 @@ class AgentSessionTest {
                     return CompletableFuture.completedFuture(envelope);
                 });
 
+        CapabilitySubscriptions.declare("tianshu", CapabilitySubscription.everythingFrom("test"));
         AgentSession session = AgentSession.client(ToolCaller.agent(false));
         assertTrue(session.tools().stream().anyMatch(spec -> spec.id().equals(TOOL)));
         assertTrue(session.capabilities().stream().anyMatch(row -> row.id().equals(SKILL)));
@@ -111,5 +115,12 @@ class AgentSessionTest {
             result.addProperty("value", "ok");
             return CompletableFuture.completedFuture(result);
         }
+    }
+
+    /** A row from a module, opened to everyone: the provider half of the sharing declaration. */
+    private static com.google.gson.JsonObject shared() {
+        com.google.gson.JsonObject attributes = new com.google.gson.JsonObject();
+        attributes.addProperty("share", "all");
+        return attributes;
     }
 }

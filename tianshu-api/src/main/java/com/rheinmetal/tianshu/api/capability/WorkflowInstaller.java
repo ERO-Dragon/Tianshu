@@ -31,6 +31,15 @@ public final class WorkflowInstaller {
      * a handler that no longer exists.</p>
      */
     public static Runnable install(WorkflowDeclaration plan, String provider, ToolSide side, ToolPermission permission) {
+        return install(plan, provider, side, permission, CapabilitySharing.NONE);
+    }
+
+    /**
+     * The same, with the sharing declaration the provider wants. A workflow is private unless it says otherwise:
+     * publishing a composition that nobody may see is legal, but it is not the default.
+     */
+    public static Runnable install(WorkflowDeclaration plan, String provider, ToolSide side, ToolPermission permission,
+                                   CapabilitySharing sharing) {
         Objects.requireNonNull(plan, "plan");
         String owner = provider == null || provider.isBlank() ? "unknown" : provider;
         ToolPermission effective = permission == null ? ToolPermission.EVERYONE : permission;
@@ -50,6 +59,7 @@ public final class WorkflowInstaller {
         com.google.gson.JsonArray steps = new com.google.gson.JsonArray();
         plan.steps().forEach(step -> steps.add(step.capability().toString()));
         attributes.add("stepList", steps);
+        (sharing == null ? CapabilitySharing.NONE : sharing).into(attributes);
         attributes.addProperty("expectedSeconds", plan.expectedSeconds());
         attributes.addProperty("changesWorld", plan.changesWorld());
         CapabilityDescriptor descriptor = new CapabilityDescriptor(
