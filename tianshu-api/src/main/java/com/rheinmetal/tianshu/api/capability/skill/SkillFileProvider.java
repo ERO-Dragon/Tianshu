@@ -139,7 +139,7 @@ public final class SkillFileProvider {
                 summary = summary.substring(0, MAX_DESCRIPTION);
             }
             CapabilityId id = CapabilityId.of(namespace, name);
-            Loaded loadedSkill = new Loaded(name, summary, coversOf(front.get("covers")));
+            Loaded loadedSkill = new Loaded(name, summary, readCoverage(directoryName));
             CapabilityDescriptor descriptor = new CapabilityDescriptor(
                     id,
                     CapabilityKind.SKILL,
@@ -156,7 +156,6 @@ public final class SkillFileProvider {
             problems.add(directoryName + "/SKILL.md: " + failure.getMessage());
         }
     }
-
     private static JsonObject attributes(Loaded skill) {
         JsonObject attributes = new JsonObject();
         attributes.addProperty("name", skill.name());
@@ -164,8 +163,8 @@ public final class SkillFileProvider {
         // This provider publishes the base's own skills and the player's own folder: local content, opened by
         // declaration rather than by being listed somewhere.
         attributes.addProperty("share", "all");
-        // `covers: a, b, c` in the front matter: which capabilities this skill teaches. Without it the catalogue cannot
-        // say "this capability comes with a manual", and the manual is only found by accident.
+        // Which capabilities this skill teaches. Absent means it teaches none by name, which is the normal case for a skill
+        // that documents a workflow rather than a set of tools.
         if (!skill.covers().isEmpty()) {
             com.google.gson.JsonArray covers = new com.google.gson.JsonArray();
             for (String capability : skill.covers()) {
@@ -176,23 +175,32 @@ public final class SkillFileProvider {
         return attributes;
     }
 
-    /** The {@code covers:} line, split on commas; ids the catalogue cannot parse are dropped when they are read back. */
-    private static java.util.List<String> coversOf(String declared) {
-        if (declared == null || declared.isBlank()) {
+    /**
+     * The capabilities this skill teaches, from {@code coverage.txt} beside it: one id per line, {@code #} starts a
+     * comment.
+     *
+     * <p>Deliberately <em>not</em> in {@code SKILL.md}: that file follows the general skill format, which knows a name
+     * and a description and nothing else. Which capabilities a manual belongs to is this platform's bookkeeping, so it
+     * lives in a file this platform owns — and a skill copied into another tool loses nothing but our index.</p>
+     */
+    private java.util.List<String> readCoverage(String directoryName) {
+        try {
+            String text = origin.read(directoryName, "coverage.txt");
+            if (text == null || text.isBlank()) {
+                return java.util.List.of();
+            }
+            java.util.List<String> covered = new java.util.ArrayList<>();
+            for (String line : text.split("\n", -1)) {
+                String value = line.strip();
+                if (value.isEmpty() || value.startsWith("#")) {
+                    continue;
+                }
+                covered.add(value);
+            }
+            return java.util.List.copyOf(covered);
+        } catch (java.io.IOException | RuntimeException absent) {
             return java.util.List.of();
         }
-        String text = declared.trim();
-        if (text.startsWith("[") && text.endsWith("]")) {
-            text = text.substring(1, text.length() - 1);
-        }
-        java.util.List<String> covers = new java.util.ArrayList<>();
-        for (String part : text.split(",")) {
-            String value = part.trim();
-            if (!value.isEmpty()) {
-                covers.add(value);
-            }
-        }
-        return java.util.List.copyOf(covers);
     }
 
     /** Reads the body or one reference file; paging applies to both. */

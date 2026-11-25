@@ -1,0 +1,18 @@
+# 这份技能教哪些能力（每个能力 id 一行，# 开头是注释）。
+#
+# 不是 SKILL.md 的一部分：SKILL.md 遵循通用技能格式，只放 name 与 description。
+# "哪份说明书属于哪个能力"是本平台的账，所以放在本平台自己的文件里——
+# 把技能复制到别的工具时，丢掉的只是这份索引。
+tianshu:body.scan
+tianshu:body.move
+tianshu:body.look
+tianshu:body.mine
+tianshu:body.attack
+tianshu:body.pickup
+tianshu:body.drop
+tianshu:body.equip
+tianshu:body.give
+tianshu:body.inventory
+tianshu:body.list
+tianshu:body.status
+tianshu:body.sequence
