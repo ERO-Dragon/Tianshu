@@ -132,6 +132,7 @@ public final class ServerToolHandler {
         gameBus.addListener(ServerToolHandler::onServerStarting);
         NeoForge.EVENT_BUS.addListener(ServerToolHandler::onLivingDeath);
         gameBus.addListener(ServerToolHandler::onServerStopping);
+        gameBus.addListener(ServerToolHandler::onServerStarted);
         gameBus.addListener(ServerToolHandler::onRegisterCommands);
         gameBus.addListener(ServerToolHandler::onServerTick);
     }
@@ -226,6 +227,18 @@ public final class ServerToolHandler {
         if (modBus != null) {
             modBus.register(SWITCH_RELOAD);
         }
+    }
+
+
+    /**
+     * Reports declarations that cannot work, once modules have published what they publish.
+     *
+     * <p>At "started", not at "starting": modules declare their capabilities while they load, and auditing earlier
+     * would call every provider "not installed". A session with nothing wrong logs nothing.</p>
+     */
+    private static void onServerStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
+        var logger = com.mojang.logging.LogUtils.getLogger();
+        com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.report(problem -> logger.warn("tianshu: {}", problem));
     }
 
     private static void onServerStopping(ServerStoppingEvent event) {

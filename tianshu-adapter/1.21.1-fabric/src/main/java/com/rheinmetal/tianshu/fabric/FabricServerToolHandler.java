@@ -117,6 +117,9 @@ public final class FabricServerToolHandler {
                 .map(bodies -> !bodies.onDeath(entity,
                         entity.level().getGameRules().getBoolean(GameRules.RULE_KEEPINVENTORY)))
                 .orElse(true));
+        // Declarations that cannot work are reported once modules have published; an empty audit logs nothing.
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions
+                .report(problem -> org.slf4j.LoggerFactory.getLogger("tianshu").warn("tianshu: {}", problem)));
         ServerLifecycleEvents.SERVER_STARTING.register(server -> SESSION.start(registrations -> {
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             // One probe for the whole session: the block side of inspect and transfer must resolve the same store.
