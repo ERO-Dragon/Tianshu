@@ -36,7 +36,7 @@ class ToolDocsTest {
     void theDocumentIsFoundFromTheToolId() {
         assertTrue(ToolDocs.of(CapabilityId.parse("tianshu:body.mine")).isPresent(),
                 "tianshu:body.mine reads tianshu.body.mine.md");
-        assertEquals("tianshu/docs/tools/tianshu.body.mine.md",
+        assertEquals("tianshu/skills/<skill>/references/tianshu.body.mine.md",
                 ToolDocs.pathOf(CapabilityId.parse("tianshu:body.mine")));
     }
 

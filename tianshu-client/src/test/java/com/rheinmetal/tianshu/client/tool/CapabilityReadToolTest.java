@@ -64,9 +64,20 @@ class CapabilityReadToolTest {
     }
 
     @Test
-    void aToolIsRefusedInsteadOfExecutedAgain() throws Exception {
+    void readingAToolReturnsItsDocumentInsteadOfRunningIt() throws Exception {
+        // A tool is called directly, but asking capability.read about one returns the document that ships with it,
+        // found from the id: no index, no declaration.
         JsonObject envelope = call("{\"id\":\"tianshu:capability.read\"}");
-        assertEquals("INVALID_ARGS", envelope.get("code").getAsString());
+
+        assertTrue(envelope.get("ok").getAsBoolean(), envelope.toString());
+        assertTrue(envelope.getAsJsonObject("result").get("text").getAsString().contains("capability.read"),
+                envelope.toString());
+    }
+
+    @Test
+    void anUnknownToolIsStillRefused() throws Exception {
+        JsonObject envelope = call("{\"id\":\"tianshu:no.such.tool\"}");
+        assertEquals("UNKNOWN_TOOL", envelope.get("code").getAsString());
     }
 
     private static JsonObject call(String json) throws Exception {
