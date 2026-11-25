@@ -44,6 +44,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new CraftRecipeTool());
         ServerToolDeclarations.declare(new ContainerTransferTool());
         ServerToolDeclarations.declare(new BlockMachineTool());
+        ServerToolDeclarations.declare(new BlockInspectTool());
         ServerToolDeclarations.declare(new BlockPlaceTool());
         ServerToolDeclarations.declare(new BlockPlaceLineTool());
         ServerToolDeclarations.declare(new BodyListTool());
