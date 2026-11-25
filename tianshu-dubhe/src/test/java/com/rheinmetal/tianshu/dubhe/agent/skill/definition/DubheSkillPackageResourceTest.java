@@ -37,9 +37,10 @@ class DubheSkillPackageResourceTest {
 
         DubheSkillDefinition search = byName.get("search");
         assertTrue(search.metadata().description().contains("手册"), "the entry says what to try first");
-        assertTrue(search.metadata().allowedTools().contains("book"), "it drives the book skill");
+        assertTrue(search.metadata().allowedTools().containsAll(List.of("book", "wiki")),
+                "it drives both the manual and the wiki");
         assertTrue(search.body().contains("action=list"), "it explains how to fall back when a query misses");
-        assertTrue(search.references().isEmpty(), "no references until the online sources exist");
+        assertTrue(search.references().isEmpty(), "no references until the mod sites exist");
 
         DubheSkillDefinition diplomacy = byName.get("diplomacy");
         assertEquals(5, diplomacy.references().size(), "discovery / relay / progress / permissions / failures");
