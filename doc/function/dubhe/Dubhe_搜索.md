@@ -53,8 +53,8 @@
 | 站点 | 覆盖 | 取法 | 状态 |
 |---|---|---|---|
 | MC百科 `mcmod.cn` | 模组词条（中文侧唯一） | HTML + 站内搜索 | robots 允许正文；无官方 API |
-| 中文 Wiki `zh.minecraft.wiki` | 原版 | MediaWiki API | 实测可用 |
-| BWIKI `wiki.biligame.com/mc` | **只有原版** | MediaWiki API | 实测可用；搜「机械动力」0 条 |
+| 中文 Wiki `zh.minecraft.wiki` | 原版 | MediaWiki API（generator + 导语） | 实测可用 |
+| BWIKI `wiki.biligame.com/mc` | 只有原版 | MediaWiki API，**无 extracts** | 只有标题和片段，本版不用 |
 
 ### 英文
 
@@ -74,13 +74,17 @@
 
 | 工具 | 覆盖 | 状态 |
 |---|---|---|
-| `book` | L1 本地手册 | **已实现**（§6） |
+| `book` | 已装模组的手册 | **已实现**（§6） |
+| `wiki` | 中文 Wiki / 英文 Wiki（`site` 不给就跟玩家语言） | **已实现** |
 | `mcmod(query)` | MC百科 HTML | 待做 |
-| `mc_wiki(site: zh\|en\|bwiki, query)` | 三个 MediaWiki 站，同协议合一个 | 待做 |
 | `mc_modrinth` / `mc_cf` | 英文分发站 | **第一版不做**：只回答"这模组是什么"，而 L1 手册与 MC百科 覆盖更好；真撞上"没词条且没装手册"再补 |
 
 - **`search` 不进 simple 工具表**（A3）：simple 恒为 `{delegate}`，结构上没有这条路。
 - **纯内部**：工具名只在天枢内部出现，不对外发布（G66）。
+
+**联网都走 `DubheWeb`**（G68）：8 秒、512KB、同主机最多 3 跳、不重试、不读系统代理。每个源只负责拼 URL 和解析，超时/大小/重定向只定义一次。
+
+**BWIKI 不用**：它没有 TextExtracts 扩展（`prop=extracts` 直接报"未识别"），`action=raw` 拿到的是几十 KB 的信息框标记。清理它的成本超过它带来的信息，所以中文原版只留中文 Wiki。真要加，得单独写一条"只给标题和片段"的降级路径。
 
 ## 6. 本地手册（L1）：Patchouli
 
