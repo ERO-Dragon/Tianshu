@@ -224,6 +224,7 @@ public final class CoreModuleLifecycleCoordinator {
     }
 
     private boolean shutdownModules(boolean clearCapabilities, String operation) {
+        int stoppedCount = moduleHost.managedModules().size();
         try {
             try {
                 moduleHost.stopAll();
@@ -242,6 +243,12 @@ public final class CoreModuleLifecycleCoordinator {
                     }
                 }
             }
+            // The shutdown phase is the one an operator can only inspect afterwards, so it says what it did: which operation ran
+            // it, and how many modules were still installed when it started. Through LogSink rather than the game
+            // environment on purpose — that sink gates INFO behind the in-game debug switch, and "did the host stop" is
+            // exactly the line a support case needs from a release build.
+            com.rheinmetal.tianshu.api.LogSink.SYSTEM.info(
+                    "module.host.stopped operation=" + operation + " installed=" + stoppedCount);
             return true;
         } catch (ModuleLifecycleException exception) {
             env.error(
