@@ -46,6 +46,9 @@ public interface LabHostTrace {
     /** How many commands the shared capability reached the peer module with. */
     int sharedPeerDeliveries();
 
+    /** Why the peer module's declaration of the shared capability was refused, or null when it was accepted. */
+    String peerRefusal();
+
     /** Sends one command to the capability both this module and its peer declared. */
     void submitShared(String text);
 }

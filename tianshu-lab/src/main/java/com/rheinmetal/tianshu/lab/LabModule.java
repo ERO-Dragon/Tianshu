@@ -82,6 +82,8 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
     private final java.util.concurrent.atomic.AtomicInteger sharedDeliveries = new java.util.concurrent.atomic.AtomicInteger();
     private final java.util.concurrent.atomic.AtomicInteger sharedPeerDeliveries =
             new java.util.concurrent.atomic.AtomicInteger();
+    /** Why the peer's duplicate declaration was refused; null when the centre accepted it, which would be the bug. */
+    private volatile String peerRefusal;
     private final java.util.concurrent.atomic.AtomicInteger echoDeliveries =
             new java.util.concurrent.atomic.AtomicInteger();
 
@@ -126,7 +128,14 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
         // The same capability from two module ids: the centre has to deliver to both, and keeping the second one must
         // not replace the first.
         adapter.registerShared(this::handleShared);
-        peerAdapter.registerShared(this::handleSharedPeer);
+        // A capability id belongs to one module, so this must be refused — and the refusal must name what it collided
+        // with. Caught here on purpose: the bench is checking the rule, not failing to install.
+        try {
+            peerAdapter.registerShared(this::handleSharedPeer);
+            peerRefusal = null;
+        } catch (RuntimeException refused) {
+            peerRefusal = String.valueOf(refused.getMessage());
+        }
         registerCompleted = true;
     }
 
@@ -196,6 +205,11 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
     @Override
     public int sharedPeerDeliveries() {
         return sharedPeerDeliveries.get();
+    }
+
+    @Override
+    public String peerRefusal() {
+        return peerRefusal;
     }
 
     @Override

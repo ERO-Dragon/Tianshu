@@ -118,7 +118,7 @@ public final class LabAcceptanceCases {
         cases.add(aModuleTaskRunsAndItsLaneSurvivesAFailure());
         cases.add(theHostAssemblesAnOutsideModuleOnce());
         cases.add(aModuleReachesItsOwnCapabilityThroughTheCentre());
-        cases.add(twoModulesShareOneCapabilityAndOneDeliveryArrives());
+        cases.add(aSecondDeclarationOfOneCapabilityIsRefused());
         cases.add(aBodyCoordinateOutsideTheWorldIsRefused());
         cases.add(aBodyThatFailsVerificationIsNeverPromoted());
         cases.add(aCorruptBodyIsRetriedBeforeTheInstallFails());
@@ -1506,16 +1506,15 @@ public final class LabAcceptanceCases {
     }
 
     /**
-     * Two modules declare the same capability, and one submission is delivered exactly once.
+     * A capability id belongs to one module: a second declarer is refused, and the first keeps every delivery.
      *
-     * <p>What this locks is the invariant that matters to a caller: a command is not processed twice because two
-     * modules hold a declaration. <em>Which</em> holder receives it is not asserted here — today the first
-     * registration takes every submission and the later declarer is shadowed without being told, which is an open
-     * question rather than a contract, and a test should not freeze an accident.</p>
+     * <p>The bench declares the same capability under a peer module id and expects the centre to say no, naming what it
+     * collided with. A silent shadow would look like a successful integration until nothing ever arrived — the worst
+     * failure shape there is.</p>
      */
-    private static AcceptanceCase twoModulesShareOneCapabilityAndOneDeliveryArrives() {
+    private static AcceptanceCase aSecondDeclarationOfOneCapabilityIsRefused() {
         final String id = "ACC-PRO-2";
-        final String title = "two modules may declare one capability, and a command is delivered exactly once";
+        final String title = "a capability belongs to one module: a second declarer is refused, the first keeps working";
         return AcceptanceCase.of(id, title, () -> {
             ModuleRuntimeAccess runtime = AcceptanceEnvironment.runtime();
             LabHostTrace host = AcceptanceEnvironment.host();
@@ -1527,15 +1526,18 @@ public final class LabAcceptanceCases {
                     LabProtocolAdapter.SHARED_CAPABILITY)) {
                 owners.add(registration.moduleId());
             }
-            if (owners.size() != 2) {
-                return AcceptanceOutcome.fail(id, title, "providers=" + owners.size());
+            if (owners.size() != 1 || !LabProtocolAdapter.MODULE_ID.equals(owners.get(0))) {
+                return AcceptanceOutcome.fail(id, title, "owners=" + owners);
+            }
+            String refusal = host.peerRefusal();
+            if (refusal == null || !refusal.contains(LabProtocolAdapter.SHARED_CAPABILITY)) {
+                return AcceptanceOutcome.fail(id, title, "the duplicate declaration was not refused: " + refusal);
             }
             int beforeSelf = host.sharedDeliveries();
             int beforePeer = host.sharedPeerDeliveries();
-            host.submitShared("fanout-" + System.currentTimeMillis());
+            host.submitShared("owner-" + System.currentTimeMillis());
             long deadline = System.currentTimeMillis() + CALL_TIMEOUT_SECONDS * 1000L;
-            while (System.currentTimeMillis() < deadline
-                    && host.sharedDeliveries() == beforeSelf && host.sharedPeerDeliveries() == beforePeer) {
+            while (System.currentTimeMillis() < deadline && host.sharedDeliveries() == beforeSelf) {
                 try {
                     Thread.sleep(20L);
                 } catch (InterruptedException interrupted) {
@@ -1543,12 +1545,13 @@ public final class LabAcceptanceCases {
                     break;
                 }
             }
-            int total = (host.sharedDeliveries() - beforeSelf) + (host.sharedPeerDeliveries() - beforePeer);
-            if (total == 1) {
-                return AcceptanceOutcome.pass(id, title, "two declarers, one delivery: " + String.join(", ", owners));
+            int self = host.sharedDeliveries() - beforeSelf;
+            int peer = host.sharedPeerDeliveries() - beforePeer;
+            if (self == 1 && peer == 0) {
+                return AcceptanceOutcome.pass(id, title,
+                        "duplicate refused (" + refusal + "), the owner still received it");
             }
-            return AcceptanceOutcome.fail(id, title, "declarers=" + String.join(", ", owners)
-                    + " deliveries=" + total + " (a command processed twice is a fan-out nobody asked for)");
+            return AcceptanceOutcome.fail(id, title, "owner deliveries=" + self + " peer deliveries=" + peer);
         });
     }
 
