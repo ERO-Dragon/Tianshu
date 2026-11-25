@@ -63,7 +63,7 @@ public final class BodyCommands {
                                                 .executes(BodyCommands::untrust))))
                         .then(Commands.literal("give")
                                 .then(Commands.argument("id", StringArgumentType.word()).suggests(BodyCommands::suggestBodies)
-                                        .then(Commands.argument("item", StringArgumentType.word())
+                                        .then(Commands.argument("item", net.minecraft.commands.arguments.ResourceLocationArgument.id())
                                                 .then(Commands.argument("count",
                                                                 com.mojang.brigadier.arguments.IntegerArgumentType
                                                                         .integer(1, 2304))
@@ -155,12 +155,14 @@ public final class BodyCommands {
         if (id == null) {
             return 0;
         }
-        String itemToken = StringArgumentType.getString(context, "item");
-        net.minecraft.resources.ResourceLocation itemId = net.minecraft.resources.ResourceLocation.tryParse(itemToken);
-        net.minecraft.world.item.Item item = itemId == null ? null
-                : net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
+        // A namespaced id, parsed by the argument type that exists for it: `word()` accepts no colon, so
+        // `minecraft:diamond` — how every player and every vanilla command names an item — was refused before this ran.
+        net.minecraft.resources.ResourceLocation itemId =
+                net.minecraft.commands.arguments.ResourceLocationArgument.getId(context, "item");
+        net.minecraft.world.item.Item item =
+                net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
         if (item == null || item == net.minecraft.world.item.Items.AIR) {
-            source.sendFailure(Component.literal("unknown item: " + itemToken));
+            source.sendFailure(Component.literal("unknown item: " + itemId));
             return 0;
         }
         if (BodyRuntime.require().state(id).isEmpty()) {
@@ -174,7 +176,7 @@ public final class BodyCommands {
             return 0;
         }
         int given = added;
-        source.sendSuccess(() -> Component.literal("gave " + given + " " + itemToken + " to " + id), true);
+        source.sendSuccess(() -> Component.literal("gave " + given + " " + itemId + " to " + id), true);
         return added;
     }
 

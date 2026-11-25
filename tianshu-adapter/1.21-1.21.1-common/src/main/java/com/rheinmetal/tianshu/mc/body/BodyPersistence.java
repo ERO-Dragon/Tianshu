@@ -148,15 +148,16 @@ public final class BodyPersistence {
                 throw new IOException("body.load.unsupported_format");
             }
             ListTag saved = root.getList("bodies", Tag.TAG_COMPOUND);
-            int restored = 0;
             for (int index = 0; index < saved.size(); index++) {
-                CompoundTag tag = saved.getCompound(index);
-                if (restoreOne(server, bodies, tag)) {
-                    restored++;
-                }
+                restoreOne(server, bodies, saved.getCompound(index));
             }
             loadFailed = false;
-            LOGGER.info("body.load.complete restored=" + restored + " total=" + saved.size());
+            // A record whose carrier is not loaded yet is not a restored body: the chunk may simply not be in memory
+            // at this point, and saying "restored" for it sent a reader looking for a body that only shows up once its
+            // chunk loads. Two numbers, so the line means what it says.
+            long attached = bodies.states().stream().filter(BodyRegistry.BodyState::loaded).count();
+            LOGGER.info("body.load.complete attached=" + attached
+                    + " waiting=" + (saved.size() - attached) + " total=" + saved.size());
         } catch (IOException | RuntimeException failure) {
             // Remembered, not just logged: a save on top of an unreadable file would replace whatever the file still
             // held with the partial set this process happened to see.
@@ -165,14 +166,14 @@ public final class BodyPersistence {
         }
     }
 
-    private static boolean restoreOne(MinecraftServer server, BodyRegistry bodies, CompoundTag tag) {
+    private static void restoreOne(MinecraftServer server, BodyRegistry bodies, CompoundTag tag) {
         if (!tag.contains("id") || !tag.contains("kind")) {
-            return false;
+            return;
         }
         UUID id = tag.getUUID("id");
         Optional<BodyKind> kind = BodyKind.parse(tag.getString("kind"));
         if (kind.isEmpty()) {
-            return false;
+            return;
         }
         Entity entity = find(server, id);
         boolean playerLike = tag.getBoolean("playerLike");
@@ -229,7 +230,7 @@ public final class BodyPersistence {
                 LOGGER.warn("body.load.invalid_trusted_id");
             }
         }
-        return true;
+        return;
     }
 
     private static EntityAccess parseAccess(String name) {
