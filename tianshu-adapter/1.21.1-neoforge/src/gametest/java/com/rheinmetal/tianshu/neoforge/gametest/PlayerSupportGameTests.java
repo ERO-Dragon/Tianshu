@@ -26,11 +26,14 @@ import com.rheinmetal.tianshu.api.game.BlockInspectResult;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.CraftPort;
+import com.rheinmetal.tianshu.api.game.CraftableRecipe;
+import com.rheinmetal.tianshu.api.game.CraftableRecipeList;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
 import com.rheinmetal.tianshu.api.game.CraftResult;
 import com.rheinmetal.tianshu.api.game.LocateRequest;
 import com.rheinmetal.tianshu.api.game.LocateResult;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
+import com.rheinmetal.tianshu.api.game.RecipeAvailabilityPort;
 import com.rheinmetal.tianshu.api.game.WorldInfo;
 import com.rheinmetal.tianshu.api.game.WorldInfoPort;
 import com.rheinmetal.tianshu.api.game.WorldLocatePort;
@@ -606,6 +609,94 @@ public final class PlayerSupportGameTests {
                 .thenExecute(() -> {
                     if (refused.get() != null) {
                         helper.fail("locating failed: " + reasonOf(refused.get()));
+                    }
+                })
+                .thenSucceed();
+        return read.get();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void listingWhatTheBodyCouldCraftMatchesItsInventory(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        RecipeAvailabilityPort port = port(RecipeAvailabilityPort.class, helper);
+        ActorRef actor = ActorRef.player(player.getUUID().toString(), true);
+
+        // Empty inventory: nothing craftable. This is the half that catches a search that ignores the inventory.
+        CraftableRecipeList empty = awaitCraftable(helper, port, actor, 20);
+        if (!empty.recipes().isEmpty()) {
+            helper.fail("an empty inventory was reported as able to craft " + empty.recipes().size() + " recipes");
+            return;
+        }
+
+        // Two planks make sticks in the 2x2 grid; four planks make a crafting table, which needs the 3x3 grid.
+        player.getInventory().add(new ItemStack(Items.OAK_PLANKS, 8));
+        CraftableRecipeList withPlanks = awaitCraftable(helper, port, actor, 64);
+        CraftableRecipe stickRecipe = withPlanks.recipes().stream()
+                .filter(recipe -> "minecraft:stick".equals(recipe.outputItemId()))
+                .findFirst()
+                .orElse(null);
+        CraftableRecipe tableRecipe = withPlanks.recipes().stream()
+                .filter(recipe -> "minecraft:crafting_table".equals(recipe.outputItemId()))
+                .findFirst()
+                .orElse(null);
+        if (stickRecipe == null) {
+            helper.fail("sticks are not reported as craftable from 8 planks: " + withPlanks.recipes());
+            return;
+        }
+        if (stickRecipe.needsTable()) {
+            helper.fail("sticks fit a 2x2 grid but were reported as needing a table");
+            return;
+        }
+        if (tableRecipe == null) {
+            helper.fail("a crafting table is not reported as craftable from 8 planks");
+            return;
+        }
+        // Vanilla's crafting table is itself a 2x2 recipe, so it must NOT need a table. The 3x3 half is the pickaxe.
+        if (tableRecipe.needsTable()) {
+            helper.fail("a crafting table is a 2x2 recipe but was reported as needing a table");
+            return;
+        }
+        player.getInventory().add(new ItemStack(Items.STICK, 4));
+        CraftableRecipeList withSticks = awaitCraftable(helper, port, actor, 64);
+        CraftableRecipe pickaxe = withSticks.recipes().stream()
+                .filter(recipe -> "minecraft:wooden_pickaxe".equals(recipe.outputItemId()))
+                .findFirst()
+                .orElse(null);
+        if (pickaxe == null) {
+            helper.fail("a wooden pickaxe is not craftable from planks and sticks: " + withSticks.recipes());
+            return;
+        }
+        if (!pickaxe.needsTable()) {
+            helper.fail("a wooden pickaxe is a 3x3 recipe but was reported as not needing a table");
+        }
+
+        // The limit is part of the contract: a caller that asks for one gets one, and knows it may be truncated.
+        CraftableRecipeList one = awaitCraftable(helper, port, actor, 1);
+        if (one.recipes().size() != 1) {
+            helper.fail("limit 1 returned " + one.recipes().size() + " recipes");
+            return;
+        }
+        if (!one.truncated()) {
+            helper.fail("a capped answer did not report itself as truncated");
+        }
+    }
+
+    private static CraftableRecipeList awaitCraftable(GameTestHelper helper, RecipeAvailabilityPort port,
+                                                      ActorRef actor, int limit) {
+        AtomicReference<CraftableRecipeList> read = new AtomicReference<>();
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        port.available(actor, limit).whenComplete((list, error) -> {
+            if (error != null) {
+                refused.set(error);
+                return;
+            }
+            read.set(list);
+        });
+        helper.startSequence()
+                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "craft.available"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("listing craftable recipes failed: " + reasonOf(refused.get()));
                     }
                 })
                 .thenSucceed();
