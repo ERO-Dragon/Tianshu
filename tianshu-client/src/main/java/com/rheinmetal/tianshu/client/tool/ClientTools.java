@@ -46,6 +46,8 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BlockMachineTool());
         ServerToolDeclarations.declare(new BlockInspectTool());
         ServerToolDeclarations.declare(new BlockBreakTool());
+        ServerToolDeclarations.declare(new EntityInspectTool());
+        ServerToolDeclarations.declare(new ItemInspectTool());
         ServerToolDeclarations.declare(new BodyStatusTool());
         ServerToolDeclarations.declare(new WorldInfoTool());
         ServerToolDeclarations.declare(new WorldLocateTool());
