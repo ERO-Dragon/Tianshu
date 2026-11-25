@@ -1,13 +1,12 @@
 package com.rheinmetal.tianshu.api.capability.skill;
 
 import com.google.gson.JsonObject;
-
-
 import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
@@ -28,8 +27,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Loads skills written in the common {@code SKILL.md} format: a front-matter block with {@code name} and
- * {@code description}, a body, and optional files next to it (typically {@code references/}).
+ * Publishes skills from the classpath under {@code basePath}, enumerated by {@code basePath/index.txt}
+ * (one directory name per line), one skill per {@code <dir>/SKILL.md} with an optional {@code references/} folder.
  *
  * <p>Progressive disclosure is optional: a skill with only {@code SKILL.md} works exactly the same; references are
  * read only when a caller asks for one. The catalogue receives the name and description only; body and references
@@ -37,22 +36,21 @@ import java.util.stream.Stream;
  *
  * <p>One provider owns one namespace and one origin. A directory origin serves the player's skill folder; the
  * classpath origin serves built-in skills. A skill id is {@code namespace:name}, so two mods can ship a skill with
- * the same short name without colliding.</p>
+ * the same directory name without colliding.</p>
  */
 public final class SkillFileProvider {
 
-    /** The common skill name rule: lowercase words joined by hyphens, at most 64 characters. */
-    private static final Pattern NAME = Pattern.compile("[a-z0-9]+(?:-[a-z0-9]+)*");
+    private static final Pattern NAME = Pattern.compile("[a-z0-9]+(-[a-z0-9]+)*");
     private static final int MAX_NAME = 64;
-    private static final int MAX_DESCRIPTION = 1024;
-    private static final int MAX_TEXT_BYTES = 512 * 1024;
+    private static final int MAX_TEXT_BYTES = 48_000;
+    private static final String SKILL_FILE = "SKILL.md";
 
     private final String namespace;
     private final Origin origin;
     private final Map<CapabilityId, Loaded> loaded = new ConcurrentHashMap<>();
     private final List<String> problems = new ArrayList<>();
 
-    private record Loaded(String name, String description, java.util.List<String> covers) {
+    private record Loaded(String name, String description) {
     }
 
     private SkillFileProvider(String namespace, Origin origin) {
@@ -60,59 +58,51 @@ public final class SkillFileProvider {
         this.origin = Objects.requireNonNull(origin, "origin");
     }
 
-    /** Scans {@code root/<skill>/SKILL.md} and publishes each valid skill under {@code namespace}. */
+    /** A provider over a directory of skills; {@code namespace} is the owner's id. */
     public static SkillFileProvider install(String namespace, Path root) {
         SkillFileProvider provider = new SkillFileProvider(namespace, new DirectoryOrigin(root));
         provider.reload();
         return provider;
     }
 
-    /**
-     * Publishes skills from the classpath under {@code basePath}, enumerated by {@code basePath/index.txt}
-     * (one skill directory name per line).
-     */
+    /** A provider over skills shipped on the classpath; {@code basePath} holds {@code index.txt} and the skill folders. */
     public static SkillFileProvider installClasspath(String namespace, String basePath) {
-        SkillFileProvider provider = new SkillFileProvider(namespace, new ClasspathOrigin(basePath));
+        SkillFileProvider provider = new SkillFileProvider(namespace,
+                new ClasspathOrigin(basePath, SkillFileProvider.class.getClassLoader()));
         provider.reload();
         return provider;
     }
 
-    public String namespace() {
-        return namespace;
-    }
-
-    /** Conflicts and malformed files found by the last scan; empty when everything loaded cleanly. */
+    /** Everything this provider could not index, in the order it found them. */
     public List<String> problems() {
         return List.copyOf(problems);
     }
 
-    /** Re-reads the origin. A reload replaces the provider's own entries, so a removed skill disappears. */
-    public synchronized void reload() {
-        unload();
-        problems.clear();
-        List<String> names;
-        try {
-            names = origin.names();
-        } catch (IOException failure) {
-            problems.add("cannot list " + origin.describe() + ": " + failure.getMessage());
-            return;
-        }
-        for (String directoryName : names) {
-            load(directoryName);
-        }
-    }
-
-    /** Removes every entry this provider published. Safe to call when nothing was loaded. */
-    public synchronized void unload() {
-        for (CapabilityId id : loaded.keySet()) {
+    /** Unregisters every skill this provider published. */
+    public void unload() {
+        for (CapabilityId id : List.copyOf(loaded.keySet())) {
             CapabilityCatalog.unregister(id);
         }
         loaded.clear();
     }
 
+    /** Re-reads the origin; skills that disappeared are unregistered, skills that changed are re-registered. */
+    public void reload() {
+        problems.clear();
+        loaded.forEach((id, skill) -> CapabilityCatalog.unregister(id));
+        loaded.clear();
+        try {
+            for (String directory : origin.skillDirectories()) {
+                load(directory);
+            }
+        } catch (IOException unreadable) {
+            problems.add(origin.describe() + ": " + unreadable.getMessage());
+        }
+    }
+
     private void load(String directoryName) {
         try {
-            String text = origin.read(directoryName, "SKILL.md");
+            String text = origin.read(directoryName, SKILL_FILE);
             FrontMatter front = FrontMatter.parse(text);
             String name = front.get("name");
             String description = front.get("description");
@@ -134,12 +124,13 @@ public final class SkillFileProvider {
                 problems.add(directoryName + "/SKILL.md: front matter has no description");
                 return;
             }
-            String summary = description.strip();
-            if (summary.length() > MAX_DESCRIPTION) {
-                summary = summary.substring(0, MAX_DESCRIPTION);
+            if (description.length() > 1024) {
+                problems.add(directoryName + "/SKILL.md: description is longer than 1024 characters");
+                return;
             }
+            String summary = description.strip();
             CapabilityId id = CapabilityId.of(namespace, name);
-            Loaded loadedSkill = new Loaded(name, summary, readCoverage(directoryName));
+            Loaded loadedSkill = new Loaded(name, summary);
             CapabilityDescriptor descriptor = new CapabilityDescriptor(
                     id,
                     CapabilityKind.SKILL,
@@ -150,12 +141,13 @@ public final class SkillFileProvider {
                     "tianshu-skills",
                     attributes(loadedSkill)
             );
-            CapabilityCatalog.register(descriptor, (context, args) -> read(directoryName, loadedSkill, args));
+            CapabilityCatalog.register(descriptor, (context, args) -> read(directoryName, args));
             loaded.put(id, loadedSkill);
         } catch (IOException | RuntimeException failure) {
             problems.add(directoryName + "/SKILL.md: " + failure.getMessage());
         }
     }
+
     private static JsonObject attributes(Loaded skill) {
         JsonObject attributes = new JsonObject();
         attributes.addProperty("name", skill.name());
@@ -163,56 +155,19 @@ public final class SkillFileProvider {
         // This provider publishes the base's own skills and the player's own folder: local content, opened by
         // declaration rather than by being listed somewhere.
         attributes.addProperty("share", "all");
-        // Which capabilities this skill teaches. Absent means it teaches none by name, which is the normal case for a skill
-        // that documents a workflow rather than a set of tools.
-        if (!skill.covers().isEmpty()) {
-            com.google.gson.JsonArray covers = new com.google.gson.JsonArray();
-            for (String capability : skill.covers()) {
-                covers.add(capability);
-            }
-            attributes.add(com.rheinmetal.tianshu.api.capability.SkillCoverage.COVERS, covers);
-        }
         return attributes;
     }
 
-    /**
-     * The capabilities this skill teaches, from {@code coverage.txt} beside it: one id per line, {@code #} starts a
-     * comment.
-     *
-     * <p>Deliberately <em>not</em> in {@code SKILL.md}: that file follows the general skill format, which knows a name
-     * and a description and nothing else. Which capabilities a manual belongs to is this platform's bookkeeping, so it
-     * lives in a file this platform owns — and a skill copied into another tool loses nothing but our index.</p>
-     */
-    private java.util.List<String> readCoverage(String directoryName) {
-        try {
-            String text = origin.read(directoryName, "coverage.txt");
-            if (text == null || text.isBlank()) {
-                return java.util.List.of();
-            }
-            java.util.List<String> covered = new java.util.ArrayList<>();
-            for (String line : text.split("\n", -1)) {
-                String value = line.strip();
-                if (value.isEmpty() || value.startsWith("#")) {
-                    continue;
-                }
-                covered.add(value);
-            }
-            return java.util.List.copyOf(covered);
-        } catch (java.io.IOException | RuntimeException absent) {
-            return java.util.List.of();
-        }
-    }
-
     /** Reads the body or one reference file; paging applies to both. */
-    private CompletableFuture<JsonObject> read(String directoryName, Loaded skill, JsonObject args) {
+    private CompletableFuture<JsonObject> read(String directoryName, JsonObject args) {
         try {
             String file = optionalString(args, "file");
-            String relative = file == null || file.isBlank() ? "SKILL.md" : file;
+            String relative = file == null || file.isBlank() ? SKILL_FILE : file;
             String text = origin.read(directoryName, relative);
             if (text.length() > MAX_TEXT_BYTES) {
                 text = text.substring(0, MAX_TEXT_BYTES);
             }
-            if ("SKILL.md".equals(relative)) {
+            if (SKILL_FILE.equals(relative)) {
                 text = FrontMatter.body(text);
             }
             return CompletableFuture.completedFuture(envelope(TextPages.page(text, optionalPage(args),
@@ -249,21 +204,24 @@ public final class SkillFileProvider {
         return envelope;
     }
 
-    /** Where skill files come from: a directory or the classpath. */
+    /** Where a skill's files come from: a directory on disk, or the classpath. */
     private interface Origin {
 
         String describe();
 
-        List<String> names() throws IOException;
+        /** Skill directory names, in the order they should be indexed. */
+        List<String> skillDirectories() throws IOException;
 
+        /** Reads one file inside a skill; must stay inside that skill's directory. */
         String read(String skill, String relative) throws IOException;
     }
 
     private static final class DirectoryOrigin implements Origin {
+
         private final Path root;
 
-        DirectoryOrigin(Path root) {
-            this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
+        private DirectoryOrigin(Path root) {
+            this.root = root.toAbsolutePath().normalize();
         }
 
         @Override
@@ -272,16 +230,15 @@ public final class SkillFileProvider {
         }
 
         @Override
-        public List<String> names() throws IOException {
+        public List<String> skillDirectories() throws IOException {
             if (!Files.isDirectory(root)) {
                 return List.of();
             }
-            try (Stream<Path> paths = Files.list(root)) {
-                return paths
+            try (Stream<Path> entries = Files.list(root)) {
+                return entries
                         .filter(Files::isDirectory)
-                        .map(directory -> directory.resolve("SKILL.md"))
-                        .filter(Files::isRegularFile)
-                        .map(file -> file.getParent().getFileName().toString())
+                        .filter(path -> Files.isRegularFile(path.resolve(SKILL_FILE)))
+                        .map(path -> path.getFileName().toString())
                         .sorted(Comparator.naturalOrder())
                         .toList();
             }
@@ -306,11 +263,13 @@ public final class SkillFileProvider {
     }
 
     private static final class ClasspathOrigin implements Origin {
-        private final String base;
-        private final ClassLoader loader = SkillFileProvider.class.getClassLoader();
 
-        ClasspathOrigin(String base) {
-            this.base = Objects.requireNonNull(base, "base");
+        private final String base;
+        private final ClassLoader loader;
+
+        private ClasspathOrigin(String base, ClassLoader loader) {
+            this.base = base;
+            this.loader = loader;
         }
 
         @Override
@@ -319,16 +278,19 @@ public final class SkillFileProvider {
         }
 
         @Override
-        public List<String> names() throws IOException {
+        public List<String> skillDirectories() throws IOException {
             try (InputStream index = loader.getResourceAsStream(base + "/index.txt")) {
                 if (index == null) {
-                    return List.of();
+                    throw new IOException("no index.txt under " + base);
                 }
-                String text = new String(index.readAllBytes(), StandardCharsets.UTF_8);
-                return text.lines()
-                        .map(String::strip)
-                        .filter(line -> !line.isEmpty() && !line.startsWith("#"))
-                        .toList();
+                List<String> names = new ArrayList<>();
+                for (String line : new String(index.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
+                    String value = line.strip();
+                    if (!value.isEmpty() && !value.startsWith("#")) {
+                        names.add(value);
+                    }
+                }
+                return List.copyOf(names);
             }
         }
 
@@ -351,11 +313,8 @@ public final class SkillFileProvider {
             throw new IllegalArgumentException("file must stay inside the skill: " + relative);
         }
         String lower = normalized.toLowerCase(Locale.ROOT);
-        boolean text = lower.equals("skill.md") || lower.endsWith(".md") || lower.endsWith(".markdown")
-                || lower.endsWith(".txt");
-        if (!text) {
-            throw new IllegalArgumentException("only text files are readable: " + relative);
+        if (lower.endsWith(".class") || lower.endsWith(".jar")) {
+            throw new IllegalArgumentException("not a readable skill file: " + relative);
         }
     }
-
 }

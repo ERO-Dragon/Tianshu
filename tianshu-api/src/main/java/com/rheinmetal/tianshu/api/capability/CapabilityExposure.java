@@ -68,26 +68,7 @@ public final class CapabilityExposure {
             }
             rows.add(descriptor);
         }
-        // A manual whose capabilities are all invisible here is not this caller's business either: it would describe
-        // tools the caller cannot call. A general manual and one that declares no coverage are kept — the first is
-        // about the format, the second does not claim any capability in particular.
-        java.util.Set<CapabilityId> visibleCapabilities = new java.util.HashSet<>();
-        for (CapabilityDescriptor row : rows) {
-            if (!CapabilityKind.SKILL.equals(row.kind())) {
-                visibleCapabilities.add(row.id());
-            }
-        }
-        List<CapabilityDescriptor> kept = new ArrayList<>(rows.size());
-        for (CapabilityDescriptor row : rows) {
-            if (CapabilityKind.SKILL.equals(row.kind()) && !SkillCoverage.isGeneral(row)) {
-                java.util.Set<CapabilityId> covered = SkillCoverage.coversOf(row);
-                if (!covered.isEmpty() && covered.stream().noneMatch(visibleCapabilities::contains)) {
-                    continue;
-                }
-            }
-            kept.add(row);
-        }
-        return List.copyOf(kept);
+        return List.copyOf(rows);
     }
 
     private static boolean reachable(CapabilityDescriptor descriptor, ToolSide side) {
@@ -160,17 +141,8 @@ public final class CapabilityExposure {
         final int maxChars = 8_000;
         StringBuilder text = new StringBuilder();
         int rows = 0;
-        // Built from the rows this caller may see: a manual for a capability it cannot use is not its business.
-        Map<CapabilityId, Set<CapabilityId>> coverage = SkillCoverage.index(descriptors);
-        // A manual about calling conventions applies to every row, so it is stated once here instead of being repeated
-        // next to each of them.
-        List<CapabilityId> general = SkillCoverage.generalManuals(descriptors);
-        if (!general.isEmpty()) {
-            text.append("calling convention: ").append(String.join(", ", general.stream().map(Object::toString).toList()))
-                    .append('\n');
-        }
-        // Capabilities first, manuals last: a skill is something to read, not something to call, and interleaving the two makes
-        // the list read as if a manual were a capability.
+        // Capabilities first, prose last: a skill is something to read, not something to call, and interleaving the two
+        // makes the list read as if a manual were a capability.
         List<CapabilityDescriptor> ordered = new ArrayList<>(descriptors.stream()
                 .filter(row -> !CapabilityKind.SKILL.equals(row.kind()))
                 .toList());
@@ -199,20 +171,6 @@ public final class CapabilityExposure {
             JsonElement schema = descriptor.attributes().get("argsSchema");
             if (schema != null && schema.isJsonObject()) {
                 text.append(" args: ").append(GSON.toJson(schema));
-            }
-            // The manual, named where the model is already looking: a capability whose usage guidance exists must say so,
-            // or the guidance is only found by accident.
-            List<CapabilityId> manuals = new ArrayList<>();
-            for (Map.Entry<CapabilityId, Set<CapabilityId>> skill : coverage.entrySet()) {
-                if (skill.getValue().contains(descriptor.id())) {
-                    manuals.add(skill.getKey());
-                }
-            }
-            if (!manuals.isEmpty()) {
-                text.append(" — how to use: ");
-                for (int index = 0; index < manuals.size(); index++) {
-                    text.append(index == 0 ? "" : ", ").append(manuals.get(index));
-                }
             }
             text.append('\n');
         }

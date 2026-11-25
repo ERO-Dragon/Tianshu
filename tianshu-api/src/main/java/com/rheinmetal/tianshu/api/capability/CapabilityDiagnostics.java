@@ -25,12 +25,5 @@ public final class CapabilityDiagnostics {
         for (String problem : CapabilitySubscriptions.audit()) {
             warn.accept(problem);
         }
-        java.util.List<CapabilityDescriptor> rows = CapabilityCatalog.snapshot().descriptors();
-        for (String problem : SkillCoverage.conflicts(rows)) {
-            warn.accept(problem);
-        }
-        for (String problem : SkillCoverage.unknown(rows)) {
-            warn.accept(problem);
-        }
     }
 }

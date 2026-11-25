@@ -13,7 +13,7 @@ description: Minecraft 工具调用说明：一次调用输出什么参数、返
 - 返回：成功 `{ "ok": true, "result": { ... } }`，失败 `{ "ok": false, "code": "...", "message": "..." }`；
 - **不要用自然语言代替调用**：说"搬好了"之前，必须真的调过 `container.transfer`；
 - 参数不确定：先调保留工具 `tianshu:tool.catalog` 取 schema，不要猜字段名；
-- 读技能/参考：`tianshu:capability.read`（不带 `id` 列目录、带 `id` 读正文、带 `file` 读参考、长文带 `page`）。
+- 读文档：`tianshu:capability.read`（不带 `id` 列目录；带**工具 id** 读这个工具自己的文档；带技能 id 读技能正文；带 `file` 读参考、长文带 `page`）。
 
 ## 2. 先判断档位，再读对应参考
 
