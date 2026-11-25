@@ -24,7 +24,13 @@ import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.api.tool.ToolSpec;
 
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
+import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
@@ -128,6 +134,7 @@ public final class LabAcceptanceCases {
         cases.add(aPlayerCommandsTheBodyItOwns());
         cases.add(aClientModuleCannotDriveAnNpc());
         cases.add(aModuleSpawnsAndReleasesTheTypeItDeclared());
+        cases.add(aModuleDrivesTheBodyTypeItDeclared());
         cases.add(aBodyRefusesAnUnregisteredBody());
         cases.add(theAdapterTakesTheBodyTypeDeclarationsAtStartup());
         cases.add(anActionReachesTheServerAndComesBackExecuted());
@@ -1504,6 +1511,82 @@ public final class LabAcceptanceCases {
                 unregister.run();
             }
         });
+    }
+
+    /**
+     * A module spawns the body type it declared and moves it through the action ports.
+     *
+     * <p>Spawning proves the type exists; this proves the carrier behind it can be driven. Without it "declare your own
+     * entity and operate it" would mean "declare it and look at it", and a type that renders but cannot walk would pass
+     * every earlier case.</p>
+     */
+    private static AcceptanceCase aModuleDrivesTheBodyTypeItDeclared() {
+        final String id = "ACC-ENT-3";
+        final String title = "a module moves the body it declared through the motion port";
+        return AcceptanceCase.of(id, title, () -> {
+            EntitySpawnPort port = TianshuRuntimePorts.find(EntitySpawnPort.class).orElse(null);
+            if (port == null) {
+                return AcceptanceOutcome.skip(id, title,
+                        "no spawn port on this side: the port belongs to the authoritative side of a session");
+            }
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is nowhere to put a body");
+            }
+            EntityActor actor;
+            try {
+                actor = port.spawn(LabModuleRegistration.MOD_ID, DECLARED_BODY_TYPE,
+                        new ActorPosition(pose.dimensionId(), pose.x(), pose.y() + 1.0D, pose.z()), false)
+                        .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (Exception refused) {
+                return AcceptanceOutcome.fail(id, title, "the spawn was refused: " + reasonOf(refused));
+            }
+            try {
+                EntityActions actions = EntityActors.actions(actor.id()).orElse(null);
+                EntityMotionPort motion = actions == null ? null : actions.motion().orElse(null);
+                if (motion == null) {
+                    return AcceptanceOutcome.fail(id, title, "the spawned carrier offers no motion port");
+                }
+                ActorRef actorRef = ActorRef.body(actor.id(), false);
+                ActorPosition start = actor.position();
+                ActorPosition target = new ActorPosition(start.dimension(),
+                        start.x() + 2.0D, start.y(), start.z());
+                MoveResult moved;
+                try {
+                    moved = motion.move(actorRef, target, MoveOptions.DEFAULT)
+                            .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                } catch (Exception refused) {
+                    return AcceptanceOutcome.fail(id, title, "the move was refused: " + reasonOf(refused));
+                }
+                if (moved.outcome() != ActionOutcome.DONE && moved.outcome() != ActionOutcome.NO_EFFECT) {
+                    return AcceptanceOutcome.fail(id, title,
+                            "the move ended as " + moved.outcome() + ": " + moved.detail());
+                }
+                EntityActor after = EntityActors.resolve(actor.id()).orElse(null);
+                if (after == null) {
+                    return AcceptanceOutcome.fail(id, title, "the body is no longer resolvable after moving");
+                }
+                double travelled = Math.abs(after.position().x() - start.x());
+                if (travelled < 1.0D) {
+                    return AcceptanceOutcome.fail(id, title,
+                            "the port reported " + moved.outcome() + " but the carrier moved " + travelled + " blocks");
+                }
+                return AcceptanceOutcome.pass(id, title, moved.outcome() + " after travelling "
+                        + String.format(java.util.Locale.ROOT, "%.1f", travelled) + " blocks");
+            } finally {
+                // The carrier belongs to this run: leaving it behind would have the next run load a body nobody owns.
+                releaseQuietly(port, actor.id());
+            }
+        });
+    }
+
+
+    private static void releaseQuietly(EntitySpawnPort port, String bodyId) {
+        try {
+            port.release(LabModuleRegistration.MOD_ID, bodyId).get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            // Best effort: the case that reaches here has already decided its verdict.
+        }
     }
 
     /**

@@ -117,7 +117,7 @@ class AcceptanceRunnerTest {
                 "ACC-CAP-1", "ACC-CAP-2", "ACC-CAP-3", "ACC-CAP-4", "ACC-DIAG-1", "ACC-DIAG-2", "ACC-SET-1",
                 "ACC-CAT-2", "ACC-CAT-3", "ACC-AGT-4", "ACC-EXP-5", "ACC-EXP-6", "ACC-EXP-7",
                 "ACC-EXP-8", "ACC-EXP-9", "ACC-DIAG-3", "ACC-CAP-5",
-                "ACC-CAT-4", "ACC-EXP-10", "ACC-DIAG-4", "ACC-BDY-1", "ACC-BDY-2", "ACC-BDY-3", "ACC-BDY-4", "ACC-BDY-7", "ACC-ENT-1", "ACC-ENT-2", "ACC-PRT-1",
+                "ACC-CAT-4", "ACC-EXP-10", "ACC-DIAG-4", "ACC-BDY-1", "ACC-BDY-2", "ACC-BDY-3", "ACC-BDY-4", "ACC-BDY-7", "ACC-ENT-1", "ACC-ENT-2", "ACC-ENT-3", "ACC-PRT-1",
                 "ACC-HOST-1", "ACC-PRO-1", "ACC-PRO-2", "ACC-PRO-3",
                 "ACC-ACT-1", "ACC-ACT-2", "ACC-ACT-3", "ACC-CNR-1", "ACC-GIV-1", "ACC-PLC-1", "ACC-MDL-1", "ACC-MDL-2", "ACC-GAME-1", "ACC-GAME-2",
                 AcceptanceReport.SELF_CHECK_ID);

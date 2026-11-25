@@ -51,7 +51,7 @@ public record AcceptanceReport(String startedAt, List<AcceptanceOutcome> outcome
                             "ACC-EXP-4", "ACC-EXP-5", "ACC-EXP-6", "ACC-EXP-7", "ACC-EXP-10")),
             new Covered("agent facade", List.of("ACC-AGT-1", "ACC-AGT-2", "ACC-AGT-3", "ACC-AGT-4")),
             new Covered("settings session", List.of("ACC-SET-1")),
-            new Covered("body tools", List.of("ACC-BDY-1", "ACC-BDY-2", "ACC-BDY-3", "ACC-BDY-4", "ACC-BDY-7", "ACC-ENT-1", "ACC-ENT-2")),
+            new Covered("body tools", List.of("ACC-BDY-1", "ACC-BDY-2", "ACC-BDY-3", "ACC-BDY-4", "ACC-BDY-7", "ACC-ENT-1", "ACC-ENT-2", "ACC-ENT-3")),
             new Covered("module execution lane", List.of("ACC-PRT-1")),
             new Covered("module host", List.of("ACC-HOST-1")),
             new Covered("protocol centre", List.of("ACC-PRO-1", "ACC-PRO-2", "ACC-PRO-3")),
