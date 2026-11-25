@@ -64,6 +64,14 @@ sourceSets {
         java.setSrcDirs([labProject.file('src/neoforgeEntry/java')])
         compileClasspath += sourceSets.main.compileClasspath + labProject.sourceSets.main.output
     }
+    // Game-side tests: they need a real server world, which a feature module can never have (module code stays
+    // loader- and Minecraft-free). `runGameTestServer` runs them. The source set's default directories are
+    // `src/gametest/{java,resources}` — only the classpaths need wiring, because a test compiles against exactly what
+    // the mod compiles against; declaring the directories again put every resource in the set twice.
+    gametest {
+        compileClasspath = sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath = sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
 }
 
 // ---------------------------------------------------------------- shared Minecraft layer
@@ -136,6 +144,15 @@ neoForge {
             server()
         }
 
+        // Server-side world tests. Feature modules may not touch Minecraft types at all, so anything that has to see a
+        // real world (a chest's contents after a transfer, a furnace's output after a burn) belongs to the adapter,
+        // not to the client bench. The classes live in `src/gametest` and are listed as part of the same mod, so the
+        // mod file the game scans contains them; they are not part of any shipped source set.
+        gameTestServer {
+            type = 'gameTestServer'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
         data {
             data()
             programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
@@ -202,6 +219,10 @@ neoForge {
         "${mod_id}" {
             sourceSet(sourceSets.main)
             sourceSet(sourceSets.kernel)
+            // The game-side tests carry the same mod id and must not ship: the game finds tests by scanning a mod's
+            // classes, and a source set it cannot see is a source set whose tests never run.
+            sourceSet(sourceSets.gametest)
+
         }
         // A feature's entry source set is what makes it a mod at all. The @Mod class lives there, so a
         // mod declared with only `main` is listed in game (its manifest is on the classpath) while no

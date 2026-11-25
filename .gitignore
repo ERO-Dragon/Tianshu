@@ -72,3 +72,6 @@ libs
 .out
 宣传片/
 /tianshu-adapter/*/run-server/
+
+# Game-side test run directory: a test world of its own, never a developer's.
+run-gametest/
