@@ -39,6 +39,8 @@ src/generated/
 # 那是真实源码、删了构建就跑不起来，必须放行——否则干净克隆缺类，本地能编、新机器不能编。
 net/
 !**/src/*Stubs/net/
+# 上面那条也会挡掉任何名为 net 的 Java 包（它按路径段匹配，不是按目录内容），
+# 所以联网层叫 shared/web，不叫 shared/net。新增包时避开这个名字。
 
 # === 第三方依赖 JAR (libs/) ===
 libs/*.jar
