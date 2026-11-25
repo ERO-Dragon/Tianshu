@@ -1,7 +1,18 @@
 package com.rheinmetal.tianshu.neoforge.gametest;
 
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.entity.ActionOutcome;
+import com.rheinmetal.tianshu.api.entity.ActorPosition;
 import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActions;
+import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityItemPort;
+import com.rheinmetal.tianshu.api.entity.EntityItemUsePort;
+import com.rheinmetal.tianshu.api.entity.EntitySlot;
+import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
+import com.rheinmetal.tianshu.api.entity.EquipRequest;
+import com.rheinmetal.tianshu.api.entity.ItemUseTarget;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
@@ -19,6 +30,8 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.projectile.Snowball;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
@@ -27,9 +40,11 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
 import net.minecraft.world.level.block.state.properties.AttachFace;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -286,6 +301,85 @@ public final class PlayerSupportGameTests {
                     }
                 })
                 .thenSucceed();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 300)
+    public void aBodyUsesTheItemInItsHand(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        EntitySpawnPort spawn = port(EntitySpawnPort.class, helper);
+        BlockPos at = helper.absolutePos(new BlockPos(0, 1, 0));
+        EntityActor body;
+        try {
+            body = spawn.spawn(TianshuGameTests.MOD_ID, "walker",
+                            new ActorPosition(helper.getLevel().dimension().location().toString(),
+                                    at.getX() + 0.5D, at.getY(), at.getZ() + 0.5D), false)
+                    .get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception refused) {
+            helper.fail("the body could not be spawned: " + reasonOf(refused));
+            return;
+        }
+        try {
+            // The item has to arrive by the body's own route: drop it in the world, pick it up, put it in the hand. An
+            // inventory written from the outside would prove nothing about the ports.
+            helper.getLevel().addFreshEntity(new ItemEntity(helper.getLevel(),
+                    at.getX() + 0.5D, at.getY() + 0.2D, at.getZ() + 0.5D,
+                    new ItemStack(Items.SNOWBALL, 4)));
+            EntityActions actions = EntityActors.actions(body.id()).orElse(null);
+            EntityItemPort items = actions == null ? null : actions.items().orElse(null);
+            EntityItemUsePort itemUse = actions == null ? null : actions.itemUse().orElse(null);
+            if (items == null || itemUse == null) {
+                helper.fail("the carrier offers no item ports");
+                return;
+            }
+            ActorRef actor = ActorRef.body(body.id(), false);
+            AtomicReference<Throwable> refused = new AtomicReference<>();
+            AtomicReference<Integer> step = new AtomicReference<>(0);
+            items.pickup(actor, 2).whenComplete((picked, error) -> {
+                if (error != null) {
+                    refused.set(error);
+                    return;
+                }
+                items.equip(actor, new EquipRequest(0, EntitySlot.MAIN_HAND)).whenComplete((equipped, equipError) -> {
+                    if (equipError != null) {
+                        refused.set(equipError);
+                        return;
+                    }
+                    itemUse.use(actor, ItemUseTarget.Air.INSTANCE, 0).whenComplete((used, useError) -> {
+                        if (useError != null) {
+                            refused.set(useError);
+                            return;
+                        }
+                        if (used.outcome() == ActionOutcome.DONE) {
+                            step.set(1);
+                        } else {
+                            refused.set(new AssertionError("item.use ended as " + used.outcome()
+                                    + ": " + used.detail()));
+                        }
+                    });
+                });
+            });
+            helper.startSequence()
+                    .thenWaitUntil(await(() -> step.get() == 1 || refused.get() != null, "item.use"))
+                    .thenExecute(() -> {
+                        if (refused.get() != null) {
+                            helper.fail("using the item failed: " + reasonOf(refused.get()));
+                            return;
+                        }
+                        // A thrown snowball is the world evidence: the item left the hand and became an entity.
+                        List<Snowball> thrown = helper.getLevel().getEntitiesOfClass(Snowball.class,
+                                new AABB(at).inflate(16.0D));
+                        if (thrown.isEmpty()) {
+                            helper.fail("the body reported a use but no snowball exists in the world");
+                        }
+                    })
+                    .thenSucceed();
+        } finally {
+            try {
+                spawn.release(TianshuGameTests.MOD_ID, body.id()).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                // The verdict is already decided above.
+            }
+        }
     }
 
     private static ServerPlayer mockPlayer(GameTestHelper helper) {
