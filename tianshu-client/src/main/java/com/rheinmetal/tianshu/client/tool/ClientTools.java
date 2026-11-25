@@ -63,8 +63,6 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyDropTool());
         ServerToolDeclarations.declare(new BodyGiveTool());
         ServerToolDeclarations.declare(new EntityUseTool());
-        ServerToolDeclarations.declare(new BodyCollectTool());
-        ServerToolDeclarations.declare(new BodyFollowTool());
         ServerToolDeclarations.declare(new ItemUseTool());
         ServerToolDeclarations.declare(new BodySequenceTool());
     }

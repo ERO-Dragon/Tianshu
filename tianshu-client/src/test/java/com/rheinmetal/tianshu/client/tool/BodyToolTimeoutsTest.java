@@ -12,8 +12,6 @@ class BodyToolTimeoutsTest {
         assertEquals(35_000L, new BodyMoveTool().policy().timeoutMillis());
         assertEquals(70_000L, new BodyMineTool().policy().timeoutMillis());
         assertEquals(25_000L, new ItemUseTool().policy().timeoutMillis());
-        assertEquals(125_000L, new BodyCollectTool().policy().timeoutMillis());
-        assertEquals(305_000L, new BodyFollowTool().policy().timeoutMillis());
     }
 
     @Test
