@@ -78,7 +78,7 @@
 | ~~G56~~ | ~~下游配额按"调用方 × 技能"：并发 1 + 排队 4~~ → 作废（G66：没有下游调用方） |
 | G57 | 玩家可见句子一律进资源；技术文本（能力描述、`code`、诊断）留代码常量 |
 | G58 | 渐进式披露：目录只放摘要 + 最小 schema，选中后才 `describe` 取细节 |
-| G59 | 三档与工具说明由舟楫注册成公共技能 `tianshu:minecraft-tools`，模组运行时读取，不存副本 |
+| G59 | 三档与工具说明由舟楫注册成公共技能 `minecraft:player-tools`，模组运行时读取，不存副本 |
 | G60 | 宿主工具接进代理：`TianshuTools.catalog` 适配成带 schema 的代理工具，按档位过滤，排除 `body.*` |
 | G61 | `diplomacy` 是技能（5 篇 references），`relay` 是它旗下的一篇 reference + 执行工具（list/describe/submit/progress） |
 | G62 | `search` 只答描述性知识；配方归舟楫 `recipe.query`，版本与依赖用本地 `ModList`，崩溃不做 |
@@ -101,7 +101,7 @@
 | P7 | 外交（技能 + relay 工具）、三档 + 首次确认、承诺-兑现人设、办事失败词表 |
 | P8 | 接入文档、端到端回归；~~对外发布 `dubhe:search`、闭集契约、配额~~ → 已撤销（G66） |
 | P9 | 搜索：本地 Patchouli 手册 + 中文 Wiki + 英文 Wiki、`book` / `wiki` 技能、模组资源端口、`DubheWeb`、`search` 技能包；MC百科被站点挡住，不做 |
-| 附加 | 宿主工具接代理（G60）、平台公共技能 `minecraft-tools`（G59）、技能包规范（SKILL.md + references） |
+| 附加 | 宿主工具接代理（G60）、平台公共技能 `player-tools`（G59）、技能包规范（SKILL.md + references） |
 
 ## 4. 剩余
 

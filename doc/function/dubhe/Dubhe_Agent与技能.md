@@ -103,7 +103,7 @@ simple 输出 <delegate>问题</delegate>
 | `reportSchema` | 必含 `outcome`，失败不能是空成功 |
 | `lane` | `PLAYER` / `BACKGROUND` |
 
-**代理目录 = 内部技能 + 宿主工具**（G60）：`DubheHostToolSkills` 把 `TianshuTools.catalog(caller)` 的每个工具适配成带 schema 的代理工具——工具名 `tianshu:recipe.query` → `tianshu_recipe_query`，调用走 `callJson`，返回 envelope 原样；按档位过滤，关闭的工具与 `body.*` 不进目录；每次委派重取。
+**代理目录 = 内部技能 + 宿主工具**（G60）：`DubheHostToolSkills` 把 `TianshuTools.catalog(caller)` 的每个工具适配成带 schema 的代理工具——工具名 `minecraft:recipe.query` → `tianshu_recipe_query`，调用走 `callJson`，返回 envelope 原样；按档位过滤，关闭的工具与 `body.*` 不进目录；每次委派重取。
 
 ## 9. 技能包（SKILL.md + references）
 
@@ -135,7 +135,7 @@ simple 输出 <delegate>问题</delegate>
 
 ## 10. 平台的公共技能
 
-三档与工具说明由**舟楫**注册成公共技能 `tianshu:minecraft-tools`（入口 + 按档位的三篇 references）。模组运行时用 `tianshu:capability.read` 读它，**不在本地存副本**；天枢把它包成内部技能 `read-shared-skill`，`work` 第 0 步先读。
+三档与工具说明由**舟楫**注册成公共技能 `minecraft:player-tools`（入口 + 按档位的三篇 references）。模组运行时用 `minecraft:capability.read` 读它，**不在本地存副本**；天枢把它包成内部技能 `read-shared-skill`，`work` 第 0 步先读。
 
 ## 11. 验收
 
