@@ -118,6 +118,7 @@ public final class LabAcceptanceCases {
         cases.add(aModuleTaskRunsAndItsLaneSurvivesAFailure());
         cases.add(theHostAssemblesAnOutsideModuleOnce());
         cases.add(aModuleReachesItsOwnCapabilityThroughTheCentre());
+        cases.add(twoModulesShareOneCapabilityAndOneDeliveryArrives());
         cases.add(aBodyCoordinateOutsideTheWorldIsRefused());
         cases.add(aBodyThatFailsVerificationIsNeverPromoted());
         cases.add(aCorruptBodyIsRetriedBeforeTheInstallFails());
@@ -1501,6 +1502,53 @@ public final class LabAcceptanceCases {
             } finally {
                 unregister.run();
             }
+        });
+    }
+
+    /**
+     * Two modules declare the same capability, and one submission is delivered exactly once.
+     *
+     * <p>What this locks is the invariant that matters to a caller: a command is not processed twice because two
+     * modules hold a declaration. <em>Which</em> holder receives it is not asserted here — today the first
+     * registration takes every submission and the later declarer is shadowed without being told, which is an open
+     * question rather than a contract, and a test should not freeze an accident.</p>
+     */
+    private static AcceptanceCase twoModulesShareOneCapabilityAndOneDeliveryArrives() {
+        final String id = "ACC-PRO-2";
+        final String title = "two modules may declare one capability, and a command is delivered exactly once";
+        return AcceptanceCase.of(id, title, () -> {
+            ModuleRuntimeAccess runtime = AcceptanceEnvironment.runtime();
+            LabHostTrace host = AcceptanceEnvironment.host();
+            if (runtime == null || host == null) {
+                return AcceptanceOutcome.skip(id, title, "no module runtime in this process");
+            }
+            List<String> owners = new ArrayList<>();
+            for (ProtocolCapabilityRegistration registration : runtime.capabilityRegistrations(
+                    LabProtocolAdapter.SHARED_CAPABILITY)) {
+                owners.add(registration.moduleId());
+            }
+            if (owners.size() != 2) {
+                return AcceptanceOutcome.fail(id, title, "providers=" + owners.size());
+            }
+            int beforeSelf = host.sharedDeliveries();
+            int beforePeer = host.sharedPeerDeliveries();
+            host.submitShared("fanout-" + System.currentTimeMillis());
+            long deadline = System.currentTimeMillis() + CALL_TIMEOUT_SECONDS * 1000L;
+            while (System.currentTimeMillis() < deadline
+                    && host.sharedDeliveries() == beforeSelf && host.sharedPeerDeliveries() == beforePeer) {
+                try {
+                    Thread.sleep(20L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            int total = (host.sharedDeliveries() - beforeSelf) + (host.sharedPeerDeliveries() - beforePeer);
+            if (total == 1) {
+                return AcceptanceOutcome.pass(id, title, "two declarers, one delivery: " + String.join(", ", owners));
+            }
+            return AcceptanceOutcome.fail(id, title, "declarers=" + String.join(", ", owners)
+                    + " deliveries=" + total + " (a command processed twice is a fan-out nobody asked for)");
         });
     }
 

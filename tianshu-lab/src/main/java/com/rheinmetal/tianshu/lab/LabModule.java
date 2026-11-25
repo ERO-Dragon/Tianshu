@@ -47,6 +47,8 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
             "tianshu_intake is not installed; dialogue participants stay disabled";
 
     private final LabProtocolAdapter adapter;
+    /** A second module id over the same runtime: the bench needs two declarers of one capability to see fan-out. */
+    private final LabProtocolAdapter peerAdapter;
     /** The runtime this module was assembled with; the acceptance bench borrows it for execution cases. */
     private final com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess runtime;
     /** Read-only view of the game; the acceptance bench borrows it for the world-context cases. */
@@ -77,6 +79,9 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
     private volatile boolean registerBeforeStart;
     /** The last command the bench's own echo capability received, and how many arrived in this session. */
     private volatile String lastEcho = "";
+    private final java.util.concurrent.atomic.AtomicInteger sharedDeliveries = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger sharedPeerDeliveries =
+            new java.util.concurrent.atomic.AtomicInteger();
     private final java.util.concurrent.atomic.AtomicInteger echoDeliveries =
             new java.util.concurrent.atomic.AtomicInteger();
 
@@ -84,6 +89,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
         this.runtime = runtime;
         this.gameContext = ports == null ? null : ports.gameContext();
         this.adapter = new LabProtocolAdapter(Objects.requireNonNull(runtime, "runtime"));
+        this.peerAdapter = new LabProtocolAdapter(MODULE_ID + ".peer", runtime);
         this.presentation = ports == null ? null : ports.presentation();
         this.scheduler = ports == null ? null : ports.scheduler();
         this.texts = ports == null ? ClientTextProvider.NOOP : ports.texts();
@@ -117,6 +123,10 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
         // One the bench alone sends to and receives from, so the acceptance run can watch the centre work
         // without any other module installed.
         adapter.registerEcho(this::handleEcho);
+        // The same capability from two module ids: the centre has to deliver to both, and keeping the second one must
+        // not replace the first.
+        adapter.registerShared(this::handleShared);
+        peerAdapter.registerShared(this::handleSharedPeer);
         registerCompleted = true;
     }
 
@@ -174,6 +184,36 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
         if (envelope.payload() instanceof TextPayload text) {
             lastEcho = text.text();
             echoDeliveries.incrementAndGet();
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    @Override
+    public int sharedDeliveries() {
+        return sharedDeliveries.get();
+    }
+
+    @Override
+    public int sharedPeerDeliveries() {
+        return sharedPeerDeliveries.get();
+    }
+
+    @Override
+    public void submitShared(String text) {
+        adapter.submitShared(text);
+    }
+
+    /** One delivery of the capability both declarers claim; the peer's handler follows the same contract. */
+    private void handleShared(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof TextPayload) {
+            sharedDeliveries.incrementAndGet();
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handleSharedPeer(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof TextPayload) {
+            sharedPeerDeliveries.incrementAndGet();
         }
         context.complete(envelope.envelopeId());
     }

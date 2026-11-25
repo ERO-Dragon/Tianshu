@@ -39,9 +39,22 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
      * so nothing outside the bench has to be installed for the check to mean something.
      */
     public static final String ECHO_CAPABILITY = "LAB.ACCEPTANCE.ECHO";
+    /**
+     * One capability two modules declare at once.
+     *
+     * <p>Two providers on one capability is the case the centre has to get right: every holder of a declaration is
+     * supposed to see the submission, and a second declaration must not silently replace the first. The bench registers
+     * this one under its own id and under a peer id to have both without another mod installed.</p>
+     */
+    public static final String SHARED_CAPABILITY = "LAB.ACCEPTANCE.SHARED";
 
     public LabProtocolAdapter(ModuleRuntimeAccess runtime) {
-        super(MODULE_ID, MODULE_ID, runtime, AdapterDefaults.standard());
+        this(MODULE_ID, runtime);
+    }
+
+    /** The same adapter under another module id: a second module declaring capabilities, without a second jar. */
+    public LabProtocolAdapter(String moduleId, ModuleRuntimeAccess runtime) {
+        super(moduleId, moduleId, runtime, AdapterDefaults.standard());
     }
 
     /** One delivery capability per participant, so the bench can name the owner of a session it holds. */
@@ -72,6 +85,26 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
                 handler,
                 defaults()
         );
+    }
+
+    /** Declares the capability this bench and its peer both claim. */
+    public void registerShared(EnvelopeHandler handler) {
+        registerCapability(
+                SHARED_CAPABILITY,
+                PayloadType.TEXT,
+                TextPayload.class,
+                BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    /** Sends one command to the shared capability: every module that declared it is supposed to see it. */
+    public void submitShared(String text) {
+        commandCapability(SHARED_CAPABILITY, PayloadType.TEXT, new TextPayload(text));
     }
 
     /** Sends one command to the echo capability; like any module call, the centre decides where it lands. */

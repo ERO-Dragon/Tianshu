@@ -39,4 +39,13 @@ public interface LabHostTrace {
 
     /** Sends one command to the bench's own echo capability; the route is the protocol centre, not a direct call. */
     void echo(String text);
+
+    /** How many commands the shared capability reached this module with. */
+    int sharedDeliveries();
+
+    /** How many commands the shared capability reached the peer module with. */
+    int sharedPeerDeliveries();
+
+    /** Sends one command to the capability both this module and its peer declared. */
+    void submitShared(String text);
 }
