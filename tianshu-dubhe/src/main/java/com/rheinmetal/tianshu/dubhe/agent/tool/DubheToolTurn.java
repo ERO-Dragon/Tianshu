@@ -85,7 +85,7 @@ public final class DubheToolTurn {
             if (!system.isEmpty()) {
                 system.append("\n\n");
             }
-            system.append("Readable skills (call tianshu:capability.read with an id):\n").append(readable);
+            system.append("Readable skills (call minecraft:capability.read with an id):\n").append(readable);
         }
         if (!system.isEmpty()) {
             conversation.add(new MessageItemPayload("system", system.toString()));

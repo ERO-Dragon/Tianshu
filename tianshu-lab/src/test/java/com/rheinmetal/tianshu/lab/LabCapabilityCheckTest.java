@@ -20,7 +20,7 @@ class LabCapabilityCheckTest {
         DiagnosticEvent event = events.get(0);
         assertEquals("capability.self_check", event.code());
         assertTrue(event.attributes().containsKey("counts"));
-        assertTrue(event.attributes().get("tool").startsWith("tool tianshu:inventory.inspect:"));
+        assertTrue(event.attributes().get("tool").startsWith("tool minecraft:inventory.inspect:"));
         assertTrue(event.attributes().get("runtimeSkill").startsWith("skill lab:runtime-skill: OK"));
     }
 }

@@ -21,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
  * 把舟楫的宿主工具接进代理目录：一个工具 = 一个带 schema 的代理工具。
  *
  * <p>为什么走 {@link DubheSkill} 这一层：代理循环只认一种"工具"——目录项 + executor。宿主工具天生就是这个形状，
- * 适配器只做三件事：把 {@code tianshu:recipe.query} 的 id 换成 provider 合法的工具名 {@code tianshu_recipe_query}、把
+ * 适配器只做三件事：把 {@code minecraft:recipe.query} 的 id 换成 provider 合法的工具名 {@code tianshu_recipe_query}、把
  * schema/描述带进目录、把调用转发给 {@link TianshuTools#callJson}。没有为任何具体工具写分支。</p>
  *
  * <p>档位过滤由 {@link TianshuTools#catalog} 完成：目录只包含当前 caller 档位允许、且已启用的工具。
@@ -47,7 +47,7 @@ public final class DubheHostToolSkills {
         return List.copyOf(skills);
     }
 
-    /** Tool id → a provider-safe agent tool name: {@code tianshu:recipe.query} becomes {@code tianshu_recipe_query}. */
+    /** Tool id → a provider-safe agent tool name: {@code minecraft:recipe.query} becomes {@code tianshu_recipe_query}. */
     public static String agentToolName(ToolId id) {
         return id.toString().replace(':', '_').replace('.', '_');
     }

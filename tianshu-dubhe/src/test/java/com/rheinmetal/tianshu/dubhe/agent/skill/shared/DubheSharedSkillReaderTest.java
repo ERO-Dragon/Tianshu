@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheSharedSkillReaderTest {
 
-    private static final ToolId READ = ToolId.of("tianshu", "capability.read");
+    private static final ToolId READ = ToolId.of("minecraft", "capability.read");
     private static final DubheSkillContext CONTEXT = new DubheSkillContext("task-1", "读共享技能", new DubheScope(
             "player", "world", "World", DubheScopeKind.LOCAL_WORLD, true));
 
@@ -46,17 +46,17 @@ class DubheSharedSkillReaderTest {
         });
 
         JsonObject args = new JsonObject();
-        args.addProperty("id", "tianshu:minecraft-tools");
+        args.addProperty("id", "minecraft:player-tools");
         JsonObject result = DubheSharedSkillReader.skill().executor().execute(CONTEXT, args).join();
 
         assertEquals("OK", result.get("outcome").getAsString());
-        assertEquals("共享技能：tianshu:minecraft-tools", result.get("text").getAsString());
+        assertEquals("共享技能：minecraft:player-tools", result.get("text").getAsString());
     }
 
     @Test
     void aMissingPlatformToolIsReportedAsFailure() {
         JsonObject args = new JsonObject();
-        args.addProperty("id", "tianshu:minecraft-tools");
+        args.addProperty("id", "minecraft:player-tools");
         JsonObject result = DubheSharedSkillReader.skill().executor().execute(CONTEXT, args).join();
 
         assertEquals("FAILED", result.get("outcome").getAsString());

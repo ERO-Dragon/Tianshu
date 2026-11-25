@@ -31,10 +31,10 @@ class LabWorkflowTest {
         WorkflowDeclaration gather = LabWorkflow.gather();
 
         assertEquals(4, gather.stepCount());
-        assertEquals("tianshu:body.scan", gather.steps().get(0).capability().toString());
-        assertEquals("tianshu:body.move", gather.steps().get(1).capability().toString());
-        assertEquals("tianshu:body.mine", gather.steps().get(2).capability().toString());
-        assertEquals("tianshu:body.pickup", gather.steps().get(3).capability().toString());
+        assertEquals("minecraft:entity.scan", gather.steps().get(0).capability().toString());
+        assertEquals("minecraft:entity.move", gather.steps().get(1).capability().toString());
+        assertEquals("minecraft:entity.mine", gather.steps().get(2).capability().toString());
+        assertEquals("minecraft:entity.pickup", gather.steps().get(3).capability().toString());
         assertEquals("tianshu_lab", gather.id().namespace());
     }
 
@@ -59,7 +59,7 @@ class LabWorkflowTest {
             assertEquals(CapabilityKind.WORKFLOW, row.kind());
             assertEquals(LabModuleRegistration.MOD_ID, row.provider(), "a shared workflow stays attributable to its module");
             assertEquals(4, row.attributes().get("steps").getAsInt());
-            assertEquals("tianshu:body.scan", row.attributes().getAsJsonArray("stepList").get(0).getAsString(),
+            assertEquals("minecraft:entity.scan", row.attributes().getAsJsonArray("stepList").get(0).getAsString(),
                     "the composition is readable without running it");
             assertTrue(TianshuTools.catalog(CALLER, ToolSide.SERVER).stream()
                     .anyMatch(spec -> spec.id().toString().equals("tianshu_lab:workflow.gather")));

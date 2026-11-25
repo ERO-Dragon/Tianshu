@@ -75,7 +75,7 @@ import java.util.concurrent.TimeUnit;
  */
 public final class LabAcceptanceCases {
 
-    private static final ToolId READ_TOOL = ToolId.of("tianshu", "capability.read");
+    private static final ToolId READ_TOOL = ToolId.of("minecraft", "capability.read");
     private static final CapabilityId READ_CAPABILITY = CapabilityId.parse(READ_TOOL.toString());
     private static final ToolId FULL_PROBE = ToolId.of("lab", "acceptance-full");
     private static final CapabilityId SKILL_PROBE = CapabilityId.of("lab", "acceptance-skill");
@@ -1045,7 +1045,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-CAP-5";
         final String title = "a skill, a resource and a prompt all resolve, and prompt arguments change the text";
         return AcceptanceCase.of(id, title, () -> {
-            String skill = resultText(readCapability("tianshu:minecraft-tools", null));
+            String skill = resultText(readCapability("minecraft:player-tools", null));
             String resource = resultText(readCapability("tianshu:game-basics", null));
             JsonObject twoLines = new JsonObject();
             twoLines.addProperty("lines", "2");
@@ -1493,7 +1493,7 @@ public final class LabAcceptanceCases {
                 args.addProperty("x", 10);
                 args.addProperty("y", 64);
                 args.addProperty("z", 10);
-                JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.look"), args,
+                JsonObject envelope = callEnabled(ToolId.of("minecraft", "entity.look"), args,
                         ToolCaller.player(owner, true));
                 String code = codeOf(envelope);
                 boolean ok = envelope.has("ok") && envelope.get("ok").getAsBoolean();
@@ -1700,7 +1700,7 @@ public final class LabAcceptanceCases {
                 args.addProperty("x", 10);
                 args.addProperty("y", 64);
                 args.addProperty("z", 10);
-                JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.look"), args,
+                JsonObject envelope = callEnabled(ToolId.of("minecraft", "entity.look"), args,
                         ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolAutonomy.FULL));
                 boolean refused = envelope.has("ok") && !envelope.get("ok").getAsBoolean();
                 String text = String.valueOf(envelope);
@@ -1820,7 +1820,7 @@ public final class LabAcceptanceCases {
                 args.addProperty("x", 10);
                 args.addProperty("y", 64);
                 args.addProperty("z", 10);
-                JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.look"), args,
+                JsonObject envelope = callEnabled(ToolId.of("minecraft", "entity.look"), args,
                         ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
                 boolean refused = envelope.has("ok") && !envelope.get("ok").getAsBoolean();
                 boolean nothingHappened = bodies.looks().isEmpty();
@@ -1885,7 +1885,7 @@ public final class LabAcceptanceCases {
             }
             JsonObject args = new JsonObject();
             args.addProperty("levels", 0);
-            JsonObject envelope = callEnabled(ToolId.of("tianshu", "server.xp"), args,
+            JsonObject envelope = callEnabled(ToolId.of("minecraft", "server.xp"), args,
                     ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if (envelope.has("ok") && envelope.get("ok").getAsBoolean()) {
@@ -1917,7 +1917,7 @@ public final class LabAcceptanceCases {
             args.addProperty("x", 0.0);
             args.addProperty("y", 64.0);
             args.addProperty("z", 0.0);
-            JsonObject envelope = callEnabled(ToolId.of("tianshu", "server.teleport"), args,
+            JsonObject envelope = callEnabled(ToolId.of("minecraft", "server.teleport"), args,
                     ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if ("DISABLED".equals(code)) {
@@ -1949,7 +1949,7 @@ public final class LabAcceptanceCases {
             args.addProperty("y", 64);
             args.addProperty("z", 0);
             args.addProperty("block", "tianshu:no_such_block");
-            JsonObject envelope = callEnabled(ToolId.of("tianshu", "server.setblock"), args,
+            JsonObject envelope = callEnabled(ToolId.of("minecraft", "server.setblock"), args,
                     ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if ("INVALID_ARGS".equals(code)) {
@@ -2084,7 +2084,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-CNR-1";
         final String title = "the open container comes back as a value, container or not";
         return AcceptanceCase.of(id, title, () -> {
-            JsonObject envelope = call(ToolId.of("tianshu", "container.inspect"), new JsonObject(),
+            JsonObject envelope = call(ToolId.of("minecraft", "container.inspect"), new JsonObject(),
                     ToolCaller.player(localPlayerId() == null ? "lab" : localPlayerId(), true));
             String code = codeOf(envelope);
             JsonElement result = envelope.get("result");
@@ -2115,7 +2115,7 @@ public final class LabAcceptanceCases {
                 args.addProperty("body", AcceptanceBodies.BODY_ID);
                 args.addProperty("slot", 0);
                 args.addProperty("count", 1);
-                JsonObject envelope = callEnabled(ToolId.of("tianshu", "body.give"), args,
+                JsonObject envelope = callEnabled(ToolId.of("minecraft", "entity.give"), args,
                         ToolCaller.body(AcceptanceBodies.BODY_ID, true));
                 String code = codeOf(envelope);
                 if ("INVALID_ARGS".equals(code)) {
@@ -2152,7 +2152,7 @@ public final class LabAcceptanceCases {
                 args.addProperty("z", 0);
                 args.addProperty("direction", "sideways");
                 args.addProperty("count", 3);
-                JsonObject envelope = callEnabled(ToolId.of("tianshu", "block.place.line"), args,
+                JsonObject envelope = callEnabled(ToolId.of("minecraft", "block.place.line"), args,
                         ToolCaller.body(AcceptanceBodies.BODY_ID, true));
                 String code = codeOf(envelope);
                 if ("INVALID_ARGS".equals(code)) {

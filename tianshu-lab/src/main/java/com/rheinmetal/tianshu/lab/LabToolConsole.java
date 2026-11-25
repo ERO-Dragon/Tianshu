@@ -22,7 +22,7 @@ import com.rheinmetal.tianshu.api.tool.ToolSide;
  */
 public final class LabToolConsole {
 
-    private volatile String toolId = "tianshu:inventory.inspect";
+    private volatile String toolId = "minecraft:inventory.inspect";
     private volatile String argsJson = "{}";
     private final DiagnosticSink diagnostics;
     private volatile String result = "";

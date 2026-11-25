@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 public final class LabCapabilityCheck {
 
     private static final System.Logger LOGGER = System.getLogger("tianshu.lab");
-    private static final ToolId INVENTORY = ToolId.of("tianshu", "inventory.inspect");
+    private static final ToolId INVENTORY = ToolId.of("minecraft", "inventory.inspect");
 
     private final DiagnosticSink diagnostics;
     private volatile String report = "";

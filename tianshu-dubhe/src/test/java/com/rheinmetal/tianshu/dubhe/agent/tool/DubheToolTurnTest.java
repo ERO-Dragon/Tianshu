@@ -81,7 +81,7 @@ class DubheToolTurnTest {
             DubheToolTurn turn = DubheToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));
             String system = turn.payload("req", false, 0, null, SAMPLING).messages().get(0).content();
             assertTrue(system.contains("test:skill"));
-            assertTrue(system.contains("tianshu:capability.read"));
+            assertTrue(system.contains("minecraft:capability.read"));
         } finally {
             CapabilityCatalog.unregister(id);
         }

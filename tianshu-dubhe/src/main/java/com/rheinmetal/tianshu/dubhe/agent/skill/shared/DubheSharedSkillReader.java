@@ -21,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
  * 读取舟楫上的**共享技能**：技能正文或其中一篇 reference。
  *
  * <p>三档说明、工具清单这类"平台公共知识"由舟楫注册成 SKILL，任何模组都能读；天枢不在本地保存副本，
- * 每次需要时通过保留工具 {@code tianshu:capability.read} 去舟楫取。这样平台改了说明，所有模组下一次读取即生效。</p>
+ * 每次需要时通过保留工具 {@code minecraft:capability.read} 去舟楫取。这样平台改了说明，所有模组下一次读取即生效。</p>
  *
  * <p>参数与 {@code capability.read} 一致：{@code id}（必填，namespace:name）、可选 {@code file}（references 路径）、
  * 可选 {@code page}（长文分页）。</p>
@@ -29,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
 public final class DubheSharedSkillReader {
 
     public static final String ID = "read-shared-skill";
-    private static final ToolId CAPABILITY_READ = ToolId.of("tianshu", "capability.read");
+    private static final ToolId CAPABILITY_READ = ToolId.of("minecraft", "capability.read");
 
     private DubheSharedSkillReader() {
     }
@@ -38,7 +38,7 @@ public final class DubheSharedSkillReader {
         JsonObject schema = new JsonObject();
         schema.addProperty("type", "object");
         JsonObject properties = new JsonObject();
-        properties.add("id", property("string", "共享技能 id，例如 tianshu:minecraft-tools"));
+        properties.add("id", property("string", "共享技能 id，例如 minecraft:player-tools"));
         properties.add("file", property("string", "技能内的参考路径，例如 references/tiers.md"));
         properties.add("page", property("integer", "长文分页，从 1 开始"));
         schema.add("properties", properties);

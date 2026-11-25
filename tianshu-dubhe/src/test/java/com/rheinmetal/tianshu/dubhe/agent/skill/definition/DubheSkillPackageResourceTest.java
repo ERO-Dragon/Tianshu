@@ -29,11 +29,11 @@ class DubheSkillPackageResourceTest {
         assertEquals(3, byName.size(), "work, search and diplomacy");
 
         DubheSkillDefinition work = byName.get("work");
-        assertTrue(work.metadata().description().contains("tianshu:minecraft-tools"));
+        assertTrue(work.metadata().description().contains("minecraft:player-tools"));
         assertTrue(work.body().contains("references/boundaries.md"), "the entry points at references");
         assertEquals(1, work.references().size());
         assertTrue(work.reference("references/boundaries.md").contains("失败"));
-        assertTrue(work.body().contains("tianshu:minecraft-tools"), "tool usage lives in the platform skill");
+        assertTrue(work.body().contains("minecraft:player-tools"), "tool usage lives in the platform skill");
 
         DubheSkillDefinition search = byName.get("search");
         assertTrue(search.metadata().description().contains("手册"), "the entry says what to try first");

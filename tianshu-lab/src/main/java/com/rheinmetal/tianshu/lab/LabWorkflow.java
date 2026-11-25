@@ -25,10 +25,10 @@ public final class LabWorkflow {
     public static final String NAMESPACE = "tianshu_lab";
 
     /** Tool ids the plan is written in terms of — the base's own capabilities, nothing lab-specific. */
-    private static final String SCAN = "tianshu:body.scan";
-    private static final String MOVE = "tianshu:body.move";
-    private static final String MINE = "tianshu:body.mine";
-    private static final String PICKUP = "tianshu:body.pickup";
+    private static final String SCAN = "minecraft:entity.scan";
+    private static final String MOVE = "minecraft:entity.move";
+    private static final String MINE = "minecraft:entity.mine";
+    private static final String PICKUP = "minecraft:entity.pickup";
 
     private LabWorkflow() {
     }
