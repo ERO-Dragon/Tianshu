@@ -110,6 +110,13 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
                     "no capability named " + capabilityId));
         }
         if (descriptor.get().kind().equals(CapabilityKind.TOOL)) {
+            // Same handshake as calling it: a tool the caller cannot see has no document for it either, and the answer
+            // must not reveal that it exists.
+            if (!com.rheinmetal.tianshu.api.capability.CapabilityAccess.visibleTo(descriptor.get(), caller)) {
+                return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
+                        com.rheinmetal.tianshu.api.tool.ToolError.UNKNOWN_TOOL,
+                        "no capability named " + capabilityId));
+            }
             // A tool is called directly, but it may still ship a document: one tool, one file, found from its id.
             var documentation = com.rheinmetal.tianshu.client.capability.ToolDocs.of(capabilityId);
             if (documentation.isPresent()) {
