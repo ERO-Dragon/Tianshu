@@ -23,13 +23,40 @@ import java.util.Set;
  */
 public final class SkillCoverage {
 
-    /** Attribute key on a skill row: an array of capability ids it covers. */
+    /** Attribute key on a skill row: an array of capability ids it covers, or {@code *} for "all of them". */
     public static final String COVERS = "covers";
+
+    /**
+     * The marker for a manual that applies to <em>every</em> capability: a calling convention, a return-envelope
+     * shape, an explanation of the tiers.
+     *
+     * <p>A star is not a capability, so it is named once at the top of the exposed list instead of being repeated on
+     * every row: a rule that applies to everything is noise when printed next to everything.</p>
+     */
+    public static final String GENERAL = "*";
 
     private SkillCoverage() {
     }
 
-    /** The capabilities one skill covers; empty when it declares none. */
+    /** Whether this skill is a general manual rather than the manual of particular capabilities. */
+    public static boolean isGeneral(CapabilityDescriptor skill) {
+        if (!CapabilityKind.SKILL.equals(skill.kind())) {
+            return false;
+        }
+        JsonElement declared = skill.attributes().get(COVERS);
+        if (declared == null || !declared.isJsonArray()) {
+            return false;
+        }
+        for (JsonElement element : declared.getAsJsonArray()) {
+            if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
+                    && GENERAL.equals(element.getAsString().trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The capabilities one skill covers, without the general marker; empty when it declares none. */
     public static Set<CapabilityId> coversOf(CapabilityDescriptor skill) {
         if (!CapabilityKind.SKILL.equals(skill.kind())) {
             return Set.of();
@@ -41,14 +68,30 @@ public final class SkillCoverage {
         Set<CapabilityId> covered = new LinkedHashSet<>();
         for (JsonElement element : declared.getAsJsonArray()) {
             if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+                String value = element.getAsString().trim();
+                if (GENERAL.equals(value)) {
+                    // The general marker is not a capability: it is reported by isGeneral and printed once at the top.
+                    continue;
+                }
                 try {
-                    covered.add(CapabilityId.parse(element.getAsString()));
+                    covered.add(CapabilityId.parse(value));
                 } catch (RuntimeException malformed) {
                     // A row that cannot be parsed covers nothing; a typo must not take the whole index down.
                 }
             }
         }
         return covered;
+    }
+
+    /** The skills in these rows that are general manuals, in the order given. */
+    public static List<CapabilityId> generalManuals(List<CapabilityDescriptor> rows) {
+        List<CapabilityId> manuals = new java.util.ArrayList<>();
+        for (CapabilityDescriptor row : rows) {
+            if (isGeneral(row)) {
+                manuals.add(row.id());
+            }
+        }
+        return manuals;
     }
 
     /** Skill id → the capabilities it covers, from the rows given. */

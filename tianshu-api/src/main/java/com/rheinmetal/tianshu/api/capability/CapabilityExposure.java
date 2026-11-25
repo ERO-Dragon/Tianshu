@@ -143,6 +143,13 @@ public final class CapabilityExposure {
         int rows = 0;
         // Built from the rows this caller may see: a manual for a capability it cannot use is not its business.
         Map<CapabilityId, Set<CapabilityId>> coverage = SkillCoverage.index(descriptors);
+        // A manual about calling conventions applies to every row, so it is stated once here instead of being repeated
+        // next to each of them.
+        List<CapabilityId> general = SkillCoverage.generalManuals(descriptors);
+        if (!general.isEmpty()) {
+            text.append("calling convention: ").append(String.join(", ", general.stream().map(Object::toString).toList()))
+                    .append('\n');
+        }
         for (CapabilityDescriptor descriptor : descriptors) {
             if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
                 continue;
