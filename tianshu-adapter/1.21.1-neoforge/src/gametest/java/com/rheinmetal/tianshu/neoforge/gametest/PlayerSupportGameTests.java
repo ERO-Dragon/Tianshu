@@ -7,11 +7,14 @@ import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferRequest;
+import com.rheinmetal.tianshu.api.game.BlockInteractPort;
+import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
 import com.rheinmetal.tianshu.api.game.CraftResult;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -21,7 +24,9 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
 
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
+import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -236,6 +241,48 @@ public final class PlayerSupportGameTests {
                     int ingots = player.getInventory().countItem(Items.IRON_INGOT);
                     if (ingots != 1) {
                         helper.fail("expected one iron ingot in the inventory, found " + ingots);
+                    }
+                })
+                .thenSucceed();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void interactingWithABlockTogglesIt(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        BlockPos pos = new BlockPos(1, 1, 1);
+        // The lever is given its whole state on purpose: setBlock with the default state puts a wall lever in the air,
+        // which drops off before the interaction ever runs and would look like a failure of the port.
+        helper.setBlock(pos, Blocks.LEVER.defaultBlockState()
+                .setValue(LeverBlock.FACE, AttachFace.FLOOR)
+                .setValue(LeverBlock.FACING, Direction.NORTH)
+                .setValue(LeverBlock.POWERED, Boolean.FALSE));
+        BlockPos at = helper.absolutePos(pos);
+        BlockInteractPort port = port(BlockInteractPort.class, helper);
+
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        AtomicReference<Boolean> interacted = new AtomicReference<>();
+        port.interact(player.getUUID().toString(), new BlockInteractRequest(at.getX(), at.getY(), at.getZ()))
+                .whenComplete((result, error) -> {
+                    if (error != null) {
+                        refused.set(error);
+                        return;
+                    }
+                    interacted.set(result.interacted());
+                });
+
+        helper.startSequence()
+                .thenWaitUntil(await(() -> interacted.get() != null || refused.get() != null, "block.interact"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("the interaction was refused: " + reasonOf(refused.get()));
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(interacted.get())) {
+                        helper.fail("the port did not interact");
+                        return;
+                    }
+                    if (!helper.getBlockState(pos).getValue(LeverBlock.POWERED)) {
+                        helper.fail("the port reported an interaction but the lever did not toggle");
                     }
                 })
                 .thenSucceed();
