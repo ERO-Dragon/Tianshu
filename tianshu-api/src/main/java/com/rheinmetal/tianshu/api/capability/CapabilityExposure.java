@@ -150,7 +150,13 @@ public final class CapabilityExposure {
             text.append("calling convention: ").append(String.join(", ", general.stream().map(Object::toString).toList()))
                     .append('\n');
         }
-        for (CapabilityDescriptor descriptor : descriptors) {
+        // Capabilities first, manuals last: a skill is something to read, not something to call, and interleaving the two makes
+        // the list read as if a manual were a capability.
+        List<CapabilityDescriptor> ordered = new ArrayList<>(descriptors.stream()
+                .filter(row -> !CapabilityKind.SKILL.equals(row.kind()))
+                .toList());
+        ordered.addAll(descriptors.stream().filter(row -> CapabilityKind.SKILL.equals(row.kind())).toList());
+        for (CapabilityDescriptor descriptor : ordered) {
             if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
                 continue;
             }

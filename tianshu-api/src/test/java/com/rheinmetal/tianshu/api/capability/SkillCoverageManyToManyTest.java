@@ -90,6 +90,20 @@ class SkillCoverageManyToManyTest {
         assertFalse(block.startsWith("calling convention"), block);
     }
 
+    @Test
+    void manualsComeAfterTheCapabilitiesTheyDocument() {
+        CapabilityDescriptor manual = skill("test:manual", "tianshu:body.mine");
+        CapabilityDescriptor mine = capability("tianshu:body.mine");
+
+        // The skill is given first on purpose: a manual is something to read, not something to call, so the list
+        // must not interleave them.
+        String block = CapabilityExposure.describe(List.of(manual, mine));
+
+        int capabilityAt = block.indexOf("- tianshu:body.mine");
+        int manualAt = block.indexOf("- test:manual");
+        assertTrue(capabilityAt >= 0 && manualAt > capabilityAt, block);
+    }
+
     private CapabilityDescriptor capability(String id) {
         return register(id, CapabilityKind.RESOURCE, new JsonObject());
     }
