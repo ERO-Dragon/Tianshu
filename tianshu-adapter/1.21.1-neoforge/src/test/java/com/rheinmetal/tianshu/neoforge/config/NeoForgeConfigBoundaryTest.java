@@ -31,17 +31,23 @@ final class NeoForgeConfigBoundaryTest {
     }
 
     /**
-     * The product is client-first with an optional server component, so the loader project must define exactly the
-     * three runs that shape needs: the client, the server component, and data generation. A game-test server is not
-     * part of it.
+     * The product is client-first with an optional server component, so the loader project must define the runs that
+     * shape needs: the client, the server component, data generation — and the game-test server.
+     *
+     * <p>The game-test run was not part of this list until the operations that only exist in a real world (placing a
+     * block, moving items through a container, burning a furnace) got tests at all; a client bench cannot answer those.
+     * It must keep its own game directory: a test that inherits a developer's world, configs or leftover jars is not a
+     * test.</p>
      */
     @Test
-    void loaderProjectDefinesTheRunsTheTwoSidedProductNeeds() throws Exception {
+    void loaderProjectDefinesTheRunsTheProductNeeds() throws Exception {
         String build = Files.readString(Path.of("build.gradle"), StandardCharsets.UTF_8);
 
         assertTrue(build.contains("client {"));
         assertTrue(build.contains("server {"), "the optional server component needs a development run");
         assertTrue(build.contains("data {"));
-        assertFalse(build.contains("gameTestServer {"));
+        assertTrue(build.contains("gameTestServer {"), "the world-state tests need a run of their own");
+        assertTrue(build.contains("gameDirectory = file('run-gametest')"),
+                "the game-test run must not share the developer's world");
     }
 }

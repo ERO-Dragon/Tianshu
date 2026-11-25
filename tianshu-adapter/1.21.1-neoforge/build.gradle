@@ -150,6 +150,8 @@ neoForge {
         // mod file the game scans contains them; they are not part of any shipped source set.
         gameTestServer {
             type = 'gameTestServer'
+            // Its own game directory: a developer's world, configs and leftover jars must not decide what a test sees.
+            gameDirectory = file('run-gametest')
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
