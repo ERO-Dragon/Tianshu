@@ -23,10 +23,10 @@ class DubheSkillPackageResourceTest {
             new DubheScope("player", "world", "World", DubheScopeKind.LOCAL_WORLD, true));
 
     @Test
-    void bothPackagesLoadWithTheirOwnReferences() {
+    void everyPackageLoadsWithItsOwnReferences() {
         Map<String, DubheSkillDefinition> byName = byName();
 
-        assertEquals(2, byName.size(), "work and diplomacy");
+        assertEquals(3, byName.size(), "work, search and diplomacy");
 
         DubheSkillDefinition work = byName.get("work");
         assertTrue(work.metadata().description().contains("tianshu:minecraft-tools"));
@@ -34,6 +34,12 @@ class DubheSkillPackageResourceTest {
         assertEquals(1, work.references().size());
         assertTrue(work.reference("references/boundaries.md").contains("失败"));
         assertTrue(work.body().contains("tianshu:minecraft-tools"), "tool usage lives in the platform skill");
+
+        DubheSkillDefinition search = byName.get("search");
+        assertTrue(search.metadata().description().contains("手册"), "the entry says what to try first");
+        assertTrue(search.metadata().allowedTools().contains("book"), "it drives the book skill");
+        assertTrue(search.body().contains("action=list"), "it explains how to fall back when a query misses");
+        assertTrue(search.references().isEmpty(), "no references until the online sources exist");
 
         DubheSkillDefinition diplomacy = byName.get("diplomacy");
         assertEquals(5, diplomacy.references().size(), "discovery / relay / progress / permissions / failures");
@@ -86,8 +92,9 @@ class DubheSkillPackageResourceTest {
         DubheSkillPackageResourceLoader.loadBuiltin().forEach(registry::register);
 
         assertTrue(registry.find("work").isPresent());
+        assertTrue(registry.find("search").isPresent());
         assertTrue(registry.find("diplomacy").isPresent());
-        assertEquals(2, registry.size());
+        assertEquals(3, registry.size());
         assertFalse(registry.find("work").orElseThrow().spec().description().isBlank());
     }
 

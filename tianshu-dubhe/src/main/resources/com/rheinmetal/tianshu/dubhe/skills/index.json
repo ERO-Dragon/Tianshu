@@ -8,6 +8,10 @@
       ]
     },
     {
+      "name": "search",
+      "references": []
+    },
+    {
       "name": "diplomacy",
       "references": [
         "references/discovery.md",
