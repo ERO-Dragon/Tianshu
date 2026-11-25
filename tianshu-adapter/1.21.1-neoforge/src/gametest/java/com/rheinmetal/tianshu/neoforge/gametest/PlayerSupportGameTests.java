@@ -18,6 +18,9 @@ import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
 import com.rheinmetal.tianshu.api.game.ContainerTransferRequest;
+import com.rheinmetal.tianshu.api.game.BlockInspectPort;
+import com.rheinmetal.tianshu.api.game.BlockInspectRequest;
+import com.rheinmetal.tianshu.api.game.BlockInspectResult;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.CraftPort;
@@ -380,6 +383,59 @@ public final class PlayerSupportGameTests {
                 // The verdict is already decided above.
             }
         }
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 200)
+    public void inspectingABlockReadsWhatItHoldsWithoutOpeningIt(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        BlockPos chest = new BlockPos(1, 1, 1);
+        helper.setBlock(chest, Blocks.CHEST);
+        BaseContainerBlockEntity container = helper.getBlockEntity(chest);
+        container.setItem(0, new ItemStack(Items.DIAMOND, 5));
+        container.setItem(3, new ItemStack(Items.OAK_LOG, 2));
+        BlockPos at = helper.absolutePos(chest);
+        BlockInspectPort port = port(BlockInspectPort.class, helper);
+
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        AtomicReference<BlockInspectResult> read = new AtomicReference<>();
+        port.inspect(ActorRef.player(player.getUUID().toString(), true),
+                        new BlockInspectRequest(at.getX(), at.getY(), at.getZ()))
+                .whenComplete((result, error) -> {
+                    if (error != null) {
+                        refused.set(error);
+                        return;
+                    }
+                    read.set(result);
+                });
+
+        helper.startSequence()
+                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "block.inspect"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("the block could not be read: " + reasonOf(refused.get()));
+                        return;
+                    }
+                    BlockInspectResult result = read.get();
+                    if (!"minecraft:chest".equals(result.blockId())) {
+                        helper.fail("read " + result.blockId() + " instead of a chest");
+                        return;
+                    }
+                    // The failure this guards against: an id and a state with nothing inside, which is what a
+                    // GUI-bound read gives a caller that never opened the menu.
+                    if (result.items().size() != 2) {
+                        helper.fail("expected two occupied slots, got " + result.items().size() + ": " + result.items());
+                        return;
+                    }
+                    if (!result.items().stream().anyMatch(entry -> entry.slot() == 0
+                            && "minecraft:diamond".equals(entry.itemId()) && entry.count() == 5)) {
+                        helper.fail("the diamonds in slot 0 were not reported: " + result.items());
+                        return;
+                    }
+                    if (result.energy().present()) {
+                        helper.fail("a vanilla chest reported an energy buffer: " + result.energy());
+                    }
+                })
+                .thenSucceed();
     }
 
     private static ServerPlayer mockPlayer(GameTestHelper helper) {
