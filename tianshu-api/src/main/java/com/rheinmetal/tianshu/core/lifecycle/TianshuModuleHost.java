@@ -204,7 +204,10 @@ public class TianshuModuleHost {
         if (installation.required()) {
             throw failure;
         }
-        env.warn("可选模块生命周期阶段失败，module=" + installation.moduleId() + ", phase=" + phase);
+        // The reason, not just the phase: "phase=REGISTER failed" sends whoever reads the log to the module's own
+        // code anyway, and the module is optional, so this line is the only place the cause is ever written down.
+        env.warn("可选模块生命周期阶段失败，module=" + installation.moduleId() + ", phase=" + phase
+                + ", cause=" + exception);
         return false;
     }
 
