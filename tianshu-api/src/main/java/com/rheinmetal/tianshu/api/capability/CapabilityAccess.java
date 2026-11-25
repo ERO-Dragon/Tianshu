@@ -24,8 +24,15 @@ public final class CapabilityAccess {
             // human's own session. What bounds that is the tier and the permission, checked by the exposure filter.
             return true;
         }
-        return visibleTo(descriptor.provider(), descriptor.kind(),
-                descriptor.attributes().get("share"), consumer);
+        if (consumer.equals(descriptor.provider())) {
+            return true;
+        }
+        if (!CapabilitySharing.of(descriptor).permits(consumer)) {
+            return false;
+        }
+        // The row goes in whole: the default subscription accepts "whatever its provider opened", and that can only be
+        // answered from the row itself.
+        return CapabilitySubscriptions.ruleFor(consumer).accepts(descriptor);
     }
 
     /**

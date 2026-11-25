@@ -52,7 +52,7 @@ public final class SkillFileProvider {
     private final Map<CapabilityId, Loaded> loaded = new ConcurrentHashMap<>();
     private final List<String> problems = new ArrayList<>();
 
-    private record Loaded(String name, String description) {
+    private record Loaded(String name, String description, java.util.List<String> covers) {
     }
 
     private SkillFileProvider(String namespace, Origin origin) {
@@ -139,7 +139,7 @@ public final class SkillFileProvider {
                 summary = summary.substring(0, MAX_DESCRIPTION);
             }
             CapabilityId id = CapabilityId.of(namespace, name);
-            Loaded loadedSkill = new Loaded(name, summary);
+            Loaded loadedSkill = new Loaded(name, summary, coversOf(front.get("covers")));
             CapabilityDescriptor descriptor = new CapabilityDescriptor(
                     id,
                     CapabilityKind.SKILL,
@@ -161,7 +161,38 @@ public final class SkillFileProvider {
         JsonObject attributes = new JsonObject();
         attributes.addProperty("name", skill.name());
         attributes.addProperty("source", "skill");
+        // This provider publishes the base's own skills and the player's own folder: local content, opened by
+        // declaration rather than by being listed somewhere.
+        attributes.addProperty("share", "all");
+        // `covers: a, b, c` in the front matter: which capabilities this skill teaches. Without it the catalogue cannot
+        // say "this capability comes with a manual", and the manual is only found by accident.
+        if (!skill.covers().isEmpty()) {
+            com.google.gson.JsonArray covers = new com.google.gson.JsonArray();
+            for (String capability : skill.covers()) {
+                covers.add(capability);
+            }
+            attributes.add(com.rheinmetal.tianshu.api.capability.SkillCoverage.COVERS, covers);
+        }
         return attributes;
+    }
+
+    /** The {@code covers:} line, split on commas; ids the catalogue cannot parse are dropped when they are read back. */
+    private static java.util.List<String> coversOf(String declared) {
+        if (declared == null || declared.isBlank()) {
+            return java.util.List.of();
+        }
+        String text = declared.trim();
+        if (text.startsWith("[") && text.endsWith("]")) {
+            text = text.substring(1, text.length() - 1);
+        }
+        java.util.List<String> covers = new java.util.ArrayList<>();
+        for (String part : text.split(",")) {
+            String value = part.trim();
+            if (!value.isEmpty()) {
+                covers.add(value);
+            }
+        }
+        return java.util.List.copyOf(covers);
     }
 
     /** Reads the body or one reference file; paging applies to both. */

@@ -147,6 +147,13 @@ class WorkflowExecutorTest {
         CapabilityId capability = CapabilityId.parse(id);
         CapabilityCatalog.register(new CapabilityDescriptor(capability, CapabilityKind.of("test"),
                 CapabilityBinding.LOCAL, "a test step", ToolSide.SERVER, ToolPermission.EVERYONE, provider,
-                new JsonObject()), handler);
+                open()), handler);
+    }
+
+    /** Steps are opened rows: the default subscription accepts what a provider opened, and these tests need them visible. */
+    private static JsonObject open() {
+        JsonObject attributes = new JsonObject();
+        attributes.addProperty("share", "all");
+        return attributes;
     }
 }

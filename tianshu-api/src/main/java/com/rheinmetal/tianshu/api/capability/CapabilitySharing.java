@@ -39,22 +39,9 @@ public record CapabilitySharing(Scope scope, Set<String> modules) {
     /** The provider of every base capability; its rows are open by default. */
     public static final String BASE_PROVIDER = "tianshu";
 
-    /**
-     * The human's own content (skill files under the game directory). Open like the base: hiding someone's own notes
-     * from their assistant would be a bug, not a boundary — and there is no second party to keep them from.
-     */
-    public static final String USER_PROVIDER = "user";
 
-    /** The provider that publishes local skill files; it ships with the base and is local content too. */
-    public static final String SKILLS_PROVIDER = "tianshu-skills";
 
-    /**
-     * Providers whose rows are open by default: the base and the human's own local content.
-     *
-     * <p>One list, used by both the sharing default and the default subscription, so "what is local" is answered once.
-     * A third-party module is deliberately not on it: installing a mod must not silently add tools to a session.
-     */
-    public static final Set<String> OPEN_PROVIDERS = Set.of(BASE_PROVIDER, USER_PROVIDER, SKILLS_PROVIDER);
+
 
     public CapabilitySharing {
         modules = modules == null ? Set.of() : Set.copyOf(modules);
@@ -64,8 +51,9 @@ public record CapabilitySharing(Scope scope, Set<String> modules) {
     }
 
     /** Whether rows from this provider are open without a declaration: the base and the human's own files are. */
+    /** Whether a provider's rows are open when it declares nothing: only the kernel's are. */
     public static boolean opens(String provider) {
-        return OPEN_PROVIDERS.contains(provider);
+        return BASE_PROVIDER.equals(provider);
     }
 
     public static CapabilitySharing only(String... modules) {

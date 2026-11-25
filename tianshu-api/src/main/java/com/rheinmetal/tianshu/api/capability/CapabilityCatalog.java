@@ -219,6 +219,12 @@ public final class CapabilityCatalog {
             return CompletableFuture.completedFuture(error("UNKNOWN_CAPABILITY", "no capability named " + id));
         }
         CapabilityDescriptor descriptor = entry.descriptor();
+        if (!CapabilityAccess.visibleTo(descriptor, caller)) {
+            // Same answer as "no such capability": a caller that cannot see it must not learn that it exists. The
+            // catalogue filters what a module can see, so invoking what it cannot see is a bug on its side, not a
+            // permission it can argue with.
+            return CompletableFuture.completedFuture(error("UNKNOWN_CAPABILITY", "no capability named " + id));
+        }
         if (descriptor.permission() == ToolPermission.OPERATOR && !caller.operator()) {
             return CompletableFuture.completedFuture(error("NO_PERMISSION", id + " needs an operator"));
         }

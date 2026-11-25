@@ -110,7 +110,8 @@ class WorkflowInstallerTest {
                 seconds, changesWorld);
         // Publishing openly plus the consumer's subscription: the workflow row carries the provider's half of the
         // sharing declaration, and this is the consumer's half.
-        CapabilitySubscriptions.declare("tianshu", CapabilitySubscription.everythingFrom("provider-lab"));
+        CapabilitySubscriptions.declare("tianshu",
+                CapabilitySubscription.everythingFrom("provider-lab", "provider-a", "provider-b"));
         removal = WorkflowInstaller.install(plan, "provider-lab", ToolSide.SERVER, ToolPermission.EVERYONE,
                 CapabilitySharing.ALL);
         return plan;
@@ -121,7 +122,7 @@ class WorkflowInstallerTest {
         installed.add(capability);
         CapabilityCatalog.register(new CapabilityDescriptor(capability, CapabilityKind.of("test"),
                 CapabilityBinding.LOCAL, "a test step", ToolSide.SERVER, ToolPermission.EVERYONE, provider,
-                new JsonObject()), (context, args) -> {
+                opened()), (context, args) -> {
                     calls.incrementAndGet();
                     return CompletableFuture.completedFuture(ok());
                 });
@@ -145,5 +146,12 @@ class WorkflowInstallerTest {
         JsonObject envelope = new JsonObject();
         envelope.addProperty("ok", true);
         return envelope;
+    }
+
+    /** Steps are opened rows: the default subscription accepts what a provider opened. */
+    private static com.google.gson.JsonObject opened() {
+        com.google.gson.JsonObject attributes = new com.google.gson.JsonObject();
+        attributes.addProperty("share", "all");
+        return attributes;
     }
 }

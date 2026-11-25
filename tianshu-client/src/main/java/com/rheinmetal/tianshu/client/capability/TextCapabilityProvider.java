@@ -151,12 +151,25 @@ public final class TextCapabilityProvider {
             attributes.addProperty("source", kind.value());
             attributes.addProperty("mediaType", "text/markdown");
             CapabilityDescriptor descriptor = new CapabilityDescriptor(id, kind, CapabilityBinding.LOCAL, summary,
-                    ToolSide.CLIENT, ToolPermission.EVERYONE, "tianshu-text", attributes);
+                    ToolSide.CLIENT, ToolPermission.EVERYONE, "tianshu-text", open(attributes));
             CapabilityCatalog.register(descriptor, (context, args) -> read(loadedCapability, args));
             loaded.put(id, loadedCapability);
         } catch (IOException | RuntimeException failure) {
             problems.add(name + ": " + failure.getMessage());
         }
+    }
+
+
+    /**
+     * Marks a row as local content that is open to everyone.
+     *
+     * <p>This provider ships the base's prompts and resources and publishes files from the player's own folder.
+     * A provider that declares nothing is private, so saying so here is what keeps these readable 鈥?and deleting
+     * this line would hide them, which is the correct behaviour for content the owner did not open.</p>
+     */
+    private static com.google.gson.JsonObject open(com.google.gson.JsonObject attributes) {
+        attributes.addProperty("share", "all");
+        return attributes;
     }
 
     private CompletableFuture<JsonObject> read(Loaded capability, JsonObject args) {

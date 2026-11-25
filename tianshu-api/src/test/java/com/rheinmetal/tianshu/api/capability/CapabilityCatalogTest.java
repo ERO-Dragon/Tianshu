@@ -50,8 +50,13 @@ class CapabilityCatalogTest {
 
     private static CapabilityDescriptor descriptor(CapabilityId id, CapabilityKind kind,
                                                    ToolPermission permission, ToolSide side) {
+        // Opened to everyone: these rows test permission, side and envelope rules, not the sharing rules (those live in
+        // CapabilityVisibilityTest). Rows from a module are private by default, and invoking a row you cannot see is
+        // "unknown", which is exactly what an unopened row would produce here.
+        com.google.gson.JsonObject open = new com.google.gson.JsonObject();
+        open.addProperty("share", "all");
         return new CapabilityDescriptor(id, kind, CapabilityBinding.LOCAL, "a test capability", side, permission,
-                "test", new JsonObject());
+                "test", open);
     }
 
     private static CapabilityHandler textHandler(String text) {
@@ -256,6 +261,7 @@ class CapabilityCatalogTest {
         CapabilityId id = CapabilityId.of("test", "slow");
         JsonObject attributes = new JsonObject();
         attributes.addProperty("timeoutMillis", 100);
+        attributes.addProperty("share", "all");
         var response = new CompletableFuture<JsonObject>();
         CapabilityCatalog.register(new CapabilityDescriptor(id, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
                         "slow", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", attributes),

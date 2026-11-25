@@ -62,8 +62,9 @@ class CapabilityVisibilityTest {
         shareWithChangsui.addProperty("share", "changsui");
         CapabilityDescriptor shared = register("test:shared", CapabilityKind.RESOURCE, "modA", shareWithChangsui);
 
-        // Provider opened it, consumer declared nothing: still invisible.
-        assertFalse(visibleTo(CONSUMER, shared), "a grant nobody accepted is not a subscription");
+        // Opened to this consumer by name: visible without declaring anything, because the default subscription accepts
+        // whatever its provider opened. A provider naming you by name is not a broadcast.
+        assertTrue(visibleTo(CONSUMER, shared), "an opened row is what the default subscription accepts");
 
         CapabilitySubscriptions.declare("changsui", CapabilitySubscription.atomicFrom("modA"));
         assertTrue(visibleTo(CONSUMER, shared));
@@ -99,7 +100,7 @@ class CapabilityVisibilityTest {
         assertFalse(visibleTo(CONSUMER, workflow));
 
         CapabilitySubscriptions.declare("changsui",
-                new CapabilitySubscription(false, java.util.Set.of("modA"), false, true));
+                new CapabilitySubscription(false, java.util.Set.of("modA"), false, true, false));
         assertFalse(visibleTo(CONSUMER, atomic));
         assertTrue(visibleTo(CONSUMER, workflow));
     }
@@ -153,5 +154,17 @@ class CapabilityVisibilityTest {
                 attributes == null ? new JsonObject() : attributes);
         CapabilityCatalog.register(descriptor, (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
         return descriptor;
+    }
+
+    @Test
+    void invokingWhatYouCannotSeeIsUnknownRatherThanForbidden() {
+        CapabilityDescriptor closed = register("test:invoke-closed", CapabilityKind.RESOURCE, "modB", null);
+
+        var answer = CapabilityCatalog.invoke(closed.id(), new com.google.gson.JsonObject(), CONSUMER,
+                ToolSide.CLIENT).join();
+
+        // Same answer as "no such capability": a caller that cannot see it must not learn that it exists, and a
+        // "forbidden" would be exactly that.
+        assertEquals("UNKNOWN_CAPABILITY", answer.get("code").getAsString(), answer.toString());
     }
 }
