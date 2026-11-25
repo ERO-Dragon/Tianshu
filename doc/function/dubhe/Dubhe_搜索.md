@@ -111,6 +111,7 @@
 
 - **端口**：`InstalledModIds` + `ModResources`（`tianshu-api/assembly`）。适配器实现，模块不接触加载器 API；两边共用的 IO 在 `mc.resource.ModResourceFiles`。
 - **技能**：`agent/skill/book/`——`book` 是技能 id，目录、语言回退、格式控制清理全在解析器里，模型只看到"问什么 → 标题 + 正文"。
+- **技能包 `search`**（`skills/search/SKILL.md`）：告诉模型先查手册、打不中怎么退（list → read）、配方交给 `recipe.query`、手册没写就说不确定。线上源接入后再加 `references/sources.md`。
 - **缓存挂在技能实例上**，不挂静态字段：模块停掉缓存即消失，测试也不会互相污染。
 - **真实 jar 回归**：`DubheBookJarSamplesTest` 读 `Tianshu-adapter/libs` 里的样本（jar 不入库），把 `DUBHE_BOOK_SAMPLES` 指向那个目录才跑，否则跳过。固定用例编码的是"我们以为书长什么样"，这个测的是"书实际长什么样"。
 

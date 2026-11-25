@@ -131,7 +131,7 @@ simple 输出 <delegate>问题</delegate>
 
 解析复用平台实现 `FrontMatter` / `SkillFileProvider`（`tianshu-api`），天枢只保留清单与适配器（`skills/index.json` + `DubheSkillPackageResourceLoader` + `DubheSkillPackageAdapter`）。
 
-当前内置包：`work`（干活策略）、`diplomacy`（外交，含 `relay` reference）。
+当前内置包：`work`（干活策略）、`search`（查资料顺序：手册优先）、`diplomacy`（外交，含 `relay` reference）。
 
 ## 10. 平台的公共技能
 
