@@ -13,6 +13,8 @@ import com.rheinmetal.tianshu.api.tool.ToolSide;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * The consumer side of the capability table: which rows to show a model and how to render them.
@@ -139,6 +141,8 @@ public final class CapabilityExposure {
         final int maxChars = 8_000;
         StringBuilder text = new StringBuilder();
         int rows = 0;
+        // Built from the rows this caller may see: a manual for a capability it cannot use is not its business.
+        Map<CapabilityId, Set<CapabilityId>> coverage = SkillCoverage.index(descriptors);
         for (CapabilityDescriptor descriptor : descriptors) {
             if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
                 continue;
@@ -163,6 +167,20 @@ public final class CapabilityExposure {
             JsonElement schema = descriptor.attributes().get("argsSchema");
             if (schema != null && schema.isJsonObject()) {
                 text.append(" args: ").append(GSON.toJson(schema));
+            }
+            // The manual, named where the model is already looking: a capability whose usage guidance exists must say so,
+            // or the guidance is only found by accident.
+            List<CapabilityId> manuals = new ArrayList<>();
+            for (Map.Entry<CapabilityId, Set<CapabilityId>> skill : coverage.entrySet()) {
+                if (skill.getValue().contains(descriptor.id())) {
+                    manuals.add(skill.getKey());
+                }
+            }
+            if (!manuals.isEmpty()) {
+                text.append(" — how to use: ");
+                for (int index = 0; index < manuals.size(); index++) {
+                    text.append(index == 0 ? "" : ", ").append(manuals.get(index));
+                }
             }
             text.append('\n');
         }
