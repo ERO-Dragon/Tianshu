@@ -28,9 +28,12 @@ import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
 import com.rheinmetal.tianshu.api.game.CraftResult;
+import com.rheinmetal.tianshu.api.game.LocateRequest;
+import com.rheinmetal.tianshu.api.game.LocateResult;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
 import com.rheinmetal.tianshu.api.game.WorldInfo;
 import com.rheinmetal.tianshu.api.game.WorldInfoPort;
+import com.rheinmetal.tianshu.api.game.WorldLocatePort;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
@@ -540,6 +543,69 @@ public final class PlayerSupportGameTests {
                 .thenExecute(() -> {
                     if (refused.get() != null) {
                         helper.fail("the status could not be read: " + reasonOf(refused.get()));
+                    }
+                })
+                .thenSucceed();
+        return read.get();
+    }
+
+    @GameTest(template = PLAZA, timeoutTicks = 300)
+    public void locatingReportsWhatItSearchedAndWhatItFound(GameTestHelper helper) {
+        ServerPlayer player = mockPlayer(helper);
+        WorldLocatePort port = port(WorldLocatePort.class, helper);
+        ActorRef actor = ActorRef.player(player.getUUID().toString(), true);
+        String here = helper.getLevel().getBiome(helper.absolutePos(new BlockPos(0, 1, 0))).unwrapKey()
+                .map(key -> key.location().toString())
+                .orElse("");
+
+        // Refusals first: an unknown id must be a refusal with a reason, not an empty search that reads as "none
+        // nearby". These are the two mistakes a caller can make and they must look different.
+        LocateResult unknown = awaitLocate(helper, port, actor, new LocateRequest("tianshu:no_such_structure", "", 64));
+        if (unknown.searched()) {
+            helper.fail("an unknown structure id was reported as a search instead of a refusal: " + unknown.message());
+            return;
+        }
+        LocateResult both = awaitLocate(helper, port, actor,
+                new LocateRequest("minecraft:village_plains", "minecraft:plains", 64));
+        if (both.searched()) {
+            helper.fail("a request naming both a structure and a biome was searched instead of refused");
+            return;
+        }
+
+        // A biome search that must succeed: the biome the test stands in.
+        if (here.isBlank()) {
+            helper.fail("the test could not read its own biome");
+            return;
+        }
+        LocateResult biome = awaitLocate(helper, port, actor, new LocateRequest("", here, 64));
+        if (!biome.searched() || !biome.found() || biome.sampled() <= 0) {
+            helper.fail("the biome under the test was not found in its own sample: " + biome.message());
+            return;
+        }
+        if (biome.distanceBlocks() > 64.0D) {
+            helper.fail("the found biome is farther than the search radius: " + biome.distanceBlocks());
+        }
+        if (biome.x() == 0 && biome.z() == 0) {
+            helper.fail("the biome hit has no position");
+        }
+    }
+
+    private static LocateResult awaitLocate(GameTestHelper helper, WorldLocatePort port, ActorRef actor,
+                                            LocateRequest request) {
+        AtomicReference<LocateResult> read = new AtomicReference<>();
+        AtomicReference<Throwable> refused = new AtomicReference<>();
+        port.locate(actor, request).whenComplete((result, error) -> {
+            if (error != null) {
+                refused.set(error);
+                return;
+            }
+            read.set(result);
+        });
+        helper.startSequence()
+                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "world.locate"))
+                .thenExecute(() -> {
+                    if (refused.get() != null) {
+                        helper.fail("locating failed: " + reasonOf(refused.get()));
                     }
                 })
                 .thenSucceed();
