@@ -28,7 +28,7 @@ Development-only dialogue participants for exercising Intake's arbitration.
 [[dependencies.tianshu_lab]]
     modId="tianshu_ferry"
     type="required"
-    versionRange="[1.0.0,2.0.0)"
+    versionRange="${tianshu_host_version_range}"
     ordering="AFTER"
     side="BOTH"
 
@@ -37,7 +37,7 @@ Development-only dialogue participants for exercising Intake's arbitration.
     # Optional on purpose: the bench can be launched alone (kernel + bench), and the dialogue participants it
     # registers only exist when Intake's arbitration is installed to receive them.
     type="optional"
-    versionRange="[1.0.0,2.0.0)"
+    versionRange="${tianshu_host_version_range}"
     ordering="AFTER"
     side="CLIENT"
 

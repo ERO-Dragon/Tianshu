@@ -29,7 +29,7 @@ displayTest="IGNORE_SERVER_VERSION"
 [[dependencies.tianshu]]
     modId="tianshu_ferry"
     type="required"
-    versionRange="[1.0.0,2.0.0)"
+    versionRange="${tianshu_host_version_range}"
     ordering="AFTER"
     side="CLIENT"
 
