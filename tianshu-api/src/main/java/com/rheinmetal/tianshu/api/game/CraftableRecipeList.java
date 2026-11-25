@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.api.game;
 import java.util.List;
 
 /**
- * The tool result of {@code tianshu:craft.available}; a wrapper so the result type stays a plain class.
+ * The tool result of {@code minecraft:craft.available}; a wrapper so the result type stays a plain class.
  *
  * <p>{@code limit} is echoed back because a caller that asked for 20 and received 20 cannot otherwise tell a complete
  * list from a truncated one — and the difference decides whether it should ask again for more.</p>

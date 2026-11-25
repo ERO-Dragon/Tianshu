@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
 /** Moves an inventory slot onto the body's main hand, off hand or an armour slot; -1 clears the target. */
 public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, EquipResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.equip");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.equip");
 
     private static final int MAIN_SLOTS = 36;
 

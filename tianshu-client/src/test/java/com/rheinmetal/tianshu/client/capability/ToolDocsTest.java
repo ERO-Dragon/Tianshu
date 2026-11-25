@@ -34,10 +34,10 @@ class ToolDocsTest {
 
     @Test
     void theDocumentIsFoundFromTheToolId() {
-        assertTrue(ToolDocs.of(CapabilityId.parse("tianshu:body.mine")).isPresent(),
-                "tianshu:body.mine reads body.mine.md");
-        assertEquals("tianshu/skills/<skill>/references/body.mine.md",
-                ToolDocs.pathOf(CapabilityId.parse("tianshu:body.mine")));
+        assertTrue(ToolDocs.of(CapabilityId.parse("minecraft:entity.mine")).isPresent(),
+                "minecraft:entity.mine reads entity.mine.md");
+        assertEquals("tianshu/skills/<skill>/references/entity.mine.md",
+                ToolDocs.pathOf(CapabilityId.parse("minecraft:entity.mine")));
     }
 
     @Test
@@ -51,14 +51,14 @@ class ToolDocsTest {
         TianshuTools.register(readTool);
 
         JsonObject answer = com.rheinmetal.tianshu.api.capability.CapabilityCatalog.invoke(CapabilityId.parse(CapabilityReadTool.ID.toString()),
-                        request("tianshu:body.mine"), ToolCaller.agent(true), ToolSide.CLIENT)
+                        request("minecraft:entity.mine"), ToolCaller.agent(true), ToolSide.CLIENT)
                 .thenCompose(envelope -> {
                     assertTrue(envelope.get("ok").getAsBoolean(), envelope.toString());
                     return java.util.concurrent.CompletableFuture.completedFuture(
                             envelope.getAsJsonObject("result"));
                 }).get(5, TimeUnit.SECONDS);
 
-        assertTrue(answer.get("text").getAsString().contains("body.mine"), answer.toString());
+        assertTrue(answer.get("text").getAsString().contains("entity:mine".replace(":", ".")), answer.toString());
     }
 
     private static JsonObject request(String id) {

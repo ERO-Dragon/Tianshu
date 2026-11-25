@@ -113,9 +113,9 @@ class SkillFileProviderTest {
     @Test
     void builtInSkillsComeFromTheClasspath() throws Exception {
         provider = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
-        CapabilityId id = CapabilityId.of("tianshu", "minecraft-tools");
+        CapabilityId id = CapabilityId.of("tianshu", "player-tools");
         assertTrue(CapabilityCatalog.find(id).isPresent(), "the classpath index must list the built-in skill");
-        assertTrue(text(invoke(id, new JsonObject())).contains("Minecraft 工具"));
+        assertTrue(text(invoke(id, new JsonObject())).contains("玩家侧工具"));
         JsonObject reference = new JsonObject();
         reference.addProperty("file", "references/recipe.query.md");
         assertTrue(text(invoke(id, reference)).contains("recipe.query"), "references are read on demand");

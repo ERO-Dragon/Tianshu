@@ -21,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
 /** Drops part of one inventory slot at the body's feet. */
 public final class BodyDropTool implements TianshuTool<BodyDropTool.Args, DropResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.drop");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.drop");
 
     private static final int MAIN_SLOTS = 36;
 

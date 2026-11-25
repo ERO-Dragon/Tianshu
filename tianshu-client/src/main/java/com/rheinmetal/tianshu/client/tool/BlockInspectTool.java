@@ -32,7 +32,7 @@ public final class BlockInspectTool implements TianshuTool<BlockInspectTool.Args
     public record Args(int x, int y, int z, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "block.inspect");
+    public static final ToolId ID = ToolId.of("minecraft", "block.inspect");
 
     @Override
     public ToolId id() {

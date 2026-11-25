@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 /** Breaks one block as an agent body. */
 public final class BodyMineTool implements TianshuTool<BodyMineTool.Args, ActionResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.mine");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.mine");
 
     public record Args(String body, int x, int y, int z, String dimension) {
     }

@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.api.tool.ToolException;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The server-side crafting behind {@code tianshu:craft.recipe}.
+ * The server-side crafting behind {@code minecraft:craft.recipe}.
  *
  * <p>Crafting consumes items, so this exists only on the server; the client ships a declaration that routes through
  * the tool channel. Implementations must complete the future on the server thread.</p>

@@ -29,7 +29,7 @@ public final class EntityInspectTool implements TianshuTool<EntityInspectTool.Ar
     public record Args(String entity, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "entity.inspect");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.inspect");
 
     @Override
     public ToolId id() {

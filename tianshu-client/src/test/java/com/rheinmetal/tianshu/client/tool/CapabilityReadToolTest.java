@@ -67,7 +67,7 @@ class CapabilityReadToolTest {
     void readingAToolReturnsItsDocumentInsteadOfRunningIt() throws Exception {
         // A tool is called directly, but asking capability.read about one returns the document that ships with it,
         // found from the id: no index, no declaration.
-        JsonObject envelope = call("{\"id\":\"tianshu:capability.read\"}");
+        JsonObject envelope = call("{\"id\":\"minecraft:capability.read\"}");
 
         assertTrue(envelope.get("ok").getAsBoolean(), envelope.toString());
         assertTrue(envelope.getAsJsonObject("result").get("text").getAsString().contains("capability.read"),

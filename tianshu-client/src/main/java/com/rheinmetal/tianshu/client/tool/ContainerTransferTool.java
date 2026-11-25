@@ -32,7 +32,7 @@ public final class ContainerTransferTool implements
                        String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "container.transfer");
+    public static final ToolId ID = ToolId.of("minecraft", "container.transfer");
 
     @Override
     public ToolId id() {

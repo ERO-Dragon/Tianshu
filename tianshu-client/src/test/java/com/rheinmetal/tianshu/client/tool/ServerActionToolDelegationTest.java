@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** An action tool asks the execution port, passes the whitelisted arguments, and keeps the server's refusal code. */
 class ServerActionToolDelegationTest {
 
-    private static final ToolId XP = ToolId.of("tianshu", "server.xp");
+    private static final ToolId XP = ToolId.of("minecraft", "server.xp");
     private static final ToolCaller FULL = ToolCaller.agent("lab", true, ToolAutonomy.FULL);
 
     private final List<String> calls = new ArrayList<>();

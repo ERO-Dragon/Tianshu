@@ -29,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
 /** Moves an agent body to a position, by whatever means that carrier supports. */
 public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.move");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.move");
 
     public record Args(String body, int x, int y, int z, String mode, String dimension) {
     }

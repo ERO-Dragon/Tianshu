@@ -31,7 +31,7 @@ public final class CraftAvailableTool implements TianshuTool<CraftAvailableTool.
     public record Args(Integer limit, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "craft.available");
+    public static final ToolId ID = ToolId.of("minecraft", "craft.available");
 
     @Override
     public ToolId id() {

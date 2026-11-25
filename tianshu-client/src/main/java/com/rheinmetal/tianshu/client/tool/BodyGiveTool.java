@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class BodyGiveTool implements TianshuTool<BodyGiveTool.Args, DropResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.give");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.give");
 
     private static final int MAIN_SLOTS = 36;
 

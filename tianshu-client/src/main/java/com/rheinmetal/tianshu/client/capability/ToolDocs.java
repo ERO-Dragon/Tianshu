@@ -10,7 +10,7 @@ import java.util.Optional;
 /**
  * A tool's own document, found inside the skill that ships it.
  *
- * <p>{@code tianshu:body.mine} is {@code references/tianshu.body.mine.md} under one of the skills listed in
+ * <p>{@code minecraft:body.mine} is {@code references/tianshu.body.mine.md} under one of the skills listed in
  * {@code tianshu/skills/index.txt}. Both halves are conventions taken from the skill format: documents live in a
  * {@code references/} folder, one file per topic, and the file is named after the tool it documents — so nothing has to
  * be declared, and no index can drift from what is actually shipped.</p>
@@ -72,7 +72,7 @@ public final class ToolDocs {
         return SKILLS + "<skill>" + REFERENCES + (id == null ? "" : fileNamesOf(id).get(0));
     }
 
-    /** {@code tianshu:body.mine} → {@code body.mine.md}, then {@code tianshu.body.mine.md}. */
+    /** {@code minecraft:body.mine} → {@code body.mine.md}, then {@code tianshu.body.mine.md}. */
     private static java.util.List<String> fileNamesOf(CapabilityId id) {
         return java.util.List.of(id.name() + SUFFIX, id.namespace() + "." + id.name() + SUFFIX);
     }

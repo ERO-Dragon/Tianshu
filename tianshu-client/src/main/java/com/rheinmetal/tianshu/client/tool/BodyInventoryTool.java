@@ -19,7 +19,7 @@ import java.util.concurrent.CompletableFuture;
 /** Reads the actor's own inventory; for a body this is its carried slots, not the local player's. */
 public final class BodyInventoryTool implements TianshuTool<BodyInventoryTool.Args, InventorySnapshot> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.inventory");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.inventory");
 
     public record Args(String body) {
     }

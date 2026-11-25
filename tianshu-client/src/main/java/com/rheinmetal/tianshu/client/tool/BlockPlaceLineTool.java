@@ -34,7 +34,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class BlockPlaceLineTool implements TianshuTool<BlockPlaceLineTool.Args, BlockPlaceLineTool.Placed> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "block.place.line");
+    public static final ToolId ID = ToolId.of("minecraft", "block.place.line");
 
     /** A player-placed staircase is longer than this; anything bigger is a build job, not a tool call. */
     private static final int MAX_COUNT = 16;

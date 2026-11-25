@@ -122,7 +122,7 @@ public final class ServerActionTools {
      */
     public static void applySwitches(java.util.function.Function<String, Boolean> switchFor) {
         for (Spec spec : ACTIONS) {
-            TianshuTools.setEnabled(ToolId.of("tianshu", spec.path()), Boolean.TRUE.equals(switchFor.apply(spec.name())));
+            TianshuTools.setEnabled(ToolId.of("minecraft", spec.path()), Boolean.TRUE.equals(switchFor.apply(spec.name())));
         }
     }
 
@@ -130,7 +130,7 @@ public final class ServerActionTools {
     public static List<ToolId> ids() {
         List<ToolId> ids = new ArrayList<>(ACTIONS.size());
         for (Spec spec : ACTIONS) {
-            ids.add(ToolId.of("tianshu", spec.path()));
+            ids.add(ToolId.of("minecraft", spec.path()));
         }
         return ids;
     }
@@ -142,7 +142,7 @@ public final class ServerActionTools {
         private final Spec spec;
 
         private ActionTool(Spec spec) {
-            this.id = ToolId.of("tianshu", spec.path());
+            this.id = ToolId.of("minecraft", spec.path());
             this.spec = spec;
         }
 

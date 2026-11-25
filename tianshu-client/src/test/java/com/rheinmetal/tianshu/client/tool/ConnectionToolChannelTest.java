@@ -141,7 +141,7 @@ class ConnectionToolChannelTest {
         JsonObject envelope = handle.result().get(2, TimeUnit.SECONDS);
         assertFalse(envelope.get("ok").getAsBoolean());
         assertEquals("CANCELLED", envelope.get("code").getAsString());
-        assertEquals(ToolId.of("tianshu", "tool.cancel"), lastToolId.get(),
+        assertEquals(ToolId.of("minecraft", "tool.cancel"), lastToolId.get(),
                 "the server must be told about the cancel");
     }
 

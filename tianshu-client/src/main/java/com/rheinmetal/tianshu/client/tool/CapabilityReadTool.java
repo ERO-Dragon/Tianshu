@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.Request, CapabilityReadTool.Reply> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "capability.read");
+    public static final ToolId ID = ToolId.of("minecraft", "capability.read");
 
     public record Request(String id, JsonObject arguments, String file, Integer page) {
     }

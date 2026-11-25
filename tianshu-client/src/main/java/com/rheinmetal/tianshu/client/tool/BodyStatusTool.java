@@ -31,7 +31,7 @@ public final class BodyStatusTool implements TianshuTool<BodyStatusTool.Args, Ac
     public record Args(String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.status");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.status");
 
     @Override
     public ToolId id() {

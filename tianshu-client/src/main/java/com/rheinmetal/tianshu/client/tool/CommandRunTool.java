@@ -35,7 +35,7 @@ public final class CommandRunTool implements TianshuTool<CommandRunTool.Args, Co
     public record Args(String line, String approval, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "command.run");
+    public static final ToolId ID = ToolId.of("minecraft", "command.run");
 
     @Override
     public ToolId id() {

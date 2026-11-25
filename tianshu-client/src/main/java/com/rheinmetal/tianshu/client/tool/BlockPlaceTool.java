@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 /** Places one item from the actor's inventory into the world. */
 public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, BlockPlaceResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "block.place");
+    public static final ToolId ID = ToolId.of("minecraft", "block.place");
 
     /** {@code body} is optional; {@code face} is optional and lets the carrier aim from its own position. */
     public record Args(String body, String item, int x, int y, int z, String face) {

@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class LootQueryTool implements TianshuTool<LootQuery, LootQueryResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "loot.query");
+    public static final ToolId ID = ToolId.of("minecraft", "loot.query");
 
     @Override
     public ToolId id() {

@@ -30,7 +30,7 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
     public record Args(String recipeId, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "craft.recipe");
+    public static final ToolId ID = ToolId.of("minecraft", "craft.recipe");
 
     @Override
     public ToolId id() {

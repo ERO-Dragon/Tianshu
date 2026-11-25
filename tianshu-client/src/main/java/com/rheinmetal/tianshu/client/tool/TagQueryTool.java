@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class TagQueryTool implements TianshuTool<TagQueryArgs, TagQueryResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "tag.query");
+    public static final ToolId ID = ToolId.of("minecraft", "tag.query");
 
     @Override
     public ToolId id() {

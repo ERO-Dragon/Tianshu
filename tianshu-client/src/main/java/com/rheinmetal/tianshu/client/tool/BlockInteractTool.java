@@ -29,7 +29,7 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
     public record Args(int x, int y, int z, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "block.interact");
+    public static final ToolId ID = ToolId.of("minecraft", "block.interact");
 
     @Override
     public ToolId id() {

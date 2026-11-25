@@ -46,7 +46,7 @@ import java.util.concurrent.TimeUnit;
  */
 public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args, SequenceResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.sequence");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.sequence");
 
     private static final int MAX_STEPS = 32;
     private static final int BUDGET_SECONDS = 120;

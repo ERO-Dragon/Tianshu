@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 /** Strikes one entity as an agent body. */
 public final class BodyAttackTool implements TianshuTool<BodyAttackTool.Args, ActionResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.attack");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.attack");
 
     public record Args(String body, String entity) {
     }

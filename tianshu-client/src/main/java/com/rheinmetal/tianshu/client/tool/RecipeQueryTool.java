@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class RecipeQueryTool implements TianshuTool<RecipeQuery, RecipeQueryResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "recipe.query");
+    public static final ToolId ID = ToolId.of("minecraft", "recipe.query");
     public static final int MAX_LIMIT = 64;
 
     @Override

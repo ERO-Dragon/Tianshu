@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture;
 /** Turns an agent body towards a point. */
 public final class BodyLookTool implements TianshuTool<BodyLookTool.Args, ActionResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.look");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.look");
 
     public record Args(String body, int x, int y, int z, String dimension) {
     }

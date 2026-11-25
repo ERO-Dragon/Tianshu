@@ -22,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class InventoryInspectTool implements TianshuTool<EmptyArgs, InventorySnapshot> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "inventory.inspect");
+    public static final ToolId ID = ToolId.of("minecraft", "inventory.inspect");
 
     @Override
     public ToolId id() {

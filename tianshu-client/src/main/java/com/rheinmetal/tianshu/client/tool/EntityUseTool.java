@@ -21,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
 /** Interacts with an entity using the active item or an empty hand: feed, tame, leash, trade. */
 public final class EntityUseTool implements TianshuTool<EntityUseTool.Args, ActionResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "entity.use");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.use");
 
     public record Args(String body, String entity) {
     }

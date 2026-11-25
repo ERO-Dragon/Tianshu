@@ -20,7 +20,7 @@ import java.util.concurrent.CompletableFuture;
 /** Lists the agent bodies the server currently holds, so a caller can name one it did not spawn itself. */
 public final class BodyListTool implements TianshuTool<JsonObject, BodyListTool.Result> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.list");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.list");
 
     /** One row per body; the capability names are the platform's, not the carrier's. */
     public record Row(String id, boolean operator, String dimension, double x, double y, double z,

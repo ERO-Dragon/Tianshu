@@ -29,7 +29,7 @@ public final class ItemInspectTool implements TianshuTool<ItemInspectTool.Args, 
     public record Args(int slot, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "item.inspect");
+    public static final ToolId ID = ToolId.of("minecraft", "item.inspect");
 
     @Override
     public ToolId id() {

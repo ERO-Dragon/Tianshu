@@ -28,7 +28,7 @@ public final class WorldInfoTool implements TianshuTool<WorldInfoTool.Args, Worl
     public record Args(String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "world.info");
+    public static final ToolId ID = ToolId.of("minecraft", "world.info");
 
     @Override
     public ToolId id() {

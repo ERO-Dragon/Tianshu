@@ -17,7 +17,7 @@ import java.util.concurrent.CompletableFuture;
 /** Moves one of the client's volume sliders. */
 public final class AudioSetTool implements TianshuTool<AudioSetTool.Args, ClientAudioSettingsPort.Channel> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "client.audio.set");
+    public static final ToolId ID = ToolId.of("minecraft", "client.audio.set");
 
     /** {@code volume} is percent, 0..100, the unit the options screen shows. */
     public record Args(String channel, int volume) {

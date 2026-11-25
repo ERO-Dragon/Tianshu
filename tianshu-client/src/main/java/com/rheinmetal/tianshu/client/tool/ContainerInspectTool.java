@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class ContainerInspectTool implements TianshuTool<EmptyArgs, ContainerInspectTool.View> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "container.inspect");
+    public static final ToolId ID = ToolId.of("minecraft", "container.inspect");
 
     /**
      * The open container, or {@code open=false} when the player has none.

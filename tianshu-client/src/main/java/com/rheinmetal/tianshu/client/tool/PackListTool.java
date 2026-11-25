@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 /** The resource packs installed on this client, and which of them are on. */
 public final class PackListTool implements TianshuTool<EmptyArgs, List<ClientPackSettingsPort.Pack>> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "client.pack.list");
+    public static final ToolId ID = ToolId.of("minecraft", "client.pack.list");
 
     @Override
     public ToolId id() {

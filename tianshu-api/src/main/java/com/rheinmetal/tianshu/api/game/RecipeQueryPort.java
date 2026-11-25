@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The recipe source the {@code tianshu:recipe.query} tool asks. From 1.21.2 the client no longer receives the full
+ * The recipe source the {@code minecraft:recipe.query} tool asks. From 1.21.2 the client no longer receives the full
  * recipe manager, so this port is implemented server-side on every version; the tool itself is a normal
  * {@code SERVER_READ} tool.
  *

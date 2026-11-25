@@ -17,7 +17,7 @@ import java.util.concurrent.CompletableFuture;
 /** Switches one resource pack on or off. */
 public final class PackSetTool implements TianshuTool<PackSetTool.Args, ClientPackSettingsPort.Pack> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "client.pack.set");
+    public static final ToolId ID = ToolId.of("minecraft", "client.pack.set");
 
     public record Args(String pack, boolean enabled) {
     }

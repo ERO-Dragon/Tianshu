@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class BodyScanTool implements TianshuTool<BodyScanTool.Args, ScanResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.scan");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.scan");
 
     private static final int DEFAULT_RADIUS = 8;
     private static final int DEFAULT_LIMIT = 64;

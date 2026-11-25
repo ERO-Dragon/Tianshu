@@ -7,7 +7,7 @@ import com.rheinmetal.tianshu.api.tool.ToolException;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The server-side block interaction behind {@code tianshu:block.interact}.
+ * The server-side block interaction behind {@code minecraft:block.interact}.
  *
  * <p>Interaction is a world change, so this exists only on the server; the client ships a declaration that routes
  * through the tool channel. Implementations must complete the future on the server thread.</p>

@@ -32,7 +32,7 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
     public record Args(String structure, String biome, Integer radius, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "world.locate");
+    public static final ToolId ID = ToolId.of("minecraft", "world.locate");
 
     @Override
     public ToolId id() {

@@ -1,2 +1,2 @@
-minecraft-tools
-body-tools
+player-tools
+entity-tools

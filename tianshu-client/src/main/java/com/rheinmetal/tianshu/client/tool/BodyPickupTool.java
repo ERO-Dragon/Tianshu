@@ -21,7 +21,7 @@ import java.util.concurrent.CompletableFuture;
 /** Collects dropped item stacks into the actor's inventory. */
 public final class BodyPickupTool implements TianshuTool<BodyPickupTool.Args, PickupResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "body.pickup");
+    public static final ToolId ID = ToolId.of("minecraft", "entity.pickup");
 
     private static final int DEFAULT_RADIUS = 4;
 

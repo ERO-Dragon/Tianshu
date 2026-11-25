@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 /** The client's volume channels and where each slider sits. */
 public final class AudioListTool implements TianshuTool<EmptyArgs, List<ClientAudioSettingsPort.Channel>> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "client.audio.list");
+    public static final ToolId ID = ToolId.of("minecraft", "client.audio.list");
 
     @Override
     public ToolId id() {

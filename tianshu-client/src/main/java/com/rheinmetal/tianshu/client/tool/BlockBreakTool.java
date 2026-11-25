@@ -31,7 +31,7 @@ public final class BlockBreakTool implements TianshuTool<BlockBreakTool.Args, Bl
     public record Args(int x, int y, int z, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "block.break");
+    public static final ToolId ID = ToolId.of("minecraft", "block.break");
 
     @Override
     public ToolId id() {

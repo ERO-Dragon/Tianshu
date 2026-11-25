@@ -29,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class ItemUseTool implements TianshuTool<ItemUseTool.Args, ActionResult> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "item.use");
+    public static final ToolId ID = ToolId.of("minecraft", "item.use");
     /** Upper bound for a held use: five seconds of ticks. Anything longer is a use session, which does not exist yet. */
     private static final int MAX_HOLD_TICKS = 100;
 

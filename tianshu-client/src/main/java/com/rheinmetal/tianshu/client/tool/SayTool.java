@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class SayTool implements TianshuTool<JsonObject, JsonObject> {
 
-    public static final ToolId ID = ToolId.of("tianshu", "server.say");
+    public static final ToolId ID = ToolId.of("minecraft", "server.say");
 
     @Override
     public ToolId id() {

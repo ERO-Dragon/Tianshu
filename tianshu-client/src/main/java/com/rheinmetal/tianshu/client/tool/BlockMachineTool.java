@@ -34,7 +34,7 @@ public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args
     public record Args(int x, int y, int z, String operation, Integer playerSlot, String body) {
     }
 
-    public static final ToolId ID = ToolId.of("tianshu", "block.machine");
+    public static final ToolId ID = ToolId.of("minecraft", "block.machine");
     private static final Set<String> OPERATIONS = Set.of("insert_fuel", "insert_input", "take_output");
 
     @Override
