@@ -19,6 +19,7 @@ import com.rheinmetal.tianshu.lab.acceptance.AcceptanceEnvironment;
 import com.rheinmetal.tianshu.lab.bridge.intake.LabIntakeBridge;
 import com.rheinmetal.tianshu.protocol.TianshuEnvelope;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueHoldTier;
+import com.rheinmetal.tianshu.protocol.payload.TextPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolContext;
 
@@ -35,7 +36,7 @@ import java.util.Objects;
  * re-register; the module never reads IA's registry to find out whether that worked, it just sends the
  * commands and reports the last error.</p>
  */
-public final class LabModule implements TianshuManagedModule, LabModuleControl {
+public final class LabModule implements TianshuManagedModule, LabModuleControl, LabHostTrace {
     public static final String MODULE_ID = LabProtocolAdapter.MODULE_ID;
 
     /** How long an unattended run waits for the tool registry before reporting what it has. */
@@ -69,6 +70,15 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     private volatile DiagnosticSink diagnostics = DiagnosticSink.NOOP;
     /** How long a winner keeps the turn; the page can switch it, and all three participants share it. */
     private volatile DialogueHoldTier holdTier = DialogueHoldTier.TEN_SECONDS;
+    /** How many times each host phase ran on this module; the bench's host case reads these. */
+    private volatile int registerCalls;
+    private volatile boolean registerCompleted;
+    private volatile int startCalls;
+    private volatile boolean registerBeforeStart;
+    /** The last command the bench's own echo capability received, and how many arrived in this session. */
+    private volatile String lastEcho = "";
+    private final java.util.concurrent.atomic.AtomicInteger echoDeliveries =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     public LabModule(ModuleRuntimeAccess runtime, ClientPorts ports) {
         this.runtime = runtime;
@@ -88,26 +98,84 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl {
     @Override
     public void register(ModuleRegistrationContext context) {
         Objects.requireNonNull(context, "context");
-        // One capability per participant: the capability that received a delivery names its owner, which is
-        // also the participant id a session-control request has to carry.
-        adapter.registerDelivery(LabProtocolAdapter.ALPHA_CAPABILITY,
-                (envelope, protocolContext) -> handleDelivery(envelope, protocolContext, LabParticipants.ALPHA));
-        adapter.registerDelivery(LabProtocolAdapter.BETA_CAPABILITY,
-                (envelope, protocolContext) -> handleDelivery(envelope, protocolContext, LabParticipants.BETA));
-        adapter.registerDelivery(LabProtocolAdapter.GAMMA_CAPABILITY,
-                (envelope, protocolContext) -> handleDelivery(envelope, protocolContext, LabParticipants.GAMMA));
+        registerCalls++;
+        // The delivery capabilities are intake's vocabulary: registering one resolves intake's payload class, so an
+        // installation without intake throws here instead of simply having nothing to deliver to. The guard is the
+        // same one the participants use, and the echo capability below is what stays available either way.
+        if (intakeInstalled()) {
+            // One capability per participant: the capability that received a delivery names its owner, which is
+            // also the participant id a session-control request has to carry.
+            adapter.registerDelivery(LabProtocolAdapter.ALPHA_CAPABILITY,
+                    (envelope, protocolContext) -> handleDelivery(envelope, protocolContext, LabParticipants.ALPHA));
+            adapter.registerDelivery(LabProtocolAdapter.BETA_CAPABILITY,
+                    (envelope, protocolContext) -> handleDelivery(envelope, protocolContext, LabParticipants.BETA));
+            adapter.registerDelivery(LabProtocolAdapter.GAMMA_CAPABILITY,
+                    (envelope, protocolContext) -> handleDelivery(envelope, protocolContext, LabParticipants.GAMMA));
+        } else {
+            lastError = INTAKE_UNAVAILABLE_MESSAGE;
+        }
+        // One the bench alone sends to and receives from, so the acceptance run can watch the centre work
+        // without any other module installed.
+        adapter.registerEcho(this::handleEcho);
+        registerCompleted = true;
     }
 
     @Override
     public void start(ModuleRuntimeContext context) {
+        registerBeforeStart = registerCalls > 0;
+        startCalls++;
         if (context != null) {
             this.diagnostics = context.diagnostics();
         }
-        AcceptanceEnvironment.install(runtime, gameContext, scheduler);
+        AcceptanceEnvironment.install(runtime, gameContext, scheduler, this);
         if (debugEnabled) {
             registerParticipants();
         }
         autoRunAcceptanceIfRequested();
+    }
+
+    @Override
+    public int registerCalls() {
+        return registerCalls;
+    }
+
+    @Override
+    public boolean registerCompleted() {
+        return registerCompleted;
+    }
+
+    @Override
+    public int startCalls() {
+        return startCalls;
+    }
+
+    @Override
+    public boolean registerBeforeStart() {
+        return registerBeforeStart;
+    }
+
+    @Override
+    public String lastEcho() {
+        return lastEcho;
+    }
+
+    @Override
+    public int echoDeliveries() {
+        return echoDeliveries.get();
+    }
+
+    @Override
+    public void echo(String text) {
+        adapter.echo(text);
+    }
+
+    /** Records one echo delivery and completes its envelope, the same contract every handler has. */
+    private void handleEcho(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof TextPayload text) {
+            lastEcho = text.text();
+            echoDeliveries.incrementAndGet();
+        }
+        context.complete(envelope.envelopeId());
     }
 
     /**

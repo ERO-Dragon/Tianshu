@@ -30,8 +30,11 @@ import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
 import com.rheinmetal.tianshu.client.host.game.GameInventoryEntry;
 import com.rheinmetal.tianshu.model.ModelDownloadHttpClient;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
+import com.rheinmetal.tianshu.protocol.runtime.ProtocolCapabilityRegistration;
 import com.rheinmetal.tianshu.protocol.runtime.ProtocolTaskSpec;
+import com.rheinmetal.tianshu.lab.LabHostTrace;
 import com.rheinmetal.tianshu.lab.LabModule;
+import com.rheinmetal.tianshu.lab.LabProtocolAdapter;
 import com.rheinmetal.tianshu.client.settings.session.ModuleSettingsSessionBuilder;
 
 import java.io.IOException;
@@ -107,6 +110,8 @@ public final class LabAcceptanceCases {
         cases.add(anEventWithoutSeverityIsRefused());
         cases.add(everyBodyToolIsReachableAndAnswers());
         cases.add(aModuleTaskRunsAndItsLaneSurvivesAFailure());
+        cases.add(theHostAssemblesAnOutsideModuleOnce());
+        cases.add(aModuleReachesItsOwnCapabilityThroughTheCentre());
         cases.add(aBodyCoordinateOutsideTheWorldIsRefused());
         cases.add(aBodyThatFailsVerificationIsNeverPromoted());
         cases.add(aCorruptBodyIsRetriedBeforeTheInstallFails());
@@ -1960,6 +1965,79 @@ public final class LabAcceptanceCases {
             result.addProperty("ok", true);
             return CompletableFuture.completedFuture(result);
         }
+    }
+
+    /**
+     * The host runs an outside module's two lifecycle phases exactly once, in order.
+     *
+     * <p>What a module can honestly say about the host is what happened to it: how many times each phase ran and
+     * whether {@code register} came first. Reading the host's own status table instead would test the table, not the
+     * module's experience of being assembled.</p>
+     */
+    private static AcceptanceCase theHostAssemblesAnOutsideModuleOnce() {
+        final String id = "ACC-HOST-1";
+        final String title = "the host runs an outside module's register and start once, in that order, to the end";
+        return AcceptanceCase.of(id, title, () -> {
+            LabHostTrace host = AcceptanceEnvironment.host();
+            if (host == null) {
+                return AcceptanceOutcome.skip(id, title, "no module host in this process");
+            }
+            if (host.registerCalls() == 1 && host.registerCompleted()
+                    && host.startCalls() == 1 && host.registerBeforeStart()) {
+                return AcceptanceOutcome.pass(id, title, "register=1 (finished), start=1, register first");
+            }
+            return AcceptanceOutcome.fail(id, title, "register=" + host.registerCalls()
+                    + " completed=" + host.registerCompleted()
+                    + " start=" + host.startCalls() + " registerFirst=" + host.registerBeforeStart());
+        });
+    }
+
+    /**
+     * A module's capability is in the centre's registry under its own id, and a command it sends to that capability
+     * comes back through the centre.
+     *
+     * <p>Sender and receiver are the same module on purpose: the check has to mean something with no other module
+     * installed. What it locks is the path a module actually uses — declare a capability, see it registered, submit a
+     * command, have the handler run — not the broker's internals.</p>
+     */
+    private static AcceptanceCase aModuleReachesItsOwnCapabilityThroughTheCentre() {
+        final String id = "ACC-PRO-1";
+        final String title = "a module's capability is registered under its id and a command to it is delivered";
+        return AcceptanceCase.of(id, title, () -> {
+            ModuleRuntimeAccess runtime = AcceptanceEnvironment.runtime();
+            LabHostTrace host = AcceptanceEnvironment.host();
+            if (runtime == null || host == null) {
+                return AcceptanceOutcome.skip(id, title, "no module runtime in this process");
+            }
+            List<ProtocolCapabilityRegistration> registered =
+                    runtime.capabilityRegistrations(LabProtocolAdapter.ECHO_CAPABILITY);
+            if (registered.size() != 1) {
+                return AcceptanceOutcome.fail(id, title, "providers=" + registered.size());
+            }
+            String owner = registered.get(0).moduleId();
+            if (!LabProtocolAdapter.MODULE_ID.equals(owner)) {
+                return AcceptanceOutcome.fail(id, title, "capability attributed to " + owner);
+            }
+            int before = host.echoDeliveries();
+            String token = "probe-" + System.currentTimeMillis();
+            host.echo(token);
+            long deadline = System.currentTimeMillis() + CALL_TIMEOUT_SECONDS * 1000L;
+            while (System.currentTimeMillis() < deadline
+                    && (host.echoDeliveries() <= before || !token.equals(host.lastEcho()))) {
+                try {
+                    Thread.sleep(20L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (host.echoDeliveries() > before && token.equals(host.lastEcho())) {
+                return AcceptanceOutcome.pass(id, title, "registered under " + owner + ", delivered "
+                        + (host.echoDeliveries() - before) + " command(s)");
+            }
+            return AcceptanceOutcome.fail(id, title, "delivered=" + (host.echoDeliveries() - before)
+                    + " lastEcho=" + host.lastEcho());
+        });
     }
 
     /** A client tool that declares the FULL tier, so the tier filter has something real to hide. */

@@ -118,6 +118,7 @@ class AcceptanceRunnerTest {
                 "ACC-CAT-2", "ACC-CAT-3", "ACC-AGT-4", "ACC-EXP-5", "ACC-EXP-6", "ACC-EXP-7",
                 "ACC-EXP-8", "ACC-EXP-9", "ACC-DIAG-3", "ACC-CAP-5",
                 "ACC-CAT-4", "ACC-EXP-10", "ACC-DIAG-4", "ACC-BDY-1", "ACC-BDY-2", "ACC-BDY-3", "ACC-BDY-4", "ACC-ENT-1", "ACC-PRT-1",
+                "ACC-HOST-1", "ACC-PRO-1",
                 "ACC-ACT-1", "ACC-ACT-2", "ACC-ACT-3", "ACC-CNR-1", "ACC-GIV-1", "ACC-PLC-1", "ACC-MDL-1", "ACC-MDL-2", "ACC-GAME-1", "ACC-GAME-2",
                 AcceptanceReport.SELF_CHECK_ID);
         List<String> actual = AcceptanceRunner.standard().cases().stream().map(AcceptanceCase::id).toList();

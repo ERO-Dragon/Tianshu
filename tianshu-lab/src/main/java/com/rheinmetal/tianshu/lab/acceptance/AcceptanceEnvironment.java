@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.lab.acceptance;
 
 import com.rheinmetal.tianshu.client.host.ClientScheduler;
 import com.rheinmetal.tianshu.client.host.game.ClientGameContextPort;
+import com.rheinmetal.tianshu.lab.LabHostTrace;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.function.Function;
@@ -13,21 +14,24 @@ import java.util.function.Function;
  * execution or read the game do — and reaching them by scanning internals would be a second, invented path beside the
  * real one. The bench therefore receives the same {@link ModuleRuntimeAccess} and {@link ClientGameContextPort} the
  * module itself was assembled with, and skips those cases when they are absent (a bare JVM has neither).</p>
+ *
+ * <p>{@link LabHostTrace} is the same rule for the host: what happened to this module is not in any registry the bench
+ * may read, so the module hands its own record over.</p>
  */
 public final class AcceptanceEnvironment {
 
-    private static volatile Binding binding = new Binding(null, null, null);
+    private static volatile Binding binding = new Binding(null, null, null, null);
 
     private AcceptanceEnvironment() {
     }
 
     public static void install(ModuleRuntimeAccess access, ClientGameContextPort context,
-                               ClientScheduler clientScheduler) {
-        binding = new Binding(access, context, clientScheduler);
+                               ClientScheduler clientScheduler, LabHostTrace host) {
+        binding = new Binding(access, context, clientScheduler, host);
     }
 
     public static void clear() {
-        binding = new Binding(null, null, null);
+        binding = new Binding(null, null, null, null);
     }
 
     /** @return the module runtime, or {@code null} when this bench runs without one */
@@ -38,6 +42,11 @@ public final class AcceptanceEnvironment {
     /** @return the game's read-only context, or {@code null} when this bench runs without a client */
     public static ClientGameContextPort gameContext() {
         return binding.gameContext();
+    }
+
+    /** @return this module's own record of its life in the host, or {@code null} when the bench runs standalone */
+    public static LabHostTrace host() {
+        return binding.host();
     }
 
     /** Runs a live game read on the client thread while keeping the acceptance suite on its worker. */
@@ -54,6 +63,7 @@ public final class AcceptanceEnvironment {
         return clientScheduler.supply(() -> read.apply(context)).join();
     }
 
-    private record Binding(ModuleRuntimeAccess runtime, ClientGameContextPort gameContext, ClientScheduler scheduler) {
+    private record Binding(ModuleRuntimeAccess runtime, ClientGameContextPort gameContext,
+                           ClientScheduler scheduler, LabHostTrace host) {
     }
 }

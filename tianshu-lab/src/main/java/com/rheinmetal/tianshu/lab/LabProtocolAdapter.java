@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescrip
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
+import com.rheinmetal.tianshu.protocol.payload.TextPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
 import java.util.EnumSet;
@@ -33,6 +34,11 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
     public static final String ALPHA_CAPABILITY = "LAB.ALPHA.DIALOGUE_INPUT";
     public static final String BETA_CAPABILITY = "LAB.BETA.DIALOGUE_INPUT";
     public static final String GAMMA_CAPABILITY = "LAB.GAMMA.DIALOGUE_INPUT";
+    /**
+     * A capability the bench owns only to watch the centre route: the provider and the caller are the same module,
+     * so nothing outside the bench has to be installed for the check to mean something.
+     */
+    public static final String ECHO_CAPABILITY = "LAB.ACCEPTANCE.ECHO";
 
     public LabProtocolAdapter(ModuleRuntimeAccess runtime) {
         super(MODULE_ID, MODULE_ID, runtime, AdapterDefaults.standard());
@@ -51,6 +57,26 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
                 handler,
                 defaults()
         );
+    }
+
+    /** Declares the echo capability the acceptance run uses to see the centre deliver to its own module. */
+    public void registerEcho(EnvelopeHandler handler) {
+        registerCapability(
+                ECHO_CAPABILITY,
+                PayloadType.TEXT,
+                TextPayload.class,
+                BrokerType.STATELESS_FAST_PATH,
+                EnumSet.of(PacketType.COMMAND),
+                Priority.LOW,
+                CompletionPolicy.MANUAL_COMPLETE,
+                handler,
+                defaults()
+        );
+    }
+
+    /** Sends one command to the echo capability; like any module call, the centre decides where it lands. */
+    public void echo(String text) {
+        commandCapability(ECHO_CAPABILITY, PayloadType.TEXT, new TextPayload(text));
     }
 
     public void registerParticipant(DialogueParticipantDescriptor descriptor) {
