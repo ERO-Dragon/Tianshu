@@ -210,6 +210,29 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
         }, server);
     }
 
+    @Override
+    public CompletableFuture<Void> release(String moduleId, String bodyId) {
+        return CompletableFuture.supplyAsync(() -> {
+            IdSegments.require(moduleId, "body", "owner module");
+            UUID id = parse(bodyId);
+            BodyState state = id == null ? null : bodies.get(id);
+            if (state == null) {
+                throw BodyFailure.BODY_REQUIRED.exception();
+            }
+            String owner = state.ownerModule();
+            if (owner == null || !owner.equals(moduleId)) {
+                // A module may withdraw what it asked for, and nothing else. The operator command is the way out for a
+                // body whose module is gone.
+                throw BodyFailure.CONTROLLER_MISMATCH.exception();
+            }
+            if (state.loaded()) {
+                state.entity().discard();
+            }
+            forget(state.id());
+            return null;
+        }, server);
+    }
+
     private EntityActor spawn(String ownerModule, UUID playerOwner, boolean operator, BodyCarriers.Carrier carrier,
                               boolean playerIdentity, ServerLevel level, Vec3 at, float yaw, float pitch) {
         BodyKind kind = carrier.kind();
@@ -262,12 +285,17 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
         if (state.loaded()) {
             state.entity().discard();
         }
-        bodies.remove(state.id());
-        activeSlots.remove(state.id());
-        accessPolicies.remove(state.id());
-        trusted.remove(state.id());
-        equipment.remove(state.id());
+        forget(state.id());
         return true;
+    }
+
+    /** Drops every trace of one body: the record and the per-body tables that belong to it. */
+    private void forget(UUID id) {
+        bodies.remove(id);
+        activeSlots.remove(id);
+        accessPolicies.remove(id);
+        trusted.remove(id);
+        equipment.remove(id);
     }
 
     @Override
@@ -478,11 +506,7 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
             return true;
         }
         dropAll(state);
-        bodies.remove(state.id());
-        activeSlots.remove(state.id());
-        accessPolicies.remove(state.id());
-        trusted.remove(state.id());
-        equipment.remove(state.id());
+        forget(state.id());
         return false;
     }
 
