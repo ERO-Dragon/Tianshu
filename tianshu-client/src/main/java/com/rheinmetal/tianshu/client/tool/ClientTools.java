@@ -48,6 +48,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyStatusTool());
         ServerToolDeclarations.declare(new WorldInfoTool());
         ServerToolDeclarations.declare(new WorldLocateTool());
+        ServerToolDeclarations.declare(new CraftAvailableTool());
         ServerToolDeclarations.declare(new BlockPlaceTool());
         ServerToolDeclarations.declare(new BlockPlaceLineTool());
         ServerToolDeclarations.declare(new BodyListTool());
