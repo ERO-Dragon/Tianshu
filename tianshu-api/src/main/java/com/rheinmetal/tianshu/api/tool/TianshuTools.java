@@ -132,7 +132,7 @@ public final class TianshuTools {
             if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
                 continue;
             }
-            if (!allowed.permits(tool.requiredAutonomy())) {
+            if (!allowed.permits(tool.requiredLevel())) {
                 continue;
             }
             if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
@@ -409,9 +409,9 @@ public final class TianshuTools {
             throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " needs an operator");
         }
         ToolAutonomy allowed = autonomyFor(side, caller);
-        if (!allowed.permits(tool.requiredAutonomy())) {
+        if (!allowed.permits(tool.requiredLevel())) {
             throw new ToolException(ToolError.NO_PERMISSION,
-                    "tool " + id + " needs " + tool.requiredAutonomy() + " autonomy; "
+                    "tool " + id + " needs " + tool.requiredLevel() + " autonomy; "
                             + (side == ToolSide.SERVER ? "this server allows " : "this caller allows ") + allowed);
         }
         requireWithinRateLimit(tool, caller);

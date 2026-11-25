@@ -39,6 +39,12 @@ public final class BlockBreakTool implements TianshuTool<BlockBreakTool.Args, Bl
     }
 
     @Override
+    public com.rheinmetal.tianshu.api.tool.BodyAutonomy requiredBodyAutonomy() {
+        // Survival work either way: a player placing a block and a carrier placing one are the same act.
+        return com.rheinmetal.tianshu.api.tool.BodyAutonomy.SURVIVAL;
+    }
+
+    @Override
     public ToolCategory category() {
         return ToolCategory.SERVER_WRITE;
     }
