@@ -51,4 +51,13 @@ public interface LabHostTrace {
 
     /** Sends one command to the capability both this module and its peer declared. */
     void submitShared(String text);
+
+    /** How many feed-topic events this module received. */
+    int feedDeliveries();
+
+    /** How many feed-topic events the peer module received. */
+    int feedPeerDeliveries();
+
+    /** Publishes one event on the feed topic; every subscriber is supposed to see it. */
+    void publishFeed(String text);
 }

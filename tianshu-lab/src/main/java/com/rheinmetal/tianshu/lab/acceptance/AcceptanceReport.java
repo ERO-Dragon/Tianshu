@@ -54,7 +54,7 @@ public record AcceptanceReport(String startedAt, List<AcceptanceOutcome> outcome
             new Covered("body tools", List.of("ACC-BDY-1", "ACC-BDY-2", "ACC-BDY-3", "ACC-BDY-4", "ACC-BDY-7", "ACC-ENT-1", "ACC-ENT-2")),
             new Covered("module execution lane", List.of("ACC-PRT-1")),
             new Covered("module host", List.of("ACC-HOST-1")),
-            new Covered("protocol centre", List.of("ACC-PRO-1", "ACC-PRO-2")),
+            new Covered("protocol centre", List.of("ACC-PRO-1", "ACC-PRO-2", "ACC-PRO-3")),
             new Covered("server actions (cheat tier)", List.of("ACC-ACT-1", "ACC-ACT-2", "ACC-ACT-3")),
             new Covered("container reading, hand-overs and placement lines", List.of("ACC-CNR-1", "ACC-GIV-1", "ACC-PLC-1")),
             new Covered("model download verification", List.of("ACC-MDL-1", "ACC-MDL-2")),

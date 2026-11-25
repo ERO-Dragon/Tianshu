@@ -119,6 +119,7 @@ public final class LabAcceptanceCases {
         cases.add(theHostAssemblesAnOutsideModuleOnce());
         cases.add(aModuleReachesItsOwnCapabilityThroughTheCentre());
         cases.add(aSecondDeclarationOfOneCapabilityIsRefused());
+        cases.add(aTopicReachesEverySubscriber());
         cases.add(aBodyCoordinateOutsideTheWorldIsRefused());
         cases.add(aBodyThatFailsVerificationIsNeverPromoted());
         cases.add(aCorruptBodyIsRetriedBeforeTheInstallFails());
@@ -1552,6 +1553,44 @@ public final class LabAcceptanceCases {
                         "duplicate refused (" + refusal + "), the owner still received it");
             }
             return AcceptanceOutcome.fail(id, title, "owner deliveries=" + self + " peer deliveries=" + peer);
+        });
+    }
+
+    /**
+     * A topic is a channel: one module registers it, both modules subscribe, and one event reaches both.
+     *
+     * <p>This is the half of the centre that carries information rather than calls. The rules differ from a capability
+     * on purpose — a capability belongs to one module because two answers to one question is a bug, while a topic is a
+     * broadcast and every subscriber is supposed to get the event.</p>
+     */
+    private static AcceptanceCase aTopicReachesEverySubscriber() {
+        final String id = "ACC-PRO-3";
+        final String title = "a topic is registered once and an event reaches every subscriber";
+        return AcceptanceCase.of(id, title, () -> {
+            ModuleRuntimeAccess runtime = AcceptanceEnvironment.runtime();
+            LabHostTrace host = AcceptanceEnvironment.host();
+            if (runtime == null || host == null) {
+                return AcceptanceOutcome.skip(id, title, "no module runtime in this process");
+            }
+            int beforeSelf = host.feedDeliveries();
+            int beforePeer = host.feedPeerDeliveries();
+            host.publishFeed("feed-" + System.currentTimeMillis());
+            long deadline = System.currentTimeMillis() + CALL_TIMEOUT_SECONDS * 1000L;
+            while (System.currentTimeMillis() < deadline
+                    && (host.feedDeliveries() <= beforeSelf || host.feedPeerDeliveries() <= beforePeer)) {
+                try {
+                    Thread.sleep(20L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            int self = host.feedDeliveries() - beforeSelf;
+            int peer = host.feedPeerDeliveries() - beforePeer;
+            if (self == 1 && peer == 1) {
+                return AcceptanceOutcome.pass(id, title, "one event, both subscribers: " + self + "/" + peer);
+            }
+            return AcceptanceOutcome.fail(id, title, "subscribers reached: self=" + self + " peer=" + peer);
         });
     }
 

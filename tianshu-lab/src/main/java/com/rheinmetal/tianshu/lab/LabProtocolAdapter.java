@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.ia.contract.DialogueParticipantUnregisterPayload;
 import com.rheinmetal.tianshu.ia.contract.DialogueSessionControlPayload;
 import com.rheinmetal.tianshu.protocol.BrokerType;
 import com.rheinmetal.tianshu.protocol.CompletionPolicy;
+import com.rheinmetal.tianshu.protocol.DeliveryPolicy;
 import com.rheinmetal.tianshu.protocol.PacketType;
 import com.rheinmetal.tianshu.protocol.PayloadType;
 import com.rheinmetal.tianshu.protocol.Priority;
@@ -16,6 +17,7 @@ import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueParticipantDescrip
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueReleaseReason;
 import com.rheinmetal.tianshu.protocol.dialogue.model.DialogueSessionControlAction;
 import com.rheinmetal.tianshu.protocol.registry.EnvelopeHandler;
+import com.rheinmetal.tianshu.protocol.registry.TopicDescriptor;
 import com.rheinmetal.tianshu.protocol.payload.TextPayload;
 import com.rheinmetal.tianshu.protocol.runtime.ModuleRuntimeAccess;
 
@@ -47,6 +49,9 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
      * this one under its own id and under a peer id to have both without another mod installed.</p>
      */
     public static final String SHARED_CAPABILITY = "LAB.ACCEPTANCE.SHARED";
+    /** A topic the bench produces on; both its module ids subscribe, so one publish proves the broadcast. */
+    public static final String FEED_TOPIC = "LAB.ACCEPTANCE.FEED";
+    private static final int FEED_STORM_LIMIT = 50;
 
     public LabProtocolAdapter(ModuleRuntimeAccess runtime) {
         this(MODULE_ID, runtime);
@@ -110,6 +115,38 @@ public final class LabProtocolAdapter extends AbstractProtocolAdapter {
     /** Sends one command to the echo capability; like any module call, the centre decides where it lands. */
     public void echo(String text) {
         commandCapability(ECHO_CAPABILITY, PayloadType.TEXT, new TextPayload(text));
+    }
+
+    /**
+     * Declares a topic this bench produces on.
+     *
+     * <p>A topic is a channel, not a service: one module registers it, any number may subscribe. That is the difference
+     * from a capability, where a second declaration is refused because two modules cannot both answer one call.</p>
+     */
+    public void registerFeedTopic() {
+        runtime().registerTopic(new TopicDescriptor(
+                FEED_TOPIC,
+                PayloadType.TEXT,
+                DeliveryPolicy.WAIT_IN_QUEUE,
+                FEED_STORM_LIMIT));
+    }
+
+    /** Subscribes to the feed topic; subscribing never takes it away from another subscriber. */
+    public void subscribeFeed(EnvelopeHandler handler) {
+        subscribeTopic(
+                FEED_TOPIC,
+                PayloadType.TEXT,
+                TextPayload.class,
+                BrokerType.BOUNDED_QUEUE,
+                EnumSet.of(PacketType.EVENT),
+                Priority.LOW,
+                handler
+        );
+    }
+
+    /** Publishes one event on the feed topic: every subscriber is supposed to see it. */
+    public void publishFeed(String text) {
+        publishTopic(FEED_TOPIC, PayloadType.TEXT, new TextPayload(text));
     }
 
     public void registerParticipant(DialogueParticipantDescriptor descriptor) {

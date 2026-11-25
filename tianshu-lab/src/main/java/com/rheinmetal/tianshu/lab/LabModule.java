@@ -84,6 +84,10 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
             new java.util.concurrent.atomic.AtomicInteger();
     /** Why the peer's duplicate declaration was refused; null when the centre accepted it, which would be the bug. */
     private volatile String peerRefusal;
+    /** Feed-topic deliveries: one counter per subscriber, so a broadcast that reached only one is visible as such. */
+    private final java.util.concurrent.atomic.AtomicInteger feedDeliveries = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger feedPeerDeliveries =
+            new java.util.concurrent.atomic.AtomicInteger();
     private final java.util.concurrent.atomic.AtomicInteger echoDeliveries =
             new java.util.concurrent.atomic.AtomicInteger();
 
@@ -128,6 +132,11 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
         // The same capability from two module ids: the centre has to deliver to both, and keeping the second one must
         // not replace the first.
         adapter.registerShared(this::handleShared);
+        // A topic is the other half of the centre: one producer, any number of subscribers. The bench registers it once
+        // and subscribes with both of its module ids, so one publish has to reach both.
+        adapter.registerFeedTopic();
+        adapter.subscribeFeed(this::handleFeed);
+        peerAdapter.subscribeFeed(this::handleFeedPeer);
         // A capability id belongs to one module, so this must be refused — and the refusal must name what it collided
         // with. Caught here on purpose: the bench is checking the rule, not failing to install.
         try {
@@ -215,6 +224,35 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
     @Override
     public void submitShared(String text) {
         adapter.submitShared(text);
+    }
+
+    @Override
+    public int feedDeliveries() {
+        return feedDeliveries.get();
+    }
+
+    @Override
+    public int feedPeerDeliveries() {
+        return feedPeerDeliveries.get();
+    }
+
+    @Override
+    public void publishFeed(String text) {
+        adapter.publishFeed(text);
+    }
+
+    private void handleFeed(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof TextPayload) {
+            feedDeliveries.incrementAndGet();
+        }
+        context.complete(envelope.envelopeId());
+    }
+
+    private void handleFeedPeer(TianshuEnvelope envelope, ProtocolContext context) {
+        if (envelope.payload() instanceof TextPayload) {
+            feedPeerDeliveries.incrementAndGet();
+        }
+        context.complete(envelope.envelopeId());
     }
 
     /** One delivery of the capability both declarers claim; the peer's handler follows the same contract. */
