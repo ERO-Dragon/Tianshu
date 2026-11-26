@@ -1,16 +1,17 @@
-# 转向
+# minecraft:entity.look
 
-`minecraft:entity.look` 给 `yaw`/`pitch`，或给一个目标坐标。
+让身体面向指定世界坐标。
 
-- `entity.mine` 作用在视线与可触及距离内的方块上，所以挖之前先看是必要的，不是礼貌。
-- 转向成功后，`entity.scan` 的结果仍然按世界坐标给，不随朝向变化。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.look","args":{"x":118,"y":52,"z":-30}}
+{"id":"minecraft:entity.look","args":{"body":"worker-1","x":118,"y":52,"z":-30}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"yaw":-135.0,"pitch":40.2},"durationMs":3}
+{"ok":true,"result":{"outcome":"DONE","detail":"ok"}}
 ```
+
+目标在另一维度时重新确认身体位置。返回值给出动作结果，实际朝向可以从 entity.status 读取。

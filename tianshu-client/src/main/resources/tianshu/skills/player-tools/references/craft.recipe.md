@@ -1,20 +1,17 @@
 # minecraft:craft.recipe
 
-按配方 id 合成一次，消耗背包里的材料。
+使用玩家材料执行指定配方。
 
-## 调用
-
-```json
-{"id":"minecraft:craft.recipe","args":{"recipeId":"minecraft:crafting_table"}}
-```
-
-## 返回
+## 调用示例
 
 ```json
-{"ok":true,"result":{"crafted":"minecraft:crafting_table","consumed":[{"item":"minecraft:oak_planks","count":4}]},"durationMs":12}
+{"id":"minecraft:craft.recipe","args":{"recipeId":"minecraft:iron_pickaxe"}}
 ```
 
-## 失败与下一步
+## 返回示例
 
-- 材料不够 → 先 `craft.available` 看能做哪些，不要硬试同一个配方。
-- 需要工作台 → 先走到工作台旁边再合成。
+```json
+{"ok":true,"result":{"itemId":"minecraft:iron_pickaxe","count":1,"crafted":true,"message":"crafted"}}
+```
+
+从 craft.available 取 recipeId；检查 crafted 与产物数量。

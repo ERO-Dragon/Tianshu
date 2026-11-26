@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Common SKILL.md format, namespaced ids, duplicate detection and progressive disclosure. */
@@ -164,7 +165,13 @@ class SkillFileProviderTest {
         assertTrue(CapabilityCatalog.find(id).isPresent(), "the classpath index must list the built-in skill");
         assertEquals("tianshu", CapabilityCatalog.find(id).orElseThrow().provider(),
                 "the namespace is also the publisher, so the base's skills have one name, not two");
-        assertTrue(text(invoke(id, new JsonObject())).contains("玩家侧工具"));
+        String body = text(invoke(id, new JsonObject()));
+        assertFalse(body.isBlank());
+        try (var source = getClass().getResourceAsStream("/tianshu/skills/player-tools/SKILL.md")) {
+            assertNotNull(source);
+            assertTrue(new String(source.readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").contains(body.strip().replace("\r\n", "\n")));
+        }
         JsonObject reference = new JsonObject();
         reference.addProperty("file", "references/recipe.query.md");
         assertFalse(invoke(id, reference).get("ok").getAsBoolean(), "an unavailable tool has no public attachment");

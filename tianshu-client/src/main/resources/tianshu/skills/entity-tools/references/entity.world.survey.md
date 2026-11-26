@@ -7,7 +7,7 @@
 ## 调用
 
 ```json
-{"id":"minecraft:entity.world.survey","args":{"body":"changsui","biome":"minecraft:desert","radius":512}}
+{"id":"minecraft:entity.world.survey","args":{"body":"worker-1","biome":"minecraft:desert","radius":512}}
 ```
 
 ## 返回

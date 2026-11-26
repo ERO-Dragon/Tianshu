@@ -1,17 +1,17 @@
-# 拾取
+# minecraft:entity.pickup
 
-`minecraft:entity.pickup` 捡起附近掉落的物品。
+拾取身体周围的掉落物。
 
-- 背包满了会失败，先 `entity.inventory` 看空间。
-- 掉落物有存活时间：犹豫太久就没了。
-- 捡不到先看距离，再看背包——排查顺序反了会白跑。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.pickup","args":{"radius":3}}
+{"id":"minecraft:entity.pickup","args":{"body":"worker-1","radius":3}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"picked":["minecraft:raw_iron x3"],"leftBehind":[]},"durationMs":12}
+{"ok":true,"result":{"items":[{"itemId":"minecraft:raw_iron","count":3}]}}
 ```
+
+按 items 统计实际拾取量。为空时检查掉落物距离及背包空间。

@@ -1,16 +1,17 @@
-# 身体清单
+# minecraft:entity.list
 
-`minecraft:entity.list` 列出所有身体及其 id。
+列出当前身体及其维度、坐标和能力位。
 
-- 列的是**全部**身体，不需要 `body` 参数——它本来就是在问"有哪些身体"。
-- 多具身体同时存在时，先确认 id 再下指令——指令下错身体是真实发生过的错误。
-
-## 范例
+## 调用示例
 
 ```json
 {"id":"minecraft:entity.list","args":{}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"bodies":[{"id":"body-1","position":{"x":118,"y":52,"z":-30},"canMove":true}]},"durationMs":2}
+{"ok":true,"result":{"bodies":[{"id":"worker-1","operator":false,"dimension":"minecraft:overworld","x":118.5,"y":64,"z":-30.5,"capabilities":["MOVE"]}]}}
 ```
+
+用 capabilities 判断身体支持的动作。模组驱动时还须满足归属检查。

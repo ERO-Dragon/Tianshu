@@ -1,20 +1,17 @@
 # minecraft:block.interact
 
-按下按钮、扳动拉杆、打开门/活板门/栅栏门。作用相当于右手点一下那个方块。
+操作可触及的按钮、拉杆、门等方块。
 
-## 调用
+## 调用示例
 
 ```json
 {"id":"minecraft:block.interact","args":{"x":120,"y":64,"z":-30}}
 ```
 
-## 返回
+## 返回示例
 
 ```json
-{"ok":true,"result":{"block":"minecraft:lever","powered":true},"durationMs":5}
+{"ok":true,"result":{"blockId":"minecraft:oak_door","interacted":true,"message":"operated"}}
 ```
 
-## 失败与下一步
-
-- 方块不可交互 → 换 `block.inspect` 先看它到底是什么。
-- 够不着 → 先靠近；门在后面时先绕过去，别反复点。
+用 interacted 确认是否生效；检查 message 后再决定是否移动或更换目标。

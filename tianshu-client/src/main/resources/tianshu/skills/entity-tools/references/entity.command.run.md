@@ -1,11 +1,11 @@
 # minecraft:entity.command.run
 
-让一具身体申请执行一条命令：第一次调用不执行，只返回一次性令牌；操作员执行 `/tianshu approve <token>` 后，带上令牌用同一条 `line` 重发才会真正执行。`body` 省略时由调用者指定的那具身体执行；由身体自己调用时可省略。
+以身体身份申请执行命令。
 
 ## 调用
 
 ```json
-{"id":"minecraft:entity.command.run","args":{"body":"changsui","line":"gamemode creative"}}
+{"id":"minecraft:entity.command.run","args":{"body":"worker-1","line":"gamemode creative"}}
 ```
 
 ## 返回
@@ -14,7 +14,4 @@
 {"ok":true,"result":{"status":"PENDING_APPROVAL","output":"","message":"this command needs an operator's approval: /tianshu approve 7F3A9C21","approvalToken":"7F3A9C21"},"durationMs":3}
 ```
 
-## 失败与下一步
-
-- `PENDING_APPROVAL` 不是失败：把 `approvalToken` 交给操作员执行 `/tianshu approve …`，再加 `"approval":"7F3A9C21"` 重发一次；令牌绑定"这具身体 + 这条命令"，单次有效、5 分钟过期，`line` 差一个字都对不上。
-- `FAILED` / 状态 `REJECTED`（令牌未知、过期、已用过、与这具身体或这条命令不匹配）；`NO_PERMISSION` / 操作员拒绝了这次申请 → 换一条命令试，或者让操作员自己跑。
+收到 `PENDING_APPROVAL` 时，将 `approvalToken` 交给操作员执行 `/tianshu approve <token>`。批准后用原 `body`、原 `line` 和 `approval` 令牌再调用一次。令牌五分钟内有效，仅可执行一次。操作员拒绝时结束请求。

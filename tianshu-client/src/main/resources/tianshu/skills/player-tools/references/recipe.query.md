@@ -1,15 +1,17 @@
 # minecraft:recipe.query
 
-列出能产出某个物品的配方（给产物 id，不是配方 id）。
+按产物 ID 查找配方。
 
-## 调用
+## 调用示例
 
 ```json
 {"id":"minecraft:recipe.query","args":{"outputItemId":"minecraft:stick","limit":5}}
 ```
 
-## 返回
+## 返回示例
 
 ```json
-{"ok":true,"result":{"recipes":["minecraft:stick"],"truncated":false},"durationMs":4}
+{"ok":true,"result":{"recipes":[{"id":"minecraft:stick","type":"minecraft:crafting_shaped","inputs":["minecraft:oak_planks"],"output":"minecraft:stick"}]}}
 ```
+
+recipes 为空表示查询没有命中；能否立即合成另查 craft.available。

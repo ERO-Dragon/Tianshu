@@ -1,17 +1,17 @@
 # minecraft:client.pack.set
 
-按 id 启用或禁用一个材质包，然后应用（客户端会重载资源，需要一会儿）。
+设置当前客户端资源包。
 
-## 调用
+## 调用示例
 
 ```json
 {"id":"minecraft:client.pack.set","args":{"pack":"file/mypack.zip","enabled":false}}
 ```
 
-## 返回
+## 返回示例
 
 ```json
-{"ok":true,"result":{"pack":"file/mypack.zip","enabled":false},"durationMs":4}
+{"ok":true,"result":{"id":"file/mypack.zip","label":"My Pack","enabled":false,"required":false}}
 ```
 
-必选的材质包不能关：会被拒绝，不要靠重试绕过。
+使用列表返回的 id；required 为 true 的包需要保留。

@@ -1,17 +1,17 @@
 # minecraft:entity.use
 
-对实体做交互：喂食、驯服、拴绳、交易。用当前主手物品或空手。
+让身体与目标实体交互。
 
-## 调用
-
-```json
-{"id":"minecraft:entity.use","args":{"entity":"entity-42"}}
-```
-
-## 返回
+## 调用示例
 
 ```json
-{"ok":true,"result":{"interaction":"feed","item":"minecraft:bone","result":"tamed"},"durationMs":6}
+{"id":"minecraft:entity.use","args":{"body":"worker-1","entity":"entity-42"}}
 ```
 
-手上拿什么决定会发生什么：先 `entity.inventory` 或 `item.inspect` 确认主手。
+## 返回示例
+
+```json
+{"ok":true,"result":{"outcome":"DONE","detail":"ok"}}
+```
+
+使用扫描得到的 entityId，确认身体主手持有目标需要的物品。按 outcome 判断交互结果。

@@ -1,17 +1,17 @@
-# 攻击
+# minecraft:entity.attack
 
-`minecraft:entity.attack` 对目标实体造成伤害。
+让身体攻击指定实体。
 
-- 这会真的掉血，也真的会拉仇恨：不确定时先 `entity.scan` 看周围有多少同类。
-- 手上没有武器时伤害很低——先 `entity.equip`。
-- 打到不该打的东西（村民、宠物）是真实后果，没有撤销。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.attack","args":{"entity":"entity-42"}}
+{"id":"minecraft:entity.attack","args":{"body":"worker-1","entity":"entity-42"}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"target":"entity-42","damage":6.0,"remainingHealth":14.0},"durationMs":5}
+{"ok":true,"result":{"outcome":"DONE","detail":"ok"}}
 ```
+
+entity 取自扫描返回的 entityId。以 outcome 判断是否生效；当前血量可通过 entity.inspect 查询。

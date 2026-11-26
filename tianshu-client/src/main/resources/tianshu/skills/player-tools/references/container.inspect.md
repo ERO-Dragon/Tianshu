@@ -1,17 +1,17 @@
 # minecraft:container.inspect
 
-读玩家当前打开的容器内容，槽位索引与 `container.transfer` 完全一致。
+读取玩家当前打开的容器界面。
 
-## 调用
+## 调用示例
 
 ```json
 {"id":"minecraft:container.inspect","args":{}}
 ```
 
-## 返回
+## 返回示例
 
 ```json
-{"ok":true,"result":{"slots":[{"slot":0,"item":"minecraft:diamond","count":5},{"slot":3,"item":"minecraft:oak_log","count":12}]},"durationMs":2}
+{"ok":true,"result":{"open":true,"title":"Chest","entries":[{"slot":2,"itemId":"minecraft:bread","count":6,"displayName":"Bread"}]}}
 ```
 
-没有打开任何容器时返回空列表，而不是报错：先确认玩家真的开着箱子。
+先检查 open。容器已打开且 entries 为空时，表示没有可列出的物品。

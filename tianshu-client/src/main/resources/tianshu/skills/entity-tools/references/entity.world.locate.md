@@ -2,15 +2,13 @@
 
 以身体的位置为原点，在当前维度已完整生成的区块中检索结构起点或采样群系。已卸载的区块从存档读取。
 
-`structure` 和 `biome` 恰好给一个。水平半径 `radius` 默认 256 格，可取 1–512 格。 模组传入自己要驱动的 `body`，身体以自身身份调用时可省略。
+`structure` 和 `biome` 恰好给一个。水平半径 `radius` 默认 256 格，可取 1–512 格。
 
 ## 调用
 
 ```json
-{"id":"minecraft:entity.world.locate","args":{"body":"changsui","biome":"minecraft:desert","radius":512}}
+{"id":"minecraft:entity.world.locate","args":{"body":"worker-1","biome":"minecraft:desert","radius":512}}
 ```
-
-结构返回起始区块的原点，群系读取角色高度的存档群系格。
 
 ## 返回
 

@@ -1,17 +1,17 @@
 # minecraft:server.say
 
-以玩家身份在普通聊天里说一句话。任何玩家都能聊天，所以不需要操作员权限。
+以玩家身份发送普通聊天消息。
 
-## 调用
+## 调用示例
 
 ```json
 {"id":"minecraft:server.say","args":{"text":"我在矿洞口，需要火把"}}
 ```
 
-## 返回
+## 返回示例
 
 ```json
-{"ok":true,"result":{"said":"我在矿洞口，需要火把"},"durationMs":2}
+{"ok":true,"result":{"ok":true}}
 ```
 
-想广播给所有人用 `server.broadcast`（那是作弊级动作，默认关闭）。
+text 为要发送的一行文字。连接不可用时，消息无法送达。

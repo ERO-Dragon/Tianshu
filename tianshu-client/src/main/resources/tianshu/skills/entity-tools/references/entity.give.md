@@ -1,19 +1,17 @@
-# 交付
+# minecraft:entity.give
 
-`minecraft:entity.give` 把背包里的物品交给够得着的目标（玩家或容器）。
+从身体背包向指定对象交付物品。
 
-- 距离不够会失败——先靠近，不要反复重试同一次调用。
-- 容器的一面必须是可放入的；放不进去会说明原因。
-- 交付是不可逆的：东西换到别人包里了。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.give","args":{"slot":36,"count":8,"target":"changsui"}}
+{"id":"minecraft:entity.give","args":{"body":"worker-1","slot":2,"count":1,"target":"Alex"}}
 ```
+
+## 返回示例
 
 ```json
-{"ok":true,"result":{"given":"minecraft:bread x8","to":"changsui"},"durationMs":7}
+{"ok":true,"result":{"itemId":"minecraft:bread","dropped":1}}
 ```
 
-`to` 是实体 id 时先 `minecraft:entity.inspect` 确认它是谁。
+用 dropped 核对实际数量，槽位范围为 0–35。

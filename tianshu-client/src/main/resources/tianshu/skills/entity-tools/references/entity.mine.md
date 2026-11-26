@@ -1,24 +1,17 @@
-# 挖掘
+# minecraft:entity.mine
 
-`minecraft:entity.mine` 破坏视线内、够得着的方块。
+用身体当前装备挖掘目标方块。
 
-| 返回 | 含义与下一步 |
-|---|---|
-| 方块被破坏 | 真的掉了；有些方块需要正确工具才掉落 |
-| `距离太远` | 不在可触及范围内 → 先 `entity.move` 靠近 |
-| 工具不合适 | 用 `entity.equip` 换上对的工具；用错工具可能什么都没有 |
-
-- 手里没有工具时，很多方块挖了等于白挖。
-- 挖一串方块时逐块调用，或用 `entity.sequence` 串起来（流程固定时）。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.mine","args":{"x":118,"y":52,"z":-30}}
+{"id":"minecraft:entity.mine","args":{"body":"worker-1","x":118,"y":52,"z":-30}}
 ```
+
+## 返回示例
 
 ```json
-{"ok":true,"result":{"broken":"minecraft:iron_ore","dropped":["minecraft:raw_iron"]},"durationMs":88}
+{"ok":true,"result":{"outcome":"DONE","detail":"ok"}}
 ```
 
-`dropped` 为空不代表成功得没意义：用错工具时方块会碎但什么都不掉。
+检查 outcome 与 detail。需要采集掉落时再执行 entity.pickup。

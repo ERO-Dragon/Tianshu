@@ -1,17 +1,17 @@
 # minecraft:inventory.inspect
 
-列出本地玩家背包里**非空**的槽位（不是全部槽位）。
+读取玩家背包的已占用槽位。
 
-## 调用
+## 调用示例
 
 ```json
 {"id":"minecraft:inventory.inspect","args":{}}
 ```
 
-## 返回
+## 返回示例
 
 ```json
-{"ok":true,"result":{"slots":[{"slot":0,"item":"minecraft:bread","count":6}]},"durationMs":2}
+{"ok":true,"result":{"slots":[{"slot":2,"itemId":"minecraft:bread","count":6}]}}
 ```
 
-要找空位（比如放东西）时它帮不上：空槽位不会出现在结果里。
+按 slot 识别物品位置；列表中元素的顺序不能代替槽位号。

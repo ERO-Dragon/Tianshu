@@ -1,16 +1,17 @@
-# 背包
+# minecraft:entity.inventory
 
-`minecraft:entity.inventory` 返回槽位 → 物品与数量。
+读取身体背包的已占用槽位。
 
-- `entity.equip` / `entity.drop` 的 `slot` 就用这套索引，别自己另算一套。
-- 捡东西之前先看这里有没有空间，比失败后再回来省一次往返。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.inventory","args":{}}
+{"id":"minecraft:entity.inventory","args":{"body":"worker-1"}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"slots":[{"slot":36,"item":"minecraft:iron_pickaxe","count":1},{"slot":37,"item":"minecraft:torch","count":12}]},"durationMs":2}
+{"ok":true,"result":{"slots":[{"slot":2,"itemId":"minecraft:bread","count":6}]}}
 ```
+
+按 slot 识别物品位置；列表中元素的顺序不能代替槽位号。

@@ -1,26 +1,17 @@
-# 移动
+# minecraft:entity.move
 
-`minecraft:entity.move` 的目标是**世界坐标**（`x/y/z`），不是相对位移。
+将身体移动到指定维度内的绝对坐标。
 
-| 模式 | 需要 |
-|---|---|
-| `walk`（默认） | 生存级 |
-| `fly` | 特权级 |
-| `teleport` | 特权级 |
-
-- 动之前用 `entity.status` 确认起点，别按"向前三格"算目标。
-- 走不到先看三件事：隔着墙、脚下没有落脚点、目标在未加载区块里。
-- 返回里有实际到达的位置与是否被卡住；瞬移后以返回值为准，不要沿用旧坐标。
-- **不跨维度**：维度不符会被拒，拒绝消息里会同时给出两个维度。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.move","args":{"x":118,"y":52,"z":-30}}
+{"id":"minecraft:entity.move","args":{"body":"worker-1","x":118,"y":64,"z":-31,"mode":"walk"}}
 ```
+
+## 返回示例
 
 ```json
-{"ok":true,"result":{"reached":{"x":118.5,"y":52,"z":-30.5},"blocked":false},"durationMs":412}
+{"ok":true,"result":{"outcome":"DONE","detail":"ok","position":{"dimension":"minecraft:overworld","x":118.5,"y":64,"z":-30.5}}}
 ```
 
-`blocked: true` 表示没走到：先 `entity.scan` 看脚下与前方，而不是重发同一个坐标。
+省略 mode 时使用 any，让载体选择移动方式。要求步行时显式传 walk。读取 outcome 和实际 position；失败后先检查目的地与身体是否同维度、路径是否可达。

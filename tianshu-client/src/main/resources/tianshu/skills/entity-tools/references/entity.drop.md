@@ -1,16 +1,17 @@
-# 丢弃
+# minecraft:entity.drop
 
-`minecraft:entity.drop` 把手上或指定槽位的物品丢到地上。
+将身体背包指定槽位的物品丢到地上。
 
-- 丢出去就是掉在世界里，别人能捡；不是"收到背包里"。
-- 丢之前确认槽位，槽位索引与 `entity.inventory` 一致。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.drop","args":{"slot":36,"count":1}}
+{"id":"minecraft:entity.drop","args":{"body":"worker-1","slot":2,"count":1}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"dropped":"minecraft:stone x1"},"durationMs":4}
+{"ok":true,"result":{"itemId":"minecraft:bread","dropped":1}}
 ```
+
+用 dropped 核对实际数量，槽位范围为 0–35。

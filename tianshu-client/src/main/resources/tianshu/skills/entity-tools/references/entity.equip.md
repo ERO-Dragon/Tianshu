@@ -1,16 +1,17 @@
-# 装备
+# minecraft:entity.equip
 
-`minecraft:entity.equip` 按槽位装备物品；`slot` 与 `entity.inventory` 的索引一致。
+将身体背包中的物品装备到指定位置。
 
-- 挖矿/攻击前先装备，否则用错工具或空手，效率和掉落都不一样。
-- 装备会把手上的东西换下来，换下来的东西还在背包里。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.equip","args":{"slot":36,"target":"mainhand"}}
+{"id":"minecraft:entity.equip","args":{"body":"worker-1","slot":2,"target":"main"}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"mainhand":"minecraft:iron_pickaxe","previous":"minecraft:dirt"},"durationMs":4}
+{"ok":true,"result":{"target":"MAIN_HAND","inventorySlot":2,"itemId":"minecraft:iron_pickaxe","count":1}}
 ```
+
+target 可选 main、offhand、head、chest、legs、feet。槽位取自身体背包。

@@ -1,16 +1,17 @@
-# 读状态
+# minecraft:entity.status
 
-`minecraft:entity.status` 给出位置、维度、血量、饥饿、手上物品、是否存活。
+读取这具身体的维度、位置、朝向与生存状态。
 
-- 动手之前先读它：坐标、维度、手上有没有合适的工具，都能在这里看到。
-- 血量或饥饿低到危险时先补给；死掉的身体会掉东西，这比"晚一步"贵得多。
-
-## 范例
+## 调用示例
 
 ```json
-{"id":"minecraft:entity.status","args":{}}
+{"id":"minecraft:entity.status","args":{"body":"worker-1"}}
 ```
 
+## 返回示例
+
 ```json
-{"ok":true,"result":{"position":{"x":118.5,"y":52,"z":-30.5},"dimension":"minecraft:overworld","health":20.0,"hunger":18},"durationMs":2}
+{"ok":true,"result":{"id":"worker-1","kind":"body","dimension":"minecraft:overworld","x":118.5,"y":64,"z":-30.5,"yaw":0,"pitch":0,"health":20,"maxHealth":20,"foodLevel":20,"saturation":5,"air":300,"onFire":false,"inWater":false,"alive":true,"gameMode":"","message":""}}
 ```
+
+坐标配合 dimension 使用；查看背包请调用 entity.inventory。

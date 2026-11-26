@@ -1,20 +1,17 @@
 # minecraft:container.transfer
 
-在一个容器的某个槽位与玩家背包的某个槽位之间移动物品。
+在目标容器和玩家背包之间转移物品。
 
-## 调用
-
-```json
-{"id":"minecraft:container.transfer","args":{"x":120,"y":64,"z":-30,"containerSlot":0,"playerSlot":36,"count":5,"toPlayer":true}}
-```
-
-## 返回
+## 调用示例
 
 ```json
-{"ok":true,"result":{"moved":5,"item":"minecraft:diamond","from":0,"to":36},"durationMs":7}
+{"id":"minecraft:container.transfer","args":{"x":120,"y":64,"z":-30,"containerSlot":0,"playerSlot":2,"count":5,"toPlayer":true}}
 ```
 
-## 失败与下一步
+## 返回示例
 
-- `toPlayer:false` 且目标槽位已有别的物品且不可堆叠 → 先清空或换槽位。
-- 数量不对：`count` 是上限，实际移动量看 `moved`，不要假设整叠都动了。
+```json
+{"ok":true,"result":{"itemId":"minecraft:diamond","moved":5,"message":"moved 5"}}
+```
+
+toPlayer 为 true 时取出，false 时存入。count 为上限，实际移动量看 moved。

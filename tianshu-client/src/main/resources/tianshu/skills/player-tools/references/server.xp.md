@@ -1,17 +1,17 @@
 # minecraft:server.xp
 
-改玩家经验等级。这是作弊级动作：需要 `FULL` 档与服务端开关，默认关闭。
+按等级增减玩家经验。
 
-## 调用
+## 调用示例
 
 ```json
 {"id":"minecraft:server.xp","args":{"levels":5}}
 ```
 
-## 返回
+## 返回示例
 
 ```json
-{"ok":true,"result":{"levels":12},"durationMs":3}
+{"ok":true,"result":{"ok":true,"detail":"experience changed by 5 level(s)"}}
 ```
 
-被拒时看 `code`：`DISABLED`（服务端没开）与 `NO_PERMISSION`（权限不够）修法不同。
+负数扣除等级；重复成功调用会累加。
