@@ -11,7 +11,6 @@ import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
 import com.rheinmetal.tianshu.api.game.ActorStatusPort;
-import com.rheinmetal.tianshu.api.game.BlockBreakPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectPort;
 import com.rheinmetal.tianshu.api.game.EntityInspectPort;
 import com.rheinmetal.tianshu.api.game.ItemInspectPort;
@@ -31,7 +30,6 @@ import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.server.ServerActionExecutionPort;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
-import com.rheinmetal.tianshu.client.tool.BlockBreakTool;
 import com.rheinmetal.tianshu.client.tool.BlockInspectTool;
 import com.rheinmetal.tianshu.client.tool.EntityInspectTool;
 import com.rheinmetal.tianshu.client.tool.ItemInspectTool;
@@ -58,7 +56,6 @@ import net.minecraft.world.level.GameRules;
 import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.tool.WorldInfoSource;
 import com.rheinmetal.tianshu.mc.tool.WorldLocateSource;
-import com.rheinmetal.tianshu.mc.body.BlockBreakSource;
 import com.rheinmetal.tianshu.mc.tool.ActorStatusSource;
 import com.rheinmetal.tianshu.mc.tool.CraftAvailableSource;
 import com.rheinmetal.tianshu.mc.tool.BlockInspectSource;
@@ -187,7 +184,6 @@ public final class ServerToolHandler {
             registrations.port(ContainerTransferPort.class,
                     new TransferRouter(new ContainerTransferSource(event.getServer(), blockProbe)));
             registrations.port(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(event.getServer())));
-            registrations.port(BlockBreakPort.class, new BlockBreakSource(event.getServer(), bodies, new ActionRouter()));
             registrations.port(EntityInspectPort.class, new EntityInspectSource(event.getServer()));
             registrations.port(ItemInspectPort.class, new ItemInspectSource(event.getServer()));
             registrations.port(BlockInspectPort.class,
@@ -196,7 +192,6 @@ public final class ServerToolHandler {
             registrations.port(WorldInfoPort.class, new WorldInfoSource(event.getServer()));
             registrations.port(WorldLocatePort.class, new WorldLocateSource(event.getServer()));
             registrations.port(RecipeAvailabilityPort.class, new CraftAvailableSource(event.getServer()));
-            registrations.tool(new BlockBreakTool());
             registrations.tool(new BlockInspectTool());
             registrations.tool(new EntityInspectTool());
             registrations.tool(new ItemInspectTool());

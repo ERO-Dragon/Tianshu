@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.fabric;
 
 import net.fabricmc.fabric.api.networking.v1.S2CPlayChannelEvents;
 import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
-import com.rheinmetal.tianshu.mc.body.BlockBreakSource;
 import com.rheinmetal.tianshu.mc.tool.ActorStatusSource;
 import com.rheinmetal.tianshu.mc.tool.CraftAvailableSource;
 import com.rheinmetal.tianshu.mc.tool.BlockInspectSource;
@@ -20,7 +19,6 @@ import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
 import com.rheinmetal.tianshu.api.assembly.ServerTickPort;
 import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
 import com.rheinmetal.tianshu.api.game.ActorStatusPort;
-import com.rheinmetal.tianshu.api.game.BlockBreakPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectPort;
 import com.rheinmetal.tianshu.api.game.EntityInspectPort;
 import com.rheinmetal.tianshu.api.game.ItemInspectPort;
@@ -40,7 +38,6 @@ import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.server.ServerActionExecutionPort;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
-import com.rheinmetal.tianshu.client.tool.BlockBreakTool;
 import com.rheinmetal.tianshu.client.tool.BlockInspectTool;
 import com.rheinmetal.tianshu.client.tool.EntityInspectTool;
 import com.rheinmetal.tianshu.client.tool.ItemInspectTool;
@@ -149,7 +146,6 @@ public final class FabricServerToolHandler {
             registrations.port(CraftPort.class, new CraftRouter(new CraftSource(server)));
             registrations.port(ContainerTransferPort.class, new TransferRouter(new ContainerTransferSource(server, blockProbe)));
             registrations.port(BlockMachinePort.class, new MachineRouter(new BlockMachineSource(server)));
-            registrations.port(BlockBreakPort.class, new BlockBreakSource(server, bodies, new ActionRouter()));
             registrations.port(EntityInspectPort.class, new EntityInspectSource(server));
             registrations.port(ItemInspectPort.class, new ItemInspectSource(server));
             registrations.port(BlockInspectPort.class,
@@ -158,7 +154,6 @@ public final class FabricServerToolHandler {
             registrations.port(WorldInfoPort.class, new WorldInfoSource(server));
             registrations.port(WorldLocatePort.class, new WorldLocateSource(server));
             registrations.port(RecipeAvailabilityPort.class, new CraftAvailableSource(server));
-            registrations.tool(new BlockBreakTool());
             registrations.tool(new BlockInspectTool());
             registrations.tool(new EntityInspectTool());
             registrations.tool(new ItemInspectTool());

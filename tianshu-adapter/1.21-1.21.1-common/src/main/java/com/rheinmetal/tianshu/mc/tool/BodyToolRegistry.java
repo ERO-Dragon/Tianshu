@@ -3,8 +3,6 @@ package com.rheinmetal.tianshu.mc.tool;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolId;
-import com.rheinmetal.tianshu.client.tool.BlockPlaceLineTool;
-import com.rheinmetal.tianshu.client.tool.BlockPlaceTool;
 import com.rheinmetal.tianshu.client.tool.BodyGiveTool;
 import com.rheinmetal.tianshu.client.tool.BodyAttackTool;
 import com.rheinmetal.tianshu.client.tool.BodyEquipTool;
@@ -45,13 +43,11 @@ public final class BodyToolRegistry {
         ensure(BodyEquipTool.ID, BodyEquipTool::new);
         ensure(BodyDropTool.ID, BodyDropTool::new);
         ensure(BodyGiveTool.ID, BodyGiveTool::new);
-        ensure(BlockPlaceLineTool.ID, BlockPlaceLineTool::new);
         ensure(BodyItemUseTool.ID, BodyItemUseTool::new);
         ensure(BodyPlaceTool.ID, BodyPlaceTool::new);
         ensure(BodyPlaceLineTool.ID, BodyPlaceLineTool::new);
         ensure(BodySequenceTool.ID, BodySequenceTool::new);
         ensure(EntityUseTool.ID, EntityUseTool::new);
-        ensure(BlockPlaceTool.ID, BlockPlaceTool::new);
         ensure(BodyScanTool.ID, BodyScanTool::new);
         ensure(BodyInventoryTool.ID, BodyInventoryTool::new);
         TianshuTools.setEnabled(BodyMoveTool.ID, actionsEnabled);
@@ -62,13 +58,11 @@ public final class BodyToolRegistry {
         TianshuTools.setEnabled(BodyEquipTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BodyDropTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BodyGiveTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BlockPlaceLineTool.ID, placeEnabled);
         TianshuTools.setEnabled(BodyItemUseTool.ID, actionsEnabled);
         TianshuTools.setEnabled(BodyPlaceTool.ID, placeEnabled);
         TianshuTools.setEnabled(BodyPlaceLineTool.ID, placeEnabled);
         TianshuTools.setEnabled(BodySequenceTool.ID, actionsEnabled);
         TianshuTools.setEnabled(EntityUseTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BlockPlaceTool.ID, placeEnabled);
     }
 
     private static void ensure(ToolId id, Supplier<TianshuTool<?, ?>> factory) {
