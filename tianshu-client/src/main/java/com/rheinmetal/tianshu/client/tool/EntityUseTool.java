@@ -33,7 +33,7 @@ public final class EntityUseTool implements TianshuTool<EntityUseTool.Args, Acti
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_WRITE;
+        return ToolCategory.BODY_WRITE;
     }
 
     @Override
