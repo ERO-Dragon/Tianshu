@@ -16,6 +16,9 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticPrivacy;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.capability.skill.SkillReferences;
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
+import com.rheinmetal.tianshu.api.tool.ServerBodyAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
@@ -164,7 +167,7 @@ public final class LabAcceptanceCases {
      * The catalogue the agent reads and the table a consumer renders must name the same tools.
      *
      * <p>They are two views of one table, filtered by the same permission/side/autonomy rules in two places. When
-     * they drift, a model is told a capability exists and then refused it 鈥?the failure mode recorded as the MCP
+     * they drift, a model is told a capability exists and then refused it. This is the failure mode recorded as the MCP
      * dead-gate.</p>
      */
     private static AcceptanceCase twoViewsAgree() {
@@ -412,7 +415,7 @@ public final class LabAcceptanceCases {
     /**
      * The case that proves the bench can fail.
      *
-     * <p>It must report FAIL. If it ever passes, {@link AcceptanceRunner} voids the whole run 鈥?a suite whose only
+     * <p>It must report FAIL. If it ever passes, {@link AcceptanceRunner} voids the whole run. A suite whose only
      * known-bad case comes back green is measuring nothing, which is exactly what four of the build gates were doing
      * before a mutation probe caught them.</p>
      */
@@ -1138,6 +1141,17 @@ public final class LabAcceptanceCases {
         });
     }
 
+    // The public survival contract. Independent of runtime registration so a missing implementation fails acceptance.
+    private static final Set<String> SURVIVAL_BODY_TOOLS = Set.of(
+            "entity.attack", "entity.block.inspect", "entity.craft", "entity.craft.available",
+            "entity.drop", "entity.equip", "entity.give", "entity.inspect",
+            "entity.interact", "entity.inventory", "entity.item.inspect", "entity.item.use",
+            "entity.list", "entity.look", "entity.machine", "entity.mine",
+            "entity.move", "entity.pickup", "entity.place", "entity.place.line",
+            "entity.scan", "entity.sequence", "entity.status", "entity.transfer",
+            "entity.use", "entity.world.info", "entity.world.locate", "entity.world.survey");
+    private static final String BODY_COMMAND = "entity.command.run";
+
     /**
      * Every {@code minecraft:entity.*} tool is registered, documented, and answers with an envelope when called empty.
      *
@@ -1158,14 +1172,30 @@ public final class LabAcceptanceCases {
                 }
             }
             if (bodyTools.isEmpty()) {
-                return TianshuTools.serverAvailable()
+                return TianshuTools.serverAvailable() || LabModule.requiresServerCatalogue()
                         ? AcceptanceOutcome.fail(id, title, "the server advertised no entity tools")
                         : AcceptanceOutcome.skip(id, title, "entity tools require a Ferry server");
+            }
+            Set<String> names = new TreeSet<>();
+            bodyTools.forEach(spec -> names.add(spec.id().name()));
+            Set<String> missing = new TreeSet<>(SURVIVAL_BODY_TOOLS);
+            missing.removeAll(names);
+            var ceiling = TianshuRuntimePorts.find(ServerBodyAutonomyCeiling.class)
+                    .map(ServerBodyAutonomyCeiling::max);
+            if (LabModule.requiresCheatCatalogue() || ceiling.orElse(BodyAutonomy.SURVIVAL) == BodyAutonomy.CHEAT) {
+                if (!names.contains(BODY_COMMAND)) {
+                    missing.add(BODY_COMMAND);
+                }
+            } else if (ceiling.isPresent() && names.contains(BODY_COMMAND)) {
+                return AcceptanceOutcome.fail(id, title, "survival catalogue exposed " + BODY_COMMAND);
+            }
+            if (!missing.isEmpty()) {
+                return AcceptanceOutcome.fail(id, title, "missing entity tools: " + missing);
             }
             List<String> undocumented = new ArrayList<>();
             boolean missingSchema = false;
             for (ToolSpec spec : bodyTools) {
-                if (spec.description() == null || spec.description().isBlank()) {
+                if (SkillReferences.of(CapabilityId.parse(spec.id().toString())).isEmpty()) {
                     undocumented.add(spec.id().toString());
                 }
                 if (spec.argsSchema() == null) {

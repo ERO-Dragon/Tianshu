@@ -62,6 +62,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
     private final boolean debugEnabled;
     /** Removes the reference workflow this module published; null when it was never installed. */
     private Runnable workflowRemoval;
+    private Thread acceptanceWorker;
 
     private volatile boolean participantsRegistered;
     private volatile boolean autoRelease = true;
@@ -299,7 +300,8 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
         if (requested == null || requested.isBlank()) {
             return;
         }
-        boolean needsWorld = "world".equalsIgnoreCase(requested.trim());
+        boolean needsCatalogue = requiresServerCatalogue();
+        boolean needsWorld = needsCatalogue || "world".equalsIgnoreCase(requested.trim());
         Thread worker = new Thread(() -> {
             long deadline = System.currentTimeMillis() + AUTO_RUN_REGISTRY_WAIT_MILLIS;
             while (System.currentTimeMillis() < deadline && isRegistryEmpty()) {
@@ -312,7 +314,8 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
             }
             if (needsWorld) {
                 long worldDeadline = System.currentTimeMillis() + AUTO_RUN_WORLD_WAIT_MILLIS;
-                while (System.currentTimeMillis() < worldDeadline && !inWorld()) {
+                while (System.currentTimeMillis() < worldDeadline
+                        && (!inWorld() || (needsCatalogue && !TianshuTools.serverAvailable()))) {
                     try {
                         Thread.sleep(250L);
                     } catch (InterruptedException interrupted) {
@@ -324,7 +327,17 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
             new LabAcceptance(diagnostics).run();
         }, "tianshu-lab-acceptance-auto");
         worker.setDaemon(true);
+        acceptanceWorker = worker;
         worker.start();
+    }
+
+    public static boolean requiresServerCatalogue() {
+        String mode = System.getProperty("tianshu.lab.acceptance", "").trim();
+        return "server".equalsIgnoreCase(mode) || requiresCheatCatalogue();
+    }
+
+    public static boolean requiresCheatCatalogue() {
+        return "server-cheat".equalsIgnoreCase(System.getProperty("tianshu.lab.acceptance", "").trim());
     }
 
     private static boolean isRegistryEmpty() {
@@ -347,6 +360,10 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
 
     @Override
     public void stop() {
+        if (acceptanceWorker != null) {
+            acceptanceWorker.interrupt();
+            acceptanceWorker = null;
+        }
         CapabilitySubscriptions.withdraw(LabModuleRegistration.MOD_ID);
         if (participantsRegistered) {
             unregisterParticipants();
