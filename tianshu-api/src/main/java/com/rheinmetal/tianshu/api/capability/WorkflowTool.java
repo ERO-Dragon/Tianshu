@@ -7,6 +7,9 @@ import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolPolicy;
+import com.rheinmetal.tianshu.api.tool.ToolSide;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 
 import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
@@ -26,14 +29,22 @@ final class WorkflowTool implements TianshuTool<JsonObject, JsonObject> {
     private final WorkflowDeclaration plan;
     private final ToolPermission permission;
 
-    WorkflowTool(WorkflowDeclaration plan, ToolPermission permission) {
+    private final ToolSide side;
+
+    WorkflowTool(WorkflowDeclaration plan, ToolPermission permission, ToolSide side) {
         this.plan = plan;
         this.permission = permission;
+        this.side = side;
     }
 
     @Override
     public ToolId id() {
         return ToolId.of(plan.id().namespace(), plan.id().name());
+    }
+
+    @Override
+    public ToolSide executionSide() {
+        return side;
     }
 
     @Override
@@ -66,29 +77,23 @@ final class WorkflowTool implements TianshuTool<JsonObject, JsonObject> {
     @Override
     public CompletableFuture<JsonObject> invoke(ToolContext context, JsonObject args) {
         return WorkflowExecutor.run(plan, context.caller(), context.side(), context.cancellation())
-                .thenApply(WorkflowTool::envelope);
+                .thenApply(WorkflowTool::resultOf);
     }
 
-    private static JsonObject envelope(WorkflowRun run) {
-        JsonObject answer = new JsonObject();
-        JsonObject data = new JsonObject();
-        data.addProperty("workflow", run.workflow().toString());
-        data.addProperty("executedSteps", run.executedSteps());
-        data.addProperty("totalSteps", run.totalSteps());
-        if (run.cancelled()) {
-            answer.addProperty("ok", true);
-            answer.addProperty("cancelled", true);
-            answer.addProperty("text", run.workflow() + " " + run.failure());
-        } else if (run.completed()) {
-            answer.addProperty("ok", true);
-            answer.addProperty("text", run.workflow() + " finished in " + run.executedSteps() + " steps");
-        } else {
-            answer.addProperty("ok", false);
-            answer.addProperty("code", "FAILED");
-            answer.addProperty("error", run.workflow() + " " + run.failure());
-            data.addProperty("failedStep", run.failedStep());
+    private static JsonObject resultOf(WorkflowRun run) {
+        if (!run.ok()) {
+            throw new ToolException(ToolError.FAILED,
+                    run.workflow() + " " + run.failure());
         }
-        answer.add("data", data);
-        return answer;
+        JsonObject result = new JsonObject();
+        result.addProperty("workflow", run.workflow().toString());
+        result.addProperty("executedSteps", run.executedSteps());
+        result.addProperty("totalSteps", run.totalSteps());
+        if (run.cancelled()) {
+            result.addProperty("cancelled", true);
+        }
+        result.addProperty("text", run.workflow() + (run.cancelled() ? " " + run.failure()
+                : " finished in " + run.executedSteps() + " steps"));
+        return result;
     }
 }

@@ -1,5 +1,11 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
+import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -43,6 +49,36 @@ class ServerToolDeclarationsTest {
     /** A catalogue entry that offers the tool and leaves it on, which is the ordinary case. */
     private static ToolCatalogEntry entry(com.rheinmetal.tianshu.api.tool.ToolId id) {
         return new ToolCatalogEntry(id.toString(), true);
+    }
+
+    @Test
+    void refreshingAfterACollisionRecoversWithoutTakingOwnershipOfAReplacement() {
+        var id = CapabilityId.parse(DECLARED.toString());
+        var declaration = new StubTool();
+        var tools = List.of(entry(DECLARED), entry(LootQueryTool.ID));
+        ServerToolDeclarations.declare(declaration);
+        ServerToolDeclarations.declare(new LootQueryTool());
+        CapabilityCatalog.register(new CapabilityDescriptor(id, CapabilityKind.RESOURCE, CapabilityBinding.LOCAL,
+                "resource", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", new JsonObject()),
+                (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
+        try {
+            ServerToolDeclarations.synchronize(tools);
+            assertFalse(ServerToolDeclarations.activated().contains(DECLARED));
+            assertTrue(ServerToolDeclarations.activated().contains(LootQueryTool.ID));
+        } finally {
+            CapabilityCatalog.unregister(id);
+        }
+        ServerToolDeclarations.synchronize(tools);
+        assertEquals(declaration, TianshuTools.find(DECLARED));
+        TianshuTools.unregister(declaration);
+        var replacement = new StubTool();
+        TianshuTools.register(replacement);
+        TianshuTools.setEnabled(DECLARED, false);
+        ServerToolDeclarations.synchronize(tools);
+        assertFalse(TianshuTools.isEnabled(DECLARED));
+        assertFalse(ServerToolDeclarations.activated().contains(DECLARED));
+        ServerToolDeclarations.deactivateAll();
+        assertEquals(replacement, TianshuTools.find(DECLARED));
     }
 
     @Test

@@ -21,6 +21,10 @@ public interface TianshuTool<A, R> {
 
     ToolCategory category();
 
+    default ToolSide executionSide() {
+        return category().isServerSide() ? ToolSide.SERVER : ToolSide.CLIENT;
+    }
+
     /** One sentence for the catalogue; the agent sees it. */
     String description();
 

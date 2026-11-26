@@ -19,16 +19,32 @@ public final class CapabilitySubscriptions {
 
     private static final Map<String, CapabilitySubscription> RULES = new LinkedHashMap<>();
 
+    private static long revision;
+    private static final java.util.concurrent.CopyOnWriteArrayList<Observer> OBSERVERS =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    private record Observer(String module, java.util.function.BiConsumer<CapabilitySubscription, CapabilitySubscription> listener) {}
+
+    static Runnable observe(String module, java.util.function.BiConsumer<CapabilitySubscription, CapabilitySubscription> listener) {
+        Observer observer = new Observer(module, listener);
+        OBSERVERS.add(observer);
+        return () -> OBSERVERS.remove(observer);
+    }
+
+    static synchronized long revision() {
+        return revision;
+    }
+
     private CapabilitySubscriptions() {
     }
 
     /** Records what {@code moduleId} accepts; a later call replaces the earlier one. */
-    public static synchronized void declare(String moduleId, CapabilitySubscription rule) {
+    public static void declare(String moduleId, CapabilitySubscription rule) {
         Objects.requireNonNull(moduleId, "moduleId");
         if (moduleId.isBlank()) {
             throw new IllegalArgumentException("a subscription needs a module id");
         }
-        RULES.put(moduleId.trim(), rule == null ? CapabilitySubscription.DEFAULT : rule);
+        replace(moduleId.trim(), rule == null ? CapabilitySubscription.DEFAULT : rule);
     }
 
     /** The rule for a consumer; the default when it declared none. */
@@ -46,13 +62,40 @@ public final class CapabilitySubscriptions {
         return Map.copyOf(RULES);
     }
 
-    public static synchronized void withdraw(String moduleId) {
-        RULES.remove(moduleId);
+    public static void withdraw(String moduleId) {
+        replace(moduleId, null);
     }
 
     /** Drops every declaration; a restart of the composition root must not inherit the previous session's rules. */
-    public static synchronized void clear() {
-        RULES.clear();
+    public static void clear() {
+        declared().keySet().forEach(CapabilitySubscriptions::withdraw);
+    }
+
+    private static void replace(String module, CapabilitySubscription rule) {
+        CapabilitySubscription before;
+        CapabilitySubscription after;
+        synchronized (CapabilitySubscriptions.class) {
+            before = ruleFor(module);
+            if (rule == null) {
+                RULES.remove(module);
+            } else {
+                RULES.put(module, rule);
+            }
+            after = ruleFor(module);
+            if (before.equals(after)) {
+                return;
+            }
+            revision++;
+        }
+        for (Observer observer : OBSERVERS) {
+            if (observer.module().equals(module)) {
+                try {
+                    observer.listener().accept(before, after);
+                } catch (RuntimeException ignored) {
+                    // One session listener must not interrupt other sessions' invalidation.
+                }
+            }
+        }
     }
 
     /**

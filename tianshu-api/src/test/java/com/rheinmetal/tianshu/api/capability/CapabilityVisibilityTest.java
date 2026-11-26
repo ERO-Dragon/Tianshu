@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.api.capability;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.agent.AgentSession;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -152,6 +153,29 @@ class CapabilityVisibilityTest {
         row.attributes().addProperty("share", "all");
         assertFalse(visibleTo(CONSUMER, row));
         assertTrue(visibleTo(ToolCaller.mod("test"), row));
+    }
+
+    @Test
+    void subscriptionAloneRefreshesBothSessionListsAndReportsTheRemovedRow() {
+        var row = registerTool("named.change");
+        var session = AgentSession.server(CONSUMER);
+        long initial = session.describe().get("revision").getAsLong();
+        List<CapabilityChange> changes = new ArrayList<>();
+        Runnable unsubscribe = session.onChange(changes::add);
+        try {
+            CapabilitySubscriptions.declare(CONSUMER.id(), CapabilitySubscription.only(row.id()));
+            var document = session.describe();
+            assertTrue(document.get("revision").getAsLong() > initial);
+            assertTrue(document.getAsJsonArray("tools").toString().contains(row.id().toString()));
+            assertTrue(document.getAsJsonArray("capabilities").toString().contains(row.id().toString()));
+            CapabilitySubscriptions.withdraw(CONSUMER.id());
+            assertTrue(session.describe().get("revision").getAsLong() > document.get("revision").getAsLong());
+            assertTrue(session.tools().isEmpty());
+            assertEquals(List.of(new CapabilityChange(CapabilityChange.Action.ADDED, row),
+                    new CapabilityChange(CapabilityChange.Action.REMOVED, row)), changes);
+        } finally {
+            unsubscribe.run();
+        }
     }
 
     @Test

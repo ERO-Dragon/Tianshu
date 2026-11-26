@@ -11,8 +11,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -119,26 +117,7 @@ public final class TianshuTools {
      * cannot be reached from this side.</p>
      */
     public static List<ToolSpec> catalog(ToolCaller caller, ToolSide side) {
-        Objects.requireNonNull(caller, "caller");
-        Objects.requireNonNull(side, "side");
-        List<ToolSpec> specs = new ArrayList<>();
-        ToolAutonomy allowed = autonomyFor(side, caller);
-        for (var registered : CapabilityCatalog.toolsFor(caller)) {
-            var tool = registered.tool();
-            if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
-                continue;
-            }
-            if (!allowed.permits(tool.requiredAutonomy())) {
-                continue;
-            }
-            if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
-                continue;
-            }
-            specs.add(new ToolSpec(tool.id(), tool.category(), tool.description(), tool.argsSchema(),
-                    registered.enabled()));
-        }
-        specs.sort(Comparator.comparing(ToolSpec::id));
-        return specs;
+        return CapabilityCatalog.view(caller, side).tools();
     }
 
     public static List<ToolSpec> catalog(ToolCaller caller) {
@@ -186,9 +165,6 @@ public final class TianshuTools {
             return executeJson(tool, safeArgs, caller, side, cancellation).thenApply(envelope -> withMetadata(envelope, started));
         } catch (ToolException failure) {
             return CompletableFuture.completedFuture(withMetadata(failureEnvelope(failure), started));
-        } catch (JsonParseException malformed) {
-            return CompletableFuture.completedFuture(withMetadata(errorEnvelope(
-                    ToolError.INVALID_ARGS, "arguments do not match " + id + ": " + malformed.getMessage()), started));
         }
     }
 
@@ -218,13 +194,18 @@ public final class TianshuTools {
                                                              CancellationSignal cancellation) {
         ToolContext context = new ToolContext(caller, side, cancellation);
         CompletableFuture<JsonObject> result;
-        if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
+        if (tool.executionSide() == ToolSide.SERVER && side == ToolSide.CLIENT) {
             result = callOverChannel(tool.id(), args, caller, tool.policy().timeoutMillis())
                     .handle((value, failure) -> failure == null
                             ? successEnvelope(value)
                             : failureEnvelope(failure));
         } else {
-            Object typedArgs = GSON.fromJson(args, tool.argsType());
+            Object typedArgs;
+            try {
+                typedArgs = GSON.fromJson(args, tool.argsType());
+            } catch (JsonParseException invalid) {
+                throw new ToolException(ToolError.INVALID_ARGS, "arguments do not match " + tool.id(), invalid);
+            }
             result = invokeRaw(tool, context, typedArgs)
                     .handle((value, failure) -> failure == null
                             ? successEnvelope(GSON.toJsonTree(value))
@@ -277,7 +258,7 @@ public final class TianshuTools {
                         errorEnvelope(ToolError.INVALID_ARGS,
                                 "invalid arguments for " + id + ": " + String.join("; ", schemaErrors)), started)));
             }
-            if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
+            if (tool.executionSide() == ToolSide.SERVER && side == ToolSide.CLIENT) {
                 ServerToolChannel channel = serverChannel;
                 if (channel == null) {
                     return new CallResult("", CompletableFuture.completedFuture(withMetadata(errorEnvelope(
@@ -368,7 +349,7 @@ public final class TianshuTools {
                                                             ToolSide side) {
         ToolContext context = new ToolContext(caller, side);
         CompletableFuture<R> result;
-        if (tool.category().isServerSide() && side == ToolSide.CLIENT) {
+        if (tool.executionSide() == ToolSide.SERVER && side == ToolSide.CLIENT) {
             result = callOverChannel(tool.id(), toJson(args), caller, tool.policy().timeoutMillis())
                     .thenApply(value -> GSON.fromJson(value, tool.resultType()));
         } else {
@@ -404,7 +385,7 @@ public final class TianshuTools {
                             + (side == ToolSide.SERVER ? "this server allows " : "this caller allows ") + allowed);
         }
         requireWithinRateLimit(tool, caller);
-        if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
+        if (tool.executionSide() == ToolSide.SERVER && side == ToolSide.CLIENT && !serverAvailable()) {
             throw new ToolException(ToolError.UNSUPPORTED_SIDE,
                     "tool " + id + " needs the Tianshu server component");
         }
@@ -446,9 +427,14 @@ public final class TianshuTools {
     @SuppressWarnings("unchecked")
     private static <A, R> CompletableFuture<R> invokeRaw(TianshuTool<?, ?> tool, ToolContext context, Object args) {
         TianshuTool<A, R> typed = (TianshuTool<A, R>) tool;
+        long started = System.nanoTime();
+        long budget;
         CompletableFuture<R> future;
         try {
-            future = typed.invoke(context, (A) args);
+            budget = TimeUnit.MILLISECONDS.toNanos(tool.policy().timeoutMillis());
+            ToolContext bounded = new ToolContext(context.caller(), context.side(),
+                    () -> context.cancellation().isCancelled() || System.nanoTime() - started >= budget);
+            future = typed.invoke(bounded, (A) args);
         } catch (ToolException rejected) {
             // A tool may refuse before any future exists — argument and range checks run synchronously. Its code has to
             // survive that boundary: flattening it into FAILED told a model "the tool broke" when it had said
@@ -461,8 +447,14 @@ public final class TianshuTools {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.FAILED, "tool " + tool.id() + " returned no future"));
         }
-        long timeout = tool.policy().timeoutMillis();
-        return future.orTimeout(timeout, TimeUnit.MILLISECONDS)
+        long remaining = budget - (System.nanoTime() - started);
+        return future.orTimeout(Math.max(0, remaining), TimeUnit.NANOSECONDS)
+                .thenApply(value -> {
+                    if (System.nanoTime() - started >= budget) {
+                        throw translate(new TimeoutException(), tool.id());
+                    }
+                    return value;
+                })
                 .exceptionallyCompose(failure -> CompletableFuture.failedFuture(translate(failure, tool.id())));
     }
 

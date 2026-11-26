@@ -14,7 +14,7 @@ import com.rheinmetal.tianshu.api.tool.ToolSide;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import com.rheinmetal.tianshu.api.capability.skill.ContentText;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -95,7 +95,7 @@ public final class TextCapabilityProvider {
         return provider;
     }
 
-    public List<String> problems() {
+    public synchronized List<String> problems() {
         return List.copyOf(problems);
     }
 
@@ -168,9 +168,6 @@ public final class TextCapabilityProvider {
     private CompletableFuture<JsonObject> read(Loaded capability, JsonObject args) {
         try {
             String text = capability.text().read();
-            if (text.length() > MAX_TEXT_BYTES) {
-                text = text.substring(0, MAX_TEXT_BYTES);
-            }
             String body = FrontMatter.body(text);
             String result = kind.equals(CapabilityKind.RESOURCE)
                     ? TextPages.page(body, page(args), TextPages.DEFAULT_PAGE_CHARS)
@@ -235,7 +232,7 @@ public final class TextCapabilityProvider {
                         })
                         .sorted(Comparator.naturalOrder())
                         .map(path -> new Entry(stem(path.getFileName().toString()),
-                                () -> Files.readString(path, StandardCharsets.UTF_8)))
+                                () -> ContentText.read(ContentText.inside(root, path), MAX_TEXT_BYTES)))
                         .toList();
             }
         }
@@ -262,7 +259,7 @@ public final class TextCapabilityProvider {
                 if (index == null) {
                     return List.of();
                 }
-                String text = new String(index.readAllBytes(), StandardCharsets.UTF_8);
+                String text = ContentText.read(index, MAX_TEXT_BYTES);
                 return text.lines()
                         .map(String::strip)
                         .filter(line -> !line.isEmpty() && !line.startsWith("#"))
@@ -275,7 +272,7 @@ public final class TextCapabilityProvider {
                                     if (input == null) {
                                         throw new IOException("missing classpath resource: " + resource);
                                     }
-                                    return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                                    return ContentText.read(input, MAX_TEXT_BYTES);
                                 }
                             });
                         })

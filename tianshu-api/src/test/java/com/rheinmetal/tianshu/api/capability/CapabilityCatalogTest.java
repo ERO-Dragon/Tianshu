@@ -257,6 +257,21 @@ class CapabilityCatalogTest {
     }
 
     @Test
+    void invalidTimeoutCannotPublishAndNullAnswersBecomeFailures() {
+        var id = CapabilityId.parse("test:invalid");
+        var attributes = new JsonObject();
+        attributes.addProperty("timeoutMillis", "tomorrow");
+        var invalid = new CapabilityDescriptor(id, CapabilityKind.RESOURCE, CapabilityBinding.LOCAL,
+                "invalid", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", attributes);
+        assertThrows(IllegalArgumentException.class, () -> CapabilityCatalog.register(invalid, textHandler("unused")));
+        assertTrue(CapabilityCatalog.find(id).isEmpty());
+        CapabilityCatalog.register(openRow(id, CapabilityKind.RESOURCE),
+                (context, args) -> CompletableFuture.completedFuture(null));
+        assertEquals("FAILED", CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("test"), ToolSide.CLIENT)
+                .join().get("code").getAsString());
+    }
+
+    @Test
     void aSlowHandlerTimesOutInsteadOfHanging() throws Exception {
         CapabilityId id = CapabilityId.of("test", "slow");
         JsonObject attributes = new JsonObject();

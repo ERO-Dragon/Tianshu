@@ -69,7 +69,7 @@ public final class AgentSession {
     /** One machine-readable contract an external agent can fetch before its first call. */
     public JsonObject describe() {
         // One read of the table, so the revision the document quotes is the revision its rows came from.
-        CapabilityCatalog.Snapshot table = CapabilityCatalog.snapshot();
+        var table = CapabilityCatalog.view(caller, side);
         JsonObject document = new JsonObject();
         document.addProperty("protocol", PROTOCOL);
         document.addProperty("revision", table.revision());
@@ -86,7 +86,7 @@ public final class AgentSession {
         document.add("limits", limits);
 
         JsonArray toolRows = new JsonArray();
-        for (ToolSpec spec : tools()) {
+        for (ToolSpec spec : table.tools()) {
             JsonObject row = new JsonObject();
             row.addProperty("id", spec.id().toString());
             row.addProperty("category", spec.category().name());
@@ -100,7 +100,7 @@ public final class AgentSession {
         document.add("tools", toolRows);
 
         JsonArray capabilityRows = new JsonArray();
-        for (CapabilityDescriptor row : CapabilityExposure.exposed(caller, side, table.descriptors())) {
+        for (CapabilityDescriptor row : table.capabilities()) {
             JsonObject object = new JsonObject();
             object.addProperty("id", row.id().toString());
             object.addProperty("kind", row.kind().toString());
@@ -139,12 +139,7 @@ public final class AgentSession {
 
     /** Subscribes to in-process capability changes; the returned runnable unsubscribes. */
     public Runnable onChange(CapabilityChange.Listener listener) {
-        Objects.requireNonNull(listener, "listener");
-        return CapabilityCatalog.subscribe(change -> {
-            if (!CapabilityExposure.exposed(caller, side, List.of(change.descriptor())).isEmpty()) {
-                listener.onChange(change);
-            }
-        });
+        return CapabilityCatalog.subscribe(caller, side, listener);
     }
 
     /** Best effort, as documented on {@link ToolCallHandle#cancel}. */

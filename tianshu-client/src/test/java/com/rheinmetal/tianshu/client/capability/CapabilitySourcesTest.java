@@ -25,6 +25,25 @@ class CapabilitySourcesTest {
     }
 
     @Test
+    void contentKindsAndOwnersCanBeReleasedIndependentlyAndReinstalled() throws Exception {
+        Path skills = Files.createDirectory(root.resolve("skills"));
+        Path prompts = Files.createDirectory(root.resolve("prompts"));
+        Files.writeString(prompts.resolve("prompt.md"), "---\nname: prompt\ndescription: prompt\n---\nbody");
+        var old = CapabilitySources.registerSkills("example", skills);
+        try (var sameOwner = CapabilitySources.registerPrompts("example", prompts);
+             var other = CapabilitySources.registerPrompts("other", prompts)) {
+            old.close();
+            try (var replacement = CapabilitySources.registerSkills("example", skills)) {
+                old.close();
+                assertThrows(IllegalArgumentException.class, () -> CapabilitySources.registerSkills("example", skills));
+                assertTrue(CapabilityCatalog.find(CapabilityId.parse("other:prompt")).isPresent());
+                assertTrue(CapabilityCatalog.find(CapabilityId.parse("example:prompt")).isPresent());
+            }
+        }
+        assertTrue(CapabilityCatalog.find(CapabilityId.parse("example:prompt")).isEmpty());
+    }
+
+    @Test
     void aModRegistersResourcesUnderItsOwnNamespace() throws Exception {
         Files.writeString(root.resolve("memo.md"),
                 "---\nname: memo\ndescription: a memo\n---\nbody", StandardCharsets.UTF_8);

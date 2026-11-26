@@ -14,18 +14,16 @@ import com.rheinmetal.tianshu.api.tool.ToolSide;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -57,7 +55,7 @@ public final class SkillFileProvider {
     private final String namespace;
     private final String toolNamespace;
     private final Origin origin;
-    private final Map<CapabilityId, Loaded> loaded = new ConcurrentHashMap<>();
+    private final Map<CapabilityId, Loaded> loaded = new java.util.concurrent.ConcurrentSkipListMap<>();
     private final List<String> problems = new ArrayList<>();
 
     private record Loaded(String directory, String name, String description, boolean toolReferences) {
@@ -89,12 +87,12 @@ public final class SkillFileProvider {
     }
 
     /** Everything this provider could not index, in the order it found them. */
-    public List<String> problems() {
+    public synchronized List<String> problems() {
         return List.copyOf(problems);
     }
 
     /** Unregisters every skill this provider published, and its references with them. */
-    public void unload() {
+    public synchronized void unload() {
         SkillReferences.withdraw(this);
         for (CapabilityId id : List.copyOf(loaded.keySet())) {
             CapabilityCatalog.unregister(id);
@@ -103,7 +101,7 @@ public final class SkillFileProvider {
     }
 
     /** Re-reads the origin; skills that disappeared are unregistered, skills that changed are re-registered. */
-    public void reload() {
+    public synchronized void reload() {
         SkillReferences.publish(this);
         problems.clear();
         loaded.forEach((id, skill) -> CapabilityCatalog.unregister(id));
@@ -193,9 +191,7 @@ public final class SkillFileProvider {
             return Optional.empty();
         }
         String relative = REFERENCES + file;
-        List<Map.Entry<CapabilityId, Loaded>> ordered = new ArrayList<>(loaded.entrySet());
-        ordered.sort(Comparator.comparing(entry -> entry.getValue().directory()));
-        for (Map.Entry<CapabilityId, Loaded> entry : ordered) {
+        for (Map.Entry<CapabilityId, Loaded> entry : loaded.entrySet()) {
             String directory = entry.getValue().directory();
             if (!origin.exists(directory, relative)) {
                 continue;
@@ -203,10 +199,9 @@ public final class SkillFileProvider {
             try {
                 String text = origin.read(directory, relative);
                 return Optional.of(new SkillReferences.Document(entry.getKey(), relative,
-                        text.length() > MAX_TEXT_BYTES ? text.substring(0, MAX_TEXT_BYTES) : text));
+                        text));
             } catch (IOException unreadable) {
-                problems.add(directory + "/" + relative + ": " + unreadable.getMessage());
-                return Optional.empty();
+                throw new UncheckedIOException(unreadable);
             }
         }
         return Optional.empty();
@@ -223,9 +218,6 @@ public final class SkillFileProvider {
                 throw new IllegalArgumentException("no such file: " + relative);
             }
             String text = origin.read(skill.directory(), relative);
-            if (text.length() > MAX_TEXT_BYTES) {
-                text = text.substring(0, MAX_TEXT_BYTES);
-            }
             if (SKILL_FILE.equals(relative)) {
                 text = FrontMatter.body(text);
             }
@@ -328,39 +320,27 @@ public final class SkillFileProvider {
                         .filter(Files::isDirectory)
                         .filter(path -> Files.isRegularFile(path.resolve(SKILL_FILE)))
                         .map(path -> path.getFileName().toString())
-                        .sorted(Comparator.naturalOrder())
+                        .sorted()
                         .toList();
             }
         }
 
         @Override
         public String read(String skill, String relative) throws IOException {
+            return ContentText.read(resolve(skill, relative), MAX_TEXT_BYTES);
+        }
+
+        private Path resolve(String skill, String relative) throws IOException {
             validateRelative(relative);
-            Path base = root.resolve(skill).normalize();
-            if (!base.startsWith(root)) {
-                throw new IllegalArgumentException("skill path must stay inside the root: " + skill);
-            }
-            Path target = base.resolve(relative).normalize();
-            if (!target.startsWith(base)) {
-                throw new IllegalArgumentException("file must stay inside the skill: " + relative);
-            }
-            if (!Files.isRegularFile(target)) {
-                throw new IllegalArgumentException("no such file: " + relative);
-            }
-            return Files.readString(target, StandardCharsets.UTF_8);
+            Path directory = ContentText.inside(root, root.resolve(skill));
+            return ContentText.inside(directory, directory.resolve(relative));
         }
 
         @Override
         public boolean exists(String skill, String relative) {
             try {
-                validateRelative(relative);
-                Path base = root.resolve(skill).normalize();
-                if (!base.startsWith(root)) {
-                    return false;
-                }
-                Path target = base.resolve(relative).normalize();
-                return target.startsWith(base) && Files.isRegularFile(target);
-            } catch (RuntimeException invalid) {
+                return Files.isRegularFile(resolve(skill, relative));
+            } catch (IOException | IllegalArgumentException unavailable) {
                 return false;
             }
         }
@@ -388,7 +368,7 @@ public final class SkillFileProvider {
                     throw new IOException("no index.txt under " + base);
                 }
                 List<String> names = new ArrayList<>();
-                for (String line : new String(index.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
+                for (String line : ContentText.read(index, MAX_TEXT_BYTES).split("\n")) {
                     String value = line.strip();
                     if (!value.isEmpty() && !value.startsWith("#")) {
                         names.add(value);
@@ -406,7 +386,7 @@ public final class SkillFileProvider {
                 if (input == null) {
                     throw new IllegalArgumentException("no such file: " + relative);
                 }
-                return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                return ContentText.read(input, MAX_TEXT_BYTES);
             }
         }
 

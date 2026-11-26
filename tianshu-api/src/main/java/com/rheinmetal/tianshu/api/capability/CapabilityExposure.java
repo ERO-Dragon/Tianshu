@@ -54,21 +54,16 @@ public final class CapabilityExposure {
      */
     public static List<CapabilityDescriptor> exposed(ToolCaller caller, ToolSide side,
                                                      List<CapabilityDescriptor> table) {
-        ToolAutonomy allowed = TianshuTools.autonomyFor(side, caller);
-        List<CapabilityDescriptor> rows = new ArrayList<>();
-        for (CapabilityDescriptor descriptor : table) {
-            if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
-                continue;
-            }
-            if (!reachable(descriptor, side)
-                    || !permitted(descriptor, caller)
-                    || !autonomyAllows(descriptor, allowed)
-                    || !CapabilityAccess.visibleTo(descriptor, caller)) {
-                continue;
-            }
-            rows.add(descriptor);
-        }
-        return List.copyOf(rows);
+        var rule = CapabilitySubscriptions.ruleFor(caller.id());
+        var allowed = TianshuTools.autonomyFor(side, caller);
+        return table.stream().filter(row -> exposed(row, caller, side, allowed, rule)).toList();
+    }
+
+    static boolean exposed(CapabilityDescriptor row, ToolCaller caller, ToolSide side,
+                           ToolAutonomy allowed, CapabilitySubscription rule) {
+        return !CapabilityKind.CONNECTOR.equals(row.kind()) && reachable(row, side)
+                && permitted(row, caller) && autonomyAllows(row, allowed)
+                && CapabilityAccess.visibleTo(row, caller, rule);
     }
 
     private static boolean reachable(CapabilityDescriptor descriptor, ToolSide side) {
@@ -86,7 +81,7 @@ public final class CapabilityExposure {
      * what the model is offered.</p>
      */
     private static boolean autonomyAllows(CapabilityDescriptor descriptor, ToolAutonomy allowed) {
-        if (!descriptor.kind().isTool()) {
+        if (!descriptor.kind().isTool() && !CapabilityKind.WORKFLOW.equals(descriptor.kind())) {
             return true;
         }
         JsonElement declared = descriptor.attributes().get("autonomy");

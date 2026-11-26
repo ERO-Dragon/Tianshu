@@ -6,58 +6,90 @@ import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import java.util.Set;
+import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * The public registration point for capability content owned by another mod.
  *
  * <p>{@code user} and {@code tianshu} are reserved for the player's folder and built-in content; a mod registers
- * under its own id so a short skill name can never collide. Registering twice under the same namespace is a
- * programming error. {@link #closeAll()} is for tests and for a mod that unloads.</p>
+ * under its own id so a short skill name can never collide. Each content kind has its own registration. A module closes its handles on unload.</p>
  */
 public final class CapabilitySources {
 
     private static final Set<String> RESERVED = Set.of("user", "tianshu");
-    private static final Map<String, Runnable> REGISTERED = new LinkedHashMap<>();
+    private static final Map<CapabilityId, Registration> REGISTERED = new LinkedHashMap<>();
 
     private CapabilitySources() {
     }
 
-    public static synchronized SkillFileProvider registerSkills(String namespace, Path root) {
-        requireNamespace(namespace);
-        SkillFileProvider provider = SkillFileProvider.install(namespace, root);
-        REGISTERED.put(namespace + ":skills", provider::unload);
-        return provider;
+    /** The registering module owns this handle for its lifetime. Closing it twice is safe. */
+    public static final class Registration implements AutoCloseable {
+        private final CapabilityId key;
+        private Runnable unload;
+
+        private Registration(CapabilityId key) {
+            this.key = key;
+        }
+
+        @Override
+        public void close() {
+            synchronized (CapabilitySources.class) {
+                if (REGISTERED.get(key) == this) {
+                    try {
+                        if (unload != null) {
+                            unload.run();
+                        }
+                    } finally {
+                        REGISTERED.remove(key, this);
+                        unload = null;
+                    }
+                }
+            }
+        }
     }
 
-    public static synchronized TextCapabilityProvider registerResources(String namespace, Path root) {
+    public static Registration registerSkills(String namespace, Path root) {
+        return register(namespace, CapabilityKind.SKILL, () -> SkillFileProvider.install(namespace, root)::unload);
+    }
+
+    public static Registration registerResources(String namespace, Path root) {
         return registerText(namespace, root, CapabilityKind.RESOURCE);
     }
 
-    public static synchronized TextCapabilityProvider registerPrompts(String namespace, Path root) {
+    public static Registration registerPrompts(String namespace, Path root) {
         return registerText(namespace, root, CapabilityKind.PROMPT);
     }
 
-    public static synchronized void closeAll() {
-        REGISTERED.values().forEach(Runnable::run);
-        REGISTERED.clear();
+    private static Registration registerText(String namespace, Path root, CapabilityKind kind) {
+        return register(namespace, kind, () -> TextCapabilityProvider.install(kind, namespace, root)::unload);
     }
 
-    private static TextCapabilityProvider registerText(String namespace, Path root, CapabilityKind kind) {
-        requireNamespace(namespace);
-        TextCapabilityProvider provider = TextCapabilityProvider.install(kind, namespace, root);
-        REGISTERED.put(namespace + ":" + kind.value(), provider::unload);
-        return provider;
-    }
-
-    private static void requireNamespace(String namespace) {
-        Objects.requireNonNull(namespace, "namespace");
+    private static synchronized Registration register(String namespace, CapabilityKind kind, Supplier<Runnable> install) {
         if (RESERVED.contains(namespace)) {
-            throw new IllegalArgumentException("namespace " + namespace + " is reserved");
+            throw new IllegalArgumentException("reserved content namespace: " + namespace);
         }
-        if (REGISTERED.keySet().stream().anyMatch(key -> key.startsWith(namespace + ":"))) {
-            throw new IllegalArgumentException("capability content already registered for " + namespace);
+        CapabilityId key = CapabilityId.of(namespace, kind.value());
+        Registration registration = new Registration(key);
+        if (REGISTERED.putIfAbsent(key, registration) != null) {
+            throw new IllegalArgumentException("content source already registered: " + key);
         }
+        try {
+            registration.unload = install.get();
+            if (REGISTERED.get(key) != registration) {
+                registration.unload.run();
+                throw new IllegalStateException("content registration closed during installation: " + key);
+            }
+            return registration;
+        } catch (RuntimeException failure) {
+            REGISTERED.remove(key, registration);
+            throw failure;
+        }
+    }
+
+    public static synchronized void closeAll() {
+        List.copyOf(REGISTERED.values()).forEach(Registration::close);
     }
 }

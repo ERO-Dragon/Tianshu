@@ -5,6 +5,7 @@ import com.rheinmetal.tianshu.client.tool.ClientTools;
 import com.rheinmetal.tianshu.client.tool.ConnectionToolChannel;
 import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.client.capability.TextCapabilityProvider;
+import com.rheinmetal.tianshu.client.capability.CapabilitySources;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import java.nio.file.Path;
@@ -280,6 +281,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
         if (!released.compareAndSet(false, true)) {
             return;
         }
+        CapabilitySources.closeAll();
         unload(builtInSkills);
         builtInSkills = null;
         unload(skills);

@@ -115,14 +115,9 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
         if (descriptor.get().kind().equals(CapabilityKind.TOOL)) {
             // A tool is called directly, but it may still ship a document: one tool, one file, found from its id in
             // the references of the skill that ships it.
-            var documentation = SkillReferences.of(capabilityId);
-            if (documentation.isPresent()) {
-                return CompletableFuture.completedFuture(new Reply(documentation.get().text()));
-            }
-            return CompletableFuture.failedFuture(new ToolException(
-                    ToolError.INVALID_ARGS,
-                    "capability " + capabilityId + " is a tool with no document (expected "
-                            + SkillReferences.pathOf(capabilityId) + " under the skill that ships it); call it directly"));
+            return CapabilityCatalog.readToolDocument(capabilityId, caller).thenApply(document -> new Reply(
+                    document.orElseThrow(() -> new ToolException(ToolError.INVALID_ARGS,
+                            "no tool document at " + SkillReferences.pathOf(capabilityId))).text()));
         }
         var kind = descriptor.get().kind();
         if (!CapabilityKind.SKILL.equals(kind) && !CapabilityKind.RESOURCE.equals(kind)

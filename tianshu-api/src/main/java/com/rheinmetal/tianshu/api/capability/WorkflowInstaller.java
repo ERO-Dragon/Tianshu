@@ -36,7 +36,7 @@ public final class WorkflowInstaller {
         String owner = provider == null || provider.isBlank() ? "unknown" : provider;
         ToolPermission effective = permission == null ? ToolPermission.EVERYONE : permission;
 
-        WorkflowTool tool = new WorkflowTool(plan, effective);
+        WorkflowTool tool = new WorkflowTool(plan, effective, side == null ? ToolSide.SERVER : side);
         JsonObject attributes = new JsonObject();
         attributes.addProperty("enabled", tool.policy().enabledByDefault());
         attributes.addProperty("autonomy", tool.requiredAutonomy().name());
@@ -54,30 +54,12 @@ public final class WorkflowInstaller {
                 CapabilityKind.WORKFLOW,
                 CapabilityBinding.LOCAL,
                 plan.description(),
-                side == null ? ToolSide.SERVER : side,
+                tool.executionSide(),
                 effective,
                 owner,
                 attributes);
-        CapabilityCatalog.publishWorkflow(descriptor,
-                (context, args) -> WorkflowExecutor.run(plan, context.caller(), context.side(),
-                        com.rheinmetal.tianshu.api.tool.CancellationSignal.NEVER).thenApply(WorkflowInstaller::envelope), tool);
-
-        // Unregistering the tool also drops its row, so there is nothing to remove twice.
+        CapabilityCatalog.publishWorkflow(descriptor, tool);
         return () -> TianshuTools.unregister(tool);
     }
 
-    private static JsonObject envelope(WorkflowRun run) {
-        JsonObject answer = new JsonObject();
-        if (run.completed() || run.cancelled()) {
-            answer.addProperty("ok", true);
-            answer.addProperty("text", run.completed()
-                    ? run.workflow() + " finished in " + run.executedSteps() + " steps"
-                    : run.workflow() + " " + run.failure());
-            return answer;
-        }
-        answer.addProperty("ok", false);
-        answer.addProperty("code", "FAILED");
-        answer.addProperty("error", run.workflow() + " " + run.failure());
-        return answer;
-    }
 }

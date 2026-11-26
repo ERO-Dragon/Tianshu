@@ -1,11 +1,14 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,8 +29,7 @@ public final class ServerToolDeclarations {
     }
 
     private static final Map<ToolId, Declaration> DECLARED = new ConcurrentHashMap<>();
-    private static final Set<ToolId> ACTIVATED = ConcurrentHashMap.newKeySet();
-    private static final Set<ToolId> REGISTERED = ConcurrentHashMap.newKeySet();
+    private static final Map<ToolId, TianshuTool<?, ?>> REGISTERED = new HashMap<>();
 
     private ServerToolDeclarations() {
     }
@@ -56,7 +58,7 @@ public final class ServerToolDeclarations {
     }
 
     /** Registers the declarations the server named. Unknown ids are skipped; repeats are idempotent. */
-    public static void activate(List<ToolCatalogEntry> tools) {
+    public static synchronized void activate(List<ToolCatalogEntry> tools) {
         if (tools == null) {
             return;
         }
@@ -74,12 +76,20 @@ public final class ServerToolDeclarations {
             if (declaration == null) {
                 continue;
             }
-            if (ACTIVATED.add(id) && TianshuTools.find(id) == null) {
-                TianshuTools.register(declaration.tool(), declaration.provider(), declaration.sharing());
-                REGISTERED.add(id);
+            var existing = TianshuTools.find(id);
+            if (existing == null) {
+                try {
+                    TianshuTools.register(declaration.tool(), declaration.provider(), declaration.sharing());
+                } catch (CapabilityCatalog.DuplicateCapabilityException conflict) {
+                    REGISTERED.remove(id);
+                    continue;
+                }
+                REGISTERED.put(id, declaration.tool());
+            } else if (existing != REGISTERED.get(id)) {
+                REGISTERED.remove(id);
+                continue;
             }
-            // The server owns the switch: it is the side that holds the world, the permissions and the workload.
-            TianshuTools.setEnabled(id, entry.enabled());
+            CapabilityCatalog.setToolEnabled(declaration.tool(), entry.enabled());
         }
     }
 
@@ -87,11 +97,11 @@ public final class ServerToolDeclarations {
      * Makes the active set match the catalogue exactly: activates new ids and withdraws ones the server no longer
      * names. Login and a periodic refresh both use this, so a removed tool does not linger after its server changed.
      */
-    public static void synchronize(List<ToolCatalogEntry> tools) {
+    public static synchronized void synchronize(List<ToolCatalogEntry> tools) {
         if (tools == null) {
             return;
         }
-        java.util.Set<ToolId> desired = new java.util.HashSet<>();
+        Set<ToolId> desired = new HashSet<>();
         for (ToolCatalogEntry entry : tools) {
             if (entry == null) {
                 continue;
@@ -102,28 +112,23 @@ public final class ServerToolDeclarations {
                 // Ignore malformed ids; the server will correct them on the next catalogue.
             }
         }
-        for (ToolId id : java.util.List.copyOf(REGISTERED)) {
+        for (ToolId id : List.copyOf(REGISTERED.keySet())) {
             if (desired.contains(id)) {
                 continue;
             }
-            TianshuTools.unregister(id);
-            REGISTERED.remove(id);
-            ACTIVATED.remove(id);
+            TianshuTools.unregister(REGISTERED.remove(id));
         }
         activate(tools);
     }
 
     /** Withdraws everything the catalog had activated; declarations stay, so the next server can re-activate. */
-    public static void deactivateAll() {
-        for (ToolId id : REGISTERED) {
-            TianshuTools.unregister(id);
-        }
+    public static synchronized void deactivateAll() {
+        List.copyOf(REGISTERED.values()).forEach(TianshuTools::unregister);
         REGISTERED.clear();
-        ACTIVATED.clear();
     }
 
-    public static Set<ToolId> activated() {
-        return Set.copyOf(ACTIVATED);
+    public static synchronized Set<ToolId> activated() {
+        return Set.copyOf(REGISTERED.keySet());
     }
 
     /** Tests only: forget declarations and activation. */

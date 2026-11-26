@@ -2,8 +2,8 @@ package com.rheinmetal.tianshu.api.tool;
 
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityChange;
+import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,7 +31,13 @@ public final class ToolCatalogPushRegistry {
     }
 
     private static final Map<String, Subscriber> SUBSCRIBERS = new ConcurrentHashMap<>();
-    private static final CapabilityChange.Listener LISTENER = change -> broadcast();
+    private static final CapabilityChange.Listener LISTENER = change -> {
+        var row = change.descriptor();
+        if (row.side() == ToolSide.SERVER && (row.kind().isTool() || CapabilityKind.WORKFLOW.equals(row.kind()))) {
+            broadcast();
+        }
+    };
+    private static final AtomicBoolean SCHEDULED = new AtomicBoolean();
     private static final AtomicBoolean PENDING = new AtomicBoolean();
     private static final ExecutorService PUSHER = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "tianshu-catalog-push");
@@ -74,20 +80,32 @@ public final class ToolCatalogPushRegistry {
 
     private static void broadcast() {
         PENDING.set(true);
-        if (PUSHER.isShutdown()) {
+        scheduleDrain();
+    }
+
+    private static void scheduleDrain() {
+        if (!SCHEDULED.compareAndSet(false, true)) {
             return;
         }
         try {
             PUSHER.execute(ToolCatalogPushRegistry::drain);
         } catch (RejectedExecutionException shuttingDown) {
+            SCHEDULED.set(false);
             // The process is going away; the next session pushes the whole catalogue per player anyway.
         }
     }
 
     /** Publishes once per burst: a change that arrives while this runs sets the flag again for a second pass. */
     private static void drain() {
-        while (PENDING.getAndSet(false)) {
-            publishAll();
+        try {
+            while (PENDING.getAndSet(false)) {
+                publishAll();
+            }
+        } finally {
+            SCHEDULED.set(false);
+            if (PENDING.get()) {
+                scheduleDrain();
+            }
         }
     }
 
@@ -106,13 +124,7 @@ public final class ToolCatalogPushRegistry {
     }
 
     private static List<ToolCatalogEntry> visibleEntries(boolean operator) {
-        List<ToolCatalogEntry> entries = new ArrayList<>();
-        for (ToolSpec spec : TianshuTools.catalog(ToolCaller.player("", operator), ToolSide.SERVER)) {
-            if (spec.category().isServerSide()) {
-                entries.add(ToolCatalogEntry.of(spec));
-            }
-        }
-        return List.copyOf(entries);
+        return CapabilityCatalog.serverTools(ToolCaller.player("", operator));
     }
 
     private static void publish(String playerId, Subscriber subscriber) {

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.skill.ContentText;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityExposure;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
@@ -51,6 +52,36 @@ class SkillFileProviderTest {
         if (provider != null) {
             provider.unload();
         }
+    }
+
+    @Test
+    void boundedUtf8ReadsStopAtTheByteLimitWithoutSplittingCharacters() throws Exception {
+        byte[] bytes = "ab世界".getBytes(StandardCharsets.UTF_8);
+        var input = new java.io.ByteArrayInputStream(bytes);
+        assertEquals("ab世", ContentText.read(input, 6));
+        assertEquals(bytes.length - 6, input.available());
+    }
+
+    @Test
+    void directoryLinksMayResolveOnlyWithinTheirOwningSkill() throws Exception {
+        write("alpha", "alpha", "example", "body");
+        Path directory = root.resolve("alpha");
+        Path references = Files.createDirectories(directory.resolve("references"));
+        Path outside = Files.writeString(root.resolve("other.md"), "other");
+        Path note = Files.writeString(directory.resolve("note.md"), "note");
+        try {
+            Files.createSymbolicLink(references.resolve("outside.md"), outside);
+            Files.createSymbolicLink(references.resolve("inside.md"), note);
+        } catch (java.nio.file.FileSystemException | UnsupportedOperationException unsupported) {
+            org.junit.jupiter.api.Assumptions.abort("filesystem does not permit creating symlinks");
+        }
+        provider = SkillFileProvider.install("user", root);
+        var id = CapabilityId.parse("user:alpha");
+        var args = new JsonObject();
+        args.addProperty("file", "references/outside.md");
+        assertFalse(invoke(id, args).get("ok").getAsBoolean());
+        args.addProperty("file", "references/inside.md");
+        assertEquals("note", text(invoke(id, args)));
     }
 
     @Test

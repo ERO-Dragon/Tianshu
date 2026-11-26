@@ -5,7 +5,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Type;
-import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -29,13 +30,13 @@ class ToolCatalogPushRegistryTest {
     @Test
     void aSubscriberGetsTheVisibleCatalogueAndFollowsChanges() {
         TianshuTools.register(new PushTool(READ, ToolPermission.EVERYONE));
-        List<List<ToolCatalogEntry>> seen = new ArrayList<>();
+        List<List<ToolCatalogEntry>> seen = new CopyOnWriteArrayList<>();
         ToolCatalogPushRegistry.register("p1", false, (player, tools) -> seen.add(tools));
 
         assertTrue(ids(seen.get(seen.size() - 1)).contains(READ.toString()));
 
         TianshuTools.register(new PushTool(OPERATOR, ToolPermission.OPERATOR));
-        assertFalse(seen.get(seen.size() - 1).contains(OPERATOR.toString()),
+        assertFalse(ids(seen.get(seen.size() - 1)).contains(OPERATOR.toString()),
                 "a non-operator must not see an operator-only tool");
     }
 
@@ -43,7 +44,7 @@ class ToolCatalogPushRegistryTest {
     void anOperatorSubscriberSeesOperatorToolsAndUnregisterStopsPushes() {
         TianshuTools.register(new PushTool(READ, ToolPermission.EVERYONE));
         TianshuTools.register(new PushTool(OPERATOR, ToolPermission.OPERATOR));
-        List<List<ToolCatalogEntry>> seen = new ArrayList<>();
+        List<List<ToolCatalogEntry>> seen = new CopyOnWriteArrayList<>();
         ToolCatalogPushRegistry.register("op", true, (player, tools) -> seen.add(tools));
 
         assertTrue(ids(seen.get(seen.size() - 1)).contains(OPERATOR.toString()));
@@ -70,6 +71,41 @@ class ToolCatalogPushRegistryTest {
         }
         assertTrue(seen.stream().anyMatch(entries -> ids(entries).contains(OPERATOR.toString())),
                 "the change should have been pushed: " + seen);
+    }
+
+    @Test
+    void aSlowSubscriberReceivesTheFinalSwitchAfterABurst() throws Exception {
+        var firstChange = new CountDownLatch(1);
+        var resume = new CountDownLatch(1);
+        var finalChange = new CountDownLatch(1);
+        ToolCatalogPushRegistry.register("slow", false, (player, entries) -> {
+            for (var entry : entries) {
+                if (!entry.toolId().equals(READ.toString())) {
+                    continue;
+                }
+                if (entry.enabled()) {
+                    firstChange.countDown();
+                    try {
+                        assertTrue(resume.await(5, TimeUnit.SECONDS));
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrupted);
+                    }
+                } else {
+                    finalChange.countDown();
+                }
+            }
+        });
+        try {
+            TianshuTools.register(new PushTool(READ, ToolPermission.EVERYONE));
+            assertTrue(firstChange.await(5, TimeUnit.SECONDS));
+            for (int index = 0; index < 100; index++) {
+                TianshuTools.setEnabled(READ, index % 2 == 0);
+            }
+        } finally {
+            resume.countDown();
+        }
+        assertTrue(finalChange.await(5, TimeUnit.SECONDS));
     }
 
     private record PushTool(ToolId id, ToolPermission permission) implements TianshuTool<JsonObject, JsonObject> {

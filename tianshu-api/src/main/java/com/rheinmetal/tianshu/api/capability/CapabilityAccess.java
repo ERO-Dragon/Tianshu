@@ -20,11 +20,15 @@ public final class CapabilityAccess {
 
     /** Players and bodies have their own permission checks. Modules and agents consume as their module id. */
     public static boolean visibleTo(CapabilityDescriptor descriptor, ToolCaller caller) {
+        return visibleTo(descriptor, caller, CapabilitySubscriptions.ruleFor(caller.id()));
+    }
+
+    static boolean visibleTo(CapabilityDescriptor descriptor, ToolCaller caller, CapabilitySubscription rule) {
         return switch (caller.kind()) {
             case PLAYER, BODY -> true;
             case MOD, AGENT -> caller.id().equals(descriptor.provider())
                     || CapabilitySharing.of(descriptor).permits(caller.id())
-                    && (isDocumentReader(descriptor) || CapabilitySubscriptions.ruleFor(caller.id()).accepts(descriptor));
+                    && (isDocumentReader(descriptor) || rule.accepts(descriptor));
         };
     }
 

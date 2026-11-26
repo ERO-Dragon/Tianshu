@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import com.rheinmetal.tianshu.api.tool.ToolId;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -87,7 +89,7 @@ class WorkflowInstallerTest {
         JsonObject answer = CapabilityCatalog.invoke(plan.id(), new JsonObject(), CALLER, ToolSide.SERVER).join();
 
         assertFalse(answer.get("ok").getAsBoolean());
-        String error = answer.get("error").getAsString();
+        String error = answer.get("message").getAsString();
         assertTrue(error.contains("test:chain"), error);
         assertTrue(error.contains("test:step-bad"), error);
         assertTrue(error.contains("provider-b"), error);
@@ -102,6 +104,58 @@ class WorkflowInstallerTest {
         assertEquals(90, attributes.get("expectedSeconds").getAsInt());
         assertTrue(attributes.get("changesWorld").getAsBoolean());
         assertNotNull(attributes.get("steps"));
+    }
+
+    @Test
+    void closingAWorkflowStopsBothEntrypointsBeforeItsFirstStep() {
+        AtomicInteger calls = new AtomicInteger();
+        registerStep("test:step-a", "provider-a", calls);
+        var plan = publish("test:chain", "disabled", 1, false, WorkflowStep.of("test:step-a"));
+        var toolId = ToolId.parse(plan.id().toString());
+        TianshuTools.setEnabled(toolId, false);
+
+        assertEquals("DISABLED", CapabilityCatalog.invoke(plan.id(), new JsonObject(), CALLER, ToolSide.SERVER)
+                .join().get("code").getAsString());
+        assertEquals("DISABLED", TianshuTools.callJson(toolId, new JsonObject(), CALLER, ToolSide.SERVER)
+                .join().get("code").getAsString());
+        assertEquals(0, calls.get());
+    }
+
+    @Test
+    void aLateStepCannotStartTheNextActionAfterTheWorkflowTimesOut() throws Exception {
+        var waiting = new CompletableFuture<JsonObject>();
+        var started = new CompletableFuture<Void>();
+        var first = CapabilityId.parse("test:wait");
+        installed.add(first);
+        CapabilityCatalog.register(new CapabilityDescriptor(first, CapabilityKind.RESOURCE, CapabilityBinding.LOCAL,
+                "wait", ToolSide.SERVER, ToolPermission.EVERYONE, "provider-a", opened()), (context, args) -> {
+            started.complete(null);
+            return waiting;
+        });
+        AtomicInteger calls = new AtomicInteger();
+        registerStep("test:step-b", "provider-b", calls);
+        var plan = publish("test:chain", "deadline", 1, false, WorkflowStep.of(first.toString()), WorkflowStep.of("test:step-b"));
+        var answer = CapabilityCatalog.invoke(plan.id(), new JsonObject(), CALLER, ToolSide.SERVER);
+        try {
+            started.get(1, TimeUnit.SECONDS);
+            assertEquals("TIMEOUT", answer.get(4, TimeUnit.SECONDS).get("code").getAsString());
+        } finally {
+            waiting.complete(ok());
+        }
+        assertEquals(0, calls.get());
+    }
+
+    @Test
+    void hiddenAndMissingStepsReportTheSameAttribution() {
+        var step = CapabilityId.parse("test:private-step");
+        var plan = publish("test:chain", "visibility", 1, false, WorkflowStep.of(step.toString()));
+        var missing = CapabilityCatalog.invoke(plan.id(), new JsonObject(), CALLER, ToolSide.SERVER).join();
+        installed.add(step);
+        CapabilityCatalog.register(new CapabilityDescriptor(step, CapabilityKind.RESOURCE, CapabilityBinding.LOCAL,
+                "private", ToolSide.SERVER, ToolPermission.EVERYONE, "private-owner", new JsonObject()),
+                (context, args) -> CompletableFuture.completedFuture(ok()));
+        var hidden = CapabilityCatalog.invoke(plan.id(), new JsonObject(), CALLER, ToolSide.SERVER).join();
+        assertEquals(missing.get("message"), hidden.get("message"));
     }
 
     private WorkflowDeclaration publish(String id, String description, int seconds, boolean changesWorld,
@@ -133,7 +187,7 @@ class WorkflowInstallerTest {
         installed.add(capability);
         CapabilityCatalog.register(new CapabilityDescriptor(capability, CapabilityKind.of("test"),
                 CapabilityBinding.LOCAL, "refuses", ToolSide.SERVER, ToolPermission.EVERYONE, provider,
-                new JsonObject()), (context, args) -> {
+                opened()), (context, args) -> {
                     JsonObject refusal = new JsonObject();
                     refusal.addProperty("ok", false);
                     refusal.addProperty("code", "NO_PERMISSION");

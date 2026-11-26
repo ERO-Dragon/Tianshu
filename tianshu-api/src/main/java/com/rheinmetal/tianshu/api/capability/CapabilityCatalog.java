@@ -2,12 +2,18 @@ package com.rheinmetal.tianshu.api.capability;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.skill.SkillReferences;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
+import com.rheinmetal.tianshu.api.tool.CancellationSignal;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
+import com.rheinmetal.tianshu.api.tool.ToolSpec;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -153,7 +159,14 @@ public final class CapabilityCatalog {
         if (descriptor.kind().isTool()) {
             throw new IllegalArgumentException("tools are registered through TianshuTools, not the capability table");
         }
+        timeoutOf(descriptor);
         add(new Entry(descriptor, handler, null));
+    }
+
+    public static final class DuplicateCapabilityException extends IllegalArgumentException {
+        private DuplicateCapabilityException(CapabilityId id) {
+            super("capability " + id + " is already registered");
+        }
     }
 
     private static void add(Entry entry) {
@@ -169,7 +182,7 @@ public final class CapabilityCatalog {
                         && descriptor.sharing().equals(existing.descriptor().sharing())) {
                     return;
                 }
-                throw new IllegalArgumentException("capability " + descriptor.id() + " is already registered");
+                throw new DuplicateCapabilityException(descriptor.id());
             }
             next = current.with(entry);
         } while (!TABLE.compareAndSet(current, next));
@@ -198,10 +211,67 @@ public final class CapabilityCatalog {
         return entry == null || entry.tool() == null ? null : new RegisteredTool(entry.descriptor(), entry.tool());
     }
 
-    public static List<RegisteredTool> toolsFor(ToolCaller caller) {
-        return TABLE.get().entries.values().stream()
-                .filter(entry -> entry.tool() != null && CapabilityAccess.visibleTo(entry.descriptor(), caller))
-                .map(entry -> new RegisteredTool(entry.descriptor(), entry.tool())).toList();
+    public record SessionView(long revision, List<CapabilityDescriptor> capabilities, List<ToolSpec> tools) {}
+
+    public static SessionView view(ToolCaller caller, ToolSide side) {
+        Table table;
+        CapabilitySubscription rule;
+        long revision;
+        synchronized (CapabilitySubscriptions.class) {
+            table = TABLE.get();
+            rule = CapabilitySubscriptions.ruleFor(caller.id());
+            revision = table.revision + CapabilitySubscriptions.revision();
+        }
+        var allowed = TianshuTools.autonomyFor(side, caller);
+        List<CapabilityDescriptor> rows = new ArrayList<>();
+        List<ToolSpec> tools = new ArrayList<>();
+        for (var row : table.descriptors) {
+            if (!CapabilityExposure.exposed(row, caller, side, allowed, rule)) {
+                continue;
+            }
+            rows.add(row);
+            var tool = table.entries.get(row.id()).tool();
+            if (tool != null) {
+                tools.add(new ToolSpec(tool.id(), tool.category(), tool.description(), tool.argsSchema(), row.enabled()));
+            }
+        }
+        return new SessionView(revision, List.copyOf(rows), List.copyOf(tools));
+    }
+
+    /** Compact server catalogue shared by login, refresh and change-driven pushes. */
+    public static List<ToolCatalogEntry> serverTools(ToolCaller caller) {
+        var table = TABLE.get();
+        var allowed = TianshuTools.autonomyFor(ToolSide.SERVER, caller);
+        var rule = CapabilitySubscriptions.ruleFor(caller.id());
+        return table.descriptors.stream()
+                .filter(row -> row.side() == ToolSide.SERVER && table.entries.get(row.id()).tool() != null)
+                .filter(row -> CapabilityExposure.exposed(row, caller, ToolSide.SERVER, allowed, rule))
+                .map(row -> new ToolCatalogEntry(row.id().toString(), row.enabled()))
+                .toList();
+    }
+
+    public static Runnable subscribe(ToolCaller caller, ToolSide side, CapabilityChange.Listener listener) {
+        Objects.requireNonNull(listener, "listener");
+        Runnable rows = subscribe(change -> {
+            if (CapabilityExposure.exposed(change.descriptor(), caller, side, TianshuTools.autonomyFor(side, caller),
+                    CapabilitySubscriptions.ruleFor(caller.id()))) {
+                listener.onChange(change);
+            }
+        });
+        Runnable rules = CapabilitySubscriptions.observe(caller.id(), (before, after) -> {
+            var allowed = TianshuTools.autonomyFor(side, caller);
+            for (var row : list()) {
+                boolean was = CapabilityExposure.exposed(row, caller, side, allowed, before);
+                boolean now = CapabilityExposure.exposed(row, caller, side, allowed, after);
+                if (was != now) {
+                    listener.onChange(new CapabilityChange(now ? CapabilityChange.Action.ADDED : CapabilityChange.Action.REMOVED, row));
+                }
+            }
+        });
+        return () -> {
+            rules.run();
+            rows.run();
+        };
     }
 
     /**
@@ -247,6 +317,11 @@ public final class CapabilityCatalog {
      */
     public static CompletableFuture<JsonObject> invoke(CapabilityId id, JsonObject args, ToolCaller caller,
                                                        ToolSide side) {
+        return invoke(id, args, caller, side, CancellationSignal.NEVER);
+    }
+
+    static CompletableFuture<JsonObject> invoke(CapabilityId id, JsonObject args, ToolCaller caller,
+                                                ToolSide side, CancellationSignal cancellation) {
         Entry entry = TABLE.get().entries.get(id);
         if (entry == null) {
             return CompletableFuture.completedFuture(error("UNKNOWN_CAPABILITY", "no capability named " + id));
@@ -265,8 +340,8 @@ public final class CapabilityCatalog {
             return CompletableFuture.completedFuture(error("UNSUPPORTED_SIDE",
                     id + " needs the Tianshu server component"));
         }
-        if (descriptor.kind().isTool()) {
-            return TianshuTools.callJson(ToolId.parse(id.toString()), args, caller, side);
+        if (entry.tool() != null) {
+            return TianshuTools.callJson(ToolId.parse(id.toString()), args, caller, side, cancellation);
         }
         CapabilityHandler handler = entry.handler();
         JsonObject safeArgs = args == null ? new JsonObject() : args;
@@ -274,6 +349,9 @@ public final class CapabilityCatalog {
         CompletableFuture<JsonObject> answer = new CompletableFuture<>();
         AtomicReference<CompletableFuture<JsonObject>> pending = new AtomicReference<>();
         FutureTask<Void> invocation = new FutureTask<>(() -> {
+            if (cancellation.isCancelled()) {
+                answer.complete(error("CANCELLED", "the capability call was cancelled"));
+            }
             if (answer.isDone()) {
                 return null;
             }
@@ -285,7 +363,8 @@ public final class CapabilityCatalog {
                 } else {
                     response.whenComplete((value, failure) -> {
                         if (failure == null) {
-                            answer.complete(value);
+                            answer.complete(Objects.requireNonNullElseGet(value,
+                                    () -> error("FAILED", "the capability produced no answer")));
                         } else {
                             answer.completeExceptionally(failure);
                         }
@@ -314,6 +393,17 @@ public final class CapabilityCatalog {
         });
     }
 
+    /** Resolves a tool attachment on the same bounded pool used for other file-backed content. */
+    public static CompletableFuture<Optional<SkillReferences.Document>> readToolDocument(CapabilityId id, ToolCaller caller) {
+        try {
+            return CompletableFuture.supplyAsync(() -> find(id)
+                    .filter(row -> row.kind().isTool() && CapabilityAccess.visibleTo(row, caller))
+                    .flatMap(row -> SkillReferences.of(id)), HANDLERS);
+        } catch (java.util.concurrent.RejectedExecutionException saturated) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.BUSY, "document reader is busy"));
+        }
+    }
+
     /** Kernel use: mirrors one tool into the table. Not part of the consumer contract. */
     public static void publishTool(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
         Objects.requireNonNull(tool, "tool");
@@ -330,7 +420,7 @@ public final class CapabilityCatalog {
                 CapabilityKind.TOOL,
                 CapabilityBinding.LOCAL,
                 tool.description(),
-                tool.category().isServerSide() ? ToolSide.SERVER : ToolSide.CLIENT,
+                tool.executionSide(),
                 tool.policy().permission(),
                 provider,
                 attributes
@@ -338,8 +428,8 @@ public final class CapabilityCatalog {
         add(new Entry(descriptor, null, tool));
     }
 
-    static void publishWorkflow(CapabilityDescriptor descriptor, CapabilityHandler handler, TianshuTool<?, ?> tool) {
-        add(new Entry(descriptor, handler, tool));
+    static void publishWorkflow(CapabilityDescriptor descriptor, TianshuTool<?, ?> tool) {
+        add(new Entry(descriptor, null, tool));
     }
 
     /**
@@ -365,11 +455,19 @@ public final class CapabilityCatalog {
 
     /** Kernel use: keeps the mirrored tool's enabled flag in step with {@link TianshuTools}. */
     public static void setToolEnabled(ToolId id, boolean enabled) {
+        setToolEnabled(id, null, enabled);
+    }
+
+    public static void setToolEnabled(TianshuTool<?, ?> expected, boolean enabled) {
+        setToolEnabled(expected.id(), expected, enabled);
+    }
+
+    private static void setToolEnabled(ToolId id, TianshuTool<?, ?> expected, boolean enabled) {
         CapabilityId capabilityId = CapabilityId.parse(id.toString());
         while (true) {
             Table current = TABLE.get();
             Entry entry = current.entries.get(capabilityId);
-            if (entry == null || entry.tool() == null) {
+            if (entry == null || entry.tool() == null || (expected != null && entry.tool() != expected)) {
                 return;
             }
             JsonObject attributes = entry.descriptor().attributes();
@@ -441,13 +539,21 @@ public final class CapabilityCatalog {
 
     private static long timeoutOf(CapabilityDescriptor descriptor) {
         JsonObject attributes = descriptor.attributes();
-        if (attributes.has("timeoutMillis") && attributes.get("timeoutMillis").isJsonPrimitive()) {
-            long value = attributes.get("timeoutMillis").getAsLong();
-            if (value > 0) {
-                return value;
+        JsonElement value = attributes.get("timeoutMillis");
+        if (value == null) {
+            return DEFAULT_TIMEOUT_MILLIS;
+        }
+        if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+            try {
+                long millis = value.getAsBigDecimal().longValueExact();
+                if (millis > 0) {
+                    return millis;
+                }
+            } catch (ArithmeticException | NumberFormatException invalid) {
+                throw new IllegalArgumentException("invalid timeoutMillis on " + descriptor.id(), invalid);
             }
         }
-        return DEFAULT_TIMEOUT_MILLIS;
+        throw new IllegalArgumentException("timeoutMillis must be a positive integer on " + descriptor.id());
     }
 
     private static JsonObject failureOf(Throwable failure) {

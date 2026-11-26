@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.api.tool;
 
 import com.google.gson.JsonArray;
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -121,10 +122,10 @@ public final class ServerToolDispatch {
     private static Reply catalogReply(ToolCaller caller, String requestId) {
         JsonArray ids = new JsonArray();
         // The switch travels with the entry: a caller that only sees ids cannot tell an offered tool from a disabled one.
-        TianshuTools.catalog(caller, ToolSide.SERVER).forEach(spec -> {
+        CapabilityCatalog.serverTools(caller).forEach(tool -> {
             JsonObject entry = new JsonObject();
-            entry.addProperty("id", spec.id().toString());
-            entry.addProperty("enabled", spec.enabled());
+            entry.addProperty("id", tool.toolId());
+            entry.addProperty("enabled", tool.enabled());
             ids.add(entry);
         });
         JsonObject result = new JsonObject();

@@ -49,7 +49,7 @@ public final class WorkflowExecutor {
                     return CompletableFuture.completedFuture(new Progress(progress.executed(),
                             WorkflowRun.stoppedAt(plan.id(), progress.executed(), total)));
                 }
-                return CapabilityCatalog.invoke(next.capability(), next.args(), caller, side)
+                return CapabilityCatalog.invoke(next.capability(), next.args(), caller, side, stop)
                         .handle((answer, error) -> {
                             String refusal = refusalOf(answer, error);
                             if (refusal == null) {
@@ -57,7 +57,7 @@ public final class WorkflowExecutor {
                             }
                             return new Progress(progress.executed(), WorkflowRun.failedAt(plan.id(),
                                     progress.executed(), total, step,
-                                    describe(step, next.capability(), refusal)));
+                                    describe(step, next.capability(), refusal, caller)));
                         });
             });
         }
@@ -87,8 +87,9 @@ public final class WorkflowExecutor {
         return message.isBlank() ? code : code + " " + message;
     }
 
-    private static String describe(int index, CapabilityId capability, String reason) {
+    private static String describe(int index, CapabilityId capability, String reason, ToolCaller caller) {
         String provider = CapabilityCatalog.find(capability)
+                .filter(row -> CapabilityAccess.visibleTo(row, caller))
                 .map(CapabilityDescriptor::provider)
                 .orElse("no registered provider");
         return "step " + (index + 1) + " (" + capability + ", provided by " + provider + "): " + reason;

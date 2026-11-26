@@ -213,6 +213,9 @@ class TianshuToolsTest {
         TianshuTools.registerBuiltin(new EchoTool());
         JsonObject envelope = TianshuTools.callJson(ECHO, JsonParser.parseString("{\"text\":123,\"count\":\"x\"}"),
                 ToolCaller.agent(false)).get(2, TimeUnit.SECONDS);
+        var handled = TianshuTools.callHandled(ECHO, JsonParser.parseString("{\"count\":\"x\"}"),
+                ToolCaller.agent(false), ToolSide.CLIENT);
+        assertEquals("INVALID_ARGS", handled.result().join().get("code").getAsString());
         assertFalse(envelope.get("ok").getAsBoolean());
         assertEquals("INVALID_ARGS", envelope.get("code").getAsString());
     }
