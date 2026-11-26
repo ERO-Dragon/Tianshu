@@ -1,11 +1,11 @@
 package com.rheinmetal.tianshu.mc.ui.settings;
 
 import com.rheinmetal.tianshu.client.settings.model.ModuleSettingsCategory;
-import com.rheinmetal.tianshu.mc.ui.settings.UiTexts;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -55,7 +55,11 @@ final class SettingsNavigationWidget extends AbstractWidget {
                 guiGraphics.fill(getX() + 4, itemY + 10, getX() + 7, itemY + 13, 0xFFFFCC33);
                 textX += 6;
             }
-            guiGraphics.drawString(Minecraft.getInstance().font, titles.get(start + i), textX, itemY + 8, selected ? 0xFFFFFF : 0xE0E0E0, false);
+            var font = Minecraft.getInstance().font;
+            int labelWidth = Math.max(0, getX() + getWidth() - 8 - textX);
+            var label = font.substrByWidth(titles.get(start + i), labelWidth);
+            guiGraphics.drawString(font, Language.getInstance().getVisualOrder(label), textX, itemY + 8,
+                    selected ? 0xFFFFFF : 0xE0E0E0, false);
         }
         drawScrollbar(guiGraphics, visible, start);
     }

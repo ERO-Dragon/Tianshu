@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.rheinmetal.tianshu.api.assembly.PlayerAuthority;
+import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.client.tool.BuiltinServerTools;
+import com.rheinmetal.tianshu.client.tool.BodyCommandRunTool;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,6 +55,30 @@ class ServerRegistrationsTest {
 
         assertSame(newer, TianshuRuntimePorts.find(SamplePort.class).orElse(null),
                 "a stop must take back only what it installed");
+    }
+
+    @Test
+    void serverToolsLeaveWithTheWorldThatRegisteredThem() {
+        try (var registrations = new ServerRegistrations()) {
+            BuiltinServerTools.forEach(registrations::tool);
+            assertTrue(TianshuTools.find(BodyCommandRunTool.ID) instanceof BodyCommandRunTool);
+        }
+        BuiltinServerTools.forEach(tool -> assertNull(TianshuTools.find(tool.id())));
+    }
+
+    @Test
+    void anOccupiedToolStaysWithItsOriginalProvider() {
+        var existing = new BodyCommandRunTool();
+        TianshuTools.registerBuiltin(existing);
+        try {
+            try (var registrations = new ServerRegistrations()) {
+                BuiltinServerTools.forEach(registrations::tool);
+                assertSame(existing, TianshuTools.find(existing.id()));
+            }
+            assertSame(existing, TianshuTools.find(existing.id()));
+        } finally {
+            TianshuTools.unregister(existing);
+        }
     }
 
     @Test

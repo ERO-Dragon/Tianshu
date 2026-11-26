@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.mc.tool;
 
 import com.rheinmetal.tianshu.api.game.WorldLocatePort;
-import com.rheinmetal.tianshu.client.tool.WorldLocateTool;
+import com.rheinmetal.tianshu.client.tool.BuiltinServerTools;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import com.rheinmetal.tianshu.mc.host.ServerTicks;
@@ -21,7 +21,7 @@ public final class ServerToolSession {
         try {
             locate = new WorldLocateSource(server);
             registrations.port(WorldLocatePort.class, locate);
-            WorldLocateTool.tools().forEach(registrations::tool);
+            BuiltinServerTools.forEach(registrations::tool);
             install.accept(registrations);
         } catch (RuntimeException | Error failure) {
             release();

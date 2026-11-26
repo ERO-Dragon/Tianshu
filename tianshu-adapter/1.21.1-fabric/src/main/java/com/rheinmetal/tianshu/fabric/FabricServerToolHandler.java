@@ -37,23 +37,10 @@ import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.server.ServerActionExecutionPort;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
-import com.rheinmetal.tianshu.client.tool.BlockInspectTool;
-import com.rheinmetal.tianshu.client.tool.EntityInspectTool;
-import com.rheinmetal.tianshu.client.tool.ItemInspectTool;
-import com.rheinmetal.tianshu.client.tool.BodyStatusTool;
-import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
-import com.rheinmetal.tianshu.client.tool.BlockMachineTool;
-import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
-import com.rheinmetal.tianshu.client.tool.CraftAvailableTool;
-import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
-import com.rheinmetal.tianshu.client.tool.LootQueryTool;
-import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
-import com.rheinmetal.tianshu.client.tool.WorldInfoTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
 
-import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.host.ServerTicks;
 import com.rheinmetal.tianshu.mc.host.ServerPlayerAuthority;
 import com.rheinmetal.tianshu.mc.tool.BlockInteractSource;
@@ -130,14 +117,10 @@ public final class FabricServerToolHandler {
             registrations.port(ServerBodyAutonomyCeiling.class, FabricServerActionConfig::bodyCeiling);
             // The cheat-grade tools are server tools: the server owns their implementation and executes them here.
             registrations.port(ServerActionExecutionPort.class, new FabricActionExecution(server));
-            for (var actionTool : com.rheinmetal.tianshu.client.tool.ServerActionTools.tools()) {
-                registrations.tool(actionTool);
-            }
             // A tool's advertised state follows its own action switch, or the client keeps offering a dead tool.
             com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(FabricServerActionConfig::enabled);
             registrations.port(LootQueryPort.class, new LootQuerySource(server));
             registrations.port(RecipeQueryPort.class, new ServerRecipeQuerySource(server));
-            registrations.tool(new RecipeQueryTool());
             registrations.port(BlockInteractPort.class,
                     new InteractRouter(new BlockInteractSource(server, bodies, actionPlayers)));
             registrations.port(BlockPlacePort.class,
@@ -152,31 +135,18 @@ public final class FabricServerToolHandler {
             registrations.port(ActorStatusPort.class, new ActorStatusSource(server));
             registrations.port(WorldInfoPort.class, new WorldInfoSource(server));
             registrations.port(RecipeAvailabilityPort.class, new CraftAvailableSource(server));
-            registrations.tool(new BlockInspectTool());
-            registrations.tool(new EntityInspectTool());
-            registrations.tool(new ItemInspectTool());
-            registrations.tool(new BodyStatusTool());
-            registrations.tool(new WorldInfoTool());
-            registrations.tool(new CraftAvailableTool());
             registrations.port(EntityMotionPort.class, new MotionRouter());
             registrations.port(EntityActionPort.class, new ActionRouter());
             registrations.port(EntityQueryPort.class, new QueryRouter(new BodyQuerySource(server)));
             registrations.port(EntityItemPort.class, new ItemRouter(new AgentItemSource(server, bodies)));
             registrations.port(EntityItemUsePort.class, new UseItemRouter());
             registrations.port(EntityUsePort.class, new EntityUseRouter());
-            registrations.tool(new LootQueryTool());
-            registrations.tool(new BlockInteractTool());
-            registrations.tool(new CraftRecipeTool());
-            registrations.tool(new ContainerTransferTool());
-            registrations.tool(new BlockMachineTool());
-            BodyToolRegistry.register();
             // Asking is open to anyone; running needs one operator approval per command, so the tool is not
             // operator-only — an operator-only tool could never be asked for.
             registrations.port(com.rheinmetal.tianshu.api.game.CommandExecutionPort.class,
                     new com.rheinmetal.tianshu.mc.command.CommandExecutionSource(server,
                             com.rheinmetal.tianshu.api.game.CommandApprovals.shared(),
                             FabricToolConfig::commandPermissionLevel));
-            registrations.tool(new com.rheinmetal.tianshu.client.tool.CommandRunTool());
             TianshuTools.setEnabled(com.rheinmetal.tianshu.client.tool.CommandRunTool.ID,
                     FabricToolConfig.commandRun());
         }));

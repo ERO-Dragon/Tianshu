@@ -476,6 +476,8 @@ tasks.register('verifyServerToolRegistration') {
         it.isDirectory() && (it.name.endsWith('-neoforge') || it.name.endsWith('-fabric'))
                 && new File(it, 'adapter.properties').isFile()
     } ?: []
+    def sessions = commonAdapterSources.matching { include '**/ServerToolSession.java' }.files
+    inputs.files(sessions)
     inputs.files(adapterDirs.collectMany { dir ->
         def base = dir.name.endsWith('-neoforge')
                 ? new File(dir, 'src/main/java/com/rheinmetal/tianshu/neoforge/server/ServerToolHandler.java')
@@ -484,9 +486,14 @@ tasks.register('verifyServerToolRegistration') {
     }.findAll { it.exists() })
     doLast {
         requireNonEmpty(adapterDirs, 'adapter directories under tianshu-adapter/*-{neoforge,fabric}')
-        def required = ['RecipeQueryTool', 'CraftRecipeTool', 'BlockMachineTool',
-                        'ServerRecipeQuerySource', 'CraftSource', 'BlockMachineSource']
+        def required = ['SESSION.start(', 'ServerRecipeQuerySource', 'CraftSource', 'BlockMachineSource']
         def missing = []
+        requireNonEmpty(sessions, 'shared server tool sessions')
+        sessions.each { source ->
+            if (!source.getText('UTF-8').contains('BuiltinServerTools.forEach(registrations::tool)')) {
+                missing << "${source.name}: missing shared tool registration"
+            }
+        }
         adapterDirs.each { dir ->
             def base = dir.name.endsWith('-neoforge')
                     ? new File(dir, 'src/main/java/com/rheinmetal/tianshu/neoforge/server/ServerToolHandler.java')

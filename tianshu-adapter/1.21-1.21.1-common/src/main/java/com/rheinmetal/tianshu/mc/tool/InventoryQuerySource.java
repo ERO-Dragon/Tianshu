@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.mc.tool;
 import com.rheinmetal.tianshu.api.game.InventoryEntry;
 import com.rheinmetal.tianshu.api.game.InventoryQueryPort;
 import com.rheinmetal.tianshu.api.game.InventorySnapshot;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -36,7 +38,7 @@ public final class InventoryQuerySource implements InventoryQueryPort {
     private static InventorySnapshot lookup() {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
-            return new InventorySnapshot(List.of());
+            throw new ToolException(ToolError.UNAVAILABLE, "no local player is available");
         }
         Inventory inventory = player.getInventory();
         List<InventoryEntry> entries = new ArrayList<>();

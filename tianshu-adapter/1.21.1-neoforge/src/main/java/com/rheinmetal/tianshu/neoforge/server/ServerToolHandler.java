@@ -30,18 +30,6 @@ import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.server.ServerActionExecutionPort;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
-import com.rheinmetal.tianshu.client.tool.BlockInspectTool;
-import com.rheinmetal.tianshu.client.tool.EntityInspectTool;
-import com.rheinmetal.tianshu.client.tool.ItemInspectTool;
-import com.rheinmetal.tianshu.client.tool.BodyStatusTool;
-import com.rheinmetal.tianshu.client.tool.BlockInteractTool;
-import com.rheinmetal.tianshu.client.tool.BlockMachineTool;
-import com.rheinmetal.tianshu.client.tool.ContainerTransferTool;
-import com.rheinmetal.tianshu.client.tool.CraftAvailableTool;
-import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
-import com.rheinmetal.tianshu.client.tool.LootQueryTool;
-import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
-import com.rheinmetal.tianshu.client.tool.WorldInfoTool;
 import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
 import com.rheinmetal.tianshu.neoforge.body.NeoForgeActionPlayers;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
@@ -52,7 +40,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.NeoForge;
 import net.minecraft.world.level.GameRules;
-import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.tool.WorldInfoSource;
 import com.rheinmetal.tianshu.mc.tool.ActorStatusSource;
 import com.rheinmetal.tianshu.mc.tool.CraftAvailableSource;
@@ -165,16 +152,12 @@ public final class ServerToolHandler {
             com.mojang.logging.LogUtils.getLogger().info("tianshu server config: file={} {}",
                     net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().resolve("tianshu_ferry-server.toml"),
                     ServerActionConfig.describe());
-            for (var actionTool : com.rheinmetal.tianshu.client.tool.ServerActionTools.tools()) {
-                registrations.tool(actionTool);
-            }
             // Only after registration: the advertised state belongs to a tool that exists in this registry.
             com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(
                     action -> { var value = ServerActionConfig.switchFor(action); return value != null && value.get(); });
             ServerTicks.INSTANCE.onNextTick(() -> bodies.persistence().load(event.getServer(), bodies));
             registrations.port(LootQueryPort.class, new LootQuerySource(event.getServer()));
             registrations.port(RecipeQueryPort.class, new ServerRecipeQuerySource(event.getServer()));
-            registrations.tool(new RecipeQueryTool());
             registrations.port(BlockInteractPort.class,
                     new InteractRouter(new BlockInteractSource(event.getServer(), bodies, actionPlayers)));
             registrations.port(BlockPlacePort.class,
@@ -190,31 +173,18 @@ public final class ServerToolHandler {
             registrations.port(ActorStatusPort.class, new ActorStatusSource(event.getServer()));
             registrations.port(WorldInfoPort.class, new WorldInfoSource(event.getServer()));
             registrations.port(RecipeAvailabilityPort.class, new CraftAvailableSource(event.getServer()));
-            registrations.tool(new BlockInspectTool());
-            registrations.tool(new EntityInspectTool());
-            registrations.tool(new ItemInspectTool());
-            registrations.tool(new BodyStatusTool());
-            registrations.tool(new WorldInfoTool());
-            registrations.tool(new CraftAvailableTool());
             registrations.port(EntityMotionPort.class, new MotionRouter());
             registrations.port(EntityActionPort.class, new ActionRouter());
             registrations.port(EntityQueryPort.class, new QueryRouter(new BodyQuerySource(event.getServer())));
             registrations.port(EntityItemPort.class, new ItemRouter(new AgentItemSource(event.getServer(), bodies)));
             registrations.port(EntityItemUsePort.class, new UseItemRouter());
             registrations.port(EntityUsePort.class, new EntityUseRouter());
-            registrations.tool(new LootQueryTool());
-            registrations.tool(new BlockInteractTool());
-            registrations.tool(new CraftRecipeTool());
-            registrations.tool(new ContainerTransferTool());
-            registrations.tool(new BlockMachineTool());
-            BodyToolRegistry.register();
             // Asking to run a command is allowed to anyone; running it needs an operator's one-shot approval, so the
             // tool itself is not operator-only — an operator-only tool could never be asked for in the first place.
             registrations.port(com.rheinmetal.tianshu.api.game.CommandExecutionPort.class,
                     new com.rheinmetal.tianshu.mc.command.CommandExecutionSource(event.getServer(),
                             com.rheinmetal.tianshu.api.game.CommandApprovals.shared(),
                             () -> ServerActionConfig.COMMAND_PERMISSION_LEVEL.get()));
-            registrations.tool(new com.rheinmetal.tianshu.client.tool.CommandRunTool());
             TianshuTools.setEnabled(com.rheinmetal.tianshu.client.tool.CommandRunTool.ID,
                     ServerActionConfig.COMMAND_RUN.get());
         });
