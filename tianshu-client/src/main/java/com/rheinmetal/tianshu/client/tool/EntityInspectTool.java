@@ -41,10 +41,6 @@ public final class EntityInspectTool implements TianshuTool<EntityInspectTool.Ar
         return ToolCategory.SERVER_READ;
     }
 
-    @Override
-    public ToolPolicy policy() {
-        return ToolPolicy.forCategory(ToolCategory.SERVER_READ).withEnabledByDefault(true);
-    }
 
     @Override
     public String description() {

@@ -120,12 +120,34 @@ class ToolAutonomyTest {
 
     @Test
     void anOperatorIsStillNeededAtTheTopTier() throws Exception {
+        // The operator requirement arrives with the tier, not with "it writes": a survival write is the player's own
+        // crafting, while a FULL-tier call is a power an operator hands over.
         ToolCaller notOperator = ToolCaller.agent(MODULE, false, ToolAutonomy.FULL);
 
-        JsonObject denied = TianshuTools.callJson(WRITE, new JsonObject(), notOperator, ToolSide.CLIENT)
+        JsonObject denied = TianshuTools.callJson(FULL_ONLY, new JsonObject(), notOperator, ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
-
         assertEquals("NO_PERMISSION", denied.get("code").getAsString());
+
+        assertTrue(TianshuTools.callJson(WRITE, new JsonObject(), notOperator, ToolSide.CLIENT)
+                .get(2, TimeUnit.SECONDS).get("ok").getAsBoolean(), "a survival write needs no operator");
+    }
+
+    @Test
+    void aModuleMayUseSurvivalToolsOnADefaultServer() throws Exception {
+        // The middle tier is the default on both axes — what a caller gets when it says nothing, and what a server
+        // allows when it configures nothing. So a module that adds crafting, container or machine work needs nobody to
+        // switch anything on; only a tool that reaches for the top tier is refused.
+        assertEquals(ToolAutonomy.CONSERVATIVE, ToolCaller.DEFAULT_AUTONOMY);
+        TianshuRuntimePorts.register(ServerAutonomyCeiling.class, () -> ToolAutonomy.CONSERVATIVE);
+        ToolCaller module = ToolCaller.mod(MODULE);
+
+        JsonObject survival = TianshuTools.callJson(WRITE, new JsonObject(), module, ToolSide.SERVER)
+                .get(2, TimeUnit.SECONDS);
+        assertTrue(survival.get("ok").getAsBoolean(), "a survival write needs no switch and no operator: " + survival);
+
+        assertEquals("NO_PERMISSION",
+                TianshuTools.callJson(FULL_ONLY, new JsonObject(), module, ToolSide.SERVER)
+                        .get(2, TimeUnit.SECONDS).get("code").getAsString());
     }
 
     /**

@@ -49,9 +49,8 @@ public final class CommandRunTool implements TianshuTool<CommandRunTool.Args, Co
     public ToolPolicy policy() {
         // Requesting is not privileged; approving is. So the tool is open to callers and off by default, rather than
         // operator-only — an operator-only tool could never be asked for in the first place.
-        return ToolPolicy.forCategory(ToolCategory.SERVER_WRITE)
-                .withPermission(com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE)
-                .withEnabledByDefault(false);
+        return ToolPolicy.forTier(com.rheinmetal.tianshu.api.tool.ToolAutonomy.FULL)
+                .withPermission(com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE);
     }
 
     @Override

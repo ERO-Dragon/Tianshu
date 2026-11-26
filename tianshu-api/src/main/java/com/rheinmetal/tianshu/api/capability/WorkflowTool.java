@@ -55,7 +55,9 @@ final class WorkflowTool implements TianshuTool<JsonObject, JsonObject> {
 
     @Override
     public ToolPolicy policy() {
-        return ToolPolicy.forCategory(category()).withPermission(permission);
+        // The tier decides the switch here too: a plan that stays inside survival is on, one that reaches for FULL
+        // is off until an operator opens it. The declarer may still tighten the permission.
+        return ToolPolicy.forTier(requiredAutonomy()).withPermission(permission);
     }
 
     @Override

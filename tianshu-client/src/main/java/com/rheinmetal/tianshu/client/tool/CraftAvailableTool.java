@@ -40,10 +40,6 @@ public final class CraftAvailableTool implements TianshuTool<CraftAvailableTool.
         return ToolCategory.SERVER_READ;
     }
 
-    @Override
-    public ToolPolicy policy() {
-        return ToolPolicy.forCategory(ToolCategory.SERVER_READ).withEnabledByDefault(true);
-    }
 
     @Override
     public String description() {

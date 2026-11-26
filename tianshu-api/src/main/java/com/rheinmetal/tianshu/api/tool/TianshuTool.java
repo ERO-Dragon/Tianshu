@@ -45,14 +45,15 @@ public interface TianshuTool<A, R> {
      * {@link ToolAutonomy#FULL}.
      */
     default ToolAutonomy requiredAutonomy() {
-        return category() == ToolCategory.SERVER_WRITE ? ToolAutonomy.CONSERVATIVE : ToolAutonomy.READ_ONLY;
+        return category().defaultAutonomy();
     }
 
     /**
-     * The policy this tool runs under; by default it follows the category.
+     * The policy this tool runs under; by default it follows {@link #requiredAutonomy()}, so a tool that stays inside
+     * survival needs no switch and a tool that needs {@link ToolAutonomy#FULL} is off until an operator opens it.
      */
     default ToolPolicy policy() {
-        return ToolPolicy.forCategory(category());
+        return ToolPolicy.forTier(requiredAutonomy());
     }
 
     /**

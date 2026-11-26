@@ -109,11 +109,18 @@ class TianshuToolsTest {
     }
 
     @Test
-    void categoryDefaultsMatchThePolicyTable() {
-        assertTrue(ToolPolicy.forCategory(ToolCategory.LOCAL).enabledByDefault());
-        assertTrue(ToolPolicy.forCategory(ToolCategory.SERVER_READ).enabledByDefault());
-        assertFalse(ToolPolicy.forCategory(ToolCategory.SERVER_WRITE).enabledByDefault());
-        assertEquals(ToolPermission.OPERATOR, ToolPolicy.forCategory(ToolCategory.SERVER_WRITE).permission());
+    void theTierDecidesThePolicyNotTheCategory() {
+        // Survival-tier work is what a player does by hand, so it needs no switch and no operator. Only a tool that
+        // reaches for FULL is a power an operator hands over; the category only says which tier a tool starts at.
+        assertTrue(ToolPolicy.forTier(ToolAutonomy.READ_ONLY).enabledByDefault());
+        assertTrue(ToolPolicy.forTier(ToolAutonomy.CONSERVATIVE).enabledByDefault());
+        assertFalse(ToolPolicy.forTier(ToolAutonomy.FULL).enabledByDefault());
+        assertEquals(ToolPermission.EVERYONE, ToolPolicy.forTier(ToolAutonomy.CONSERVATIVE).permission());
+        assertEquals(ToolPermission.OPERATOR, ToolPolicy.forTier(ToolAutonomy.FULL).permission());
+        // A world change is survival-tier, so a plain SERVER_WRITE tool is on: that is the difference between "another
+        // mod may craft" and "another mod may teleport".
+        assertTrue(ToolPolicy.forCategory(ToolCategory.SERVER_WRITE).enabledByDefault());
+        assertEquals(ToolPermission.EVERYONE, ToolPolicy.forCategory(ToolCategory.SERVER_WRITE).permission());
     }
 
     /**
@@ -129,9 +136,26 @@ class TianshuToolsTest {
     }
 
     @Test
-    void aWriteToolStartsDisabledAndNeedsAnOperator() throws Exception {
+    void aSurvivalWriteRunsWithoutASwitchOrAnOperator() throws Exception {
+        // A world change at the survival tier is what the player does by hand: another mod may craft or move items
+        // without anyone opening a switch first.
         ToolId write = ToolId.of("test", "write");
         TianshuTools.registerBuiltin(new FixedResultTool(write, ToolCategory.SERVER_WRITE, "changed"));
+        ToolHandle<Query, Answer> handle = TianshuTools.handle(write, Query.class, Answer.class);
+        try {
+            Answer answer = handle.call(new Query("x", 1), ToolCaller.player("p1", false), ToolSide.SERVER)
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals("changed", answer.text);
+        } finally {
+            TianshuTools.unregister(write);
+        }
+    }
+
+    @Test
+    void aFullTierWriteStartsDisabledAndNeedsAnOperator() throws Exception {
+        ToolId write = ToolId.of("test", "full-write");
+        TianshuTools.registerBuiltin(new FixedResultTool(write, ToolCategory.SERVER_WRITE, ToolAutonomy.FULL,
+                "changed"));
         ToolHandle<Query, Answer> handle = TianshuTools.handle(write, Query.class, Answer.class);
         try {
             ExecutionException disabled = assertThrows(ExecutionException.class,
@@ -344,16 +368,26 @@ class TianshuToolsTest {
     private static final class FixedResultTool implements TianshuTool<Query, Answer> {
         private final ToolId id;
         private final ToolCategory category;
+        private final ToolAutonomy autonomy;
         private final String text;
         private final ToolPolicy policy;
 
         FixedResultTool(ToolId id, ToolCategory category, String text) {
-            this(id, category, text, ToolPolicy.forCategory(category));
+            this(id, category, null, text, null);
+        }
+
+        FixedResultTool(ToolId id, ToolCategory category, ToolAutonomy autonomy, String text) {
+            this(id, category, autonomy, text, null);
         }
 
         FixedResultTool(ToolId id, ToolCategory category, String text, ToolPolicy policy) {
+            this(id, category, null, text, policy);
+        }
+
+        FixedResultTool(ToolId id, ToolCategory category, ToolAutonomy autonomy, String text, ToolPolicy policy) {
             this.id = id;
             this.category = category;
+            this.autonomy = autonomy;
             this.text = text;
             this.policy = policy;
         }
@@ -384,8 +418,13 @@ class TianshuToolsTest {
         }
 
         @Override
+        public ToolAutonomy requiredAutonomy() {
+            return autonomy == null ? category.defaultAutonomy() : autonomy;
+        }
+
+        @Override
         public ToolPolicy policy() {
-            return policy;
+            return policy == null ? ToolPolicy.forTier(requiredAutonomy()) : policy;
         }
 
         @Override

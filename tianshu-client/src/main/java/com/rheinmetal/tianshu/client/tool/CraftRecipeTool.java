@@ -37,14 +37,6 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
         return ToolCategory.SERVER_WRITE;
     }
 
-    @Override
-    public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
-        // Any survival player may do this by hand; the server switch and their own rights still bound it.
-        // On by default: this is a player's own crafting or container work, and their real rights still apply.
-        return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(ToolCategory.SERVER_WRITE)
-                .withPermission(com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE)
-                .withEnabledByDefault(true);
-    }
 
     @Override
     public String description() {

@@ -5,9 +5,10 @@ import java.util.Objects;
 /**
  * When a tool may run, how long it may take and who may call it.
  *
- * <p>The defaults follow the category, because that is the only classification the platform can trust without
- * knowing the tool: a local query is harmless, a server read is still harmless but needs the server component,
- * and a world change is opted into by an operator rather than granted by registration.</p>
+ * <p>The tier decides the policy, not the category: only a tool that needs {@link ToolAutonomy#FULL} is a power an
+ * operator hands over deliberately, so only that one starts switched off and gated behind operator. A tool that stays
+ * inside survival is exactly the crafting and container work a player does by hand — it needs no switch, and a module
+ * that declares such a tool gets that default without having to remember an override.</p>
  */
 public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, long timeoutMillis) {
 
@@ -20,17 +21,18 @@ public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, lo
         }
     }
 
-    /** The policy a tool of this category gets unless it overrides one. */
+    /** The policy a tool needing this tier gets unless it overrides one. */
+    public static ToolPolicy forTier(ToolAutonomy tier) {
+        Objects.requireNonNull(tier, "tier");
+        return tier == ToolAutonomy.FULL
+                ? new ToolPolicy(false, ToolPermission.OPERATOR, DEFAULT_TIMEOUT_MILLIS)
+                : new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
+    }
+
+    /** The policy a tool of this category gets; the category only supplies its default tier. */
     public static ToolPolicy forCategory(ToolCategory category) {
         Objects.requireNonNull(category, "category");
-        return switch (category) {
-            case LOCAL, SERVER_READ -> new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
-            case SERVER_WRITE -> new ToolPolicy(false, ToolPermission.OPERATOR, DEFAULT_TIMEOUT_MILLIS);
-            // A module's own entity, doing what that module declared it can do. Offering the tool is not a policy
-            // question: refusing an entity its own abilities because a server has not turned a switch on would make
-            // the base the owner of someone else's mod. Who may drive it is decided by ownership, at call time.
-            case BODY_WRITE -> new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
-        };
+        return forTier(category.defaultAutonomy());
     }
 
     public ToolPolicy withTimeout(long millis) {

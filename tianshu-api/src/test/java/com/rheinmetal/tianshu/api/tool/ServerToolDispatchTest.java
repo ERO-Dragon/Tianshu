@@ -146,17 +146,26 @@ class ServerToolDispatchTest {
     }
 
     @Test
-    void writeToolsStillNeedAnOperator() throws Exception {
-        ServerToolDispatch.Reply denied = ServerToolDispatch.respond(
-                        ToolCaller.player("p1", false), "r5", WRITE.toString(), "{}")
-                .get(2, TimeUnit.SECONDS);
-        assertEquals("NO_PERMISSION", denied.errorCode());
+    void aFullTierWriteStillNeedsAnOperator() throws Exception {
+        // The operator requirement comes from the tier the tool declares, so the fixture here is a FULL-tier tool: a
+        // survival write is the player's own crafting and must not be gated behind operator.
+        ToolId full = ToolId.of("test", "dispatch.full");
+        TianshuTools.registerBuiltin(new FullTierTool());
+        TianshuTools.setEnabled(full, true);
+        try {
+            ServerToolDispatch.Reply denied = ServerToolDispatch.respond(
+                            ToolCaller.player("p1", false), "r5", full.toString(), "{}")
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals("NO_PERMISSION", denied.errorCode());
 
-        ServerToolDispatch.Reply allowed = ServerToolDispatch.respond(
-                        ToolCaller.player("p1", true), "r6", WRITE.toString(), "{}")
-                .get(2, TimeUnit.SECONDS);
-        assertTrue(allowed.ok());
-        assertNotEquals("", allowed.valueJson());
+            ServerToolDispatch.Reply allowed = ServerToolDispatch.respond(
+                            ToolCaller.player("p1", true), "r6", full.toString(), "{}")
+                    .get(2, TimeUnit.SECONDS);
+            assertTrue(allowed.ok());
+            assertNotEquals("", allowed.valueJson());
+        } finally {
+            TianshuTools.unregister(full);
+        }
     }
 
     public static final class Args {
@@ -281,7 +290,7 @@ class ServerToolDispatchTest {
         }
     }
 
-    private static final class WriteTool implements TianshuTool<Args, Reply> {
+    private static class WriteTool implements TianshuTool<Args, Reply> {
         @Override
         public ToolId id() {
             return WRITE;
@@ -310,6 +319,19 @@ class ServerToolDispatchTest {
         @Override
         public CompletableFuture<Reply> invoke(ToolContext context, Args args) {
             return CompletableFuture.completedFuture(new Reply());
+        }
+    }
+
+    /** A write that declares the top tier: the one case where an operator is still required. */
+    private static final class FullTierTool extends WriteTool {
+        @Override
+        public ToolId id() {
+            return ToolId.of("test", "dispatch.full");
+        }
+
+        @Override
+        public ToolAutonomy requiredAutonomy() {
+            return ToolAutonomy.FULL;
         }
     }
     @Test
