@@ -17,7 +17,7 @@
 
 ## 二、平台参考
 
-> 协议中心与 CoreManager 的文档随舟楫仓库走：`Tianshu-ferry/doc/协议中心.md`、`Tianshu-ferry/doc/CoreManager.md`。
+> 协议中心与模块宿主的文档随舟楫仓库走：`Tianshu-ferry/doc/协议中心.md`、`Tianshu-ferry/doc/模块宿主.md`。
 
 | 文档 | 内容 |
 |---|---|
