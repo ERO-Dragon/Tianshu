@@ -1016,43 +1016,9 @@ subprojects {
         }
     }
 }
-// Every tool ships a document. The check lives here because it is a fact about the shipped sources, not about one
-// class: a tool added without its document used to be invisible (the manual simply never appeared), and the only way to
-// notice was to look for it.
+// The client contract tests walk the same declarations used during bootstrap, including tool families.
 tasks.register('verifyEveryToolHasADocument') {
     group = 'verification'
-    description = 'Every registered tool has references/<namespace>.<name>.md inside a shipped skill.'
-    def clientDir = new File(moduleDir('tianshu-client'), 'src/main')
-    def toolSources = fileTree(new File(clientDir, 'java')) { include '**/*Tool.java' }
-    def docs = fileTree(new File(clientDir, 'resources/tianshu/skills')) { include '**/references/*.md' }
-    inputs.files(toolSources, docs)
-    doLast {
-        def pattern = ~/ToolId\.of\("([a-z0-9_]+)",\s*"([a-zA-Z.]+)"\)/
-        def documented = docs.files.collect { it.name } as Set
-        def missing = []
-        def seen = new HashSet()
-        toolSources.files.each { source ->
-            def matcher = pattern.matcher(source.getText('UTF-8'))
-            while (matcher.find()) {
-                def namespace = matcher.group(1)
-                def name = matcher.group(2)
-                if (name.startsWith('test.')) {
-                    return
-                }
-                def id = "${namespace}:${name}"
-                if (!seen.add(id)) {
-                    return
-                }
-                def bare = "${name}.md".toString()
-                def qualified = "${namespace}.${name}.md".toString()
-                if (!documented.contains(bare) && !documented.contains(qualified)) {
-                    missing << "${id} (expected references/${bare})".toString()
-                }
-            }
-        }
-        if (!missing.isEmpty()) {
-            throw new GradleException("tools without a document:\n  " + missing.join('\n  '))
-        }
-        logger.lifecycle("every tool has a document (${seen.size()} tools)")
-    }
+    description = 'Checks shipped tool references and their JSON examples against the built-in tools.'
+    dependsOn ':tianshu-client:test'
 }
