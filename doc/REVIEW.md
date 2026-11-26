@@ -18,6 +18,23 @@
 | `INV-1` | 没有本地玩家时返回 `UNAVAILABLE`，有玩家时读取该玩家的非空槽位。 | 旧截图和空背包回复缺少同一时刻的槽位记录，需在切换前后对照游戏界面。 |
 | `HUD-1` | 设置界面的模组导航标题按左栏剩余宽度裁切，给修改标记和滚动条留出空间。 | 窄窗口、长模组名下目视复验。 |
 
+### 1.1 本轮实机复验结果
+
+**修好的**：`ENT-1` 已修。单机默认配置下 `ACC-ALL-1` 从 56 涨到 **65** 个工具全部应答，`ACC-BDY-1` 报 28 个实体工具（生存上限下 `entity.command.run` 因 `npc.ceiling=survival` 被目录挡掉，符合设计）。
+
+**没修好的：`NET-1` 反而更明显**。专用服 + 开发客户端那一轮 `accepted=false`：
+
+| 用例 | 现象 |
+|---|---|
+| `ACC-EXP-1` / `ACC-EXP-5` | 客户端目录只有 **9** 个本地工具（单机是 42 个），`capability.read` 列表只有 507 字符（单机 1592） |
+| `ACC-BDY-1` / `ACC-BDY-2` | 仍然以"entity tools require a Ferry server"跳过——`TianshuTools.serverAvailable()` 在联机客户端判为 false |
+| `ACC-ACT-1/2/3/4/5` | **新失败**：`IllegalArgumentException: cannot change the state of an unknown tool: minecraft:server.xp`（teleport / setblock / give 同）。14 个服务端动作在客户端连行都没有，`setEnabled` 现在直接抛异常而不是忽略 |
+| `ACC-ALL-1` | 只有 **49** 行（单机 65），差的正是那 14 个动作加 2 个 |
+
+也就是说：内建清单把实体孪生补齐了（单机 65），但**联机时服务端目录仍然没有到达客户端**；`setEnabled` 从"忽略未知工具"改成抛异常之后，这个缺口从"静默少几个工具"变成"一轮 5 条用例直接崩"。
+
+**我自己用例的问题已修**：`ACC-BDY-8` 原来把身体 id 写进 `tianshu-lab/persisted-body.txt`，没记世界；联机那轮进的是另一个世界，于是把"这具身体在另一个世界"误报成"存档没保住"。现在标记里带 dimension，维度不同按 SKIP 处理。
+
 ## 2. 已确认
 
 - 客户端声明、Fabric 和 NeoForge 的服务端会话使用同一份内建工具清单。ACC-BDY-1 按预期工具 ID 报告缺项，并检查实际随包文档。
