@@ -1486,6 +1486,9 @@ public final class LabAcceptanceCases {
             if (owner == null) {
                 return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no player to own the body");
             }
+            if (!offered(ToolId.of("minecraft", "entity.look"))) {
+                return notOfferedHere(id, title, ToolId.of("minecraft", "entity.look"));
+            }
             AcceptanceBodies bodies = new AcceptanceBodies(owner);
             Runnable unregister = EntityActors.register(bodies);
             try {
@@ -1693,6 +1696,9 @@ public final class LabAcceptanceCases {
             if (owner == null) {
                 return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no body to drive");
             }
+            if (!offered(ToolId.of("minecraft", "entity.look"))) {
+                return notOfferedHere(id, title, ToolId.of("minecraft", "entity.look"));
+            }
             AcceptanceBodies bodies = new AcceptanceBodies(owner);
             Runnable unregister = EntityActors.register(bodies);
             try {
@@ -1813,6 +1819,9 @@ public final class LabAcceptanceCases {
             if (owner == null) {
                 return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no player to drive a body");
             }
+            if (!offered(ToolId.of("minecraft", "entity.look"))) {
+                return notOfferedHere(id, title, ToolId.of("minecraft", "entity.look"));
+            }
             AcceptanceBodies bodies = new AcceptanceBodies(owner);
             Runnable unregister = EntityActors.register(bodies);
             try {
@@ -1884,9 +1893,13 @@ public final class LabAcceptanceCases {
             if (owner == null) {
                 return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no server component");
             }
+            ToolId action = ToolId.of("minecraft", "server.xp");
+            if (!offered(action)) {
+                return notOfferedHere(id, title, action);
+            }
             JsonObject args = new JsonObject();
             args.addProperty("levels", 0);
-            JsonObject envelope = callEnabled(ToolId.of("minecraft", "server.xp"), args,
+            JsonObject envelope = callEnabled(action, args,
                     ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if (envelope.has("ok") && envelope.get("ok").getAsBoolean()) {
@@ -1914,11 +1927,15 @@ public final class LabAcceptanceCases {
             if (owner == null) {
                 return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no server component");
             }
+            ToolId action = ToolId.of("minecraft", "server.teleport");
+            if (!offered(action)) {
+                return notOfferedHere(id, title, action);
+            }
             JsonObject args = new JsonObject();
             args.addProperty("x", 0.0);
             args.addProperty("y", 64.0);
             args.addProperty("z", 0.0);
-            JsonObject envelope = callEnabled(ToolId.of("minecraft", "server.teleport"), args,
+            JsonObject envelope = callEnabled(action, args,
                     ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if ("DISABLED".equals(code)) {
@@ -1945,12 +1962,16 @@ public final class LabAcceptanceCases {
             if (owner == null) {
                 return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no server component");
             }
+            ToolId action = ToolId.of("minecraft", "server.setblock");
+            if (!offered(action)) {
+                return notOfferedHere(id, title, action);
+            }
             JsonObject args = new JsonObject();
             args.addProperty("x", 0);
             args.addProperty("y", 64);
             args.addProperty("z", 0);
             args.addProperty("block", "tianshu:no_such_block");
-            JsonObject envelope = callEnabled(ToolId.of("minecraft", "server.setblock"), args,
+            JsonObject envelope = callEnabled(action, args,
                     ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
             String code = codeOf(envelope);
             if ("INVALID_ARGS".equals(code)) {
@@ -1998,6 +2019,9 @@ public final class LabAcceptanceCases {
             }
             // Below the full tier no cheat-grade action may even be attempted, so there is nothing to observe here:
             // every action would answer the same NO_PERMISSION before its own switch or validator saw it.
+            if (!offered(ToolId.of("minecraft", "server.teleport"))) {
+                return notOfferedHere(id, title, ToolId.of("minecraft", "server.teleport"));
+            }
             ToolAutonomy ceiling = TianshuRuntimePorts
                     .find(com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling.class)
                     .map(com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling::max)
@@ -2120,19 +2144,30 @@ public final class LabAcceptanceCases {
                 "server.spawn_entity", "server.broadcast", "server.gamemode", "server.effect", "server.xp",
                 "server.setblock", "server.kill", "server.enchant", "server.difficulty", "server.gamerule");
         return AcceptanceCase.of(id, title, () -> {
+            // Only the actions this side was actually offered have a switch to walk. A server below the FULL tier
+            // names none of them, and flipping a switch on a tool that is not here would throw.
+            List<String> offeredActions = new ArrayList<>();
+            for (String action : actions) {
+                if (offered(ToolId.parse("minecraft:" + action))) {
+                    offeredActions.add(action);
+                }
+            }
+            if (offeredActions.isEmpty()) {
+                return notOfferedHere(id, title, ToolId.of("minecraft", "server.give"));
+            }
             ToolCaller caller = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL);
             TianshuTools.clearRateLimits();
             java.util.Map<String, Boolean> wasEnabled = new java.util.LinkedHashMap<>();
-            for (String action : actions) {
+            for (String action : offeredActions) {
                 wasEnabled.put(action, !"DISABLED".equals(
                         codeOf(call(ToolId.parse("minecraft:" + action), new JsonObject(), caller))));
             }
             List<String> wrong = new ArrayList<>();
             try {
                 for (String target : actions) {
-                    actions.forEach(action -> TianshuTools.setEnabled(ToolId.parse("minecraft:" + action),
+                    offeredActions.forEach(action -> TianshuTools.setEnabled(ToolId.parse("minecraft:" + action),
                             action.equals(target)));
-                    for (String action : actions) {
+                    for (String action : offeredActions) {
                         boolean disabled = "DISABLED".equals(
                                 codeOf(call(ToolId.parse("minecraft:" + action), new JsonObject(), caller)));
                         if (disabled != !action.equals(target)) {
@@ -2209,6 +2244,23 @@ public final class LabAcceptanceCases {
         });
     }
 
+    /**
+     * Whether this side was offered the tool at all.
+     *
+     * <p>A server only names the tools it would let the caller use, so on a client whose server sits below the FULL
+     * tier the cheat-grade actions do not exist here — no row, no switch, nothing to call. That is a skip, not a
+     * failure, and it has to be asked before touching a switch: {@code setEnabled} on an unregistered tool throws.</p>
+     */
+    private static boolean offered(ToolId tool) {
+        return TianshuTools.find(tool) != null;
+    }
+
+    /** The skip an action case returns when the server never named its tool. */
+    private static AcceptanceOutcome notOfferedHere(String id, String title, ToolId tool) {
+        return AcceptanceOutcome.skip(id, title, tool + " was not offered on this side: a server below the FULL tier"
+                + " does not name cheat-grade actions, so there is no switch to observe");
+    }
+
     private static String detail(JsonObject envelope) {
         var element = envelope.get("message");
         if (element == null || !element.isJsonPrimitive()) {
@@ -2235,6 +2287,9 @@ public final class LabAcceptanceCases {
      * Calls a tool that ships switched off, turning it on for this one call and restoring it afterwards.
      */
     private static JsonObject callEnabled(ToolId tool, JsonObject args, ToolCaller caller) throws Exception {
+        if (!offered(tool)) {
+            throw new IllegalStateException(tool + " is not offered on this side");
+        }
         boolean wasEnabled = TianshuTools.isEnabled(tool);
         try {
             if (!wasEnabled) {
@@ -2348,6 +2403,9 @@ public final class LabAcceptanceCases {
         final String id = "ACC-GIV-1";
         final String title = "a hand-over without a receiver is refused as INVALID_ARGS";
         return AcceptanceCase.of(id, title, () -> {
+            if (!offered(ToolId.of("minecraft", "entity.give"))) {
+                return notOfferedHere(id, title, ToolId.of("minecraft", "entity.give"));
+            }
             AcceptanceBodies bodies = new AcceptanceBodies(localPlayerId());
             Runnable unregister = EntityActors.register(bodies);
             try {
