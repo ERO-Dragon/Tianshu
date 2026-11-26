@@ -142,6 +142,7 @@ public final class LabAcceptanceCases {
         cases.add(anActionIsRefusedByTheServerSwitchWhenItsOff());
         cases.add(anActionWithBadArgumentsIsRefusedByTheServerSideValidation());
         cases.add(everyToolAnswersAnEnvelope());
+        cases.add(eachActionAnswersToItsOwnSwitch());
         cases.add(everyServerActionAnswersForItself());
         cases.add(theOpenContainerComesBackAsAValue());
         cases.add(handingItemsOverNeedsAReceiver());
@@ -2068,6 +2069,54 @@ public final class LabAcceptanceCases {
             return AcceptanceOutcome.pass(id, title,
                     answered + " tools answered (" + executed + " executed, " + (answered - executed) + " refused): "
                             + swept);
+        });
+    }
+
+    /**
+     * Each server action answers to its own switch and to nobody else's.
+     *
+     * <p>The all-on and all-off runs only prove the two ends. This one walks the middle: open one action at a time and
+     * check that exactly that action stops reporting {@code DISABLED}. One switch driving the whole family, or a tool
+     * wired to the wrong switch, fails here and passes both end-state runs.</p>
+     *
+     * <p>The switch itself is the server's own config value; what this exercises is the gate those switches drive,
+     * one tool at a time.</p>
+     */
+    private static AcceptanceCase eachActionAnswersToItsOwnSwitch() {
+        final String id = "ACC-ACT-5";
+        final String title = "each server action follows its own switch and no other";
+        final List<String> actions = List.of("server.give", "server.teleport", "server.time", "server.weather",
+                "server.spawn_entity", "server.broadcast", "server.gamemode", "server.effect", "server.xp",
+                "server.setblock", "server.kill", "server.enchant", "server.difficulty", "server.gamerule");
+        return AcceptanceCase.of(id, title, () -> {
+            ToolCaller caller = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL);
+            TianshuTools.clearRateLimits();
+            java.util.Map<String, Boolean> wasEnabled = new java.util.LinkedHashMap<>();
+            for (String action : actions) {
+                wasEnabled.put(action, !"DISABLED".equals(
+                        codeOf(call(ToolId.parse("minecraft:" + action), new JsonObject(), caller))));
+            }
+            List<String> wrong = new ArrayList<>();
+            try {
+                for (String target : actions) {
+                    actions.forEach(action -> TianshuTools.setEnabled(ToolId.parse("minecraft:" + action),
+                            action.equals(target)));
+                    for (String action : actions) {
+                        boolean disabled = "DISABLED".equals(
+                                codeOf(call(ToolId.parse("minecraft:" + action), new JsonObject(), caller)));
+                        if (disabled != !action.equals(target)) {
+                            wrong.add(target + " on -> " + action + (disabled ? " still DISABLED" : " also open"));
+                        }
+                    }
+                }
+            } finally {
+                wasEnabled.forEach((action, enabled) ->
+                        TianshuTools.setEnabled(ToolId.parse("minecraft:" + action), enabled));
+            }
+            if (!wrong.isEmpty()) {
+                return AcceptanceOutcome.fail(id, title, wrong.toString());
+            }
+            return AcceptanceOutcome.pass(id, title, actions.size() + " switches, each open only its own action");
         });
     }
 
