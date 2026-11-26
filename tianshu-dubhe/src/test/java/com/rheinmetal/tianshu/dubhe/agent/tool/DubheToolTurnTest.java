@@ -75,7 +75,7 @@ class DubheToolTurnTest {
     void readableSkillsAreInjectedIntoTheSystemMessage() {
         CapabilityId id = CapabilityId.of("test", "skill");
         CapabilityCatalog.register(new CapabilityDescriptor(id, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
-                        "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", new JsonObject()),
+                        "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, com.rheinmetal.tianshu.dubhe.DubheModule.MOD_ID, new JsonObject()),
                 (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
         try {
             DubheToolTurn turn = DubheToolTurn.start(List.of(enabledEcho()), base(), call -> CompletableFuture.completedFuture(new JsonObject()));

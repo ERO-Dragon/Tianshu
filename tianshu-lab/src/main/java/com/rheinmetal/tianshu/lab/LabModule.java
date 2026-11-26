@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.lab;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -152,6 +155,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
 
     @Override
     public void start(ModuleRuntimeContext context) {
+        CapabilitySubscriptions.declare(LabModuleRegistration.MOD_ID, CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
         registerBeforeStart = registerCalls > 0;
         startCalls++;
         if (context != null) {
@@ -343,6 +347,7 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
 
     @Override
     public void stop() {
+        CapabilitySubscriptions.withdraw(LabModuleRegistration.MOD_ID);
         if (participantsRegistered) {
             unregisterParticipants();
         }

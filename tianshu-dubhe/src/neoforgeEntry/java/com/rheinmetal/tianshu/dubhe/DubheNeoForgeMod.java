@@ -9,7 +9,7 @@ import net.neoforged.fml.common.Mod;
  * the moment the module announces itself. What gets announced lives in {@link DubheModuleRegistration},
  * shared with the Fabric shell, so this class never grows logic.</p>
  */
-@Mod("tianshu")
+@Mod("tianshu_dubhe")
 public final class DubheNeoForgeMod {
 
     public DubheNeoForgeMod() {

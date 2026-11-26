@@ -10,7 +10,7 @@ import net.minecraftforge.fml.common.Mod;
  * there and {@link DubheNeoForgeMod} is invisible here. Both call {@link DubheModuleRegistration#announce()},
  * which keeps the two shells from drifting.</p>
  */
-@Mod("tianshu")
+@Mod("tianshu_dubhe")
 public final class DubheForgeMod {
 
     public DubheForgeMod() {

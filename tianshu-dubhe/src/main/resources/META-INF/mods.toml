@@ -7,7 +7,7 @@ loaderVersion="[1,)"
 license="LGPL-3.0"
 
 [[mods]]
-modId="tianshu"
+modId="tianshu_dubhe"
 version="${mod_version}"
 displayName="${mod_name}"
 logoFile="icon.png"
@@ -16,49 +16,49 @@ Dialogue brain for Tianshu: turn orchestration, memory, and game-event context.
 '''
 displayTest="IGNORE_SERVER_VERSION"
 
-[[dependencies.tianshu]]
+[[dependencies.tianshu_dubhe]]
     modId="minecraft"
     mandatory=true
     versionRange="${minecraft_version_range_legacy}"
     ordering="NONE"
     side="CLIENT"
 
-[[dependencies.tianshu]]
+[[dependencies.tianshu_dubhe]]
     modId="tianshu_ferry"
     mandatory=true
     versionRange="${tianshu_host_version_range}"
     ordering="AFTER"
     side="CLIENT"
 
-[[dependencies.tianshu]]
+[[dependencies.tianshu_dubhe]]
     modId="tianshu_foundry"
     mandatory=true
     versionRange="${tianshu_foundry_version_range}"
     ordering="AFTER"
     side="CLIENT"
 
-[[dependencies.tianshu]]
+[[dependencies.tianshu_dubhe]]
     modId="tianshu_presence"
     mandatory=true
     versionRange="[${mod_version},)"
     ordering="NONE"
     side="CLIENT"
 
-[[dependencies.tianshu]]
+[[dependencies.tianshu_dubhe]]
 modId="tianshu_intake"
 mandatory=false
 versionRange="[${mod_version},)"
 ordering="NONE"
 side="CLIENT"
 
-[[dependencies.tianshu]]
+[[dependencies.tianshu_dubhe]]
 modId="tianshu_weaving"
 mandatory=true
 versionRange="[${mod_version},)"
 ordering="NONE"
 side="CLIENT"
 
-[[dependencies.tianshu]]
+[[dependencies.tianshu_dubhe]]
 modId="tianshu_echo"
 mandatory=false
 versionRange="[${mod_version},)"

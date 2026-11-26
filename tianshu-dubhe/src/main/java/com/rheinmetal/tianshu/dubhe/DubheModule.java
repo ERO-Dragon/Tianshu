@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.dubhe;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.rheinmetal.tianshu.dubhe.DubheModule;
 
 import com.rheinmetal.tianshu.api.IGameEnvironment;
@@ -110,7 +112,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class DubheModule implements TianshuManagedModule {
-    public static final String MOD_ID = "tianshu";
+    public static final String MOD_ID = "tianshu_dubhe";
     public static final String MODULE_ID = "module.dubhe";
 
     private final IGameEnvironment env;
@@ -666,6 +668,7 @@ public final class DubheModule implements TianshuManagedModule {
 
     @Override
     public void start(ModuleRuntimeContext context) {
+        CapabilitySubscriptions.declare(MOD_ID, CapabilitySubscription.openedAtomic());
         if (llmClient != null) {
             llmClient.sweepExpired();
         }
@@ -684,6 +687,7 @@ public final class DubheModule implements TianshuManagedModule {
 
     @Override
     public void stop() {
+        CapabilitySubscriptions.withdraw(MOD_ID);
         // Events close first so a pending aggregate still lands in the window before the checkpoint.
         withdrawModuleServices();
         if (textInputSubscription != null) {

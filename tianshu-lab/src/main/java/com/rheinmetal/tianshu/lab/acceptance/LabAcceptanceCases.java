@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.lab.acceptance;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.rheinmetal.tianshu.lab.LabModuleRegistration;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -245,7 +246,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-EXP-3";
         final String title = "a FULL-tier tool is invisible to a conservative caller and visible to a FULL one";
         return AcceptanceCase.of(id, title, () -> {
-            TianshuTools.register(new FullProbeTool());
+            TianshuTools.register(new FullProbeTool(), LabModuleRegistration.MOD_ID, CapabilitySharing.NONE);
             try {
                 ToolCaller conservative = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
                 ToolCaller full = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL);
@@ -311,7 +312,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-ARG-1";
         final String title = "a strict schema makes the validator refuse an undeclared field and name it";
         return AcceptanceCase.of(id, title, () -> {
-            TianshuTools.register(new StrictProbeTool());
+            TianshuTools.register(new StrictProbeTool(), LabModuleRegistration.MOD_ID, CapabilitySharing.NONE);
             try {
                 JsonObject args = new JsonObject();
                 args.addProperty("value", "kept");
@@ -376,7 +377,7 @@ public final class LabAcceptanceCases {
                 CapabilityCatalog.register(new CapabilityDescriptor(
                                 SKILL_PROBE, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
                                 "Registered by the lab acceptance run", ToolSide.CLIENT,
-                                ToolPermission.EVERYONE, "lab", new JsonObject()),
+                                ToolPermission.EVERYONE, LabModuleRegistration.MOD_ID, new JsonObject()),
                         (context, args) -> CompletableFuture.completedFuture(textEnvelope("acceptance skill body")));
                 long afterRegister = CapabilityCatalog.revision();
                 String text = CapabilityExposure.textOf(CapabilityCatalog
@@ -425,7 +426,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-AGT-1";
         final String title = "the agent session discovers, calls and reads through the live registry";
         return AcceptanceCase.of(id, title, () -> {
-            TianshuTools.register(new SessionProbeTool());
+            TianshuTools.register(new SessionProbeTool(), LabModuleRegistration.MOD_ID, CapabilitySharing.NONE);
             registerProbe(SESSION_SKILL_PROBE, CapabilityKind.SKILL, "agent probe body");
             try {
                 AgentSession session = AgentSession.client(ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY));
@@ -459,7 +460,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-AGT-2";
         final String title = "the session contract names the protocol and the in-flight limit";
         return AcceptanceCase.of(id, title, () -> {
-            TianshuTools.register(new SessionProbeTool());
+            TianshuTools.register(new SessionProbeTool(), LabModuleRegistration.MOD_ID, CapabilitySharing.NONE);
             try {
                 JsonObject contract = AgentSession.client(ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolCaller.DEFAULT_AUTONOMY)).describe();
                 String protocol = contract.has("protocol") ? contract.get("protocol").getAsString() : "";
@@ -640,7 +641,7 @@ public final class LabAcceptanceCases {
 
     private static CapabilityDescriptor probeDescriptor(CapabilityId probe, CapabilityKind kind, String description) {
         return new CapabilityDescriptor(probe, kind, CapabilityBinding.LOCAL, description, ToolSide.CLIENT,
-                ToolPermission.EVERYONE, "lab", new JsonObject());
+                ToolPermission.EVERYONE, LabModuleRegistration.MOD_ID, new JsonObject());
     }
 
     private static JsonObject readPage(int page) throws Exception {
@@ -1131,7 +1132,7 @@ public final class LabAcceptanceCases {
     }
 
     /**
-     * Every {@code body.*} tool is registered, documented, and answers with an envelope when called empty.
+     * Every {@code minecraft:entity.*} tool is registered, documented, and answers with an envelope when called empty.
      *
      * <p>Deliberately an envelope-level check: an empty argument object should be refused by the schema, and a refusal
      * is the evidence wanted here — it proves the tool is registered, reachable from a client caller and wired to the
@@ -1145,13 +1146,14 @@ public final class LabAcceptanceCases {
             List<ToolSpec> bodyTools = new ArrayList<>();
             ToolCaller caller = ToolCaller.player("lab", true);
             for (ToolSpec spec : TianshuTools.catalog(caller, ToolSide.CLIENT)) {
-                if (spec.id().toString().contains(":body.")) {
+                if (spec.id().namespace().equals("minecraft") && spec.id().name().startsWith("entity.")) {
                     bodyTools.add(spec);
                 }
             }
             if (bodyTools.isEmpty()) {
-                return AcceptanceOutcome.skip(id, title,
-                        "no body tool is registered on this side, so there is nothing to call");
+                return TianshuTools.serverAvailable()
+                        ? AcceptanceOutcome.fail(id, title, "the server advertised no entity tools")
+                        : AcceptanceOutcome.skip(id, title, "entity tools require a Ferry server");
             }
             List<String> undocumented = new ArrayList<>();
             boolean missingSchema = false;
@@ -1218,44 +1220,16 @@ public final class LabAcceptanceCases {
         });
     }
 
-    /**
-     * A block position outside the world border is refused as invalid arguments.
-     *
-     * <p>Found by schema rather than by id, so it cannot drift when a tool is renamed: the first body tool whose
-     * required fields are nothing but a position is the one to ask. A coordinate at 40,000,000 has to come back as
-     * {@code INVALID_ARGS} — the alternative, reaching the adapter, is an unexplainable failure somewhere else
-     * (`DEC-3`).</p>
-     */
+    /** A block position outside the world border is refused as invalid arguments. */
     private static AcceptanceCase aBodyCoordinateOutsideTheWorldIsRefused() {
         final String id = "ACC-BDY-2";
         final String title = "a body tool refuses a block position outside the world border";
         return AcceptanceCase.of(id, title, () -> {
-            ToolCaller caller = ToolCaller.player("lab", true);
-            ToolSpec target = null;
-            for (ToolSpec spec : TianshuTools.catalog(caller, ToolSide.CLIENT)) {
-                if (!spec.id().toString().contains(":body.") || spec.argsSchema() == null) {
-                    continue;
-                }
-                JsonObject schema = spec.argsSchema();
-                if (!schema.has("properties") || !schema.get("properties").isJsonObject()) {
-                    continue;
-                }
-                JsonObject properties = schema.getAsJsonObject("properties");
-                if (!properties.has("x") || !properties.has("y") || !properties.has("z")) {
-                    continue;
-                }
-                if (requiresMoreThan(schema, Set.of("x", "y", "z"))) {
-                    continue;
-                }
-                // A switched-off tool refuses before it validates anything, so the switch is handled by callEnabled.
-                target = spec;
-                break;
+            if (!TianshuTools.serverAvailable()) {
+                return AcceptanceOutcome.skip(id, title, "entity tools require a Ferry server");
             }
-            if (target == null) {
-                return AcceptanceOutcome.skip(id, title,
-                        "every body tool that takes a block position is operator-gated, so its validator cannot be "
-                                + "reached from a module-scoped caller");
-            }
+            ToolCaller caller = ToolCaller.body(AcceptanceBodies.BODY_ID, false);
+            ToolId target = ToolId.of("minecraft", "entity.look");
             JsonObject args = new JsonObject();
             args.addProperty("body", AcceptanceBodies.BODY_ID);
             args.addProperty("x", 40_000_000);
@@ -1264,10 +1238,10 @@ public final class LabAcceptanceCases {
             AcceptanceBodies bodies = new AcceptanceBodies(localPlayerId());
             Runnable unregister = EntityActors.register(bodies);
             try {
-                JsonObject envelope = callEnabled(target.id(), args, caller);
+                JsonObject envelope = call(target, args, caller);
                 String code = codeOf(envelope);
                 if ("INVALID_ARGS".equals(code)) {
-                    return AcceptanceOutcome.pass(id, title, target.id() + " refused the coordinate as INVALID_ARGS");
+                    return AcceptanceOutcome.pass(id, title, target + " refused the coordinate as INVALID_ARGS");
                 }
                 if ("UNAVAILABLE".equals(code) && shortEnvelope(envelope).contains("not present")) {
                     // The bench's body provider is a test double inside this process; a remote server has no such
@@ -1275,25 +1249,12 @@ public final class LabAcceptanceCases {
                     return AcceptanceOutcome.skip(id, title,
                             "the bench's body provider runs in this process, so a remote server has no such body");
                 }
-                return AcceptanceOutcome.fail(id, title, target.id() + " answered " + code + " instead"
+                return AcceptanceOutcome.fail(id, title, target + " answered " + code + " instead"
                         + "; envelope=" + shortEnvelope(envelope));
             } finally {
                 unregister.run();
             }
         });
-    }
-
-    /** Whether a schema demands anything besides the fields the caller intends to send. */
-    private static boolean requiresMoreThan(JsonObject schema, Set<String> provided) {
-        if (!schema.has("required") || !schema.get("required").isJsonArray()) {
-            return false;
-        }
-        for (com.google.gson.JsonElement required : schema.getAsJsonArray("required")) {
-            if (!required.isJsonPrimitive() || !provided.contains(required.getAsString())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -1990,9 +1951,6 @@ public final class LabAcceptanceCases {
 
     /**
      * Calls a tool that ships switched off, turning it on for this one call and restoring it afterwards.
-     *
-     * <p>Body tools are write tools, so they ship off; a switched-off tool refuses before it validates or resolves
-     * anything, which would make a case pass for the wrong reason. The switch is restored in a finally.</p>
      */
     private static JsonObject callEnabled(ToolId tool, JsonObject args, ToolCaller caller) throws Exception {
         boolean wasEnabled = TianshuTools.isEnabled(tool);
@@ -2141,6 +2099,9 @@ public final class LabAcceptanceCases {
         final String id = "ACC-PLC-1";
         final String title = "a placement line refuses an unknown direction as INVALID_ARGS";
         return AcceptanceCase.of(id, title, () -> {
+            if (!TianshuTools.serverAvailable()) {
+                return AcceptanceOutcome.skip(id, title, "entity tools require a Ferry server");
+            }
             AcceptanceBodies bodies = new AcceptanceBodies(localPlayerId());
             Runnable unregister = EntityActors.register(bodies);
             try {
@@ -2152,18 +2113,12 @@ public final class LabAcceptanceCases {
                 args.addProperty("z", 0);
                 args.addProperty("direction", "sideways");
                 args.addProperty("count", 3);
-                JsonObject envelope = callEnabled(ToolId.of("minecraft", "block.place.line"), args,
+                JsonObject envelope = call(ToolId.of("minecraft", "entity.place.line"), args,
                         ToolCaller.body(AcceptanceBodies.BODY_ID, true));
                 String code = codeOf(envelope);
                 if ("INVALID_ARGS".equals(code)) {
                     return AcceptanceOutcome.pass(id, title,
                             "the unknown direction is refused before any block is placed");
-                }
-                if ("DISABLED".equals(code)) {
-                    return AcceptanceOutcome.skip(id, title, "the server has the block place switch off");
-                }
-                if ("NO_PERMISSION".equals(code)) {
-                    return AcceptanceOutcome.skip(id, title, "the local player is not an operator in this world");
                 }
                 return AcceptanceOutcome.fail(id, title, "expected INVALID_ARGS, got " + code + " "
                         + shortEnvelope(envelope));

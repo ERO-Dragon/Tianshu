@@ -1,11 +1,15 @@
 package com.rheinmetal.tianshu.dubhe.agent.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import org.junit.jupiter.api.BeforeEach;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.dubhe.DubheModule;
 import com.rheinmetal.tianshu.dubhe.DubheTurnCancellation;
 import com.rheinmetal.tianshu.dubhe.agent.llm.DubheLlmRequestHandler;
 import com.rheinmetal.tianshu.weaving.contract.LLMPromptRequestPayload;
@@ -25,6 +29,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheToolRoundHandlerTest {
 
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare(DubheModule.MOD_ID, CapabilitySubscription.openedAtomic());
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw(DubheModule.MOD_ID);
+    }
+
+
     private static final ToolId ECHO = ToolId.of("test", "echo");
 
     @AfterEach
@@ -39,7 +54,7 @@ class DubheToolRoundHandlerTest {
     }
 
     private static void registerEcho() {
-        TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
+        TianshuTools.registerBuiltin(new TianshuTool<JsonObject, JsonObject>() {
             @Override
             public ToolId id() {
                 return ECHO;
@@ -111,7 +126,9 @@ class DubheToolRoundHandlerTest {
         assertNotNull(submitted.get(), "a tool call must submit the next request");
         assertNull(delivered.get(), "the call itself is not spoken");
         assertTrue(submitted.get().messages().get(3).content().contains("tool result"));
-        assertTrue(submitted.get().messages().get(3).content().contains("\"ownerModule\":\"tianshu\""));
+        // The tool echoes the caller's id, so the expectation follows the module's constant rather than a copy.
+        assertTrue(submitted.get().messages().get(3).content()
+                .contains("\"ownerModule\":\"" + DubheModule.MOD_ID + "\""));
 
         handler.onResult(LLMPromptResultPayload.completed("req", "You said hi."));
         assertEquals("You said hi.", delivered.get().text());

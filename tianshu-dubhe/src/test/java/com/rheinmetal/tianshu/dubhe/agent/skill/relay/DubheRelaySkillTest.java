@@ -1,5 +1,10 @@
 package com.rheinmetal.tianshu.dubhe.agent.skill.relay;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -21,6 +26,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheRelaySkillTest {
+
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare("dubhe", CapabilitySubscription.openedAtomic());
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw("dubhe");
+    }
+
 
     private static final DubheScope SCOPE =
             new DubheScope("player", "world", "World", DubheScopeKind.LOCAL_WORLD, true);
@@ -74,7 +90,7 @@ class DubheRelaySkillTest {
     void anUnconfirmedTierAsksFirstAndCallsNothing() {
         ToolId id = ToolId.of("mymod", "consent_task");
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
+        TianshuTools.registerBuiltin(new TianshuTool<JsonObject, JsonObject>() {
             @Override public ToolId id() { return id; }
             @Override public ToolCategory category() { return ToolCategory.LOCAL; }
             @Override public String description() { return "consent test reader"; }
@@ -145,7 +161,7 @@ class DubheRelaySkillTest {
                         com.rheinmetal.tianshu.api.tool.ToolSide.CLIENT,
                         com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE,
                         "other.mod",
-                        new JsonObject()),
+                        CapabilitySharing.ALL.into(new JsonObject())),
                 (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
         try {
             DubheSkill skill = new DubheRelaySkill(
@@ -176,6 +192,7 @@ class DubheRelaySkillTest {
         com.rheinmetal.tianshu.api.capability.CapabilityId miner =
                 com.rheinmetal.tianshu.api.capability.CapabilityId.of("othermod", "miner");
         JsonObject attributes = new JsonObject();
+        CapabilitySharing.ALL.into(attributes);
         attributes.addProperty("schemaVersion", 1);
         attributes.addProperty("inputs", "block position + face");
         com.rheinmetal.tianshu.api.capability.CapabilityCatalog.register(
@@ -207,7 +224,7 @@ class DubheRelaySkillTest {
     }
 
     private static void register(ToolId id, String state) {
-        TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
+        TianshuTools.registerBuiltin(new TianshuTool<JsonObject, JsonObject>() {
             @Override
             public ToolId id() {
                 return id;

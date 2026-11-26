@@ -32,7 +32,7 @@ class DubheSharedSkillReaderTest {
 
     @Test
     void readsASharedSkillThroughThePlatformTool() {
-        TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
+        TianshuTools.registerBuiltin(new TianshuTool<JsonObject, JsonObject>() {
             @Override public ToolId id() { return READ; }
             @Override public ToolCategory category() { return ToolCategory.LOCAL; }
             @Override public String description() { return "test capability reader"; }
@@ -46,17 +46,17 @@ class DubheSharedSkillReaderTest {
         });
 
         JsonObject args = new JsonObject();
-        args.addProperty("id", "minecraft:player-tools");
+        args.addProperty("id", "tianshu:player-tools");
         JsonObject result = DubheSharedSkillReader.skill().executor().execute(CONTEXT, args).join();
 
         assertEquals("OK", result.get("outcome").getAsString());
-        assertEquals("共享技能：minecraft:player-tools", result.get("text").getAsString());
+        assertEquals("共享技能：tianshu:player-tools", result.get("text").getAsString());
     }
 
     @Test
     void aMissingPlatformToolIsReportedAsFailure() {
         JsonObject args = new JsonObject();
-        args.addProperty("id", "minecraft:player-tools");
+        args.addProperty("id", "tianshu:player-tools");
         JsonObject result = DubheSharedSkillReader.skill().executor().execute(CONTEXT, args).join();
 
         assertEquals("FAILED", result.get("outcome").getAsString());

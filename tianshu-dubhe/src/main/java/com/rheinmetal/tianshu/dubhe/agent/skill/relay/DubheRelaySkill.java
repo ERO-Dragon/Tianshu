@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.dubhe.agent.skill.relay;
 
+import com.rheinmetal.tianshu.api.capability.CapabilityAccess;
 import com.rheinmetal.tianshu.dubhe.DubheModule;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -158,7 +159,8 @@ public final class DubheRelaySkill {
             return described(descriptor);
         }
         var connector = CapabilityCatalog.find(id.capabilityId()).orElse(null);
-        if (connector != null && CapabilityKind.CONNECTOR.equals(connector.kind())
+        if (connector != null && CapabilityAccess.visibleTo(connector, effectiveCaller())
+                && CapabilityKind.CONNECTOR.equals(connector.kind())
                 && connector.attributes().has("taskEntry")
                 && connector.attributes().get("taskEntry").getAsBoolean()) {
             return described(connector);
@@ -191,7 +193,7 @@ public final class DubheRelaySkill {
         }
         com.google.gson.JsonArray taskEntries = new com.google.gson.JsonArray();
         for (CapabilityDescriptor descriptor : CapabilityCatalog.list()) {
-            if (!CapabilityKind.CONNECTOR.equals(descriptor.kind())) {
+            if (!CapabilityKind.CONNECTOR.equals(descriptor.kind()) || !CapabilityAccess.visibleTo(descriptor, effectiveCaller())) {
                 continue;
             }
             if (!"dubhe".equals(descriptor.provider())) {

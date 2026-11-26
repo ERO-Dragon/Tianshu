@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.dubhe.agent.skill.host;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import org.junit.jupiter.api.BeforeEach;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -24,6 +27,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DubheHostToolSkillsTest {
+
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare("dubhe", CapabilitySubscription.openedAtomic());
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw("dubhe");
+    }
+
 
     private static final ToolId ECHO = ToolId.of("tianshu", "test.echo");
     private static final ToolId DISABLED = ToolId.of("tianshu", "test.disabled");
@@ -75,7 +89,7 @@ class DubheHostToolSkillsTest {
     }
 
     private static void register(ToolId id, ToolAutonomy autonomy) {
-        TianshuTools.register(new TianshuTool<JsonObject, JsonObject>() {
+        TianshuTools.registerBuiltin(new TianshuTool<JsonObject, JsonObject>() {
             @Override public ToolId id() { return id; }
             @Override public ToolCategory category() { return ToolCategory.LOCAL; }
             @Override public String description() { return "test tool " + id; }
