@@ -141,6 +141,7 @@ public final class LabAcceptanceCases {
         cases.add(anActionReachesTheServerAndComesBackExecuted());
         cases.add(anActionIsRefusedByTheServerSwitchWhenItsOff());
         cases.add(anActionWithBadArgumentsIsRefusedByTheServerSideValidation());
+        cases.add(everyServerActionAnswersForItself());
         cases.add(theOpenContainerComesBackAsAValue());
         cases.add(handingItemsOverNeedsAReceiver());
         cases.add(aPlacementLineNeedsAKnownDirection());
@@ -1930,6 +1931,75 @@ public final class LabAcceptanceCases {
                         "the action was refused as NO_PERMISSION: " + detail(envelope));
             }
             return AcceptanceOutcome.fail(id, title, "expected INVALID_ARGS, got " + code + " " + detail(envelope));
+        });
+    }
+
+    /** Builds a call's arguments from name/value pairs; numbers and strings both go through here. */
+    private static JsonObject args(Object... pairs) {
+        JsonObject args = new JsonObject();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            String name = String.valueOf(pairs[i]);
+            Object value = pairs[i + 1];
+            if (value instanceof Number number) {
+                args.addProperty(name, number);
+            } else {
+                args.addProperty(name, String.valueOf(value));
+            }
+        }
+        return args;
+    }
+
+    /**
+     * Every whitelisted server action answers for itself.
+     *
+     * <p>Three call-outs already cover the chain once each — executed, refused by the switch, refused by the server's
+     * own validation. The other eleven executors are their own code, and an executor that was renamed, dropped or
+     * never wired answers here as UNKNOWN or FAILED instead of passing because nobody asked it anything.</p>
+     */
+    private static AcceptanceCase everyServerActionAnswersForItself() {
+        final String id = "ACC-ACT-4";
+        final String title = "every server action either runs or is refused by its own gate";
+        return AcceptanceCase.of(id, title, () -> {
+            if (localPlayerId() == null) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no server component");
+            }
+            java.util.LinkedHashMap<String, JsonObject> samples = new java.util.LinkedHashMap<>();
+            samples.put("server.teleport", args("x", 0, "y", 70, "z", 0));
+            samples.put("server.weather", args("weather", "clear"));
+            samples.put("server.time", args("time", "day"));
+            samples.put("server.give", args("item", "minecraft:stone", "count", 1));
+            samples.put("server.spawn_entity", args("type", "minecraft:pig", "count", 1));
+            samples.put("server.broadcast", args("text", "tianshu acceptance"));
+            samples.put("server.gamemode", args("value", "creative"));
+            samples.put("server.effect", args("effect", "minecraft:speed", "seconds", 1, "amplifier", 0));
+            samples.put("server.xp", args("levels", 0));
+            samples.put("server.setblock", args("x", 0, "y", 70, "z", 0, "block", "minecraft:air"));
+            samples.put("server.kill", args("id", "00000000-0000-0000-0000-000000000000"));
+            samples.put("server.enchant", args("enchantment", "minecraft:sharpness", "level", 1));
+            samples.put("server.difficulty", args("value", "normal"));
+            samples.put("server.gamerule", args("rule", "doDaylightCycle", "value", "true"));
+
+            List<String> unexpected = new ArrayList<>();
+            int executed = 0;
+            int refused = 0;
+            for (Map.Entry<String, JsonObject> sample : samples.entrySet()) {
+                JsonObject envelope = callEnabled(ToolId.of("minecraft", sample.getKey()), sample.getValue(),
+                        ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL));
+                String code = codeOf(envelope);
+                if (envelope.has("ok") && envelope.get("ok").getAsBoolean()) {
+                    executed++;
+                } else if ("DISABLED".equals(code) || "INVALID_ARGS".equals(code)) {
+                    // Its own switch, or its own validator: both are the action answering, not the action missing.
+                    refused++;
+                } else {
+                    unexpected.add(sample.getKey() + " -> " + code + " " + detail(envelope));
+                }
+            }
+            if (!unexpected.isEmpty()) {
+                return AcceptanceOutcome.fail(id, title, "these actions did not answer for themselves: " + unexpected);
+            }
+            return AcceptanceOutcome.pass(id, title,
+                    executed + " executed, " + refused + " refused by their own switch or validator");
         });
     }
 
