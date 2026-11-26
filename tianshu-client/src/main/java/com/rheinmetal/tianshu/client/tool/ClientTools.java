@@ -50,7 +50,6 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyMachineTool());
         ServerToolDeclarations.declare(new BlockInspectTool());
         ServerToolDeclarations.declare(new BodyBlockInspectTool());
-        ServerToolDeclarations.declare(new BlockBreakTool());
         ServerToolDeclarations.declare(new CommandRunTool());
         ServerToolDeclarations.declare(new BodyCommandRunTool());
         ServerToolDeclarations.declare(new EntityInspectTool());
@@ -63,9 +62,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyWorldLocateTool());
         ServerToolDeclarations.declare(new CraftAvailableTool());
         ServerToolDeclarations.declare(new BodyCraftAvailableTool());
-        ServerToolDeclarations.declare(new BlockPlaceTool());
         ServerToolDeclarations.declare(new BodyPlaceTool());
-        ServerToolDeclarations.declare(new BlockPlaceLineTool());
         ServerToolDeclarations.declare(new BodyPlaceLineTool());
         ServerToolDeclarations.declare(new BodyListTool());
         ServerToolDeclarations.declare(new BodyMoveTool());

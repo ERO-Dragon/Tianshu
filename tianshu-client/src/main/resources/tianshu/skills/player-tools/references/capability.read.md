@@ -5,7 +5,7 @@
 ## 调用
 
 ```json
-{"id":"minecraft:capability.read","args":{"id":"minecraft:block.break"}}
+{"id":"minecraft:capability.read","args":{"id":"minecraft:block.interact"}}
 ```
 
 ## 返回

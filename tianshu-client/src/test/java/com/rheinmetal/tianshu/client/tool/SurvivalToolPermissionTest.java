@@ -24,8 +24,7 @@ class SurvivalToolPermissionTest {
             new CraftRecipeTool(),
             new ContainerTransferTool(),
             new BlockMachineTool(),
-            new BlockInteractTool(),
-            new BlockPlaceTool());
+            new BlockInteractTool());
 
     /** What the player could do by hand: callable by them, and offered without anyone configuring it. */
     @Test

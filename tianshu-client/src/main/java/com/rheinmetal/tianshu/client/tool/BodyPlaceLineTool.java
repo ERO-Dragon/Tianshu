@@ -14,9 +14,10 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Places a line of the same item from a body's inventory into the world.
  *
- * <p>Body side of the split pair; {@link BlockPlaceLineTool} is the player side. The world operation itself lives in
- * {@link PlaceLineOps}: this tool only adapts its arguments and calls in. A body places with its own reach, its own
- * drops and its own holding rules, which is why the actor is not optional here.</p>
+ * <p>There is no player-side twin on purpose: building a line of blocks by hand is yours to do, so the platform does
+ * not offer it. The world operation lives in {@link PlaceLineOps}: this tool only adapts its arguments and calls in.
+ * A body places with its own reach, its own drops and its own holding rules, which is why the actor is not optional
+ * here.</p>
  */
 public final class BodyPlaceLineTool implements
         TianshuTool<BodyPlaceLineTool.Args, PlaceLineOps.Placed> {

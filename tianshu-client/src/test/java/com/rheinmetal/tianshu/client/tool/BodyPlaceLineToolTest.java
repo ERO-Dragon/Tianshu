@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Failing the whole call because the last block did not land would throw away what the model needs most: how much
  * of the line exists now.</p>
  */
-class BlockPlaceLineToolTest {
+class BodyPlaceLineToolTest {
 
     private static final String BODY = "lab:builder";
     private static final int LIMIT = 2;
@@ -38,16 +38,13 @@ class BlockPlaceLineToolTest {
     @BeforeEach
     void setUp() {
         unregister = TestBodies.register(BODY, com.rheinmetal.tianshu.api.entity.EntityCapability.PLACE);
-        TianshuTools.register(new BlockPlaceLineTool());
         TianshuTools.register(new BodyPlaceLineTool());
-        TianshuTools.setEnabled(BlockPlaceLineTool.ID, true);
         TianshuTools.setEnabled(BodyPlaceLineTool.ID, true);
     }
 
     @AfterEach
     void clean() {
-        TianshuTools.clearEnabledOverride(BlockPlaceLineTool.ID);
-        TianshuTools.unregister(BlockPlaceLineTool.ID);
+        TianshuTools.clearEnabledOverride(BodyPlaceLineTool.ID);
         TianshuTools.unregister(BodyPlaceLineTool.ID);
         unregister.run();
         TianshuRuntimePorts.clear();

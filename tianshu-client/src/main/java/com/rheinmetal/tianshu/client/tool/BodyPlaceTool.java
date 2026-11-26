@@ -16,9 +16,10 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Places one item from a body's inventory into the world.
  *
- * <p>Body side of the split pair; {@link BlockPlaceTool} is the player side. The world operation itself lives in
- * {@link PlaceOps}: this tool only adapts its arguments and calls in. A carrier places with its own reach, its own
- * drops and its own holding rules, which is why the actor is not optional here.</p>
+ * <p>There is no player-side twin on purpose: putting a block into the world with your own hands is yours to do, so the
+ * platform does not offer it. The world operation lives in {@link PlaceOps}: this tool only adapts its arguments and
+ * calls in. A carrier places with its own reach, its own drops and its own holding rules, which is why the actor is not
+ * optional here.</p>
  */
 public final class BodyPlaceTool implements TianshuTool<BodyPlaceTool.Args, BlockPlaceResult> {
 

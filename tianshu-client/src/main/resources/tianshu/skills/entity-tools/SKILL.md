@@ -12,8 +12,10 @@ description: Minecraft 实体侧工具：让身体（实体化身）代替玩家
 以**玩家本人**身份行动的那一套是 `minecraft:player-tools`。两者**互斥**：
 
 - 本组每个工具都由**身体**执行，`body` 参数必填（你自己就是那具身体时可以省略）；
-- 同一个动作在那边有另一个 id：`entity.place` ↔ `block.place`、`entity.transfer` ↔ `container.transfer`、
-  `entity.craft` ↔ `craft.recipe`、`entity.mine` ↔ `block.break`……那一边以玩家身份执行，用的不是这具身体的背包与权限；
+- 同一个动作在那边有另一个 id：`entity.interact` ↔ `block.interact`、`entity.transfer` ↔ `container.transfer`、
+  `entity.craft` ↔ `craft.recipe`……那一边以玩家身份执行，用的不是这具身体的背包与权限；
+- 放方块、拆方块、用物品这三件事**只有本组有**：玩家的那两只手由玩家自己用，平台不替他做。
+  这具身体做这些用的也是**它自己的**背包、够得着的范围与权限；
 - 你看不到的那一套不会出现在工具表里——不是坏了，是不适用。
 
 ## 动手之前
