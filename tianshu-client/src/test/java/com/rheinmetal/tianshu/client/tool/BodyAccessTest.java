@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
@@ -33,6 +36,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BodyAccessTest {
 
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare("module.test", CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+        CapabilitySubscriptions.declare("module.other", CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw("module.test");
+        CapabilitySubscriptions.withdraw("module.other");
+    }
+
+
     private final AtomicBoolean motionReached = new AtomicBoolean();
 
     @BeforeEach
@@ -59,7 +75,7 @@ class BodyAccessTest {
     }
 
     private void enable() {
-        TianshuTools.register(new BodyMoveTool());
+        TianshuTools.registerBuiltin(new BodyMoveTool());
         TianshuTools.setEnabled(BodyMoveTool.ID, true);
     }
 

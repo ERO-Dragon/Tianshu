@@ -1,6 +1,9 @@
 ---
 name: player-tools
 description: Minecraft 玩家侧工具：以玩家本人身份的读写调用（方块、容器、合成、实体、物品、客户端设置、世界信息、查询、全权动作）。当你要以玩家身份调用某个工具、不确定参数或返回字段时读它——一个工具一份 reference，文件名就是工具 id。
+metadata:
+  share: all
+  references: tools
 ---
 # 玩家侧工具
 
@@ -9,7 +12,7 @@ description: Minecraft 玩家侧工具：以玩家本人身份的读写调用（
 
 ## 与 entity-tools 互斥
 
-通过**身体**（实体化身）行动的那一套是 `minecraft:entity-tools`。两者**互斥**：
+通过**身体**（实体化身）行动的那一套是 `tianshu:entity-tools`。两者**互斥**：
 
 - 本组每个工具都以**你（玩家）**的身份执行，参数里没有 `body`；
 - 同一个动作在那边有另一个 id：`block.interact` ↔ `entity.interact`、`container.transfer` ↔ `entity.transfer`、
@@ -58,7 +61,7 @@ description: Minecraft 玩家侧工具：以玩家本人身份的读写调用（
 ## 参考资料
 
 `references/` 下每个工具一份，文件名就是去掉命名空间的工具 id（`container.transfer.md`）。
-用 `minecraft:capability.read` 带工具 id 读最省事：
+订阅本技能即可读这份入口说明。每个工具单独订阅，订阅后可用舟楫统一的 `minecraft:capability.read` 读取该工具的 reference，例如
 
 ```json
 {"id":"minecraft:capability.read","args":{"id":"minecraft:container.transfer"}}

@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.client.tool.skill;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import org.junit.jupiter.api.BeforeEach;
 import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 
 import com.google.gson.JsonObject;
@@ -26,6 +29,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Common SKILL.md format, namespaced ids, duplicate detection and progressive disclosure. */
 class SkillFileProviderTest {
+
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare("tianshu", CapabilitySubscription.atomicFrom(CapabilitySharing.USER_PROVIDER));
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw("tianshu");
+    }
+
 
     @TempDir
     Path root;
@@ -114,7 +128,7 @@ class SkillFileProviderTest {
 
     @Test
     void builtInSkillsComeFromTheClasspath() throws Exception {
-        provider = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
+        provider = SkillFileProvider.installClasspath("tianshu", "minecraft", "tianshu/skills");
         CapabilityId id = CapabilityId.of("tianshu", "player-tools");
         assertTrue(CapabilityCatalog.find(id).isPresent(), "the classpath index must list the built-in skill");
         assertEquals("tianshu", CapabilityCatalog.find(id).orElseThrow().provider(),
@@ -122,7 +136,7 @@ class SkillFileProviderTest {
         assertTrue(text(invoke(id, new JsonObject())).contains("玩家侧工具"));
         JsonObject reference = new JsonObject();
         reference.addProperty("file", "references/recipe.query.md");
-        assertTrue(text(invoke(id, reference)).contains("recipe.query"), "references are read on demand");
+        assertFalse(invoke(id, reference).get("ok").getAsBoolean(), "an unavailable tool has no public attachment");
     }
 
     @Test

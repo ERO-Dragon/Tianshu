@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
@@ -21,7 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ServerToolDeclarations {
 
-    private static final Map<ToolId, TianshuTool<?, ?>> DECLARED = new ConcurrentHashMap<>();
+    private record Declaration(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
+    }
+
+    private static final Map<ToolId, Declaration> DECLARED = new ConcurrentHashMap<>();
     private static final Set<ToolId> ACTIVATED = ConcurrentHashMap.newKeySet();
     private static final Set<ToolId> REGISTERED = ConcurrentHashMap.newKeySet();
 
@@ -30,9 +34,17 @@ public final class ServerToolDeclarations {
 
     /** Publishes a declaration. The server implementation is a separate object on the server side. */
     public static void declare(TianshuTool<?, ?> tool) {
-        Objects.requireNonNull(tool, "tool");
-        TianshuTool<?, ?> existing = DECLARED.putIfAbsent(tool.id(), tool);
-        if (existing != null && existing != tool) {
+        declare(tool, tool.id().namespace(), CapabilitySharing.NONE);
+    }
+
+    static void declareBuiltin(TianshuTool<?, ?> tool) {
+        declare(tool, CapabilitySharing.BASE_PROVIDER, CapabilitySharing.ALL);
+    }
+
+    public static void declare(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
+        var declaration = new Declaration(tool, Objects.requireNonNull(provider), Objects.requireNonNull(sharing));
+        var existing = DECLARED.putIfAbsent(tool.id(), declaration);
+        if (existing != null && !existing.equals(declaration)) {
             throw new IllegalArgumentException("server tool " + tool.id() + " is already declared");
         }
     }
@@ -40,7 +52,7 @@ public final class ServerToolDeclarations {
     /** Epoch 3 originally sent IDs alone. Use the switch the client declaration supplied before servers reported it. */
     public static ToolCatalogEntry legacyEntry(String id) {
         var declaration = DECLARED.get(ToolId.parse(id));
-        return new ToolCatalogEntry(id, declaration != null && declaration.policy().enabledByDefault());
+        return new ToolCatalogEntry(id, declaration != null && declaration.tool().policy().enabledByDefault());
     }
 
     /** Registers the declarations the server named. Unknown ids are skipped; repeats are idempotent. */
@@ -58,12 +70,12 @@ public final class ServerToolDeclarations {
             } catch (IllegalArgumentException malformed) {
                 continue;
             }
-            TianshuTool<?, ?> declaration = DECLARED.get(id);
+            Declaration declaration = DECLARED.get(id);
             if (declaration == null) {
                 continue;
             }
             if (ACTIVATED.add(id) && TianshuTools.find(id) == null) {
-                TianshuTools.register(declaration);
+                TianshuTools.register(declaration.tool(), declaration.provider(), declaration.sharing());
                 REGISTERED.add(id);
             }
             // The server owns the switch: it is the side that holds the world, the permissions and the workload.

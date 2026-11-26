@@ -53,7 +53,7 @@ class CraftRecipeToolTest {
     void aPlayerMayCraftWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(CraftPort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new CraftResult("minecraft:iron_pickaxe", 1, true, "crafted")));
-        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.registerBuiltin(new CraftRecipeTool());
 
         JsonObject crafted = envelope("{\"recipeId\":\"minecraft:iron_pickaxe\"}", ToolCaller.player("p", true));
         assertTrue(crafted.get("ok").getAsBoolean());
@@ -76,7 +76,7 @@ class CraftRecipeToolTest {
                 return CompletableFuture.completedFuture(new CraftResult("minecraft:stick", 4, true, "crafted"));
             }
         });
-        TianshuTools.register(new BodyCraftTool());
+        TianshuTools.registerBuiltin(new BodyCraftTool());
         TianshuTools.setEnabled(BodyCraftTool.ID, true);
         TestBodies.register("body-1", EntityCapability.INVENTORY);
 
@@ -91,7 +91,7 @@ class CraftRecipeToolTest {
 
     @Test
     void aBodyWithoutAnInventoryCannotCraft() throws Exception {
-        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.registerBuiltin(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);
         TestBodies.register("float", EntityCapability.MOVE, EntityCapability.LOOK);
 
@@ -102,7 +102,7 @@ class CraftRecipeToolTest {
 
     @Test
     void anUnknownBodyIsUnavailable() throws Exception {
-        TianshuTools.register(new BodyCraftTool());
+        TianshuTools.registerBuiltin(new BodyCraftTool());
         TianshuTools.setEnabled(BodyCraftTool.ID, true);
 
         JsonObject refused = TianshuTools
@@ -117,7 +117,7 @@ class CraftRecipeToolTest {
     void aRefusedCraftIsAFailedCall() throws Exception {
         TianshuRuntimePorts.register(CraftPort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new CraftResult("", 0, false, "a crafting table is required nearby")));
-        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.registerBuiltin(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);
 
         JsonObject refused = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.player("p", true));
@@ -128,7 +128,7 @@ class CraftRecipeToolTest {
 
     @Test
     void anAgentIsSentToTheEntitySide() throws Exception {
-        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.registerBuiltin(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);
 
         JsonObject denied = envelope("{\"recipeId\":\"minecraft:iron_pickaxe\"}", ToolCaller.agent(false));
@@ -139,7 +139,7 @@ class CraftRecipeToolTest {
 
     @Test
     void aBlankRecipeIdIsInvalid() throws Exception {
-        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.registerBuiltin(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);
 
         JsonObject invalid = envelope("{\"recipeId\":\"  \"}", ToolCaller.player("p", true));
@@ -149,7 +149,7 @@ class CraftRecipeToolTest {
 
     @Test
     void withoutAPortTheToolReportsUnavailable() throws Exception {
-        TianshuTools.register(new CraftRecipeTool());
+        TianshuTools.registerBuiltin(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);
 
         JsonObject result = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.player("p", true));

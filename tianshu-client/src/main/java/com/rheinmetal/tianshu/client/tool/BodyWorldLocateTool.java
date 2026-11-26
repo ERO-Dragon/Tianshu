@@ -2,10 +2,12 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.game.LocateResult;
+import com.rheinmetal.tianshu.api.game.LocateRequest;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.api.tool.ToolPolicy;
 
 import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
@@ -19,14 +21,20 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class BodyWorldLocateTool implements TianshuTool<BodyWorldLocateTool.Args, LocateResult> {
 
-    public static final ToolId ID = ToolId.of("minecraft", "entity.world.locate");
+    public static final ToolId LOCATE = ToolId.of("minecraft", "entity.world.locate");
+    public static final ToolId SURVEY = ToolId.of("minecraft", "entity.world.survey");
+    private final LocateRequest.Scope searchScope;
+
+    public BodyWorldLocateTool(LocateRequest.Scope searchScope) {
+        this.searchScope = java.util.Objects.requireNonNull(searchScope);
+    }
 
     public record Args(String body, String structure, String biome, Integer radius) {
     }
 
     @Override
     public ToolId id() {
-        return ID;
+        return searchScope == LocateRequest.Scope.GENERATED ? LOCATE : SURVEY;
     }
 
     @Override
@@ -35,9 +43,14 @@ public final class BodyWorldLocateTool implements TianshuTool<BodyWorldLocateToo
     }
 
     @Override
+    public ToolPolicy policy() {
+        return WorldLocateOps.POLICY;
+    }
+
+    @Override
     public String description() {
-        return "Finds the nearest structure or biome of an id, from an agent body's position. Give exactly one of "
-                + "structure/biome.";
+        return "Locate a structure or sample a biome from the NPC position. "
+                + WorldLocateOps.describeScope(searchScope);
     }
 
     @Override
@@ -54,12 +67,7 @@ public final class BodyWorldLocateTool implements TianshuTool<BodyWorldLocateToo
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
         properties.add("body", BodyToolSchemas.body());
-        properties.add("structure", BodyToolSchemas.text(
-                "Structure id to find, for example minecraft:village_plains"));
-        properties.add("biome", BodyToolSchemas.text(
-                "Biome id to find, for example minecraft:desert"));
-        properties.add("radius", BodyToolSchemas.integer(
-                "Search radius in blocks; defaults to 256, biomes sample at most 4096 positions"));
+        WorldLocateOps.describeSearch(properties);
         return BodyToolSchemas.object(properties);
     }
 
@@ -69,6 +77,6 @@ public final class BodyWorldLocateTool implements TianshuTool<BodyWorldLocateToo
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return WorldLocateOps.locate(scope.actor(), args.structure(), args.biome(), args.radius());
+        return WorldLocateOps.locate(context.cancellation(), scope.actor(), searchScope, args.structure(), args.biome(), args.radius());
     }
 }

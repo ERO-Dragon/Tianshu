@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.tool.CancellationSignal;
+import com.rheinmetal.tianshu.api.tool.ToolPolicy;
+import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.game.LocateRequest;
@@ -22,17 +26,36 @@ import java.util.concurrent.CompletableFuture;
  */
 final class WorldLocateOps {
 
+    static final ToolPolicy POLICY = ToolPolicy.forCategory(ToolCategory.SERVER_READ).withTimeout(WorldLocatePort.TIMEOUT_MILLIS);
+
+    static String describeScope(LocateRequest.Scope scope) {
+        return scope == LocateRequest.Scope.GENERATED
+                ? "Search fully generated chunks, including unloaded chunks in this save."
+                : "Search the world, including terrain that has never been generated.";
+    }
+
+    static void describeSearch(JsonObject properties) {
+        properties.add("structure", BodyToolSchemas.text("Structure id to find, for example minecraft:village_plains"));
+        properties.add("biome", BodyToolSchemas.text("Biome id to find, for example minecraft:desert"));
+        JsonObject radius = BodyToolSchemas.integer("Horizontal search radius in blocks");
+        radius.addProperty("minimum", 1);
+        radius.addProperty("maximum", LocateRequest.MAX_RADIUS_BLOCKS);
+        radius.addProperty("default", LocateRequest.DEFAULT_RADIUS_BLOCKS);
+        properties.add("radius", radius);
+    }
+
     private WorldLocateOps() {
     }
 
-    static CompletableFuture<LocateResult> locate(ActorRef actor, String structure, String biome, Integer radius) {
-        LocateRequest request = new LocateRequest(structure, biome, radius == null ? 0 : radius);
+    static CompletableFuture<LocateResult> locate(CancellationSignal cancellation, ActorRef actor, LocateRequest.Scope scope, String structure,
+                                                  String biome, Integer radius) {
+        LocateRequest request = new LocateRequest(structure, biome, radius == null ? LocateRequest.DEFAULT_RADIUS_BLOCKS : radius, scope);
         if (!request.singleTarget()) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "world.locate needs exactly one of: a structure id or a biome id"));
         }
         return TianshuRuntimePorts.find(WorldLocatePort.class)
-                .map(port -> port.locate(actor, request)
+                .map(port -> port.locate(actor, request, cancellation)
                         .thenCompose(result -> result.searched()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,

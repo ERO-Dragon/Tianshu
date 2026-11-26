@@ -153,7 +153,7 @@ public final class TianshuClientRuntime implements ClientRuntimeLifecycle {
 
     private void installContentProviders() {
         installOptional("built-in skills",
-                () -> builtInSkills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills"));
+                () -> builtInSkills = SkillFileProvider.installClasspath("tianshu", "minecraft", "tianshu/skills"));
         installOptional("user skills",
                 () -> skills = SkillFileProvider.install("user", Path.of("config", "Tianshu", "skills")));
         installOptional("built-in resources", () -> builtInResources = TextCapabilityProvider.installClasspath(

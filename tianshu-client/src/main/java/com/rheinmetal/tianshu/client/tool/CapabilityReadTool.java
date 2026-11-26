@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.CapabilityAccess;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityExposure;
@@ -13,6 +14,8 @@ import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
+import com.rheinmetal.tianshu.api.tool.ToolException;
+import com.rheinmetal.tianshu.api.tool.ToolError;
 
 import java.lang.reflect.Type;
 import java.util.Optional;
@@ -22,12 +25,11 @@ import java.util.concurrent.CompletableFuture;
  * Reads a non-tool capability: a skill's text, a resource, a prompt template.
  *
  * <p>With no id it lists what the caller may read; with an id it resolves it through the capability table and
- * returns the text. Tools are refused on purpose — they have their own typed call path and executing one through
- * this tool would duplicate policy and results.</p>
+ * returns the text. For a tool it reads the attached reference without executing the tool.</p>
  */
 public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.Request, CapabilityReadTool.Reply> {
 
-    public static final ToolId ID = ToolId.of("minecraft", "capability.read");
+    public static final ToolId ID = ToolId.parse(CapabilityAccess.DOCUMENT_READER.toString());
 
     public record Request(String id, JsonObject arguments, String file, Integer page) {
     }
@@ -49,7 +51,7 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
     public String description() {
         return "Lists or reads a skill, resource or prompt from the capability table. "
                 + "Call it without an id to see what is available; pass the id to get its text. "
-                + "Tools are not read here — they are called directly.";
+                + "Pass a tool id to read its reference.";
     }
 
     @Override
@@ -100,34 +102,33 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
         try {
             capabilityId = CapabilityId.parse(request.id().trim());
         } catch (RuntimeException malformed) {
-            return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
-                    com.rheinmetal.tianshu.api.tool.ToolError.INVALID_ARGS,
+            return CompletableFuture.failedFuture(new ToolException(
+                    ToolError.INVALID_ARGS,
                     "malformed capability id: " + request.id()));
         }
         Optional<CapabilityDescriptor> descriptor = CapabilityCatalog.find(capabilityId);
-        if (descriptor.isEmpty()) {
-            return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
-                    com.rheinmetal.tianshu.api.tool.ToolError.UNKNOWN_TOOL,
+        if (descriptor.isEmpty() || !CapabilityAccess.visibleTo(descriptor.get(), caller)) {
+            return CompletableFuture.failedFuture(new ToolException(
+                    ToolError.UNKNOWN_TOOL,
                     "no capability named " + capabilityId));
         }
         if (descriptor.get().kind().equals(CapabilityKind.TOOL)) {
-            // Same handshake as calling it: a tool the caller cannot see has no document for it either, and the answer
-            // must not reveal that it exists.
-            if (!com.rheinmetal.tianshu.api.capability.CapabilityAccess.visibleTo(descriptor.get(), caller)) {
-                return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
-                        com.rheinmetal.tianshu.api.tool.ToolError.UNKNOWN_TOOL,
-                        "no capability named " + capabilityId));
-            }
             // A tool is called directly, but it may still ship a document: one tool, one file, found from its id in
             // the references of the skill that ships it.
             var documentation = SkillReferences.of(capabilityId);
             if (documentation.isPresent()) {
                 return CompletableFuture.completedFuture(new Reply(documentation.get().text()));
             }
-            return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
-                    com.rheinmetal.tianshu.api.tool.ToolError.INVALID_ARGS,
+            return CompletableFuture.failedFuture(new ToolException(
+                    ToolError.INVALID_ARGS,
                     "capability " + capabilityId + " is a tool with no document (expected "
                             + SkillReferences.pathOf(capabilityId) + " under the skill that ships it); call it directly"));
+        }
+        var kind = descriptor.get().kind();
+        if (!CapabilityKind.SKILL.equals(kind) && !CapabilityKind.RESOURCE.equals(kind)
+                && !CapabilityKind.PROMPT.equals(kind)) {
+            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
+                    "capability has no readable document: " + capabilityId));
         }
         JsonObject args = request.arguments() == null ? new JsonObject() : request.arguments().deepCopy();
         if (request.file() != null && !request.file().isBlank()) {
@@ -147,9 +148,9 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
                     }
                     String code = envelope.has("code") ? envelope.get("code").getAsString() : "FAILED";
                     String message = envelope.has("message") ? envelope.get("message").getAsString() : code;
-                    return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
-                            com.rheinmetal.tianshu.api.tool.ToolError.fromWire(
-                                    code, com.rheinmetal.tianshu.api.tool.ToolError.FAILED),
+                    return CompletableFuture.failedFuture(new ToolException(
+                            ToolError.fromWire(
+                                    code, ToolError.FAILED),
                             code + ": " + message));
                 });
     }

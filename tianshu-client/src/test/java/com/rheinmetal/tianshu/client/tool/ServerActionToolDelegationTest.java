@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.server.ServerActionExecutionPort;
@@ -27,6 +30,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** An action tool asks the execution port, passes the whitelisted arguments, and keeps the server's refusal code. */
 class ServerActionToolDelegationTest {
 
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare(FULL.id(), CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw(FULL.id());
+    }
+
+
     private static final ToolId XP = ToolId.of("minecraft", "server.xp");
     private static final ToolCaller FULL = ToolCaller.agent("lab", true, ToolAutonomy.FULL);
 
@@ -34,7 +48,7 @@ class ServerActionToolDelegationTest {
 
     @BeforeEach
     void register() {
-        ServerActionTools.tools().forEach(TianshuTools::register);
+        ServerActionTools.tools().forEach(TianshuTools::registerBuiltin);
         TianshuTools.setEnabled(XP, true);
     }
 

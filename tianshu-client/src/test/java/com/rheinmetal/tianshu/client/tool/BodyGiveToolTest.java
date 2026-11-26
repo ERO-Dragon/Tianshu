@@ -41,7 +41,7 @@ class BodyGiveToolTest {
     @BeforeEach
     void setUp() {
         unregister = TestBodies.register(BODY, EntityCapability.INVENTORY);
-        TianshuTools.register(new BodyGiveTool());
+        TianshuTools.registerBuiltin(new BodyGiveTool());
         TianshuTools.setEnabled(BodyGiveTool.ID, true);
     }
 

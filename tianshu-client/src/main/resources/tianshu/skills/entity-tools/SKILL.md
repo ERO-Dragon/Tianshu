@@ -1,6 +1,9 @@
 ---
 name: entity-tools
 description: Minecraft 实体侧工具：让身体（实体化身）代替玩家行动——移动、挖掘、攻击、拾取、装备、交付、扫描、读自身状态，以及有界序列。当你要通过身体做事、不确定参数或返回字段时读它——一个工具一份 reference，文件名就是工具 id。
+metadata:
+  share: all
+  references: tools
 ---
 # 实体侧工具
 
@@ -9,7 +12,7 @@ description: Minecraft 实体侧工具：让身体（实体化身）代替玩家
 
 ## 与 player-tools 互斥
 
-以**玩家本人**身份行动的那一套是 `minecraft:player-tools`。两者**互斥**：
+以**玩家本人**身份行动的那一套是 `tianshu:player-tools`。两者**互斥**：
 
 - 本组每个工具都由**身体**执行，`body` 参数必填（你自己就是那具身体时可以省略）；
 - 同一个动作在那边有另一个 id：`entity.interact` ↔ `block.interact`、`entity.transfer` ↔ `container.transfer`、
@@ -28,7 +31,7 @@ description: Minecraft 实体侧工具：让身体（实体化身）代替玩家
 
 - 工具 id 形如 `minecraft:entity.mine`；参数是 JSON 对象，字段名必须与 schema 一致；
 - 返回：成功 `{ "ok": true, "result": { ... }, "durationMs": 31 }`，失败 `{ "ok": false, "code": "...", "message": "..." }`；
-- 身体工具默认**关闭**，由宿主按开关放行；被关掉时回 `DISABLED`，不要重试。
+- 身体工具默认可用；模组只能驱动自己申请的身体，具体动作还要看这具身体声明的能力位。
 
 ## 失败怎么读
 
@@ -52,7 +55,7 @@ description: Minecraft 实体侧工具：让身体（实体化身）代替玩家
 ## 参考资料
 
 `references/` 下每个工具一份，文件名就是去掉命名空间的工具 id（`entity.mine.md`）。
-用 `minecraft:capability.read` 带工具 id 读最省事：
+订阅本技能即可读这份入口说明。每个工具单独订阅，订阅后可用舟楫统一的 `minecraft:capability.read` 读取该工具的 reference，例如
 
 ```json
 {"id":"minecraft:capability.read","args":{"id":"minecraft:entity.mine"}}

@@ -1,12 +1,16 @@
 # minecraft:entity.world.locate
 
-以这具身体的位置为原点，找最近的某个结构或群系；`structure` 与 `biome` 必须恰好给一个。`body` 省略时由调用者指定的那具身体执行；由身体自己调用时可省略。
+以身体的位置为原点，在当前维度已完整生成的区块中检索结构起点或采样群系。已卸载的区块从存档读取。
+
+`structure` 和 `biome` 恰好给一个。水平半径 `radius` 默认 256 格，可取 1–512 格。 模组传入自己要驱动的 `body`，身体以自身身份调用时可省略。
 
 ## 调用
 
 ```json
 {"id":"minecraft:entity.world.locate","args":{"body":"changsui","biome":"minecraft:desert","radius":512}}
 ```
+
+结构返回起始区块的原点，群系读取角色高度的存档群系格。
 
 ## 返回
 
@@ -16,5 +20,6 @@
 
 ## 失败与下一步
 
-- `INVALID_ARGS` / 两个都给或都不给，或 id 不存在（`no biome is registered as …`、`'…' is not a valid structure id`）→ 只留一个并把 id 写全；这类拒绝说明搜索根本没跑，换坐标没用。
-- `found:false` 是成功答案（范围内没有）：群系是抽样，`sampled` 说明实际看了多少个点；要更大范围就加 `radius`（默认 256，群系最多采样 4096 点），不要当成"这世界没有"。
+- `INVALID_ARGS` 表示目标、注册 ID 或半径无效，修正参数后再查。
+- `found:false` 表示本次范围内没有匹配的结构起点，或群系采样没有命中。群系每 16 格采样，`sampled` 给出检查过的有效采样点数。
+- 群系按角色高度读取区块的群系格。结构坐标为起始区块的原点。

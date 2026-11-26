@@ -16,9 +16,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -39,7 +44,7 @@ class SkillReferencesTest {
 
     @BeforeEach
     void installBuiltInSkills() {
-        skills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
+        skills = SkillFileProvider.installClasspath("tianshu", "minecraft", "tianshu/skills");
     }
 
     @AfterEach
@@ -60,6 +65,25 @@ class SkillReferencesTest {
     }
 
     @Test
+    void sameNamedToolsReadTheirOwnManuals(@TempDir Path root) throws Exception {
+        CapabilityId otherMine = CapabilityId.parse("other:entity.mine");
+        assertTrue(SkillReferences.of(otherMine).isEmpty());
+        Path skill = root.resolve("mining");
+        Files.createDirectories(skill.resolve("references"));
+        Files.writeString(skill.resolve("SKILL.md"), "---\nname: mining\ndescription: Mining tools\n---\n");
+        Files.writeString(skill.resolve("references/entity.mine.md"), "other manual");
+        SkillFileProvider other = SkillFileProvider.install("other", root);
+        try {
+            assertEquals("other manual", SkillReferences.of(otherMine).orElseThrow().text());
+            assertEquals(CapabilityId.parse("tianshu:entity-tools"),
+                    SkillReferences.of(CapabilityId.parse("minecraft:entity.mine")).orElseThrow().skill());
+        } finally {
+            other.unload();
+        }
+        assertTrue(SkillReferences.of(otherMine).isEmpty());
+    }
+
+    @Test
     void aToolWithoutADocumentHasNone() {
         assertTrue(SkillReferences.of(CapabilityId.parse("tianshu:no.such.tool")).isEmpty());
         assertEquals("references/no.such.tool.md", SkillReferences.pathOf(CapabilityId.parse("tianshu:no.such.tool")));
@@ -67,8 +91,8 @@ class SkillReferencesTest {
 
     @Test
     void readingAToolReturnsItsOwnDocument() throws Exception {
-        TianshuTools.register(new BodyMineTool());
-        TianshuTools.register(readTool);
+        TianshuTools.registerBuiltin(new BodyMineTool());
+        TianshuTools.registerBuiltin(readTool);
 
         JsonObject answer = com.rheinmetal.tianshu.api.capability.CapabilityCatalog.invoke(
                         CapabilityId.parse(CapabilityReadTool.ID.toString()),
@@ -83,25 +107,31 @@ class SkillReferencesTest {
     }
 
     @Test
-    void aDocumentIsOnlyReachableWhileItsToolIs() throws Exception {
-        TianshuTools.register(new BodyMineTool());
-        TianshuTools.register(readTool);
-        // This consumer asked for the reader and nothing else.
-        CapabilitySubscriptions.declare("changsui",
-                CapabilitySubscription.only(CapabilityId.parse(CapabilityReadTool.ID.toString())));
+    void theReaderUsesTheTargetsSubscriptionForBothIdAndFileReads() {
+        TianshuTools.registerBuiltin(new BodyMineTool());
+        TianshuTools.registerBuiltin(readTool);
+        ToolCaller caller = ToolCaller.agent("changsui", false, ToolAutonomy.CONSERVATIVE);
+        CapabilityId skill = CapabilityId.parse("tianshu:entity-tools");
+        CapabilityId tool = CapabilityId.parse("minecraft:entity.mine");
+        JsonObject file = request(skill.toString());
+        file.addProperty("file", SkillReferences.pathOf(tool));
 
-        assertTrue(SkillReferences.of(CapabilityId.parse("minecraft:entity.mine")).isPresent(),
-                "the document exists on disk");
+        assertEquals("UNKNOWN_TOOL", read(caller, request(skill.toString())).get("code").getAsString());
+        CapabilitySubscriptions.declare(caller.id(), CapabilitySubscription.only(skill));
+        assertTrue(read(caller, request(skill.toString())).get("ok").getAsBoolean());
+        assertEquals("UNKNOWN_TOOL", read(caller, request(tool.toString())).get("code").getAsString());
+        assertFalse(read(caller, file).get("ok").getAsBoolean());
 
-        JsonObject refused = TianshuTools.callJson(CapabilityReadTool.ID,
-                        com.google.gson.JsonParser.parseString("{\"id\":\"minecraft:entity.mine\"}"),
-                        ToolCaller.agent("changsui", false, ToolAutonomy.READ_ONLY), ToolSide.CLIENT)
-                .get(2, TimeUnit.SECONDS);
+        CapabilitySubscriptions.declare(caller.id(), CapabilitySubscription.only(tool));
+        assertTrue(read(caller, request(tool.toString())).get("ok").getAsBoolean());
+        assertEquals("UNKNOWN_TOOL", read(caller, request(skill.toString())).get("code").getAsString());
 
-        // Naming tools is a whitelist: the document follows its row, so an unsubscribed tool has no document either —
-        // and the refusal is the same one an unknown tool gets, because saying "you are not subscribed" would confirm
-        // that the tool exists.
-        assertEquals("UNKNOWN_TOOL", refused.get("code").getAsString(), refused.toString());
+        CapabilitySubscriptions.declare(caller.id(), CapabilitySubscription.only(skill, tool));
+        assertTrue(read(caller, file).get("ok").getAsBoolean());
+    }
+
+    private static JsonObject read(ToolCaller caller, JsonObject request) {
+        return TianshuTools.callJson(CapabilityReadTool.ID, request, caller, ToolSide.CLIENT).join();
     }
 
     private static JsonObject request(String id) {

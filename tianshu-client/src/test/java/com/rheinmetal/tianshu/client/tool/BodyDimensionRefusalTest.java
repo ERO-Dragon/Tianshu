@@ -31,7 +31,7 @@ class BodyDimensionRefusalTest {
     @BeforeEach
     void registerBody() {
         unregister = TestBodies.register(BODY, EntityCapability.MOVE, EntityCapability.LOOK);
-        TianshuTools.register(new BodyMoveTool());
+        TianshuTools.registerBuiltin(new BodyMoveTool());
         TianshuTools.setEnabled(BodyMoveTool.ID, true);
     }
 

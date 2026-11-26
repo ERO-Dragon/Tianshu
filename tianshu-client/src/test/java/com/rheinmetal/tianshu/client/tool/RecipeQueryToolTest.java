@@ -34,7 +34,7 @@ class RecipeQueryToolTest {
 
     @BeforeEach
     void registerTools() {
-        TianshuTools.register(new RecipeQueryTool());
+        TianshuTools.registerBuiltin(new RecipeQueryTool());
     }
 
     @AfterEach
@@ -92,7 +92,7 @@ class RecipeQueryToolTest {
 
         ToolHandle<RecipeQuery, RecipeQueryResult> handle =
                 TianshuTools.handle(RecipeQueryTool.ID, RecipeQuery.class, RecipeQueryResult.class);
-        RecipeQueryResult result = handle.call(new RecipeQuery("minecraft:stick", 5), ToolCaller.mod("m"), ToolSide.SERVER)
+        RecipeQueryResult result = handle.call(new RecipeQuery("minecraft:stick", 5), ToolCaller.mod("tianshu"), ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
         assertEquals(1, result.recipes().size());
     }

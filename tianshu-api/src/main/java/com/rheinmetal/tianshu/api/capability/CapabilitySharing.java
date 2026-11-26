@@ -78,7 +78,7 @@ public record CapabilitySharing(Scope scope, Set<String> modules) {
 
     /** The declaration on this row; undeclared, it follows its provider. */
     public static CapabilitySharing of(CapabilityDescriptor descriptor) {
-        return ofProvider(descriptor.provider(), descriptor.attributes().get("share"));
+        return descriptor.sharing();
     }
 
     private static CapabilitySharing ofAttributes(JsonElement declared) {

@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.api.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import org.junit.jupiter.api.BeforeEach;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
@@ -24,6 +28,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TianshuToolsTest {
 
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare("anothermod", CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw("anothermod");
+    }
+
+
     private static final ToolId ECHO = ToolId.of("test", "echo");
 
     @AfterEach
@@ -39,7 +54,7 @@ class TianshuToolsTest {
 
     @Test
     void aPlayerCallingInARapidLoopIsThrottledButTheAgentIsNot() throws Exception {
-        TianshuTools.register(new EchoTool());
+        TianshuTools.registerBuiltin(new EchoTool());
         TianshuTools.clearRateLimits();
         JsonObject args = JsonParser.parseString("{\"text\":\"hi\",\"count\":1}").getAsJsonObject();
 
@@ -63,7 +78,7 @@ class TianshuToolsTest {
 
     @Test
     void aLocalToolWorksForAnyCallerAndBothPaths() throws Exception {
-        TianshuTools.register(new EchoTool());
+        TianshuTools.registerBuiltin(new EchoTool());
 
         ToolHandle<Query, Answer> echo = TianshuTools.handle(ECHO, Query.class, Answer.class);
         Answer typed = echo.call(new Query("hello", 2), ToolCaller.mod("anothermod"))
@@ -80,7 +95,7 @@ class TianshuToolsTest {
 
     @Test
     void envelopesCarryTimingAndPayloadSize() throws Exception {
-        TianshuTools.register(new EchoTool());
+        TianshuTools.registerBuiltin(new EchoTool());
         JsonObject success = TianshuTools.callJson(ECHO,
                         JsonParser.parseString("{\"text\":\"hello\"}"), ToolCaller.agent(false))
                 .get(2, TimeUnit.SECONDS);
@@ -116,7 +131,7 @@ class TianshuToolsTest {
     @Test
     void aWriteToolStartsDisabledAndNeedsAnOperator() throws Exception {
         ToolId write = ToolId.of("test", "write");
-        TianshuTools.register(new FixedResultTool(write, ToolCategory.SERVER_WRITE, "changed"));
+        TianshuTools.registerBuiltin(new FixedResultTool(write, ToolCategory.SERVER_WRITE, "changed"));
         ToolHandle<Query, Answer> handle = TianshuTools.handle(write, Query.class, Answer.class);
         try {
             ExecutionException disabled = assertThrows(ExecutionException.class,
@@ -142,7 +157,7 @@ class TianshuToolsTest {
     @Test
     void aServerToolWithoutADeclaredChannelIsUnavailable() throws Exception {
         ToolId read = ToolId.of("test", "read");
-        TianshuTools.register(new FixedResultTool(read, ToolCategory.SERVER_READ, "server"));
+        TianshuTools.registerBuiltin(new FixedResultTool(read, ToolCategory.SERVER_READ, "server"));
         ToolHandle<Query, Answer> handle = TianshuTools.handle(read, Query.class, Answer.class);
         try {
             List<ToolSpec> catalogue = TianshuTools.catalog(ToolCaller.agent(false));
@@ -165,7 +180,7 @@ class TianshuToolsTest {
     @Test
     void aServerToolOnTheClientTravelsOverTheInstalledChannel() throws Exception {
         ToolId read = ToolId.of("test", "read");
-        TianshuTools.register(new FixedResultTool(read, ToolCategory.SERVER_READ, "client"));
+        TianshuTools.registerBuiltin(new FixedResultTool(read, ToolCategory.SERVER_READ, "client"));
         ToolHandle<Query, Answer> handle = TianshuTools.handle(read, Query.class, Answer.class);
         try {
             TianshuTools.installServerChannel((id, args, caller, timeoutMillis) -> {
@@ -195,7 +210,7 @@ class TianshuToolsTest {
 
     @Test
     void malformedArgumentsBecomeInvalidArgsRatherThanAnException() throws Exception {
-        TianshuTools.register(new EchoTool());
+        TianshuTools.registerBuiltin(new EchoTool());
         JsonObject envelope = TianshuTools.callJson(ECHO, JsonParser.parseString("{\"text\":123,\"count\":\"x\"}"),
                 ToolCaller.agent(false)).get(2, TimeUnit.SECONDS);
         assertFalse(envelope.get("ok").getAsBoolean());
@@ -205,7 +220,7 @@ class TianshuToolsTest {
     @Test
     void aToolThatNeverFinishesTimesOut() {
         ToolId slow = ToolId.of("test", "slow");
-        TianshuTools.register(new SlowTool(slow));
+        TianshuTools.registerBuiltin(new SlowTool(slow));
         ToolHandle<Query, Answer> handle = TianshuTools.handle(slow, Query.class, Answer.class);
         try {
             ExecutionException failure = assertThrows(ExecutionException.class,
@@ -218,9 +233,9 @@ class TianshuToolsTest {
 
     @Test
     void duplicateRegistrationIsRejected() {
-        TianshuTools.register(new EchoTool());
+        TianshuTools.registerBuiltin(new EchoTool());
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> TianshuTools.register(new EchoTool()));
+                () -> TianshuTools.registerBuiltin(new EchoTool()));
         assertTrue(failure.getMessage().contains(ECHO.toString()));
     }
 
@@ -235,8 +250,8 @@ class TianshuToolsTest {
 
         try {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                    () -> TianshuTools.register(new FixedResultTool(conflictedId, ToolCategory.LOCAL, "x")));
-            assertTrue(failure.getMessage().contains("already used"));
+                    () -> TianshuTools.registerBuiltin(new FixedResultTool(conflictedId, ToolCategory.LOCAL, "x")));
+            assertTrue(failure.getMessage().contains("already registered"));
 
             assertFalse(TianshuTools.catalog(ToolCaller.agent(false), ToolSide.CLIENT).stream()
                     .anyMatch(spec -> spec.id().equals(conflictedId)));
@@ -252,8 +267,8 @@ class TianshuToolsTest {
     @Test
     void theCatalogueListsDisabledToolsButHidesOnesTheCallerMayNeverUse() {
         ToolId operatorOnly = ToolId.of("test", "operator");
-        TianshuTools.register(new EchoTool());
-        TianshuTools.register(new FixedResultTool(operatorOnly, ToolCategory.SERVER_READ, "x",
+        TianshuTools.registerBuiltin(new EchoTool());
+        TianshuTools.registerBuiltin(new FixedResultTool(operatorOnly, ToolCategory.SERVER_READ, "x",
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ)
                         .withPermission(ToolPermission.OPERATOR)
                         .withTimeout(500)));

@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.game.LocateResult;
+import com.rheinmetal.tianshu.api.game.LocateRequest;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -19,7 +20,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>Player side of the split pair; {@link BodyWorldLocateTool} is the body side. The world operation itself lives in
  * {@link WorldLocateOps}: this tool only adapts its arguments and calls in.</p>
  *
- * <p>Atomic: it answers "where is it", not "go there" — {@code body.move} does the walking and the caller decides whether
+ * <p>Atomic: it answers "where is it", not "go there" — {@code entity.move} does the walking and the caller decides whether
  * going is worth it.</p>
  *
  * <p>Exactly one of {@code structure} and {@code biome} is required. The two searches differ in what a negative answer
@@ -31,11 +32,24 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
     public record Args(String structure, String biome, Integer radius) {
     }
 
-    public static final ToolId ID = ToolId.of("minecraft", "world.locate");
+    public static final ToolId LOCATE = ToolId.of("minecraft", "world.locate");
+    public static final ToolId SURVEY = ToolId.of("minecraft", "world.survey");
+    private final LocateRequest.Scope searchScope;
+
+    public WorldLocateTool(LocateRequest.Scope searchScope) {
+        this.searchScope = java.util.Objects.requireNonNull(searchScope);
+    }
+
+    public static java.util.List<TianshuTool<?, ?>> tools() {
+        return java.util.List.of(new WorldLocateTool(LocateRequest.Scope.GENERATED),
+                new WorldLocateTool(LocateRequest.Scope.WORLD),
+                new BodyWorldLocateTool(LocateRequest.Scope.GENERATED),
+                new BodyWorldLocateTool(LocateRequest.Scope.WORLD));
+    }
 
     @Override
     public ToolId id() {
-        return ID;
+        return searchScope == LocateRequest.Scope.GENERATED ? LOCATE : SURVEY;
     }
 
     @Override
@@ -45,14 +59,13 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
 
     @Override
     public ToolPolicy policy() {
-        return ToolPolicy.forCategory(ToolCategory.SERVER_READ).withEnabledByDefault(true);
+        return WorldLocateOps.POLICY;
     }
 
     @Override
     public String description() {
-        return "Finds the nearest structure or biome of an id. Give exactly one of structure/biome. Structures are "
-                + "searched exactly; biomes are sampled on a 16-block grid, so their 'not found' means not in the "
-                + "sample and the result reports how many positions were looked at.";
+        return "Locate a structure or sample a biome from the player position. "
+                + WorldLocateOps.describeScope(searchScope);
     }
 
     @Override
@@ -68,12 +81,7 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
     @Override
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
-        properties.add("structure", BodyToolSchemas.text(
-                "Structure id to find, for example minecraft:village_plains"));
-        properties.add("biome", BodyToolSchemas.text(
-                "Biome id to find, for example minecraft:desert"));
-        properties.add("radius", BodyToolSchemas.integer(
-                "Search radius in blocks; defaults to 256, biomes sample at most 4096 positions"));
+        WorldLocateOps.describeSearch(properties);
         return BodyToolSchemas.object(properties);
     }
 
@@ -87,6 +95,6 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return WorldLocateOps.locate(scope.actor(), args.structure(), args.biome(), args.radius());
+        return WorldLocateOps.locate(context.cancellation(), scope.actor(), searchScope, args.structure(), args.biome(), args.radius());
     }
 }

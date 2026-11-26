@@ -34,7 +34,7 @@ class ContainerInspectToolTest {
 
     @BeforeEach
     void registerTool() {
-        TianshuTools.register(new ContainerInspectTool());
+        TianshuTools.registerBuiltin(new ContainerInspectTool());
     }
 
     @AfterEach

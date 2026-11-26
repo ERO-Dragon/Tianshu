@@ -44,12 +44,12 @@ class CapabilityVisibilityTest {
     }
 
     @Test
-    void aBaseRowIsOpenToEveryoneWithoutADeclaration() {
+    void anOpenBaseRowRequiresASubscription() {
         CapabilityDescriptor row = register("test:base-read", CapabilityKind.RESOURCE, "tianshu", null);
 
         assertEquals(CapabilitySharing.Scope.ALL, CapabilitySharing.of(row).scope(),
                 "the base is what everything is built on: no declaration means open");
-        assertTrue(visibleTo(CONSUMER, row));
+        assertFalse(visibleTo(CONSUMER, row));
     }
 
     @Test
@@ -67,9 +67,7 @@ class CapabilityVisibilityTest {
         shareWithChangsui.addProperty("share", "changsui");
         CapabilityDescriptor shared = register("test:shared", CapabilityKind.RESOURCE, "modA", shareWithChangsui);
 
-        // Opened to this consumer by name: visible without declaring anything, because the default subscription accepts
-        // whatever its provider opened. A provider naming you by name is not a broadcast.
-        assertTrue(visibleTo(CONSUMER, shared), "an opened row is what the default subscription accepts");
+        assertFalse(visibleTo(CONSUMER, shared));
 
         CapabilitySubscriptions.declare("changsui", CapabilitySubscription.atomicFrom("modA"));
         assertTrue(visibleTo(CONSUMER, shared));
@@ -105,7 +103,7 @@ class CapabilityVisibilityTest {
         assertFalse(visibleTo(CONSUMER, workflow));
 
         CapabilitySubscriptions.declare("changsui",
-                new CapabilitySubscription(false, java.util.Set.of("modA"), java.util.Set.of(), false, true, false));
+                new CapabilitySubscription(java.util.Set.of(), java.util.Set.of("modA"), false, false, true));
         assertFalse(visibleTo(CONSUMER, atomic));
         assertTrue(visibleTo(CONSUMER, workflow));
     }
@@ -124,15 +122,60 @@ class CapabilityVisibilityTest {
     }
 
     @Test
-    void namingToolsKeepsTheManualThatTeachesThem() {
+    void emptySelectionHidesAllExternalRows() {
+        var tool = registerTool("named.empty");
+        var skill = register("test:manual", CapabilityKind.SKILL, "tianshu", null);
+        CapabilitySubscriptions.declare("changsui", CapabilitySubscription.only());
+        assertFalse(visibleTo(CONSUMER, tool));
+        assertFalse(visibleTo(CONSUMER, skill));
+    }
+
+    @Test
+    void namingOneToolDoesNotSubscribeToAnIndependentSkill() {
         CapabilityDescriptor tool = registerTool("named.documented");
         CapabilityDescriptor skill = register("test:player-tools", CapabilityKind.SKILL, "tianshu", null);
 
         CapabilitySubscriptions.declare("changsui", CapabilitySubscription.only(tool.id()));
 
         assertTrue(visibleTo(CONSUMER, tool));
-        assertTrue(visibleTo(CONSUMER, skill),
-                "the manual is how a model learns to call the tools it was given; naming tools must not hide it");
+        assertFalse(visibleTo(CONSUMER, skill));
+    }
+
+    @Test
+    void ordinaryToolsKeepTheirPublisherAndRequireBothSidesToOptIn() {
+        var id = CapabilityId.parse("test:private-tool");
+        TianshuTools.register(new NamedTool(id));
+        registeredTools.add(id);
+        var row = CapabilityCatalog.find(id).orElseThrow();
+        assertEquals("test", row.provider());
+        CapabilitySubscriptions.declare(CONSUMER.id(), CapabilitySubscription.only(id));
+        row.attributes().addProperty("share", "all");
+        assertFalse(visibleTo(CONSUMER, row));
+        assertTrue(visibleTo(ToolCaller.mod("test"), row));
+    }
+
+    @Test
+    void aNamedSelectionAppliesToEveryKind() {
+        for (var kind : List.of(CapabilityKind.SKILL, CapabilityKind.RESOURCE, CapabilityKind.PROMPT,
+                CapabilityKind.WORKFLOW)) {
+            var row = register("test:" + kind.value(), kind, CapabilitySharing.USER_PROVIDER, null);
+            CapabilitySubscriptions.declare(CONSUMER.id(), CapabilitySubscription.only(row.id()));
+            assertTrue(visibleTo(CONSUMER, row));
+            CapabilitySubscriptions.withdraw(CONSUMER.id());
+            assertFalse(visibleTo(CONSUMER, row));
+        }
+    }
+
+    @Test
+    void callsAndDiscoveryUseTheSameSubscription() {
+        var row = registerTool("named.calls");
+        var id = ToolId.parse(row.id().toString());
+        assertEquals("UNKNOWN_TOOL", TianshuTools.callJson(id, new JsonObject(), CONSUMER).join()
+                .get("code").getAsString());
+        assertEquals("UNKNOWN_TOOL", TianshuTools.callHandled(id, new JsonObject(), CONSUMER, ToolSide.CLIENT)
+                .result().join().get("code").getAsString());
+        CapabilitySubscriptions.declare(CONSUMER.id(), CapabilitySubscription.only(row.id()));
+        assertTrue(TianshuTools.callJson(id, new JsonObject(), CONSUMER).join().get("ok").getAsBoolean());
     }
 
     @Test
@@ -141,9 +184,7 @@ class CapabilityVisibilityTest {
         closed.addProperty("share", "none");
         CapabilityDescriptor named = register("test:named-private", CapabilityKind.WORKFLOW, "modA", closed);
 
-        // A composition is a callable row too, so it can be named; composite is on to let the rule get that far.
-        CapabilitySubscriptions.declare("changsui", new CapabilitySubscription(false, java.util.Set.of(),
-                java.util.Set.of(named.id()), false, true, true));
+        CapabilitySubscriptions.declare("changsui", CapabilitySubscription.only(named.id()));
 
         assertFalse(visibleTo(CONSUMER, named), "naming is not a grant: the provider's half still decides");
     }
@@ -207,7 +248,7 @@ class CapabilityVisibilityTest {
      */
     private CapabilityDescriptor registerTool(String name) {
         CapabilityId id = CapabilityId.of("test", name);
-        TianshuTools.register(new NamedTool(id));
+        TianshuTools.registerBuiltin(new NamedTool(id));
         registeredTools.add(id);
         return CapabilityCatalog.find(id).orElseThrow();
     }

@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.capability.CapabilityAccess;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
-import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -14,11 +14,9 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -41,8 +39,6 @@ public final class TianshuTools {
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
-    private static final Map<ToolId, TianshuTool<?, ?>> TOOLS = new ConcurrentHashMap<>();
-    private static final Map<ToolId, Boolean> OVERRIDES = new ConcurrentHashMap<>();
     private static volatile ServerToolChannel serverChannel;
 
     private static final ToolRateLimiter RATE_LIMITER = new ToolRateLimiter();
@@ -52,30 +48,31 @@ public final class TianshuTools {
 
     /** Publishes a tool. A second tool with the same id is a programming error, not a silent replacement. */
     public static void register(TianshuTool<?, ?> tool) {
-        Objects.requireNonNull(tool, "tool");
-        TianshuTool<?, ?> existing = TOOLS.putIfAbsent(tool.id(), tool);
-        if (existing != null && existing != tool) {
-            throw new IllegalArgumentException("tool " + tool.id() + " is already registered");
+        register(tool, tool.id().namespace(), CapabilitySharing.NONE);
+    }
+
+    public static void register(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
+        if (provider == null || provider.isBlank()) {
+            throw new IllegalArgumentException("a tool needs a provider id");
         }
-        try {
-            CapabilityCatalog.publishTool(tool);
-        } catch (RuntimeException failure) {
-            if (existing == null) {
-                TOOLS.remove(tool.id(), tool);
-            }
-            throw failure;
+        CapabilityCatalog.publishTool(tool, provider.strip(), Objects.requireNonNull(sharing, "sharing"));
+    }
+
+    public static void registerBuiltin(TianshuTool<?, ?> tool) {
+        register(tool, CapabilitySharing.BASE_PROVIDER, CapabilitySharing.ALL);
+    }
+
+    public static void unregister(ToolId id) {
+        if (CapabilityCatalog.removeTool(id, null)) {
+            RATE_LIMITER.forget(id);
         }
     }
 
-    /** Removes a tool and its enable override. Intended for tests and for a mod that unloads. */
-    public static void unregister(ToolId id) {
-        TianshuTool<?, ?> removed = TOOLS.remove(id);
-        if (removed == null) {
-            return;
+    /** Removes this registration only, even if a module has since installed a replacement. */
+    public static void unregister(TianshuTool<?, ?> tool) {
+        if (CapabilityCatalog.removeTool(tool.id(), tool)) {
+            RATE_LIMITER.forget(tool.id());
         }
-        OVERRIDES.remove(id);
-        CapabilityCatalog.removeTool(CapabilityId.parse(id.toString()));
-        RATE_LIMITER.forget(id);
     }
 
     /** Installs the client-to-server bridge. Called by the platform when the server component is present. */
@@ -95,26 +92,23 @@ public final class TianshuTools {
 
     /** Turns one tool on or off, overriding its category default. */
     public static void setEnabled(ToolId id, boolean enabled) {
-        if (!TOOLS.containsKey(id)) {
+        if (find(id) == null) {
             throw new IllegalArgumentException("cannot change the state of an unknown tool: " + id);
         }
-        OVERRIDES.put(id, enabled);
         CapabilityCatalog.setToolEnabled(id, enabled);
     }
 
     /** Clears the override, returning the tool to its category default. */
     public static void clearEnabledOverride(ToolId id) {
-        OVERRIDES.remove(id);
-        CapabilityCatalog.setToolEnabled(id, isEnabled(id));
+        TianshuTool<?, ?> tool = find(id);
+        if (tool != null) {
+            CapabilityCatalog.setToolEnabled(id, tool.policy().enabledByDefault());
+        }
     }
 
     public static boolean isEnabled(ToolId id) {
-        TianshuTool<?, ?> tool = TOOLS.get(id);
-        if (tool == null) {
-            return false;
-        }
-        Boolean override = OVERRIDES.get(id);
-        return override != null ? override : tool.policy().enabledByDefault();
+        var registered = CapabilityCatalog.registeredTool(id);
+        return registered != null && registered.enabled();
     }
 
     /**
@@ -129,22 +123,19 @@ public final class TianshuTools {
         Objects.requireNonNull(side, "side");
         List<ToolSpec> specs = new ArrayList<>();
         ToolAutonomy allowed = autonomyFor(side, caller);
-        for (TianshuTool<?, ?> tool : TOOLS.values()) {
+        for (var registered : CapabilityCatalog.toolsFor(caller)) {
+            var tool = registered.tool();
             if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
                 continue;
             }
             if (!allowed.permits(tool.requiredAutonomy())) {
                 continue;
             }
-            if (!CapabilityAccess.visibleToolTo(
-                    CapabilityCatalog.find(CapabilityId.parse(tool.id().toString())).orElse(null), caller)) {
-                continue;
-            }
             if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
                 continue;
             }
             specs.add(new ToolSpec(tool.id(), tool.category(), tool.description(), tool.argsSchema(),
-                    isEnabled(tool.id())));
+                    registered.enabled()));
         }
         specs.sort(Comparator.comparing(ToolSpec::id));
         return specs;
@@ -324,7 +315,8 @@ public final class TianshuTools {
 
     /** The registered tool, or {@code null}. Read-only view for diagnostics. */
     public static TianshuTool<?, ?> find(ToolId id) {
-        return TOOLS.get(id);
+        var registered = CapabilityCatalog.registeredTool(id);
+        return registered == null ? null : registered.tool();
     }
 
     private static final class Handle<A, R> implements ToolHandle<A, R> {
@@ -345,10 +337,11 @@ public final class TianshuTools {
 
         @Override
         public CompletableFuture<R> call(A args, ToolCaller caller, ToolSide side) {
-            TianshuTool<?, ?> tool = TOOLS.get(id);
-            if (tool == null) {
-                return CompletableFuture.failedFuture(
-                        new ToolException(ToolError.UNKNOWN_TOOL, "no tool named " + id + " on this side"));
+            TianshuTool<?, ?> tool;
+            try {
+                tool = requireUsable(id, caller, side);
+            } catch (ToolException failure) {
+                return CompletableFuture.failedFuture(failure);
             }
             if (!accepts(tool.argsType(), argsType)) {
                 return CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,
@@ -360,7 +353,7 @@ public final class TianshuTools {
                         "tool " + id + " declares result " + tool.resultType().getTypeName()
                                 + ", this handle was built for " + resultType.getName()));
             }
-            return callTyped(tool, args, caller, side);
+            return executeTyped(tool, args, caller, side);
         }
 
         private static boolean accepts(Type declared, Class<?> requested) {
@@ -368,16 +361,6 @@ public final class TianshuTools {
                 return concrete.isAssignableFrom(requested);
             }
             return true;
-        }
-    }
-
-    private static <A, R> CompletableFuture<R> callTyped(TianshuTool<?, ?> tool, A args, ToolCaller caller,
-                                                         ToolSide side) {
-        try {
-            TianshuTool<?, ?> usable = requireUsable(tool.id(), caller, side);
-            return executeTyped(usable, args, caller, side);
-        } catch (ToolException failure) {
-            return CompletableFuture.failedFuture(failure);
         }
     }
 
@@ -403,11 +386,12 @@ public final class TianshuTools {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(caller, "caller");
         Objects.requireNonNull(side, "side");
-        TianshuTool<?, ?> tool = TOOLS.get(id);
-        if (tool == null) {
+        var registered = CapabilityCatalog.registeredTool(id);
+        if (registered == null || !CapabilityAccess.visibleTo(registered.descriptor(), caller)) {
             throw new ToolException(ToolError.UNKNOWN_TOOL, "no tool named " + id + " on this side");
         }
-        if (!isEnabled(id)) {
+        var tool = registered.tool();
+        if (!registered.enabled()) {
             throw new ToolException(ToolError.DISABLED, "tool " + id + " is switched off");
         }
         if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {

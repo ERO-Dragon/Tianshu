@@ -47,7 +47,6 @@ import java.util.function.UnaryOperator;
 public final class CapabilityCatalog {
 
     private static final long DEFAULT_TIMEOUT_MILLIS = 5_000L;
-    private static final String PROVIDER_KERNEL = "tianshu";
 
     /**
      * A consumer's view of the table: the revision and the rows it belongs to, read as one.
@@ -58,7 +57,13 @@ public final class CapabilityCatalog {
     public record Snapshot(long revision, List<CapabilityDescriptor> descriptors) {
     }
 
-    private record Entry(CapabilityDescriptor descriptor, CapabilityHandler handler) {
+    public record RegisteredTool(CapabilityDescriptor descriptor, TianshuTool<?, ?> tool) {
+        public boolean enabled() {
+            return descriptor.enabled();
+        }
+    }
+
+    private record Entry(CapabilityDescriptor descriptor, CapabilityHandler handler, TianshuTool<?, ?> tool) {
     }
 
     /** The stored state: what a consumer sees, plus the handlers it may not. */
@@ -148,27 +153,55 @@ public final class CapabilityCatalog {
         if (descriptor.kind().isTool()) {
             throw new IllegalArgumentException("tools are registered through TianshuTools, not the capability table");
         }
-        Entry entry = new Entry(descriptor, handler);
-        update(table -> {
-            if (table.entries.containsKey(descriptor.id())) {
+        add(new Entry(descriptor, handler, null));
+    }
+
+    private static void add(Entry entry) {
+        CapabilityDescriptor descriptor = entry.descriptor();
+        Table current;
+        Table next;
+        do {
+            current = TABLE.get();
+            Entry existing = current.entries.get(descriptor.id());
+            if (existing != null) {
+                if (entry.tool() != null && existing.tool() == entry.tool()
+                        && descriptor.provider().equals(existing.descriptor().provider())
+                        && descriptor.sharing().equals(existing.descriptor().sharing())) {
+                    return;
+                }
                 throw new IllegalArgumentException("capability " + descriptor.id() + " is already registered");
             }
-            return table.with(entry);
-        });
+            next = current.with(entry);
+        } while (!TABLE.compareAndSet(current, next));
         notifyListeners(CapabilityChange.Action.ADDED, descriptor);
     }
 
     /** Removes a capability; the entry disappears from every consumer's view immediately. */
     public static void unregister(CapabilityId id) {
-        CapabilityDescriptor removed = remove(id);
+        CapabilityDescriptor removed = remove(id, null, false);
         if (removed != null) {
             notifyListeners(CapabilityChange.Action.REMOVED, removed);
         }
     }
 
-    /** Kernel use: drops a mirrored tool entry. Not part of the consumer contract. */
-    public static void removeTool(CapabilityId id) {
-        unregister(id);
+    public static boolean removeTool(ToolId id, TianshuTool<?, ?> expected) {
+        CapabilityDescriptor removed = remove(CapabilityId.of(id.namespace(), id.name()), expected, true);
+        if (removed == null) {
+            return false;
+        }
+        notifyListeners(CapabilityChange.Action.REMOVED, removed);
+        return true;
+    }
+
+    public static RegisteredTool registeredTool(ToolId id) {
+        Entry entry = TABLE.get().entries.get(CapabilityId.of(id.namespace(), id.name()));
+        return entry == null || entry.tool() == null ? null : new RegisteredTool(entry.descriptor(), entry.tool());
+    }
+
+    public static List<RegisteredTool> toolsFor(ToolCaller caller) {
+        return TABLE.get().entries.values().stream()
+                .filter(entry -> entry.tool() != null && CapabilityAccess.visibleTo(entry.descriptor(), caller))
+                .map(entry -> new RegisteredTool(entry.descriptor(), entry.tool())).toList();
     }
 
     /**
@@ -282,9 +315,10 @@ public final class CapabilityCatalog {
     }
 
     /** Kernel use: mirrors one tool into the table. Not part of the consumer contract. */
-    public static void publishTool(TianshuTool<?, ?> tool) {
+    public static void publishTool(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
         Objects.requireNonNull(tool, "tool");
         JsonObject attributes = new JsonObject();
+        sharing.into(attributes);
         if (tool.argsSchema() != null) {
             attributes.add("argsSchema", strictSchema(tool.argsSchema()));
         }
@@ -298,23 +332,14 @@ public final class CapabilityCatalog {
                 tool.description(),
                 tool.category().isServerSide() ? ToolSide.SERVER : ToolSide.CLIENT,
                 tool.policy().permission(),
-                PROVIDER_KERNEL,
+                provider,
                 attributes
         );
-        CapabilityChange.Action[] action = {CapabilityChange.Action.ADDED};
-        // A tool may refresh its own row; what it must not do is take over a row owned by a non-tool capability, whose
-        // handler would be dropped and whose id would start routing into the tool registry. Decided and swapped in one
-        // step — the earlier get-then-put let a capability registered in between be overwritten.
-        update(table -> {
-            Entry existing = table.entries.get(descriptor.id());
-            if (existing != null && existing.handler() != null) {
-                throw new IllegalArgumentException(
-                        "capability id " + descriptor.id() + " is already used by a non-tool capability");
-            }
-            action[0] = existing == null ? CapabilityChange.Action.ADDED : CapabilityChange.Action.UPDATED;
-            return table.with(new Entry(descriptor, null));
-        });
-        notifyListeners(action[0], descriptor);
+        add(new Entry(descriptor, null, tool));
+    }
+
+    static void publishWorkflow(CapabilityDescriptor descriptor, CapabilityHandler handler, TianshuTool<?, ?> tool) {
+        add(new Entry(descriptor, handler, tool));
     }
 
     /**
@@ -344,10 +369,10 @@ public final class CapabilityCatalog {
         while (true) {
             Table current = TABLE.get();
             Entry entry = current.entries.get(capabilityId);
-            if (entry == null || !entry.descriptor().kind().isTool()) {
+            if (entry == null || entry.tool() == null) {
                 return;
             }
-            JsonObject attributes = entry.descriptor().attributes().deepCopy();
+            JsonObject attributes = entry.descriptor().attributes();
             if (attributes.has("enabled") && attributes.get("enabled").getAsBoolean() == enabled) {
                 return;
             }
@@ -356,7 +381,7 @@ public final class CapabilityCatalog {
                     entry.descriptor().kind(), entry.descriptor().binding(), entry.descriptor().description(),
                     entry.descriptor().side(), entry.descriptor().permission(), entry.descriptor().provider(),
                     attributes);
-            Table next = current.with(new Entry(updated, null));
+            Table next = current.with(new Entry(updated, entry.handler(), entry.tool()));
             if (TABLE.compareAndSet(current, next)) {
                 notifyListeners(CapabilityChange.Action.UPDATED, updated);
                 return;
@@ -390,11 +415,11 @@ public final class CapabilityCatalog {
     }
 
     /** @return the removed descriptor, or null when nothing was registered under that id */
-    private static CapabilityDescriptor remove(CapabilityId id) {
+    private static CapabilityDescriptor remove(CapabilityId id, TianshuTool<?, ?> expected, boolean toolOnly) {
         CapabilityDescriptor[] removed = new CapabilityDescriptor[1];
         update(table -> {
             Entry entry = table.entries.get(id);
-            if (entry == null) {
+            if (entry == null || (toolOnly && entry.tool() == null) || (expected != null && entry.tool() != expected)) {
                 removed[0] = null;
                 return table;
             }

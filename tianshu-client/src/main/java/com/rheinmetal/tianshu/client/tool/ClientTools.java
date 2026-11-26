@@ -23,61 +23,60 @@ public final class ClientTools {
         if (!REGISTERED.compareAndSet(false, true)) {
             return;
         }
-        TianshuTools.register(new TagQueryTool());
-        TianshuTools.register(new InventoryInspectTool());
-        TianshuTools.register(new ContainerInspectTool());
+        TianshuTools.registerBuiltin(new TagQueryTool());
+        TianshuTools.registerBuiltin(new InventoryInspectTool());
+        TianshuTools.registerBuiltin(new ContainerInspectTool());
         // Client preferences are local and non-cheat: they change this player's own screen and ears, on by default.
-        TianshuTools.register(new AudioListTool());
-        TianshuTools.register(new AudioSetTool());
-        TianshuTools.register(new PackListTool());
-        TianshuTools.register(new PackSetTool());
-        TianshuTools.register(new CapabilityReadTool());
+        TianshuTools.registerBuiltin(new AudioListTool());
+        TianshuTools.registerBuiltin(new AudioSetTool());
+        TianshuTools.registerBuiltin(new PackListTool());
+        TianshuTools.registerBuiltin(new PackSetTool());
+        TianshuTools.registerBuiltin(new CapabilityReadTool());
         // Speaking is a local act; the server actions are declarations the server owns the implementations for.
-        TianshuTools.register(new SayTool());
+        TianshuTools.registerBuiltin(new SayTool());
         for (var actionTool : ServerActionTools.tools()) {
-            ServerToolDeclarations.declare(actionTool);
+            ServerToolDeclarations.declareBuiltin(actionTool);
         }
         // Server-side tools are declared here but appear only after the server's catalog names them.
-        ServerToolDeclarations.declare(new RecipeQueryTool());
-        ServerToolDeclarations.declare(new LootQueryTool());
-        ServerToolDeclarations.declare(new BlockInteractTool());
-        ServerToolDeclarations.declare(new BodyInteractTool());
-        ServerToolDeclarations.declare(new CraftRecipeTool());
-        ServerToolDeclarations.declare(new BodyCraftTool());
-        ServerToolDeclarations.declare(new ContainerTransferTool());
-        ServerToolDeclarations.declare(new BodyTransferTool());
-        ServerToolDeclarations.declare(new BlockMachineTool());
-        ServerToolDeclarations.declare(new BodyMachineTool());
-        ServerToolDeclarations.declare(new BlockInspectTool());
-        ServerToolDeclarations.declare(new BodyBlockInspectTool());
-        ServerToolDeclarations.declare(new CommandRunTool());
-        ServerToolDeclarations.declare(new BodyCommandRunTool());
-        ServerToolDeclarations.declare(new EntityInspectTool());
-        ServerToolDeclarations.declare(new ItemInspectTool());
-        ServerToolDeclarations.declare(new BodyItemInspectTool());
-        ServerToolDeclarations.declare(new BodyStatusTool());
-        ServerToolDeclarations.declare(new WorldInfoTool());
-        ServerToolDeclarations.declare(new BodyWorldInfoTool());
-        ServerToolDeclarations.declare(new WorldLocateTool());
-        ServerToolDeclarations.declare(new BodyWorldLocateTool());
-        ServerToolDeclarations.declare(new CraftAvailableTool());
-        ServerToolDeclarations.declare(new BodyCraftAvailableTool());
-        ServerToolDeclarations.declare(new BodyPlaceTool());
-        ServerToolDeclarations.declare(new BodyPlaceLineTool());
-        ServerToolDeclarations.declare(new BodyListTool());
-        ServerToolDeclarations.declare(new BodyMoveTool());
-        ServerToolDeclarations.declare(new BodyLookTool());
-        ServerToolDeclarations.declare(new BodyMineTool());
-        ServerToolDeclarations.declare(new BodyAttackTool());
-        ServerToolDeclarations.declare(new BodyScanTool());
-        ServerToolDeclarations.declare(new BodyInventoryTool());
-        ServerToolDeclarations.declare(new BodyPickupTool());
-        ServerToolDeclarations.declare(new BodyEquipTool());
-        ServerToolDeclarations.declare(new BodyDropTool());
-        ServerToolDeclarations.declare(new BodyGiveTool());
-        ServerToolDeclarations.declare(new EntityUseTool());
-        ServerToolDeclarations.declare(new BodyItemUseTool());
-        ServerToolDeclarations.declare(new BodySequenceTool());
+        ServerToolDeclarations.declareBuiltin(new RecipeQueryTool());
+        ServerToolDeclarations.declareBuiltin(new LootQueryTool());
+        ServerToolDeclarations.declareBuiltin(new BlockInteractTool());
+        ServerToolDeclarations.declareBuiltin(new BodyInteractTool());
+        ServerToolDeclarations.declareBuiltin(new CraftRecipeTool());
+        ServerToolDeclarations.declareBuiltin(new BodyCraftTool());
+        ServerToolDeclarations.declareBuiltin(new ContainerTransferTool());
+        ServerToolDeclarations.declareBuiltin(new BodyTransferTool());
+        ServerToolDeclarations.declareBuiltin(new BlockMachineTool());
+        ServerToolDeclarations.declareBuiltin(new BodyMachineTool());
+        ServerToolDeclarations.declareBuiltin(new BlockInspectTool());
+        ServerToolDeclarations.declareBuiltin(new BodyBlockInspectTool());
+        ServerToolDeclarations.declareBuiltin(new CommandRunTool());
+        ServerToolDeclarations.declareBuiltin(new BodyCommandRunTool());
+        ServerToolDeclarations.declareBuiltin(new EntityInspectTool());
+        ServerToolDeclarations.declareBuiltin(new ItemInspectTool());
+        ServerToolDeclarations.declareBuiltin(new BodyItemInspectTool());
+        ServerToolDeclarations.declareBuiltin(new BodyStatusTool());
+        ServerToolDeclarations.declareBuiltin(new WorldInfoTool());
+        ServerToolDeclarations.declareBuiltin(new BodyWorldInfoTool());
+        WorldLocateTool.tools().forEach(ServerToolDeclarations::declareBuiltin);
+        ServerToolDeclarations.declareBuiltin(new CraftAvailableTool());
+        ServerToolDeclarations.declareBuiltin(new BodyCraftAvailableTool());
+        ServerToolDeclarations.declareBuiltin(new BodyPlaceTool());
+        ServerToolDeclarations.declareBuiltin(new BodyPlaceLineTool());
+        ServerToolDeclarations.declareBuiltin(new BodyListTool());
+        ServerToolDeclarations.declareBuiltin(new BodyMoveTool());
+        ServerToolDeclarations.declareBuiltin(new BodyLookTool());
+        ServerToolDeclarations.declareBuiltin(new BodyMineTool());
+        ServerToolDeclarations.declareBuiltin(new BodyAttackTool());
+        ServerToolDeclarations.declareBuiltin(new BodyScanTool());
+        ServerToolDeclarations.declareBuiltin(new BodyInventoryTool());
+        ServerToolDeclarations.declareBuiltin(new BodyPickupTool());
+        ServerToolDeclarations.declareBuiltin(new BodyEquipTool());
+        ServerToolDeclarations.declareBuiltin(new BodyDropTool());
+        ServerToolDeclarations.declareBuiltin(new BodyGiveTool());
+        ServerToolDeclarations.declareBuiltin(new EntityUseTool());
+        ServerToolDeclarations.declareBuiltin(new BodyItemUseTool());
+        ServerToolDeclarations.declareBuiltin(new BodySequenceTool());
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */

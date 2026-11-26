@@ -42,9 +42,9 @@ class ConnectionToolChannelTest {
 
     @BeforeEach
     void setUp() {
-        TianshuTools.register(new RemoteTool(REMOTE, ToolCategory.SERVER_READ,
+        TianshuTools.registerBuiltin(new RemoteTool(REMOTE, ToolCategory.SERVER_READ,
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ)));
-        TianshuTools.register(new RemoteTool(OPERATOR_ONLY, ToolCategory.SERVER_READ,
+        TianshuTools.registerBuiltin(new RemoteTool(OPERATOR_ONLY, ToolCategory.SERVER_READ,
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ)));
         TianshuRuntimePorts.register(ToolTransport.class, (requestId, id, args, caller, timeoutMillis) -> {
             lastRequestId.set(requestId);
@@ -119,7 +119,7 @@ class ConnectionToolChannelTest {
 
     @Test
     void aCatalogRefreshActivatesTheDeclarationsTheServerNames() throws Exception {
-        ServerToolDeclarations.declare(new RemoteTool(DECLARED, ToolCategory.SERVER_READ,
+        ServerToolDeclarations.declareBuiltin(new RemoteTool(DECLARED, ToolCategory.SERVER_READ,
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ)));
 
         CompletableFuture<Void> refresh = ConnectionToolChannel.refreshCatalog();
@@ -158,7 +158,7 @@ class ConnectionToolChannelTest {
 
     @Test
     void anUnansweredCallTimesOut() throws Exception {
-        TianshuTools.register(new RemoteTool(ToolId.of("test", "slow-remote"), ToolCategory.SERVER_READ,
+        TianshuTools.registerBuiltin(new RemoteTool(ToolId.of("test", "slow-remote"), ToolCategory.SERVER_READ,
                 ToolPolicy.forCategory(ToolCategory.SERVER_READ).withTimeout(100)));
         try {
             JsonObject result = TianshuTools.callJson(ToolId.of("test", "slow-remote"),

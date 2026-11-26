@@ -1,6 +1,5 @@
 package com.rheinmetal.tianshu.api.capability;
 
-import com.google.gson.JsonElement;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 
 /**
@@ -13,60 +12,24 @@ import com.rheinmetal.tianshu.api.tool.ToolCaller;
  */
 public final class CapabilityAccess {
 
+    /** The platform document reader resolves each request against the caller's subscribed rows. */
+    public static final CapabilityId DOCUMENT_READER = CapabilityId.of("minecraft", "capability.read");
+
     private CapabilityAccess() {
     }
 
-    /** Whether {@code caller} may see this row. */
+    /** Players and bodies have their own permission checks. Modules and agents consume as their module id. */
     public static boolean visibleTo(CapabilityDescriptor descriptor, ToolCaller caller) {
-        String consumer = consumerModuleOf(caller);
-        if (consumer == null) {
-            // A player or a body is not a module: sharing is a module-to-module arrangement, so it does not narrow a
-            // human's own session. What bounds that is the tier and the permission, checked by the exposure filter.
-            return true;
-        }
-        if (consumer.equals(descriptor.provider())) {
-            return true;
-        }
-        if (!CapabilitySharing.of(descriptor).permits(consumer)) {
-            return false;
-        }
-        // The row goes in whole: the default subscription accepts "whatever its provider opened", and that can only be
-        // answered from the row itself.
-        return CapabilitySubscriptions.ruleFor(consumer).accepts(descriptor);
-    }
-
-    /**
-     * The same rule for a tool: its row may not exist yet, and a tool with no row is one the kernel itself just
-     * published, so it stays visible. The exposure list is where an unmirrored row simply does not appear.
-     */
-    public static boolean visibleToolTo(CapabilityDescriptor row, ToolCaller caller) {
-        return row == null || visibleTo(row, caller);
-    }
-
-    /**
-     * The rule itself, for callers that know a provider and kind before a row exists.
-     *
-     * <p>{@code declaredShare} is the provider's declaration in attribute form; passing null asks for the default that
-     * belongs to that provider, which is "open" for the base and "private" for a module.</p>
-     */
-    public static boolean visibleTo(String provider, CapabilityKind kind, JsonElement declaredShare, String consumer) {
-        if (consumer == null || consumer.isBlank()) {
-            return true;
-        }
-        if (consumer.equals(provider)) {
-            return true;
-        }
-        if (!CapabilitySharing.ofProvider(provider, declaredShare).permits(consumer)) {
-            return false;
-        }
-        return CapabilitySubscriptions.ruleFor(consumer).accepts(provider, kind);
-    }
-
-    /** The module id behind a caller, or null when the caller is a player or a body rather than a module. */
-    public static String consumerModuleOf(ToolCaller caller) {
         return switch (caller.kind()) {
-            case MOD, AGENT -> caller.id() == null || caller.id().isBlank() ? null : caller.id().trim();
-            case PLAYER, BODY -> null;
+            case PLAYER, BODY -> true;
+            case MOD, AGENT -> caller.id().equals(descriptor.provider())
+                    || CapabilitySharing.of(descriptor).permits(caller.id())
+                    && (isDocumentReader(descriptor) || CapabilitySubscriptions.ruleFor(caller.id()).accepts(descriptor));
         };
+    }
+
+    private static boolean isDocumentReader(CapabilityDescriptor row) {
+        return row.id().equals(DOCUMENT_READER) && row.kind().isTool()
+                && CapabilitySharing.BASE_PROVIDER.equals(row.provider());
     }
 }

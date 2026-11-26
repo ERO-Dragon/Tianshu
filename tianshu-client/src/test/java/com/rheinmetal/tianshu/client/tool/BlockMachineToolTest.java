@@ -53,7 +53,7 @@ class BlockMachineToolTest {
     void aPlayerMayOperateAMachineWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(BlockMachinePort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new MachineOpResult("minecraft:furnace", request.operation(), "minecraft:coal", 1, "inserted")));
-        TianshuTools.register(new BlockMachineTool());
+        TianshuTools.registerBuiltin(new BlockMachineTool());
 
         JsonObject result = envelope(FUEL, ToolCaller.player("p", true));
         assertTrue(result.get("ok").getAsBoolean());
@@ -62,7 +62,7 @@ class BlockMachineToolTest {
 
     @Test
     void anAgentIsSentToTheEntitySide() throws Exception {
-        TianshuTools.register(new BlockMachineTool());
+        TianshuTools.registerBuiltin(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
         JsonObject denied = envelope(FUEL, ToolCaller.agent(false));
         // The player side serves the player; a module drives a body and uses entity.machine instead.
@@ -71,7 +71,7 @@ class BlockMachineToolTest {
 
     @Test
     void aBodyWithoutAnInventoryIsRefusedAsUnsupported() throws Exception {
-        TianshuTools.register(new BlockMachineTool());
+        TianshuTools.registerBuiltin(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
         TestBodies.register("float", EntityCapability.MOVE, EntityCapability.LOOK);
 
@@ -81,7 +81,7 @@ class BlockMachineToolTest {
 
     @Test
     void operationsAndSlotsAreCheckedBeforeTheGameSeesThem() throws Exception {
-        TianshuTools.register(new BlockMachineTool());
+        TianshuTools.registerBuiltin(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
 
         String badOp = "{\"x\":1,\"y\":2,\"z\":3,\"operation\":\"explode\"}";
@@ -95,7 +95,7 @@ class BlockMachineToolTest {
     void takeOutputDoesNotNeedAPlayerSlot() throws Exception {
         TianshuRuntimePorts.register(BlockMachinePort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new MachineOpResult("minecraft:furnace", request.operation(), "minecraft:iron_ingot", 3, "taken")));
-        TianshuTools.register(new BlockMachineTool());
+        TianshuTools.registerBuiltin(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
 
         JsonObject result = envelope("{\"x\":1,\"y\":2,\"z\":3,\"operation\":\"take_output\"}",
@@ -106,7 +106,7 @@ class BlockMachineToolTest {
 
     @Test
     void withoutAPortTheToolReportsUnavailable() throws Exception {
-        TianshuTools.register(new BlockMachineTool());
+        TianshuTools.registerBuiltin(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
         JsonObject result = envelope(FUEL, ToolCaller.player("p", true));
         assertFalse(result.get("ok").getAsBoolean());

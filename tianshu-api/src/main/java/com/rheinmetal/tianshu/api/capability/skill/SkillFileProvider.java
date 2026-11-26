@@ -1,12 +1,14 @@
 package com.rheinmetal.tianshu.api.capability.skill;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.capability.CapabilityAccess;
 import com.rheinmetal.tianshu.api.capability.CapabilityBinding;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
 
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
@@ -53,31 +55,37 @@ public final class SkillFileProvider {
     private static final String REFERENCES = "references/";
 
     private final String namespace;
+    private final String toolNamespace;
     private final Origin origin;
     private final Map<CapabilityId, Loaded> loaded = new ConcurrentHashMap<>();
     private final List<String> problems = new ArrayList<>();
 
-    private record Loaded(String directory, String name, String description) {
+    private record Loaded(String directory, String name, String description, boolean toolReferences) {
     }
 
-    private SkillFileProvider(String namespace, Origin origin) {
+    private SkillFileProvider(String namespace, String toolNamespace, Origin origin) {
         this.namespace = Objects.requireNonNull(namespace, "namespace");
+        this.toolNamespace = Objects.requireNonNull(toolNamespace, "toolNamespace");
         this.origin = Objects.requireNonNull(origin, "origin");
     }
 
     /** A provider over a directory of skills; {@code namespace} is the owner's id. */
     public static SkillFileProvider install(String namespace, Path root) {
-        SkillFileProvider provider = new SkillFileProvider(namespace, new DirectoryOrigin(root));
+        SkillFileProvider provider = new SkillFileProvider(namespace, namespace, new DirectoryOrigin(root));
         provider.reload();
         return provider;
     }
 
     /** A provider over skills shipped on the classpath; {@code basePath} holds {@code index.txt} and the skill folders. */
-    public static SkillFileProvider installClasspath(String namespace, String basePath) {
-        SkillFileProvider provider = new SkillFileProvider(namespace,
+    public static SkillFileProvider installClasspath(String namespace, String toolNamespace, String basePath) {
+        SkillFileProvider provider = new SkillFileProvider(namespace, toolNamespace,
                 new ClasspathOrigin(basePath, SkillFileProvider.class.getClassLoader()));
         provider.reload();
         return provider;
+    }
+
+    String toolNamespace() {
+        return toolNamespace;
     }
 
     /** Everything this provider could not index, in the order it found them. */
@@ -139,7 +147,7 @@ public final class SkillFileProvider {
             }
             String summary = description.strip();
             CapabilityId id = CapabilityId.of(namespace, name);
-            Loaded loadedSkill = new Loaded(directoryName, name, summary);
+            Loaded loadedSkill = new Loaded(directoryName, name, summary, "tools".equals(front.get("metadata.references")));
             CapabilityDescriptor descriptor = new CapabilityDescriptor(
                     id,
                     CapabilityKind.SKILL,
@@ -153,7 +161,7 @@ public final class SkillFileProvider {
                     namespace,
                     attributes(loadedSkill, front.get(FrontMatter.SHARE))
             );
-            CapabilityCatalog.register(descriptor, (context, args) -> read(directoryName, args));
+            CapabilityCatalog.register(descriptor, (context, args) -> read(loadedSkill, context.caller(), args));
             loaded.put(id, loadedSkill);
         } catch (IOException | RuntimeException failure) {
             problems.add(directoryName + "/SKILL.md: " + failure.getMessage());
@@ -205,11 +213,16 @@ public final class SkillFileProvider {
     }
 
     /** Reads the body or one reference file; paging applies to both. */
-    private CompletableFuture<JsonObject> read(String directoryName, JsonObject args) {
+    private CompletableFuture<JsonObject> read(Loaded skill, ToolCaller caller, JsonObject args) {
         try {
             String file = optionalString(args, "file");
             String relative = file == null || file.isBlank() ? SKILL_FILE : file;
-            String text = origin.read(directoryName, relative);
+            validateRelative(relative);
+            relative = Path.of(relative.replace('\\', '/')).normalize().toString().replace('\\', '/');
+            if (!SKILL_FILE.equals(relative) && !readableReference(skill, relative, caller)) {
+                throw new IllegalArgumentException("no such file: " + relative);
+            }
+            String text = origin.read(skill.directory(), relative);
             if (text.length() > MAX_TEXT_BYTES) {
                 text = text.substring(0, MAX_TEXT_BYTES);
             }
@@ -225,6 +238,27 @@ public final class SkillFileProvider {
             error.addProperty("message", failure.getMessage());
             return CompletableFuture.completedFuture(error);
         }
+    }
+
+    private boolean readableReference(Loaded skill, String relative, ToolCaller caller) {
+        if (!relative.startsWith(REFERENCES) || !relative.endsWith(".md")) {
+            return !skill.toolReferences();
+        }
+        String name = relative.substring(REFERENCES.length(), relative.length() - ".md".length());
+        if (name.startsWith(toolNamespace + ".")) {
+            name = name.substring(toolNamespace.length() + 1);
+        }
+        CapabilityId id;
+        try {
+            id = CapabilityId.of(toolNamespace, name);
+        } catch (IllegalArgumentException ordinaryFile) {
+            return !skill.toolReferences();
+        }
+        var row = CapabilityCatalog.find(id);
+        if (row.isEmpty() || !row.get().kind().isTool()) {
+            return !skill.toolReferences();
+        }
+        return CapabilityAccess.visibleTo(row.get(), caller);
     }
 
     private static String optionalString(JsonObject args, String key) {

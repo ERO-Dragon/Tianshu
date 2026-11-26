@@ -139,7 +139,12 @@ public final class AgentSession {
 
     /** Subscribes to in-process capability changes; the returned runnable unsubscribes. */
     public Runnable onChange(CapabilityChange.Listener listener) {
-        return CapabilityCatalog.subscribe(listener);
+        Objects.requireNonNull(listener, "listener");
+        return CapabilityCatalog.subscribe(change -> {
+            if (!CapabilityExposure.exposed(caller, side, List.of(change.descriptor())).isEmpty()) {
+                listener.onChange(change);
+            }
+        });
     }
 
     /** Best effort, as documented on {@link ToolCallHandle#cancel}. */

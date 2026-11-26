@@ -38,7 +38,7 @@ class ToolChannelDisconnectTest {
 
     @Test
     void leavingTheServerEndsItsPendingCallsAndFreesTheirSlots() throws Exception {
-        ServerToolDeclarations.declare(new RemoteTool());
+        ServerToolDeclarations.declareBuiltin(new RemoteTool());
         ToolCallClient client = new ToolCallClient((requestId, toolId, argsJson) -> { });
         TianshuRuntimePortsHolder.install(client, new SilentToolTransport());
         // The server names the tool, which is what makes the channel reachable in the first place.

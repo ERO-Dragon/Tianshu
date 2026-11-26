@@ -107,7 +107,7 @@
 
 ## 📚 文档
 
-- 舟楫自己的文档在 [doc/](doc)，**按模组组织**：跨模组（职责边界）、`tianshu-api`（能力注册、实体）、
+- 舟楫自己的文档在 [doc/](doc)，**按模组组织**：跨模组（职责边界）、`tianshu-api`（智能体能力中心、实体）、
   `tianshu-core`（模块宿主、协议中心）、`tianshu-client`（技能撰写规范）。入口是 [doc/README.md](doc/README.md)
 - 跨仓库的平台文档（模块架构、多加载器与多版本、未完成事项）在入口仓的 `doc/` 维护，本仓库不保留副本
 - [舟楫说明](tianshu-core/README.zh-CN.md) — 基座提供什么、支持哪些版本、与功能模组的关系（[English](tianshu-core/README.en.md)）

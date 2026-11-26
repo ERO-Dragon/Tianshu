@@ -32,8 +32,8 @@ class CapabilityReadToolTest {
     @BeforeEach
     void setUp() {
         // A tool's document lives in the references of the skill that ships it, so the skill providers have to be up.
-        skills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
-        TianshuTools.register(new CapabilityReadTool());
+        skills = SkillFileProvider.installClasspath("tianshu", "minecraft", "tianshu/skills");
+        TianshuTools.registerBuiltin(new CapabilityReadTool());
         // The row below belongs to a module, so the consumer half of the sharing declaration is needed for the
         // listing case: an undeclared subscription sees the base only.
         com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.declare("tianshu",

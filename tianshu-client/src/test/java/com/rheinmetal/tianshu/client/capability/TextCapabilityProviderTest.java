@@ -1,5 +1,9 @@
 package com.rheinmetal.tianshu.client.capability;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import org.junit.jupiter.api.BeforeEach;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
@@ -22,6 +26,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** File-backed resources and prompts: flat files, standard front matter, paging and template rendering. */
 class TextCapabilityProviderTest {
+
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare("tianshu", CapabilitySubscription.atomicFrom(CapabilitySharing.USER_PROVIDER));
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw("tianshu");
+    }
+
 
     @TempDir
     Path root;

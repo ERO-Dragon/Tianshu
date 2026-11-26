@@ -38,7 +38,7 @@ class BodyPlaceLineToolTest {
     @BeforeEach
     void setUp() {
         unregister = TestBodies.register(BODY, com.rheinmetal.tianshu.api.entity.EntityCapability.PLACE);
-        TianshuTools.register(new BodyPlaceLineTool());
+        TianshuTools.registerBuiltin(new BodyPlaceLineTool());
         TianshuTools.setEnabled(BodyPlaceLineTool.ID, true);
     }
 

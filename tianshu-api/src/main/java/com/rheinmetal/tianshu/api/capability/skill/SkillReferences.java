@@ -24,7 +24,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class SkillReferences {
 
-    private static final List<SkillFileProvider> PROVIDERS = new CopyOnWriteArrayList<>();
+    private static final CopyOnWriteArrayList<SkillFileProvider> PROVIDERS = new CopyOnWriteArrayList<>();
 
     /** A tool's document, with the skill and the file it came from. */
     public record Document(CapabilityId skill, String path, String text) {
@@ -35,9 +35,7 @@ public final class SkillReferences {
 
     /** Starts offering this provider's references; the provider withdraws itself when it unloads. */
     static void publish(SkillFileProvider provider) {
-        if (!PROVIDERS.contains(provider)) {
-            PROVIDERS.add(provider);
-        }
+        PROVIDERS.addIfAbsent(provider);
     }
 
     static void withdraw(SkillFileProvider provider) {
@@ -58,6 +56,9 @@ public final class SkillReferences {
         }
         for (String file : fileNamesOf(toolId)) {
             for (SkillFileProvider provider : PROVIDERS) {
+                if (!toolId.namespace().equals(provider.toolNamespace())) {
+                    continue;
+                }
                 Optional<Document> found = provider.reference(file);
                 if (found.isPresent()) {
                     return found;

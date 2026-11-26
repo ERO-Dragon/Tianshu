@@ -31,10 +31,10 @@ class ClientSettingsToolsTest {
 
     @BeforeEach
     void register() {
-        TianshuTools.register(new AudioListTool());
-        TianshuTools.register(new AudioSetTool());
-        TianshuTools.register(new PackListTool());
-        TianshuTools.register(new PackSetTool());
+        TianshuTools.registerBuiltin(new AudioListTool());
+        TianshuTools.registerBuiltin(new AudioSetTool());
+        TianshuTools.registerBuiltin(new PackListTool());
+        TianshuTools.registerBuiltin(new PackSetTool());
     }
 
     @AfterEach

@@ -1,6 +1,8 @@
 # minecraft:world.locate
 
-找最近的结构或群系。`structure` 与 `biome` 只能给一个。
+以玩家的位置为原点，在当前维度已完整生成的区块中检索结构起点或采样群系。已卸载的区块从存档读取。
+
+`structure` 和 `biome` 恰好给一个。水平半径 `radius` 默认 256 格，可取 1–512 格。
 
 ## 调用
 
@@ -11,10 +13,11 @@
 ## 返回
 
 ```json
-{"ok":true,"result":{"structure":"minecraft:village_plains","x":312,"y":70,"z":-140,"sampled":64},"durationMs":180}
+{"ok":true,"result":{"kind":"structure","targetId":"minecraft:village_plains","found":true,"x":320,"y":0,"z":-144,"distanceBlocks":214.6,"sampled":0,"message":"found"},"durationMs":180}
 ```
 
 ## 失败与下一步
 
-- 同时给两个 → 明确拒绝；按需要只给一个。
-- 找不到 → 换更大的 `radius` 或换写法（未知结构 id 与"附近没有"是两件事，消息会区分）。
+- `INVALID_ARGS` 表示目标、注册 ID 或半径无效，修正参数后再查。
+- `found:false` 表示本次范围内没有匹配的结构起点，或群系采样没有命中。群系每 16 格采样，`sampled` 给出检查过的有效采样点数。
+- 群系按角色高度读取区块的群系格。结构坐标为起始区块的原点。

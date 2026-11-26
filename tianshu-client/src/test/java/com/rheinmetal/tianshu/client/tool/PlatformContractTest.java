@@ -34,8 +34,8 @@ class PlatformContractTest {
 
     @BeforeEach
     void setUp() {
-        TianshuTools.register(new ContractTool(ECHO, CompletableFuture.completedFuture(payload("pong"))));
-        TianshuTools.register(new ContractTool(BLOCK, new CompletableFuture<>()));
+        TianshuTools.registerBuiltin(new ContractTool(ECHO, CompletableFuture.completedFuture(payload("pong"))));
+        TianshuTools.registerBuiltin(new ContractTool(BLOCK, new CompletableFuture<>()));
         TianshuRuntimePorts.register(ToolTransport.class, (requestId, id, args, caller, timeoutMillis) ->
                 ServerToolDispatch.respond(caller, requestId, id.toString(), args == null ? "{}" : args.toString())
                         .whenComplete((reply, failure) -> {

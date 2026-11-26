@@ -38,4 +38,17 @@ public record CapabilityDescriptor(
         Objects.requireNonNull(provider, "provider");
         attributes = attributes == null ? new JsonObject() : attributes.deepCopy();
     }
+
+    @Override
+    public JsonObject attributes() {
+        return attributes.deepCopy();
+    }
+
+    boolean enabled() {
+        return attributes.get("enabled").getAsBoolean();
+    }
+
+    CapabilitySharing sharing() {
+        return CapabilitySharing.ofProvider(provider, attributes.get("share"));
+    }
 }

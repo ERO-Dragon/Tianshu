@@ -89,7 +89,7 @@ class CapabilityCatalogTest {
     }
 
     private static boolean exposed(CapabilityId id) {
-        return CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).stream()
+        return CapabilityExposure.exposed(ToolCaller.mod("test"), ToolSide.CLIENT).stream()
                 .anyMatch(descriptor -> descriptor.id().equals(id));
     }
 
@@ -201,7 +201,7 @@ class CapabilityCatalogTest {
         assertEquals(ToolSide.CLIENT, mirror.side());
 
         JsonObject result = CapabilityCatalog.invoke(CapabilityId.of("test", "echo"),
-                        new JsonObject(), ToolCaller.mod("m"), ToolSide.CLIENT)
+                        new JsonObject(), ToolCaller.mod("test"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertTrue(result.get("ok").getAsBoolean());
 
@@ -222,7 +222,7 @@ class CapabilityCatalogTest {
         assertEquals(1, CapabilityCatalog.list(CapabilityKind.SKILL).size());
 
         JsonObject result = CapabilityCatalog.invoke(CapabilityId.of("test", "skill"),
-                        new JsonObject(), ToolCaller.mod("m"), ToolSide.CLIENT)
+                        new JsonObject(), ToolCaller.mod("test"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertTrue(result.get("ok").getAsBoolean());
         assertEquals("skill result", result.get("text").getAsString());
@@ -234,12 +234,12 @@ class CapabilityCatalogTest {
         CapabilityCatalog.register(descriptor(id, CapabilityKind.SKILL, ToolPermission.OPERATOR, ToolSide.CLIENT),
                 textHandler("secret"));
 
-        JsonObject denied = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("m"), ToolSide.CLIENT)
+        JsonObject denied = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("test"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertFalse(denied.get("ok").getAsBoolean());
         assertEquals("NO_PERMISSION", denied.get("code").getAsString());
 
-        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).isEmpty());
+        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("test"), ToolSide.CLIENT).isEmpty());
         assertEquals(1, CapabilityExposure.exposed(ToolCaller.player("op", true), ToolSide.CLIENT).size());
     }
 
@@ -249,11 +249,11 @@ class CapabilityCatalogTest {
         CapabilityCatalog.register(descriptor(id, CapabilityKind.RESOURCE, ToolPermission.EVERYONE, ToolSide.SERVER),
                 textHandler("remote"));
 
-        JsonObject result = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("m"), ToolSide.CLIENT)
+        JsonObject result = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("test"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertFalse(result.get("ok").getAsBoolean());
         assertEquals("UNSUPPORTED_SIDE", result.get("code").getAsString());
-        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT).isEmpty());
+        assertTrue(CapabilityExposure.exposed(ToolCaller.mod("test"), ToolSide.CLIENT).isEmpty());
     }
 
     @Test
@@ -267,7 +267,7 @@ class CapabilityCatalogTest {
                         "slow", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", attributes),
                 (context, args) -> response);
 
-        JsonObject result = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("m"), ToolSide.CLIENT)
+        JsonObject result = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("test"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertFalse(result.get("ok").getAsBoolean());
         assertEquals("TIMEOUT", result.get("code").getAsString());
@@ -319,7 +319,7 @@ class CapabilityCatalogTest {
     @Test
     void unknownIdsAndDuplicateRegistrationsAreRejected() throws Exception {
         JsonObject unknown = CapabilityCatalog.invoke(CapabilityId.of("test", "missing"), new JsonObject(),
-                        ToolCaller.mod("m"), ToolSide.CLIENT)
+                        ToolCaller.mod("test"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertEquals("UNKNOWN_CAPABILITY", unknown.get("code").getAsString());
 
@@ -358,7 +358,7 @@ class CapabilityCatalogTest {
 
         CapabilitySubscriptions.declare("m", CapabilitySubscription.everythingFrom("test"));
         String block = CapabilityExposure.describe(
-                CapabilityExposure.exposed(ToolCaller.mod("m"), ToolSide.CLIENT));
+                CapabilityExposure.exposed(ToolCaller.mod("test"), ToolSide.CLIENT));
         assertTrue(block.contains("test:skill"));
         assertTrue(block.contains("test:resource"));
         assertFalse(block.contains("test:connector"));
@@ -370,7 +370,7 @@ class CapabilityCatalogTest {
         CapabilityCatalog.register(descriptor(id, CapabilityKind.RESOURCE, ToolPermission.EVERYONE, ToolSide.CLIENT),
                 textHandler("document body"));
 
-        JsonObject envelope = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("m"), ToolSide.CLIENT)
+        JsonObject envelope = CapabilityCatalog.invoke(id, new JsonObject(), ToolCaller.mod("test"), ToolSide.CLIENT)
                 .get(2, TimeUnit.SECONDS);
         assertEquals("document body", CapabilityExposure.textOf(envelope));
     }

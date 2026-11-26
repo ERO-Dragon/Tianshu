@@ -93,7 +93,7 @@ class TagQueryToolTest {
         TagQueryArgs args = new TagQueryArgs();
         args.kind = "item";
         args.itemId = "minecraft:oak_planks";
-        TagQueryResult result = handle.call(args, ToolCaller.mod("m")).get(2, TimeUnit.SECONDS);
+        TagQueryResult result = handle.call(args, ToolCaller.mod("tianshu")).get(2, TimeUnit.SECONDS);
         assertEquals(List.of("minecraft:planks"), result.entries());
     }
 

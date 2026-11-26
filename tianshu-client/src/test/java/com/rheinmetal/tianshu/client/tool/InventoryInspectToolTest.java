@@ -54,7 +54,7 @@ class InventoryInspectToolTest {
 
         ToolHandle<EmptyArgs, InventorySnapshot> handle =
                 TianshuTools.handle(InventoryInspectTool.ID, EmptyArgs.class, InventorySnapshot.class);
-        InventorySnapshot snapshot = handle.call(new EmptyArgs(), ToolCaller.mod("m")).get(2, TimeUnit.SECONDS);
+        InventorySnapshot snapshot = handle.call(new EmptyArgs(), ToolCaller.mod("tianshu")).get(2, TimeUnit.SECONDS);
         assertEquals(1, snapshot.slots().size());
         assertEquals("minecraft:stick", snapshot.slots().get(0).itemId());
     }

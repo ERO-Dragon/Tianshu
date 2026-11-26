@@ -53,7 +53,7 @@ class BlockInteractToolTest {
     void aPlayerMayOperateABlockWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(BlockInteractPort.class, (playerId, request) -> CompletableFuture.completedFuture(
                 new BlockInteractResult("minecraft:oak_door", true, "operated")));
-        TianshuTools.register(new BlockInteractTool());
+        TianshuTools.registerBuiltin(new BlockInteractTool());
 
         // On by default: pressing a door is what the player may do by hand, and no operator is involved.
         JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.player("p", true));
@@ -64,7 +64,7 @@ class BlockInteractToolTest {
 
     @Test
     void neitherAnAgentNorAModMayOperateABlock() throws Exception {
-        TianshuTools.register(new BlockInteractTool());
+        TianshuTools.registerBuiltin(new BlockInteractTool());
         TianshuTools.setEnabled(BlockInteractTool.ID, true);
 
         JsonObject denied = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.agent(false));
@@ -89,7 +89,7 @@ class BlockInteractToolTest {
                         new BlockInteractResult("minecraft:oak_door", true, "operated"));
             }
         });
-        TianshuTools.register(new BodyInteractTool());
+        TianshuTools.registerBuiltin(new BodyInteractTool());
         TianshuTools.setEnabled(BodyInteractTool.ID, true);
         TestBodies.register("body-1", EntityCapability.USE);
 
@@ -104,7 +104,7 @@ class BlockInteractToolTest {
 
     @Test
     void aBodyWithoutUseIsRefusedAsUnsupported() throws Exception {
-        TianshuTools.register(new BlockInteractTool());
+        TianshuTools.registerBuiltin(new BlockInteractTool());
         TianshuTools.setEnabled(BlockInteractTool.ID, true);
         TestBodies.register("float", EntityCapability.MOVE, EntityCapability.LOOK);
 
@@ -115,7 +115,7 @@ class BlockInteractToolTest {
 
     @Test
     void withoutAPortTheToolReportsUnavailable() throws Exception {
-        TianshuTools.register(new BlockInteractTool());
+        TianshuTools.registerBuiltin(new BlockInteractTool());
         TianshuTools.setEnabled(BlockInteractTool.ID, true);
 
         JsonObject result = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.player("p", true));
@@ -146,7 +146,7 @@ class BlockInteractToolTest {
                         new BlockInteractResult("minecraft:oak_door", true, "operated"));
             }
         });
-        TianshuTools.register(new BodyInteractTool());
+        TianshuTools.registerBuiltin(new BodyInteractTool());
         TianshuTools.setEnabled(BodyInteractTool.ID, true);
         TestBodies.register("body-1", EntityCapability.USE);
 

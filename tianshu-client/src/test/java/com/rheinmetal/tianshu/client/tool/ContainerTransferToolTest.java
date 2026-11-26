@@ -54,7 +54,7 @@ class ContainerTransferToolTest {
     void aPlayerMayTransferWithoutAnOperator() throws Exception {
         TianshuRuntimePorts.register(ContainerTransferPort.class, (playerId, request) ->
                 CompletableFuture.completedFuture(new ContainerTransferResult("minecraft:iron_ingot", 8, "moved")));
-        TianshuTools.register(new ContainerTransferTool());
+        TianshuTools.registerBuiltin(new ContainerTransferTool());
 
         JsonObject moved = envelope(REQUEST, ToolCaller.player("p", true));
         assertTrue(moved.get("ok").getAsBoolean());
@@ -63,7 +63,7 @@ class ContainerTransferToolTest {
 
     @Test
     void anAgentIsSentToTheEntitySide() throws Exception {
-        TianshuTools.register(new ContainerTransferTool());
+        TianshuTools.registerBuiltin(new ContainerTransferTool());
         TianshuTools.setEnabled(ContainerTransferTool.ID, true);
         JsonObject denied = envelope(REQUEST, ToolCaller.agent(false));
         assertFalse(denied.get("ok").getAsBoolean());
@@ -73,7 +73,7 @@ class ContainerTransferToolTest {
 
     @Test
     void aBodyWithoutAnInventoryIsRefusedAsUnsupported() throws Exception {
-        TianshuTools.register(new ContainerTransferTool());
+        TianshuTools.registerBuiltin(new ContainerTransferTool());
         TianshuTools.setEnabled(ContainerTransferTool.ID, true);
         TestBodies.register("float", EntityCapability.MOVE, EntityCapability.LOOK);
 
@@ -84,7 +84,7 @@ class ContainerTransferToolTest {
 
     @Test
     void slotsAndCountsAreCheckedBeforeTheGameSeesThem() throws Exception {
-        TianshuTools.register(new ContainerTransferTool());
+        TianshuTools.registerBuiltin(new ContainerTransferTool());
         TianshuTools.setEnabled(ContainerTransferTool.ID, true);
 
         String badSlot = "{\"x\":1,\"y\":2,\"z\":3,\"containerSlot\":-1,\"playerSlot\":0,\"count\":1,\"toPlayer\":true}";
@@ -99,7 +99,7 @@ class ContainerTransferToolTest {
 
     @Test
     void withoutAPortTheToolReportsUnavailable() throws Exception {
-        TianshuTools.register(new ContainerTransferTool());
+        TianshuTools.registerBuiltin(new ContainerTransferTool());
         TianshuTools.setEnabled(ContainerTransferTool.ID, true);
         JsonObject result = envelope(REQUEST, ToolCaller.player("p", true));
         assertFalse(result.get("ok").getAsBoolean());

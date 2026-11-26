@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.capability;
 
+import org.junit.jupiter.api.BeforeEach;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.tool.CancellationSignal;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
@@ -25,6 +26,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tianshu-lab}.</p>
  */
 class WorkflowExecutorTest {
+
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare(CALLER.id(), CapabilitySubscription.atomicFrom("provider-a", "provider-b", "provider-c"));
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw(CALLER.id());
+    }
+
 
     private static final ToolCaller CALLER = ToolCaller.agent("tianshu", false, ToolAutonomy.CONSERVATIVE);
 

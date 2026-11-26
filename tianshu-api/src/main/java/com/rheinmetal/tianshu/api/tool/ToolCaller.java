@@ -38,6 +38,12 @@ public record ToolCaller(Kind kind, String id, boolean operator, ToolAutonomy au
     public ToolCaller {
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(id, "id");
+        if (kind == Kind.AGENT || kind == Kind.MOD) {
+            id = id.strip();
+            if (id.isEmpty()) {
+                throw new IllegalArgumentException("a module caller needs a module id");
+            }
+        }
         autonomy = autonomy == null ? DEFAULT_AUTONOMY : autonomy;
     }
 

@@ -1,5 +1,8 @@
 package com.rheinmetal.tianshu.api.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import org.junit.jupiter.api.AfterEach;
@@ -23,6 +26,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ToolAutonomyTest {
 
+    @BeforeEach
+    void subscribeToFixtures() {
+        CapabilitySubscriptions.declare(MODULE, CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+        CapabilitySubscriptions.declare("module.bold", CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+        CapabilitySubscriptions.declare("module.cautious", CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+    }
+
+    @AfterEach
+    void withdrawSubscriptions() {
+        CapabilitySubscriptions.withdraw(MODULE);
+        CapabilitySubscriptions.withdraw("module.bold");
+        CapabilitySubscriptions.withdraw("module.cautious");
+    }
+
+
     private static final ToolId WRITE = ToolId.of("test", "autonomy.write");
     private static final ToolId FULL_ONLY = ToolId.of("test", "autonomy.full");
     private static final String MODULE = "module.test";
@@ -30,8 +48,8 @@ class ToolAutonomyTest {
     @BeforeEach
     void setUp() {
         TianshuTools.clearRateLimits();
-        TianshuTools.register(new WriteTool());
-        TianshuTools.register(new FullOnlyTool());
+        TianshuTools.registerBuiltin(new WriteTool());
+        TianshuTools.registerBuiltin(new FullOnlyTool());
         TianshuTools.setEnabled(WRITE, true);
         TianshuTools.setEnabled(FULL_ONLY, true);
         TianshuTools.installServerChannel(new ServerToolChannel() {

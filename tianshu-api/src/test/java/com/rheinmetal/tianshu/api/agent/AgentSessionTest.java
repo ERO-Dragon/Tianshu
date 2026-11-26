@@ -43,7 +43,7 @@ class AgentSessionTest {
 
     @Test
     void theSessionComposesDiscoveryInvocationReadsAndChanges() throws Exception {
-        TianshuTools.register(new SessionTool());
+        TianshuTools.registerBuiltin(new SessionTool());
         CapabilityCatalog.register(new CapabilityDescriptor(SKILL, CapabilityKind.SKILL, CapabilityBinding.LOCAL,
                         "a test skill", ToolSide.CLIENT, ToolPermission.EVERYONE, "test", shared()),
                 (context, args) -> {
@@ -76,7 +76,7 @@ class AgentSessionTest {
                             CapabilityKind.RESOURCE, CapabilityBinding.LOCAL, "extra", ToolSide.CLIENT,
                             ToolPermission.EVERYONE, "test", new JsonObject()),
                     (context, args) -> CompletableFuture.completedFuture(new JsonObject()));
-            assertEquals(1, changes.get());
+            assertEquals(0, changes.get(), "private changes stay with their publisher");
         } finally {
             unsubscribe.run();
         }
