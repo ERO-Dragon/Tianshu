@@ -208,12 +208,8 @@ public final class ServerToolHandler {
             registrations.tool(new LootQueryTool());
             registrations.tool(new BlockInteractTool());
             registrations.tool(new CraftRecipeTool());
-            TianshuTools.setEnabled(BlockInteractTool.ID, ServerActionConfig.BLOCK_INTERACT.get());
             registrations.tool(new ContainerTransferTool());
-            TianshuTools.setEnabled(CraftRecipeTool.ID, ServerActionConfig.CRAFT_RECIPE.get());
             registrations.tool(new BlockMachineTool());
-            TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
-            TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
             BodyToolRegistry.register();
             // Asking to run a command is allowed to anyone; running it needs an operator's one-shot approval, so the
             // tool itself is not operator-only — an operator-only tool could never be asked for in the first place.

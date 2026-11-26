@@ -170,12 +170,8 @@ public final class FabricServerToolHandler {
             registrations.tool(new LootQueryTool());
             registrations.tool(new BlockInteractTool());
             registrations.tool(new CraftRecipeTool());
-            TianshuTools.setEnabled(BlockInteractTool.ID, FabricToolConfig.blockInteract());
             registrations.tool(new ContainerTransferTool());
-            TianshuTools.setEnabled(CraftRecipeTool.ID, FabricToolConfig.craftRecipe());
             registrations.tool(new BlockMachineTool());
-            TianshuTools.setEnabled(ContainerTransferTool.ID, FabricToolConfig.containerTransfer());
-            TianshuTools.setEnabled(BlockMachineTool.ID, FabricToolConfig.blockMachine());
             BodyToolRegistry.register();
             // Asking is open to anyone; running needs one operator approval per command, so the tool is not
             // operator-only — an operator-only tool could never be asked for.

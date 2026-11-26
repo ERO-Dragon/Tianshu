@@ -28,10 +28,6 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue XP;
     public static final ModConfigSpec.BooleanValue EFFECT;
     public static final ModConfigSpec.BooleanValue GAMEMODE;
-    public static final ModConfigSpec.BooleanValue BLOCK_INTERACT;
-    public static final ModConfigSpec.BooleanValue CRAFT_RECIPE;
-    public static final ModConfigSpec.BooleanValue CONTAINER_TRANSFER;
-    public static final ModConfigSpec.BooleanValue BLOCK_MACHINE;
     public static final ModConfigSpec.BooleanValue COMMAND_RUN;
     public static final ModConfigSpec.IntValue COMMAND_PERMISSION_LEVEL;
     public static final ModConfigSpec.ConfigValue<String> AUTONOMY_CEILING;
@@ -55,20 +51,9 @@ public final class ServerActionConfig {
     DIFFICULTY = builder.comment("Change the server difficulty.").define("difficulty", false);
     GAMERULE = builder.comment("Change a whitelisted game rule.").define("gamerule", false);
         builder.pop();
-        builder.comment("Server-side tools. A tool can change the world, so every switch is separate and off.")
+        builder.comment("One switch per FULL-tier tool: those are powers an operator hands over deliberately, and a server",
+                        "may want only some of them. Survival actions need no switch — the ceiling below is their gate.")
                 .push("tools");
-        BLOCK_INTERACT = builder
-                .comment("Let the assistant press buttons, toggle levers and open doors/trapdoors/fence gates as the player.")
-                .define("block_interact", false);
-        CRAFT_RECIPE = builder
-                .comment("Let the assistant craft a named recipe at a nearby crafting table, consuming the player's ingredients.")
-                .define("craft_recipe", false);
-        CONTAINER_TRANSFER = builder
-                .comment("Let the assistant move items between a container and the player inventory.")
-                .define("container_transfer", false);
-        BLOCK_MACHINE = builder
-                .comment("Let the assistant operate furnace-family machines: insert fuel, insert input, take output.")
-                .define("block_machine", false);
         COMMAND_RUN = builder
                 .comment("Let the assistant ASK to run a command. Nothing runs until an operator approves the exact line",
                         "with /tianshu approve <token>: one token runs one command once.")
@@ -130,8 +115,7 @@ public final class ServerActionConfig {
                 + " gamemode=" + GAMEMODE.get() + " effect=" + EFFECT.get() + " xp=" + XP.get()
                 + " setblock=" + SETBLOCK.get() + " kill=" + KILL.get() + " enchant=" + ENCHANT.get()
                 + " difficulty=" + DIFFICULTY.get() + " gamerule=" + GAMERULE.get() + "]"
-                + " tools[block_interact=" + BLOCK_INTERACT.get() + " craft_recipe=" + CRAFT_RECIPE.get()
-                + " container_transfer=" + CONTAINER_TRANSFER.get() + " block_machine=" + BLOCK_MACHINE.get() + "]";
+                + " command_run=" + COMMAND_RUN.get();
     }
 
     private ServerActionConfig() {
