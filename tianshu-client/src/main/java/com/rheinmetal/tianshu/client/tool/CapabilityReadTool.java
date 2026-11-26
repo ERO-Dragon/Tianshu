@@ -94,7 +94,7 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
         ToolCaller caller = context.caller();
         ToolSide side = context.side();
         if (request == null || request.id() == null || request.id().isBlank()) {
-            String listing = CapabilityExposure.describe(CapabilityExposure.exposed(caller, side));
+            String listing = CapabilityExposure.list(CapabilityExposure.exposed(caller, side));
             return CompletableFuture.completedFuture(new Reply(listing.isBlank()
                     ? "No skills, resources or prompts are available on this side." : listing));
         }

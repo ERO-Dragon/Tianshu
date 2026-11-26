@@ -89,6 +89,18 @@ class CapabilityReadToolTest {
         assertEquals("UNKNOWN_TOOL", envelope.get("code").getAsString());
     }
 
+    @Test
+    void aBuiltInSkillBelongsToItsPublisherNotToTheToolsItDocuments() throws Exception {
+        // The tools inside these manuals are minecraft:*; the manual is published by the base, so its id is
+        // tianshu:*. Reading it by the tool namespace is the drift a consumer hit once already: two mods may both
+        // document minecraft:block.interact, and only the publisher's id tells them apart.
+        JsonObject manual = call("{\"id\":\"tianshu:player-tools\"}");
+        assertTrue(manual.get("ok").getAsBoolean(), manual.toString());
+        assertTrue(manual.getAsJsonObject("result").get("text").getAsString().contains("# 玩家辅助"));
+
+        assertEquals("UNKNOWN_TOOL", call("{\"id\":\"minecraft:player-tools\"}").get("code").getAsString());
+    }
+
     private static JsonObject call(String json) throws Exception {
         return TianshuTools.callJson(CapabilityReadTool.ID, JsonParser.parseString(json),
                         ToolCaller.agent(true), ToolSide.CLIENT)

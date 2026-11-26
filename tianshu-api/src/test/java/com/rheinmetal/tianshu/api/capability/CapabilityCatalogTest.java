@@ -380,6 +380,28 @@ class CapabilityCatalogTest {
     }
 
     @Test
+    void theListingLeavesToolSchemasToTheCatalogueAndStillNamesEveryKind() {
+        // Sixty-five tool schemas in one listing used to consume the whole text budget, and the skills and prompts
+        // at the end never appeared: "call it without an id to see what is available" answered with a list of tools
+        // the caller already had. A tool id is enough here; its schema lives in the catalogue.
+        JsonObject attributes = new JsonObject();
+        JsonObject schema = new JsonObject();
+        schema.addProperty("type", "object");
+        attributes.add("argsSchema", schema);
+        CapabilityDescriptor tool = new CapabilityDescriptor(CapabilityId.of("minecraft", "block.inspect"),
+                CapabilityKind.TOOL, CapabilityBinding.LOCAL, "Reads one block", ToolSide.CLIENT,
+                ToolPermission.EVERYONE, "tianshu", attributes);
+        CapabilityDescriptor skill = openRow(CapabilityId.of("tianshu", "player-tools"), CapabilityKind.SKILL);
+
+        String listing = CapabilityExposure.list(List.of(tool, skill));
+
+        assertTrue(listing.contains("- minecraft:block.inspect\n"), listing);
+        assertTrue(listing.contains("- tianshu:player-tools [skill]: a test capability"), listing);
+        assertFalse(listing.contains("argsSchema"), listing);
+        assertFalse(listing.contains("\"type\""), listing);
+    }
+
+    @Test
     void resourceTextIsExtractedFromTheEnvelope() throws Exception {
         CapabilityId id = CapabilityId.of("test", "doc");
         CapabilityCatalog.register(descriptor(id, CapabilityKind.RESOURCE, ToolPermission.EVERYONE, ToolSide.CLIENT),

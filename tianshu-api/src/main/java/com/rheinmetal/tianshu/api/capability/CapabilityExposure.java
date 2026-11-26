@@ -97,6 +97,30 @@ public final class CapabilityExposure {
         return allowed.permits(required);
     }
 
+    /**
+     * Renders the exposed rows as a discovery listing: one line per row, no argument schemas.
+     *
+     * <p>{@link #describe} carries each tool's schema because a prompt block is where a model reads how to call one.
+     * A listing answers a different question — "what is here that I have not looked at" — and printing sixty-five
+     * schemas pushes everything else off the end of the budget, which is how the skills and prompts stopped appearing
+     * at all. Tool ids stay bare: the catalogue the caller already has is where their schemas live.</p>
+     */
+    public static String list(List<CapabilityDescriptor> descriptors) {
+        StringBuilder text = new StringBuilder();
+        for (CapabilityDescriptor descriptor : descriptors) {
+            if (descriptor.kind().equals(CapabilityKind.CONNECTOR)) {
+                continue;
+            }
+            text.append("- ").append(descriptor.id());
+            if (descriptor.kind().equals(CapabilityKind.TOOL)) {
+                text.append('\n');
+                continue;
+            }
+            text.append(" [").append(descriptor.kind()).append("]: ").append(descriptor.description()).append('\n');
+        }
+        return text.toString();
+    }
+
     /** Renders the exposed rows as a prompt block; connectors never appear. */
     public static String describe(List<CapabilityDescriptor> descriptors) {
         final int maxRows = 200;
