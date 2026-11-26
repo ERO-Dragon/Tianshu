@@ -176,7 +176,7 @@ public final class FabricServerToolHandler {
             registrations.tool(new BlockMachineTool());
             TianshuTools.setEnabled(ContainerTransferTool.ID, FabricToolConfig.containerTransfer());
             TianshuTools.setEnabled(BlockMachineTool.ID, FabricToolConfig.blockMachine());
-            registerBodyTools(FabricToolConfig.bodyActions(), FabricToolConfig.blockPlace());
+            BodyToolRegistry.register();
             // Asking is open to anyone; running needs one operator approval per command, so the tool is not
             // operator-only — an operator-only tool could never be asked for.
             registrations.port(com.rheinmetal.tianshu.api.game.CommandExecutionPort.class,
@@ -218,10 +218,6 @@ public final class FabricServerToolHandler {
         });
     }
 
-    /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */
-    private static void registerBodyTools(boolean actionsEnabled, boolean placeEnabled) {
-        BodyToolRegistry.register(actionsEnabled, placeEnabled);
-    }
 
     private static void onPlayerLogin(ServerPlayer player) {
         if (player == null || player.connection == null) {

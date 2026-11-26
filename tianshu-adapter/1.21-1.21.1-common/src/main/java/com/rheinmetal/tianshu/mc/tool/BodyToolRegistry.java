@@ -23,17 +23,18 @@ import com.rheinmetal.tianshu.client.tool.BodyScanTool;
 import java.util.function.Supplier;
 
 /**
- * Registers the agent-body tools once for both loaders, so a loader handler only supplies the switch values.
+ * Registers the agent-body tools once for both loaders.
  *
- * <p>{@code body.list} is a read tool and always available; the four world-writing ones share one switch and stay
- * off until an operator turns it on.</p>
+ * <p>Everything here is on: these are a module's own entity doing what that module declared it can do, and a server
+ * switch that could deny it would make the base the owner of someone else's mod. Who may drive a body is settled per
+ * call by ownership, and what a body can do is settled by the capabilities the module registered it with.</p>
  */
 public final class BodyToolRegistry {
 
     private BodyToolRegistry() {
     }
 
-    public static void register(boolean actionsEnabled, boolean placeEnabled) {
+    public static void register() {
         ensure(BodyListTool.ID, BodyListTool::new);
         ensure(BodyMoveTool.ID, BodyMoveTool::new);
         ensure(BodyLookTool.ID, BodyLookTool::new);
@@ -50,19 +51,6 @@ public final class BodyToolRegistry {
         ensure(EntityUseTool.ID, EntityUseTool::new);
         ensure(BodyScanTool.ID, BodyScanTool::new);
         ensure(BodyInventoryTool.ID, BodyInventoryTool::new);
-        TianshuTools.setEnabled(BodyMoveTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyLookTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyMineTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyAttackTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyPickupTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyEquipTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyDropTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyGiveTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyItemUseTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(BodyPlaceTool.ID, placeEnabled);
-        TianshuTools.setEnabled(BodyPlaceLineTool.ID, placeEnabled);
-        TianshuTools.setEnabled(BodySequenceTool.ID, actionsEnabled);
-        TianshuTools.setEnabled(EntityUseTool.ID, actionsEnabled);
     }
 
     private static void ensure(ToolId id, Supplier<TianshuTool<?, ?>> factory) {

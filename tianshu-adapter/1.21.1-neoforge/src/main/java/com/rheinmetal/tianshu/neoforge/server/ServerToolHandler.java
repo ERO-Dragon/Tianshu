@@ -214,7 +214,7 @@ public final class ServerToolHandler {
             registrations.tool(new BlockMachineTool());
             TianshuTools.setEnabled(ContainerTransferTool.ID, ServerActionConfig.CONTAINER_TRANSFER.get());
             TianshuTools.setEnabled(BlockMachineTool.ID, ServerActionConfig.BLOCK_MACHINE.get());
-            registerBodyTools(ServerActionConfig.BODY_ACTIONS.get(), ServerActionConfig.BLOCK_PLACE.get());
+            BodyToolRegistry.register();
             // Asking to run a command is allowed to anyone; running it needs an operator's one-shot approval, so the
             // tool itself is not operator-only — an operator-only tool could never be asked for in the first place.
             registrations.port(com.rheinmetal.tianshu.api.game.CommandExecutionPort.class,
@@ -266,10 +266,6 @@ public final class ServerToolHandler {
         }
     }
 
-    /** Registers the body tools; the four world-writing ones share the single {@code body_actions} switch. */
-    private static void registerBodyTools(boolean actionsEnabled, boolean placeEnabled) {
-        BodyToolRegistry.register(actionsEnabled, placeEnabled);
-    }
 
     private static void onServerTick(ServerTickEvent.Post event) {
         ServerTicks.INSTANCE.fire();

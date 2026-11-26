@@ -18,8 +18,6 @@ public final class FabricToolConfig {
     private static final String CRAFT_RECIPE = "craft_recipe";
     private static final String CONTAINER_TRANSFER = "container_transfer";
     private static final String BLOCK_MACHINE = "block_machine";
-    private static final String BODY_ACTIONS = "body_actions";
-    private static final String BLOCK_PLACE = "block_place";
     private static final String COMMAND_RUN = "command_run";
 
     /** Level an approved command runs with; 0 keeps it a plain player's command. */
@@ -32,8 +30,6 @@ public final class FabricToolConfig {
         VALUES.setProperty(CRAFT_RECIPE, "false");
         VALUES.setProperty(CONTAINER_TRANSFER, "false");
         VALUES.setProperty(BLOCK_MACHINE, "false");
-        VALUES.setProperty(BODY_ACTIONS, "false");
-        VALUES.setProperty(BLOCK_PLACE, "false");
         VALUES.setProperty(COMMAND_RUN, "false");
         VALUES.setProperty(COMMAND_PERMISSION_LEVEL, "0");
     }
@@ -93,11 +89,5 @@ public final class FabricToolConfig {
         return Boolean.parseBoolean(VALUES.getProperty(BLOCK_MACHINE, "false").trim());
     }
 
-    public static boolean bodyActions() {
-        return Boolean.parseBoolean(VALUES.getProperty(BODY_ACTIONS, "false").trim());
-    }
 
-    public static boolean blockPlace() {
-        return Boolean.parseBoolean(VALUES.getProperty(BLOCK_PLACE, "false").trim());
-    }
 }
