@@ -47,7 +47,7 @@ public record AcceptanceReport(String startedAt, List<AcceptanceOutcome> outcome
                     List.of("ACC-ARG-1", "ACC-ARG-2", "ACC-ARG-3")),
             new Covered("capability table",
                     List.of("ACC-CAT-1", "ACC-CAT-2", "ACC-CAT-3", "ACC-CAT-4",
-                            "ACC-CAP-1", "ACC-CAP-2", "ACC-CAP-3", "ACC-CAP-4", "ACC-CAP-5",
+                            "ACC-CAP-1", "ACC-CAP-2", "ACC-CAP-3", "ACC-CAP-4", "ACC-CAP-5", "ACC-ALL-1",
                             "ACC-EXP-4", "ACC-EXP-5", "ACC-EXP-6", "ACC-EXP-7", "ACC-EXP-10")),
             new Covered("agent facade", List.of("ACC-AGT-1", "ACC-AGT-2", "ACC-AGT-3", "ACC-AGT-4")),
             new Covered("settings session", List.of("ACC-SET-1")),

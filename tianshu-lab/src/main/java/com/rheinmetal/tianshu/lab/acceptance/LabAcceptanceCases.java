@@ -141,6 +141,7 @@ public final class LabAcceptanceCases {
         cases.add(anActionReachesTheServerAndComesBackExecuted());
         cases.add(anActionIsRefusedByTheServerSwitchWhenItsOff());
         cases.add(anActionWithBadArgumentsIsRefusedByTheServerSideValidation());
+        cases.add(everyToolAnswersAnEnvelope());
         cases.add(everyServerActionAnswersForItself());
         cases.add(theOpenContainerComesBackAsAValue());
         cases.add(handingItemsOverNeedsAReceiver());
@@ -2010,6 +2011,63 @@ public final class LabAcceptanceCases {
             }
             return AcceptanceOutcome.pass(id, title,
                     executed + " executed, " + refused + " refused by their own switch or validator");
+        });
+    }
+
+    /**
+     * Every registered tool answers an envelope when called with nothing.
+     *
+     * <p>A behavioural case proves one tool; this one proves the wiring for all of them at once: registered, visible
+     * to a caller that may see everything, dispatched, validated and answered. A tool that throws, hangs, or sits in
+     * the catalogue while missing from the registry shows up here and nowhere else.</p>
+     *
+     * <p>Workflows are skipped on purpose: calling one runs its steps, and a sweep must not mine the world twice.</p>
+     */
+    private static AcceptanceCase everyToolAnswersAnEnvelope() {
+        final String id = "ACC-ALL-1";
+        final String title = "every registered tool answers an envelope, with no throw and no hang";
+        return AcceptanceCase.of(id, title, () -> {
+            ToolCaller caller = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.FULL);
+            List<String> silent = new ArrayList<>();
+            List<String> exploded = new ArrayList<>();
+            List<String> swept = new ArrayList<>();
+            int answered = 0;
+            int executed = 0;
+            for (var descriptor : CapabilityCatalog.snapshot().descriptors()) {
+                if (!descriptor.kind().isTool()) {
+                    continue;
+                }
+                String tool = descriptor.id().toString();
+                swept.add(tool);
+                JsonObject envelope;
+                try {
+                    envelope = TianshuTools.callJson(ToolId.parse(tool), new JsonObject(), caller, ToolSide.CLIENT)
+                            .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                } catch (java.util.concurrent.TimeoutException hang) {
+                    silent.add(tool + " (no answer in " + CALL_TIMEOUT_SECONDS + "s)");
+                    continue;
+                } catch (Exception thrown) {
+                    exploded.add(tool + " -> " + thrown.getClass().getSimpleName() + ": " + thrown.getMessage());
+                    continue;
+                }
+                if (envelope == null || !envelope.has("ok")) {
+                    exploded.add(tool + " -> not an envelope: " + envelope);
+                    continue;
+                }
+                if (envelope.get("ok").getAsBoolean()) {
+                    executed++;
+                } else if ("UNKNOWN_TOOL".equals(codeOf(envelope))) {
+                    silent.add(tool + " -> listed but not registered");
+                    continue;
+                }
+                answered++;
+            }
+            if (!silent.isEmpty() || !exploded.isEmpty()) {
+                return AcceptanceOutcome.fail(id, title, "silent=" + silent + " exploded=" + exploded);
+            }
+            return AcceptanceOutcome.pass(id, title,
+                    answered + " tools answered (" + executed + " executed, " + (answered - executed) + " refused): "
+                            + swept);
         });
     }
 
