@@ -174,7 +174,10 @@ public final class LabAcceptanceCases {
             }
             Set<String> exposed = new TreeSet<>();
             for (CapabilityDescriptor descriptor : CapabilityExposure.exposed(caller, ToolSide.CLIENT)) {
-                if (descriptor.kind().equals(CapabilityKind.TOOL)) {
+                // A workflow is called exactly like an atomic tool, so it is in the tool catalogue too. Comparing
+                // against TOOL rows alone reports a published workflow as a drift the moment a module installs one.
+                if (descriptor.kind().equals(CapabilityKind.TOOL)
+                        || descriptor.kind().equals(CapabilityKind.WORKFLOW)) {
                     exposed.add(descriptor.id().toString());
                 }
             }
@@ -1046,7 +1049,7 @@ public final class LabAcceptanceCases {
         final String id = "ACC-CAP-5";
         final String title = "a skill, a resource and a prompt all resolve, and prompt arguments change the text";
         return AcceptanceCase.of(id, title, () -> {
-            String skill = resultText(readCapability("minecraft:player-tools", null));
+            String skill = resultText(readCapability("tianshu:player-tools", null));
             String resource = resultText(readCapability("tianshu:game-basics", null));
             JsonObject twoLines = new JsonObject();
             twoLines.addProperty("lines", "2");
@@ -1228,7 +1231,10 @@ public final class LabAcceptanceCases {
             if (!TianshuTools.serverAvailable()) {
                 return AcceptanceOutcome.skip(id, title, "entity tools require a Ferry server");
             }
-            ToolCaller caller = ToolCaller.body(AcceptanceBodies.BODY_ID, false);
+            // The body is driven the way a client really drives one: through the player-authenticated wire, by the
+            // player that owns it. A body caller here would be refused as body.controller.unverified before the
+            // coordinates were ever looked at, and the case would stop testing the coordinate check it is named for.
+            ToolCaller caller = ToolCaller.player(localPlayerId(), true);
             ToolId target = ToolId.of("minecraft", "entity.look");
             JsonObject args = new JsonObject();
             args.addProperty("body", AcceptanceBodies.BODY_ID);
