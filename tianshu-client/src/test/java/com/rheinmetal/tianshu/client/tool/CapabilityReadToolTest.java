@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
@@ -26,8 +27,12 @@ class CapabilityReadToolTest {
 
     private static final CapabilityId SKILL = CapabilityId.of("test", "skill");
 
+    private SkillFileProvider skills;
+
     @BeforeEach
     void setUp() {
+        // A tool's document lives in the references of the skill that ships it, so the skill providers have to be up.
+        skills = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
         TianshuTools.register(new CapabilityReadTool());
         // The row below belongs to a module, so the consumer half of the sharing declaration is needed for the
         // listing case: an undeclared subscription sees the base only.
@@ -48,6 +53,7 @@ class CapabilityReadToolTest {
         TianshuTools.unregister(CapabilityReadTool.ID);
         CapabilityCatalog.unregister(SKILL);
         com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions.clear();
+        skills.unload();
     }
 
     @Test

@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -34,9 +35,14 @@ import java.util.stream.Stream;
  * read only when a caller asks for one. The catalogue receives the name and description only; body and references
  * stay on disk.</p>
  *
- * <p>One provider owns one namespace and one origin. A directory origin serves the player's skill folder; the
- * classpath origin serves built-in skills. A skill id is {@code namespace:name}, so two mods can ship a skill with
- * the same directory name without colliding.</p>
+ * <p>One provider owns one namespace and one origin, and the namespace is also the publisher: a directory origin serves
+ * the player's skill folder under {@code user}; the class-path origin serves the built-in skills under {@code tianshu};
+ * a mod registers its own folder under its own id. A skill id is {@code namespace:name}, so two mods can ship a skill
+ * with the same directory name without colliding, and "whose row is this" never needs a second lookup.</p>
+ *
+ * <p>A skill's {@code references/} folder is how a tool gets its document: the files are found from the tool's id through
+ * {@link SkillReferences}, which is why a mod's own skill folder documents its own tools without registering anything
+ * else.</p>
  */
 public final class SkillFileProvider {
 
@@ -44,13 +50,14 @@ public final class SkillFileProvider {
     private static final int MAX_NAME = 64;
     private static final int MAX_TEXT_BYTES = 48_000;
     private static final String SKILL_FILE = "SKILL.md";
+    private static final String REFERENCES = "references/";
 
     private final String namespace;
     private final Origin origin;
     private final Map<CapabilityId, Loaded> loaded = new ConcurrentHashMap<>();
     private final List<String> problems = new ArrayList<>();
 
-    private record Loaded(String name, String description) {
+    private record Loaded(String directory, String name, String description) {
     }
 
     private SkillFileProvider(String namespace, Origin origin) {
@@ -78,8 +85,9 @@ public final class SkillFileProvider {
         return List.copyOf(problems);
     }
 
-    /** Unregisters every skill this provider published. */
+    /** Unregisters every skill this provider published, and its references with them. */
     public void unload() {
+        SkillReferences.withdraw(this);
         for (CapabilityId id : List.copyOf(loaded.keySet())) {
             CapabilityCatalog.unregister(id);
         }
@@ -88,6 +96,7 @@ public final class SkillFileProvider {
 
     /** Re-reads the origin; skills that disappeared are unregistered, skills that changed are re-registered. */
     public void reload() {
+        SkillReferences.publish(this);
         problems.clear();
         loaded.forEach((id, skill) -> CapabilityCatalog.unregister(id));
         loaded.clear();
@@ -130,7 +139,7 @@ public final class SkillFileProvider {
             }
             String summary = description.strip();
             CapabilityId id = CapabilityId.of(namespace, name);
-            Loaded loadedSkill = new Loaded(name, summary);
+            Loaded loadedSkill = new Loaded(directoryName, name, summary);
             CapabilityDescriptor descriptor = new CapabilityDescriptor(
                     id,
                     CapabilityKind.SKILL,
@@ -138,8 +147,11 @@ public final class SkillFileProvider {
                     summary,
                     ToolSide.CLIENT,
                     ToolPermission.EVERYONE,
-                    "tianshu-skills",
-                    attributes(loadedSkill)
+                    // The publisher is the namespace: a skill folder belongs to whoever's id it is registered under,
+                    // so the player's folder is "user" and a mod's is the mod's own id. A second, provider-only name
+                    // would let "who published this" and "whose id is this" drift apart.
+                    namespace,
+                    attributes(loadedSkill, front.get(FrontMatter.SHARE))
             );
             CapabilityCatalog.register(descriptor, (context, args) -> read(directoryName, args));
             loaded.put(id, loadedSkill);
@@ -148,14 +160,48 @@ public final class SkillFileProvider {
         }
     }
 
-    private static JsonObject attributes(Loaded skill) {
+    private static JsonObject attributes(Loaded skill, String share) {
         JsonObject attributes = new JsonObject();
         attributes.addProperty("name", skill.name());
         attributes.addProperty("source", "skill");
-        // This provider publishes the base's own skills and the player's own folder: local content, opened by
-        // declaration rather than by being listed somewhere.
-        attributes.addProperty("share", "all");
+        // Sharing is a declaration, not a constant: the skill itself says who may see it. Undeclared, it follows its
+        // provider — the base and the player's own folder are open, a module's is private — which is CapabilitySharing's
+        // default, so writing it down here would only be a second place for the same answer to go stale.
+        if (share != null && !share.isBlank()) {
+            attributes.addProperty("share", share.strip());
+        }
         return attributes;
+    }
+
+    /**
+     * The text of one reference file, when one of this provider's skills ships it.
+     *
+     * <p>Asked by file name rather than by tool id: this provider knows its own folders, not the catalogue's ids, and a
+     * document is named after the tool it documents. Skills are searched in directory order, so two skills shipping the
+     * same file resolve the same way every time instead of following hash order.</p>
+     */
+    Optional<SkillReferences.Document> reference(String file) {
+        if (file == null || file.isBlank()) {
+            return Optional.empty();
+        }
+        String relative = REFERENCES + file;
+        List<Map.Entry<CapabilityId, Loaded>> ordered = new ArrayList<>(loaded.entrySet());
+        ordered.sort(Comparator.comparing(entry -> entry.getValue().directory()));
+        for (Map.Entry<CapabilityId, Loaded> entry : ordered) {
+            String directory = entry.getValue().directory();
+            if (!origin.exists(directory, relative)) {
+                continue;
+            }
+            try {
+                String text = origin.read(directory, relative);
+                return Optional.of(new SkillReferences.Document(entry.getKey(), relative,
+                        text.length() > MAX_TEXT_BYTES ? text.substring(0, MAX_TEXT_BYTES) : text));
+            } catch (IOException unreadable) {
+                problems.add(directory + "/" + relative + ": " + unreadable.getMessage());
+                return Optional.empty();
+            }
+        }
+        return Optional.empty();
     }
 
     /** Reads the body or one reference file; paging applies to both. */
@@ -214,6 +260,15 @@ public final class SkillFileProvider {
 
         /** Reads one file inside a skill; must stay inside that skill's directory. */
         String read(String skill, String relative) throws IOException;
+
+        /**
+         * Whether one file inside a skill exists.
+         *
+         * <p>Separate from {@link #skillDirectories()} on purpose: a class loader can fetch a named resource from a jar
+         * but cannot list a jar directory, so "find this tool's document" has to be a question about a known name
+         * rather than a listing.</p>
+         */
+        boolean exists(String skill, String relative);
     }
 
     private static final class DirectoryOrigin implements Origin {
@@ -260,6 +315,21 @@ public final class SkillFileProvider {
             }
             return Files.readString(target, StandardCharsets.UTF_8);
         }
+
+        @Override
+        public boolean exists(String skill, String relative) {
+            try {
+                validateRelative(relative);
+                Path base = root.resolve(skill).normalize();
+                if (!base.startsWith(root)) {
+                    return false;
+                }
+                Path target = base.resolve(relative).normalize();
+                return target.startsWith(base) && Files.isRegularFile(target);
+            } catch (RuntimeException invalid) {
+                return false;
+            }
+        }
     }
 
     private static final class ClasspathOrigin implements Origin {
@@ -304,6 +374,16 @@ public final class SkillFileProvider {
                 }
                 return new String(input.readAllBytes(), StandardCharsets.UTF_8);
             }
+        }
+
+        @Override
+        public boolean exists(String skill, String relative) {
+            try {
+                validateRelative(relative);
+            } catch (RuntimeException invalid) {
+                return false;
+            }
+            return loader.getResource(base + "/" + skill + "/" + relative) != null;
         }
     }
 

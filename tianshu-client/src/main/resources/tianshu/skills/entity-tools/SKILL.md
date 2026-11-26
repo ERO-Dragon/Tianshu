@@ -37,9 +37,17 @@ description: Minecraft 实体侧工具：让身体（实体化身）代替玩家
 | 结果里 `blocked` / `moved=0` | 路被挡或材料不够 | 先 `entity.scan` 看地形，再改路线 |
 | `NOT_PERMITTED` | 这具身体没有该能力位 | 换一具身体，或换成玩家侧的等效工具 |
 
+## 需要一条命令时，走审批出口
+
+`minecraft:command.run` 是本组唯一的"任意命令"入口，也是全权档在实体侧的**唯一载体**：
+第一次调用只返回一次性令牌，操作员批准后才真正执行，且一条令牌只跑一次（详见 `references/command.run.md`）。
+
+玩家侧不走这里：那边有 14 个结构化的 `minecraft:server.*` 工具（`gamemode`、`time`、`weather`…），
+参数有枚举校验、开关也分项——两边是两套，不要交叉使用。
+
 ## 参考资料
 
-`references/` 下每个工具一份，文件名就是去掉命名空间的工具 id（`body.mine.md`）。
+`references/` 下每个工具一份，文件名就是去掉命名空间的工具 id（`entity.mine.md`）。
 用 `minecraft:capability.read` 带工具 id 读最省事：
 
 ```json

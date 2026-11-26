@@ -7,6 +7,7 @@ import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
 import com.rheinmetal.tianshu.api.capability.CapabilityExposure;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import org.junit.jupiter.api.AfterEach;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -115,10 +117,44 @@ class SkillFileProviderTest {
         provider = SkillFileProvider.installClasspath("tianshu", "tianshu/skills");
         CapabilityId id = CapabilityId.of("tianshu", "player-tools");
         assertTrue(CapabilityCatalog.find(id).isPresent(), "the classpath index must list the built-in skill");
+        assertEquals("tianshu", CapabilityCatalog.find(id).orElseThrow().provider(),
+                "the namespace is also the publisher, so the base's skills have one name, not two");
         assertTrue(text(invoke(id, new JsonObject())).contains("玩家侧工具"));
         JsonObject reference = new JsonObject();
         reference.addProperty("file", "references/recipe.query.md");
         assertTrue(text(invoke(id, reference)).contains("recipe.query"), "references are read on demand");
+    }
+
+    @Test
+    void sharingIsDeclaredInMetadataAndUndeclaredFollowsTheProvider() throws Exception {
+        writeWith("open", "open", "A skill", "metadata:\n  share: all", "body");
+        writeWith("private", "private", "A skill", "metadata:\n  share: none", "body");
+        writeWith("named", "named", "A skill", "metadata:\n  share: moda, modb", "body");
+        writeWith("undeclared", "undeclared", "A skill", "", "body");
+        provider = SkillFileProvider.install("user", root);
+
+        assertEquals(CapabilitySharing.ALL, sharing("open"));
+        assertEquals(CapabilitySharing.NONE, sharing("private"));
+        assertEquals(Set.of("moda", "modb"), sharing("named").modules(), "a comma list is a list, not one long id");
+        // The player's own folder is open by default: the assistant acts for that same person.
+        assertEquals(CapabilitySharing.ALL, sharing("undeclared"));
+    }
+
+    @Test
+    void aModsOwnFolderIsPrivateByDefault() throws Exception {
+        write("alpha", "alpha", "A skill", "body");
+        provider = SkillFileProvider.install("changsui", root);
+
+        assertEquals(CapabilitySharing.NONE, sharing(CapabilityId.of("changsui", "alpha")),
+                "an undeclared share from a module must fail closed");
+    }
+
+    private static CapabilitySharing sharing(String name) {
+        return sharing(CapabilityId.of("user", name));
+    }
+
+    private static CapabilitySharing sharing(CapabilityId id) {
+        return CapabilitySharing.of(CapabilityCatalog.find(id).orElseThrow());
     }
 
     private JsonObject invoke(CapabilityId id, JsonObject args) throws Exception {
@@ -132,11 +168,16 @@ class SkillFileProviderTest {
     }
 
     private void write(String directory, String name, String description, String body) throws Exception {
+        writeWith(directory, name, description, "", body);
+    }
+
+    private void writeWith(String directory, String name, String description, String extra, String body)
+            throws Exception {
         Path skill = root.resolve(directory);
         Files.createDirectories(skill);
-        Files.writeString(skill.resolve("SKILL.md"),
-                "---\nname: " + name + "\ndescription: " + description + "\n---\n" + body,
-                StandardCharsets.UTF_8);
+        String front = "---\nname: " + name + "\ndescription: " + description + "\n"
+                + (extra.isBlank() ? "" : extra + "\n") + "---\n" + body;
+        Files.writeString(skill.resolve("SKILL.md"), front, StandardCharsets.UTF_8);
     }
 
     private void writeFile(String directory, String relative, String body) throws Exception {

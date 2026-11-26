@@ -150,26 +150,19 @@ public final class TextCapabilityProvider {
             attributes.addProperty("name", name);
             attributes.addProperty("source", kind.value());
             attributes.addProperty("mediaType", "text/markdown");
+            // Sharing is a declaration, not a constant: the file says who may see it, and an undeclared one follows its
+            // provider (base and the human's own folder open, a module private). See CapabilitySharing.
+            String share = front.get(FrontMatter.SHARE);
+            if (share != null && !share.isBlank()) {
+                attributes.addProperty("share", share.strip());
+            }
             CapabilityDescriptor descriptor = new CapabilityDescriptor(id, kind, CapabilityBinding.LOCAL, summary,
-                    ToolSide.CLIENT, ToolPermission.EVERYONE, "tianshu-text", open(attributes));
+                    ToolSide.CLIENT, ToolPermission.EVERYONE, namespace, attributes);
             CapabilityCatalog.register(descriptor, (context, args) -> read(loadedCapability, args));
             loaded.put(id, loadedCapability);
         } catch (IOException | RuntimeException failure) {
             problems.add(name + ": " + failure.getMessage());
         }
-    }
-
-
-    /**
-     * Marks a row as local content that is open to everyone.
-     *
-     * <p>This provider ships the base's prompts and resources and publishes files from the player's own folder.
-     * A provider that declares nothing is private, so saying so here is what keeps these readable 鈥?and deleting
-     * this line would hide them, which is the correct behaviour for content the owner did not open.</p>
-     */
-    private static com.google.gson.JsonObject open(com.google.gson.JsonObject attributes) {
-        attributes.addProperty("share", "all");
-        return attributes;
     }
 
     private CompletableFuture<JsonObject> read(Loaded capability, JsonObject args) {

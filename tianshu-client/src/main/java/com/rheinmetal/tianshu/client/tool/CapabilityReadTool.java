@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.capability.CapabilityDescriptor;
 import com.rheinmetal.tianshu.api.capability.CapabilityExposure;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilityKind;
+import com.rheinmetal.tianshu.api.capability.skill.SkillReferences;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
@@ -117,14 +118,16 @@ public final class CapabilityReadTool implements TianshuTool<CapabilityReadTool.
                         com.rheinmetal.tianshu.api.tool.ToolError.UNKNOWN_TOOL,
                         "no capability named " + capabilityId));
             }
-            // A tool is called directly, but it may still ship a document: one tool, one file, found from its id.
-            var documentation = com.rheinmetal.tianshu.client.capability.ToolDocs.of(capabilityId);
+            // A tool is called directly, but it may still ship a document: one tool, one file, found from its id in
+            // the references of the skill that ships it.
+            var documentation = SkillReferences.of(capabilityId);
             if (documentation.isPresent()) {
-                return CompletableFuture.completedFuture(new Reply(documentation.get()));
+                return CompletableFuture.completedFuture(new Reply(documentation.get().text()));
             }
             return CompletableFuture.failedFuture(new com.rheinmetal.tianshu.api.tool.ToolException(
                     com.rheinmetal.tianshu.api.tool.ToolError.INVALID_ARGS,
-                    "capability " + capabilityId + " is a tool with no document; call it directly"));
+                    "capability " + capabilityId + " is a tool with no document (expected "
+                            + SkillReferences.pathOf(capabilityId) + " under the skill that ships it); call it directly"));
         }
         JsonObject args = request.arguments() == null ? new JsonObject() : request.arguments().deepCopy();
         if (request.file() != null && !request.file().isBlank()) {
