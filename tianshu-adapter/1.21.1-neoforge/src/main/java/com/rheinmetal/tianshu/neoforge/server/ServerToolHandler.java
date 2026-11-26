@@ -23,7 +23,6 @@ import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.game.RecipeAvailabilityPort;
 import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.game.WorldInfoPort;
-import com.rheinmetal.tianshu.api.game.WorldLocatePort;
 import com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
@@ -42,7 +41,6 @@ import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
 import com.rheinmetal.tianshu.client.tool.WorldInfoTool;
-import com.rheinmetal.tianshu.client.tool.WorldLocateTool;
 import com.rheinmetal.tianshu.neoforge.config.ServerActionConfig;
 import com.rheinmetal.tianshu.neoforge.body.NeoForgeActionPlayers;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
@@ -55,7 +53,6 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.minecraft.world.level.GameRules;
 import com.rheinmetal.tianshu.mc.tool.BodyToolRegistry;
 import com.rheinmetal.tianshu.mc.tool.WorldInfoSource;
-import com.rheinmetal.tianshu.mc.tool.WorldLocateSource;
 import com.rheinmetal.tianshu.mc.tool.ActorStatusSource;
 import com.rheinmetal.tianshu.mc.tool.CraftAvailableSource;
 import com.rheinmetal.tianshu.mc.tool.BlockInspectSource;
@@ -146,7 +143,7 @@ public final class ServerToolHandler {
     }
 
     private static void onServerStarting(ServerStartingEvent event) {
-        SESSION.start(registrations -> {
+        SESSION.start(event.getServer(), registrations -> {
             ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
             // One probe for the whole session: the block side of inspect and transfer must resolve the same store.
             com.rheinmetal.tianshu.mc.tool.BlockStorageProbe blockProbe =
@@ -190,14 +187,12 @@ public final class ServerToolHandler {
                     new BlockInspectSource(event.getServer(), blockProbe));
             registrations.port(ActorStatusPort.class, new ActorStatusSource(event.getServer()));
             registrations.port(WorldInfoPort.class, new WorldInfoSource(event.getServer()));
-            registrations.port(WorldLocatePort.class, new WorldLocateSource(event.getServer()));
             registrations.port(RecipeAvailabilityPort.class, new CraftAvailableSource(event.getServer()));
             registrations.tool(new BlockInspectTool());
             registrations.tool(new EntityInspectTool());
             registrations.tool(new ItemInspectTool());
             registrations.tool(new BodyStatusTool());
             registrations.tool(new WorldInfoTool());
-            registrations.tool(new WorldLocateTool());
             registrations.tool(new CraftAvailableTool());
             registrations.port(EntityMotionPort.class, new MotionRouter());
             registrations.port(EntityActionPort.class, new ActionRouter());
@@ -264,7 +259,7 @@ public final class ServerToolHandler {
 
 
     private static void onServerTick(ServerTickEvent.Post event) {
-        ServerTicks.INSTANCE.fire();
+        SESSION.tick();
         BodyRuntime.current().ifPresent(registry -> {
                 // Rebind unloaded carriers before the timer can save a registry that lost them.
                 registry.refreshCarriers(event.getServer());

@@ -51,7 +51,7 @@ public final class ServerRegistrations implements AutoCloseable {
         }
         ToolId id = tool.id();
         if (TianshuTools.find(id) == null) {
-            TianshuTools.register(tool);
+            TianshuTools.registerBuiltin(tool);
         }
     }
 

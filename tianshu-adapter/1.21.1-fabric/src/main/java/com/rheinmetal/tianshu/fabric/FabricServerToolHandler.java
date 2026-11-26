@@ -9,7 +9,6 @@ import com.rheinmetal.tianshu.mc.tool.EntityInspectSource;
 import com.rheinmetal.tianshu.mc.tool.ItemInspectSource;
 import com.rheinmetal.tianshu.mc.tool.ServerToolSession;
 import com.rheinmetal.tianshu.mc.tool.WorldInfoSource;
-import com.rheinmetal.tianshu.mc.tool.WorldLocateSource;
 import com.rheinmetal.tianshu.api.entity.EntityActionPort;
 import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
 import com.rheinmetal.tianshu.api.entity.EntityItemUsePort;
@@ -31,7 +30,6 @@ import com.rheinmetal.tianshu.api.game.LootQueryPort;
 import com.rheinmetal.tianshu.api.game.RecipeAvailabilityPort;
 import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.game.WorldInfoPort;
-import com.rheinmetal.tianshu.api.game.WorldLocatePort;
 import com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
@@ -50,7 +48,6 @@ import com.rheinmetal.tianshu.client.tool.CraftRecipeTool;
 import com.rheinmetal.tianshu.client.tool.LootQueryTool;
 import com.rheinmetal.tianshu.client.tool.RecipeQueryTool;
 import com.rheinmetal.tianshu.client.tool.WorldInfoTool;
-import com.rheinmetal.tianshu.client.tool.WorldLocateTool;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCallResultPacket;
 import com.rheinmetal.tianshu.mc.network.ToolCatalogPacket;
@@ -117,7 +114,7 @@ public final class FabricServerToolHandler {
         // Declarations that cannot work are reported once modules have published; an empty audit logs nothing.
         ServerLifecycleEvents.SERVER_STARTED.register(server -> com.rheinmetal.tianshu.api.capability.CapabilityDiagnostics
                 .report(problem -> org.slf4j.LoggerFactory.getLogger("tianshu").warn("tianshu: {}", problem)));
-        ServerLifecycleEvents.SERVER_STARTING.register(server -> SESSION.start(registrations -> {
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> SESSION.start(server, registrations -> {
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             // One probe for the whole session: the block side of inspect and transfer must resolve the same store.
             com.rheinmetal.tianshu.mc.tool.BlockStorageProbe blockProbe = new FabricBlockStorageProbe();
@@ -152,14 +149,12 @@ public final class FabricServerToolHandler {
                     new BlockInspectSource(server, blockProbe));
             registrations.port(ActorStatusPort.class, new ActorStatusSource(server));
             registrations.port(WorldInfoPort.class, new WorldInfoSource(server));
-            registrations.port(WorldLocatePort.class, new WorldLocateSource(server));
             registrations.port(RecipeAvailabilityPort.class, new CraftAvailableSource(server));
             registrations.tool(new BlockInspectTool());
             registrations.tool(new EntityInspectTool());
             registrations.tool(new ItemInspectTool());
             registrations.tool(new BodyStatusTool());
             registrations.tool(new WorldInfoTool());
-            registrations.tool(new WorldLocateTool());
             registrations.tool(new CraftAvailableTool());
             registrations.port(EntityMotionPort.class, new MotionRouter());
             registrations.port(EntityActionPort.class, new ActionRouter());
@@ -199,7 +194,7 @@ public final class FabricServerToolHandler {
             SESSION.stop(server);
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            ServerTicks.INSTANCE.fire();
+            SESSION.tick();
             BodyRuntime.current().ifPresent(registry -> {
                 // Rebind unloaded carriers before the timer can save a registry that lost them.
                 registry.refreshCarriers(server);

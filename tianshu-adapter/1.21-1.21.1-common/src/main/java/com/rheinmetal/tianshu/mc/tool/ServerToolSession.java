@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.mc.tool;
 
+import com.rheinmetal.tianshu.api.game.WorldLocatePort;
+import com.rheinmetal.tianshu.client.tool.WorldLocateTool;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.mc.body.BodyRuntime;
 import com.rheinmetal.tianshu.mc.host.ServerTicks;
@@ -11,14 +13,26 @@ import java.util.function.Consumer;
 public final class ServerToolSession {
     private ServerRegistrations registrations;
 
-    public void start(Consumer<ServerRegistrations> install) {
+    private WorldLocateSource locate;
+
+    public void start(MinecraftServer server, Consumer<ServerRegistrations> install) {
         release();
         registrations = new ServerRegistrations();
         try {
+            locate = new WorldLocateSource(server);
+            registrations.port(WorldLocatePort.class, locate);
+            WorldLocateTool.tools().forEach(registrations::tool);
             install.accept(registrations);
         } catch (RuntimeException | Error failure) {
             release();
             throw failure;
+        }
+    }
+
+    public void tick() {
+        ServerTicks.INSTANCE.fire();
+        if (locate != null) {
+            locate.tick();
         }
     }
 
@@ -32,6 +46,10 @@ public final class ServerToolSession {
 
     private void release() {
         if (registrations != null) {
+            if (locate != null) {
+                locate.close();
+                locate = null;
+            }
             registrations.close();
             registrations = null;
             ServerTicks.INSTANCE.clear();

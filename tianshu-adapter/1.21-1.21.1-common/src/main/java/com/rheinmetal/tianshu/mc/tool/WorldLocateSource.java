@@ -1,153 +1,165 @@
 package com.rheinmetal.tianshu.mc.tool;
 
-import com.mojang.datafixers.util.Pair;
 import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.game.LocateRequest;
 import com.rheinmetal.tianshu.api.game.LocateResult;
 import com.rheinmetal.tianshu.api.game.WorldLocatePort;
+import com.rheinmetal.tianshu.api.tool.CancellationSignal;
+import com.rheinmetal.tianshu.api.tool.ToolError;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Holder;
-import net.minecraft.core.HolderSet;
+import net.minecraft.core.QuartPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.biome.BiomeManager;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
-/**
- * The 1.21.1 locate: nearest structure through the chunk generator, nearest biome by bounded sampling.
- *
- * <p>The two halves are genuinely different, and the result says so.</p>
- *
- * <ul>
- *   <li><b>Structures</b> have a real search: the generator knows where its features are, so
- *       {@code findNearestMapStructure} answers exactly and cheaply for the whole radius.</li>
- *   <li><b>Biomes</b> have no such index. The climate sampler is per-version and awkward to reach from here, so this
- *       samples the biome at a grid of positions and reports how many positions that was. The answer is the nearest
- *       match <em>in the sample</em>, and a "not found" means "not in the sampled grid", not "not in the world" — which
- *       is why {@link LocateResult#sampled()} exists and why the tool description says so.</li>
- * </ul>
- *
- * <p>Structure ids are resolved through the registry, so an unknown id is a refusal with a reason instead of an empty
- * search that would look like "none nearby".</p>
- */
-public final class WorldLocateSource implements WorldLocatePort {
+/** Owns the server-wide locate budget and retires all searches when their world session ends. */
+public final class WorldLocateSource implements WorldLocatePort, AutoCloseable {
+    private static final int MAX_SEARCHES = 8;
+    private static final int SAMPLES_PER_TICK = 128;
 
-    /** Biome sampling step, in blocks. Coarse on purpose: biomes are hundreds of blocks wide. */
-    private static final int BIOME_SAMPLE_STEP = 16;
-    /** Upper bound on biome samples, so a wide search cannot stall the server thread for seconds. */
-    private static final int BIOME_SAMPLE_LIMIT = 4096;
-    private static final int DEFAULT_RADIUS_BLOCKS = 256;
+    interface Search {
+        /** Advances on the server thread. A null result means more ticks are needed. */
+        LocateResult advance(int budget);
+    }
 
     private final MinecraftServer server;
+    private final Set<Job> active = new HashSet<>();
+    private boolean closed;
+
+    private static final class Job {
+        final ActorRef actor;
+        final LocateRequest request;
+        final CancellationSignal cancellation;
+        final CompletableFuture<LocateResult> result = new CompletableFuture<>();
+        Search search;
+
+        Job(ActorRef actor, LocateRequest request, CancellationSignal cancellation) {
+            this.actor = actor;
+            this.request = request;
+            this.cancellation = cancellation;
+        }
+
+        boolean cancelled() {
+            return result.isDone() || cancellation.isCancelled();
+        }
+    }
 
     public WorldLocateSource(MinecraftServer server) {
         this.server = server;
     }
 
     @Override
-    public CompletableFuture<LocateResult> locate(ActorRef actor, LocateRequest request) {
-        CompletableFuture<LocateResult> result = new CompletableFuture<>();
-        server.execute(() -> result.complete(locateNow(actor, request)));
-        return result;
+    public synchronized CompletableFuture<LocateResult> locate(ActorRef actor, LocateRequest request,
+                                                                CancellationSignal cancellation) {
+        if (!request.singleTarget() || !request.validRadius()) {
+            return CompletableFuture.completedFuture(LocateResult.failure(
+                    "Expected one structure or biome and a radius of 1 to " + LocateRequest.MAX_RADIUS_BLOCKS));
+        }
+        if (closed || active.size() >= MAX_SEARCHES) {
+            return CompletableFuture.failedFuture(closed
+                    ? new ToolException(ToolError.UNAVAILABLE, "Server session closed")
+                    : new ToolException(ToolError.BUSY, "World locate is busy"));
+        }
+        Job job = new Job(actor, request, cancellation);
+        active.add(job);
+        return job.result.orTimeout(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
     }
 
-    private LocateResult locateNow(ActorRef actor, LocateRequest request) {
-        if (!request.singleTarget()) {
-            return LocateResult.failure("locate needs exactly one of: a structure id or a biome id");
-        }
-        ToolActor holder = ToolActors.resolve(server, actor).orElse(null);
-        if (holder == null) {
-            return LocateResult.failure(actor.kind() == ActorRef.Kind.BODY
-                    ? "the agent body is not present"
-                    : "the player is not online");
-        }
-        int radius = request.radiusBlocks() > 0 ? request.radiusBlocks() : DEFAULT_RADIUS_BLOCKS;
-        try {
-            return request.structure().isEmpty()
-                    ? findBiome(holder, request.biome(), radius)
-                    : findStructure(holder, request.structure(), radius);
-        } catch (RuntimeException failure) {
-            return LocateResult.failure("the search failed: " + failure.getClass().getSimpleName()
-                    + ": " + failure.getMessage());
-        }
+    private synchronized List<Job> jobs() {
+        return List.copyOf(active);
     }
 
-    private LocateResult findStructure(ToolActor holder, String structureId, int radiusBlocks) {
-        ResourceLocation id = ResourceLocation.tryParse(structureId);
-        if (id == null) {
-            return LocateResult.failure("'" + structureId + "' is not a valid structure id");
-        }
-        ResourceKey<Structure> key = ResourceKey.create(Registries.STRUCTURE, id);
-        Holder<Structure> target = server.registryAccess()
-                .registryOrThrow(Registries.STRUCTURE)
-                .getHolder(key)
-                .orElse(null);
-        if (target == null) {
-            return LocateResult.failure("no structure is registered as " + id);
-        }
-        BlockPos from = BlockPos.containing(holder.position());
-        int chunkRadius = Math.max(1, radiusBlocks / 16);
-        // ServerLevel on purpose: Level.getChunkSource() is typed as ChunkSource, which has no generator.
-        ServerLevel level = holder.level();
-        Pair<BlockPos, Holder<Structure>> hit = level.getChunkSource().getGenerator()
-                .findNearestMapStructure(level, HolderSet.direct(target), from, chunkRadius, false);
-        if (hit == null) {
-            return LocateResult.notFound("structure", id.toString(), 0,
-                    "no " + id + " within " + radiusBlocks + " blocks");
-        }
-        BlockPos at = hit.getFirst();
-        return new LocateResult("structure", id.toString(), true,
-                at.getX(), at.getY(), at.getZ(), distance(from, at), 0, "found");
-    }
-
-    private LocateResult findBiome(ToolActor holder, String biomeId, int radiusBlocks) {
-        ResourceLocation id = ResourceLocation.tryParse(biomeId);
-        if (id == null) {
-            return LocateResult.failure("'" + biomeId + "' is not a valid biome id");
-        }
-        ResourceKey<Biome> key = ResourceKey.create(Registries.BIOME, id);
-        if (server.registryAccess().registryOrThrow(Registries.BIOME).getHolder(key).isEmpty()) {
-            return LocateResult.failure("no biome is registered as " + id);
-        }
-        BlockPos from = BlockPos.containing(holder.position());
-        ServerLevel level = holder.level();
-        int sampled = 0;
-        BlockPos best = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (int dx = -radiusBlocks; dx <= radiusBlocks; dx += BIOME_SAMPLE_STEP) {
-            for (int dz = -radiusBlocks; dz <= radiusBlocks; dz += BIOME_SAMPLE_STEP) {
-                if (sampled >= BIOME_SAMPLE_LIMIT) {
-                    break;
+    public void tick() {
+        List<Job> jobs = jobs();
+        for (Job job : jobs) {
+            try {
+                if (job.cancelled()) {
+                    job.result.cancel(false);
+                } else {
+                    if (job.search == null) {
+                        job.search = start(job);
+                    }
+                    LocateResult result = job.search.advance(SAMPLES_PER_TICK / jobs.size());
+                    if (result != null) {
+                        job.result.complete(result);
+                    }
                 }
-                BlockPos at = new BlockPos(from.getX() + dx, from.getY(), from.getZ() + dz);
-                sampled++;
-                if (!level.getBiome(at).is(key)) {
-                    continue;
-                }
-                double distance = distance(from, at);
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    best = at;
+            } catch (RuntimeException failure) {
+                job.result.completeExceptionally(failure);
+            }
+            if (job.result.isDone()) {
+                synchronized (this) {
+                    active.remove(job);
                 }
             }
         }
-        if (best == null) {
-            return LocateResult.notFound("biome", id.toString(), sampled,
-                    "no " + id + " among " + sampled + " sampled positions within " + radiusBlocks + " blocks");
-        }
-        return new LocateResult("biome", id.toString(), true,
-                best.getX(), best.getY(), best.getZ(), bestDistance, sampled, "found");
     }
 
-    private static double distance(BlockPos from, BlockPos to) {
-        double dx = to.getX() - from.getX();
-        double dy = to.getY() - from.getY();
-        double dz = to.getZ() - from.getZ();
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    private Search start(Job job) {
+        ToolActor actor = ToolActors.resolve(server, job.actor).orElseThrow(() ->
+                new ToolException(ToolError.UNAVAILABLE, "Locate origin is no longer present"));
+        LocateRequest request = job.request;
+        boolean biome = request.structure().isEmpty();
+        String target = biome ? request.biome() : request.structure();
+        ResourceLocation id = ResourceLocation.tryParse(target);
+        if (id != null) {
+            BlockPos from = BlockPos.containing(actor.position());
+            if (biome) {
+                var key = ResourceKey.create(Registries.BIOME, id);
+                if (server.registryAccess().registryOrThrow(Registries.BIOME).containsKey(id)) {
+                    if (request.scope() == LocateRequest.Scope.GENERATED) {
+                        return GeneratedChunkSearch.biome(actor.level(), from, key, request.radiusBlocks());
+                    }
+                    return biomeSearch(actor.level(), from, key, request.radiusBlocks());
+                }
+            } else {
+                var structure = server.registryAccess().registryOrThrow(Registries.STRUCTURE)
+                        .getHolder(ResourceKey.create(Registries.STRUCTURE, id));
+                if (structure.isPresent()) {
+                    if (request.scope() == LocateRequest.Scope.GENERATED) {
+                        return GeneratedChunkSearch.structure(actor.level(), from, structure.get().value(), id,
+                                request.radiusBlocks());
+                    }
+                    return new StructureLocateSearch(actor.level(), from, structure.get(), id, request.radiusBlocks(),
+                            job::cancelled);
+                }
+            }
+        }
+        return budget -> LocateResult.failure("Unknown " + (biome ? "biome" : "structure") + ": " + target);
+    }
+
+    private static Search biomeSearch(ServerLevel level, BlockPos from, ResourceKey<Biome> target, int radius) {
+        // Use the vanilla biome blend with the generator as a fallback, without acquiring chunk tickets.
+        BiomeManager biomes = level.getBiomeManager().withDifferentSource((x, y, z) -> {
+            var loaded = level.getChunkSource().getChunkNow(QuartPos.toSection(x), QuartPos.toSection(z));
+            return loaded == null ? level.getUncachedNoiseBiome(x, y, z) : loaded.getNoiseBiome(x, y, z);
+        });
+        int y = from.getY();
+        return new LocateGridSearch(from.getX(), y, from.getZ(), from.getX(), from.getZ(), radius, "biome",
+                target.location().toString(), (x, z) -> CompletableFuture.completedFuture(
+                        biomes.getBiome(new BlockPos(x, y, z)).is(target) ? LocateGridSearch.Match.HIT : LocateGridSearch.Match.MISS));
+    }
+
+    @Override
+    public void close() {
+        List<Job> pending;
+        synchronized (this) {
+            closed = true;
+            pending = List.copyOf(active);
+            active.clear();
+        }
+        pending.forEach(job -> job.result.completeExceptionally(
+                new ToolException(ToolError.UNAVAILABLE, "Server session closed")));
     }
 }

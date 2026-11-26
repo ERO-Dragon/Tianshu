@@ -572,58 +572,36 @@ public final class PlayerSupportGameTests {
                 .map(key -> key.location().toString())
                 .orElse("");
 
-        // Refusals first: an unknown id must be a refusal with a reason, not an empty search that reads as "none
-        // nearby". These are the two mistakes a caller can make and they must look different.
-        LocateResult unknown = awaitLocate(helper, port, actor, new LocateRequest("tianshu:no_such_structure", "", 64));
-        if (unknown.searched()) {
-            helper.fail("an unknown structure id was reported as a search instead of a refusal: " + unknown.message());
-            return;
-        }
-        LocateResult both = awaitLocate(helper, port, actor,
-                new LocateRequest("minecraft:village_plains", "minecraft:plains", 64));
-        if (both.searched()) {
-            helper.fail("a request naming both a structure and a biome was searched instead of refused");
-            return;
-        }
-
-        // A biome search that must succeed: the biome the test stands in.
-        if (here.isBlank()) {
-            helper.fail("the test could not read its own biome");
-            return;
-        }
-        LocateResult biome = awaitLocate(helper, port, actor, new LocateRequest("", here, 64));
-        if (!biome.searched() || !biome.found() || biome.sampled() <= 0) {
-            helper.fail("the biome under the test was not found in its own sample: " + biome.message());
-            return;
-        }
-        if (biome.distanceBlocks() > 64.0D) {
-            helper.fail("the found biome is farther than the search radius: " + biome.distanceBlocks());
-        }
-        if (biome.x() == 0 && biome.z() == 0) {
-            helper.fail("the biome hit has no position");
-        }
-    }
-
-    private static LocateResult awaitLocate(GameTestHelper helper, WorldLocatePort port, ActorRef actor,
-                                            LocateRequest request) {
-        AtomicReference<LocateResult> read = new AtomicReference<>();
-        AtomicReference<Throwable> refused = new AtomicReference<>();
-        port.locate(actor, request).whenComplete((result, error) -> {
-            if (error != null) {
-                refused.set(error);
-                return;
-            }
-            read.set(result);
-        });
+        var position = player.blockPosition();
+        var chunk = helper.getLevel().getChunkSource().getChunkNow(position.getX() >> 4, position.getZ() >> 4);
+        String storedBiome = chunk.getNoiseBiome(position.getX() >> 2, position.getY() >> 2, position.getZ() >> 2)
+                .unwrapKey().orElseThrow().location().toString();
+        var known = port.locate(actor, new LocateRequest("", storedBiome, 64, LocateRequest.Scope.GENERATED));
+        var unknown = port.locate(actor, new LocateRequest("tianshu:no_such_structure", "", 64, LocateRequest.Scope.WORLD));
+        var both = port.locate(actor, new LocateRequest("minecraft:village_plains", here, 64, LocateRequest.Scope.WORLD));
+        var tooFar = port.locate(actor, new LocateRequest("", here, LocateRequest.MAX_RADIUS_BLOCKS + 1, LocateRequest.Scope.WORLD));
+        var local = port.locate(actor, new LocateRequest("", here, LocateRequest.MAX_RADIUS_BLOCKS, LocateRequest.Scope.WORLD));
+        var cancelled = port.locate(actor, new LocateRequest("", here, 64, LocateRequest.Scope.WORLD), () -> true);
         helper.startSequence()
-                .thenWaitUntil(await(() -> read.get() != null || refused.get() != null, "world.locate"))
+                .thenWaitUntil(await(() -> unknown.isDone() && both.isDone() && tooFar.isDone()
+                        && known.isDone() && local.isDone() && cancelled.isDone(), "world.locate"))
                 .thenExecute(() -> {
-                    if (refused.get() != null) {
-                        helper.fail("locating failed: " + reasonOf(refused.get()));
+                    if (unknown.join().searched() || both.join().searched() || tooFar.join().searched()) {
+                        helper.fail("invalid locate requests must be refused");
+                    }
+                    if (!known.join().found() || known.join().distanceBlocks() != 0 || known.join().sampled() != 1) {
+                        helper.fail("the generated-chunk search missed the stored biome at the actor");
+                    }
+                    LocateResult biome = local.join();
+                    if (!biome.found() || biome.sampled() != 1 || biome.distanceBlocks() != 0
+                            || !player.blockPosition().equals(new BlockPos(biome.x(), biome.y(), biome.z()))) {
+                        helper.fail("expected the biome at the actor to be the first sample: " + biome);
+                    }
+                    if (!cancelled.isCancelled()) {
+                        helper.fail("a cancelled locate should stop before sampling");
                     }
                 })
                 .thenSucceed();
-        return read.get();
     }
 
     @GameTest(template = PLAZA, timeoutTicks = 200)

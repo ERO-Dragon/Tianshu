@@ -55,7 +55,7 @@ public final class BodyToolRegistry {
 
     private static void ensure(ToolId id, Supplier<TianshuTool<?, ?>> factory) {
         if (TianshuTools.find(id) == null) {
-            TianshuTools.register(factory.get());
+            TianshuTools.registerBuiltin(factory.get());
         }
     }
 }
