@@ -101,6 +101,18 @@ class TianshuToolsTest {
         assertEquals(ToolPermission.OPERATOR, ToolPolicy.forCategory(ToolCategory.SERVER_WRITE).permission());
     }
 
+    /**
+     * A module's own entity is not a server policy: the base must not make it ask permission to walk.
+     *
+     * <p>Who may drive a body is settled per call by ownership, and what a body can do is settled by the capabilities
+     * the module registered it with. A default-off switch here would be the base owning someone else's mod.</p>
+     */
+    @Test
+    void aBodyToolIsOfferedWithoutBeingSwitchedOn() {
+        assertTrue(ToolPolicy.forCategory(ToolCategory.BODY_WRITE).enabledByDefault());
+        assertEquals(ToolPermission.EVERYONE, ToolPolicy.forCategory(ToolCategory.BODY_WRITE).permission());
+    }
+
     @Test
     void aWriteToolStartsDisabledAndNeedsAnOperator() throws Exception {
         ToolId write = ToolId.of("test", "write");

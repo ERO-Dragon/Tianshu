@@ -2,7 +2,6 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.game.CommandResult;
-import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -37,11 +36,6 @@ public final class BodyCommandRunTool implements TianshuTool<BodyCommandRunTool.
     @Override
     public ToolCategory category() {
         return ToolCategory.BODY_WRITE;
-    }
-
-    @Override
-    public BodyAutonomy requiredBodyAutonomy() {
-        return BodyAutonomy.PRIVILEGED;
     }
 
     @Override

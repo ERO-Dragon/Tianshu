@@ -45,25 +45,8 @@ public interface TianshuTool<A, R> {
     }
 
     /**
-     * The risk tier this tool needs when it acts <strong>through a body</strong>; {@code null} when the body scale has
-     * nothing to say about it.
-     *
-     * <p>A body write is survival work: a carrier mining is the body doing its job. A read declares nothing — it is not
-     * something the body does to the world, and a server that refuses all body work must still let a model look at what
-     * the body is holding.</p>
-     *
-     * <p>A tool whose body use is privileged says so here, or — when only one of its sub-modes is (a move that flies or
-     * teleports) — checks {@link ToolContext#allowedBodyAutonomy()} for that sub-mode, because a static declaration
-     * cannot express "this one step goes further".</p>
-     *
-     * <p>A tool that serves both actor kinds declares this too: choosing blocks is survival work for a player and for
-     * a body alike.</p>
+     * The policy this tool runs under; by default it follows the category.
      */
-    default BodyAutonomy requiredBodyAutonomy() {
-        return category() == ToolCategory.BODY_WRITE ? BodyAutonomy.SURVIVAL : null;
-    }
-
-    /** The policy this tool runs under; by default it follows the category. */
     default ToolPolicy policy() {
         return ToolPolicy.forCategory(category());
     }

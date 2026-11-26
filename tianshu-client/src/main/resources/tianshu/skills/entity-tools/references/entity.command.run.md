@@ -17,4 +17,4 @@
 ## 失败与下一步
 
 - `PENDING_APPROVAL` 不是失败：把 `approvalToken` 交给操作员执行 `/tianshu approve …`，再加 `"approval":"7F3A9C21"` 重发一次；令牌绑定"这具身体 + 这条命令"，单次有效、5 分钟过期，`line` 差一个字都对不上。
-- `FAILED` / 状态 `REJECTED`（令牌未知、过期、已用过、与这具身体或这条命令不匹配）；`NO_PERMISSION` / 服务器只让身体做生存动作，而本工具要求 `PRIVILEGED` → 重新申请，权限不够就由操作员自己跑这条命令。
+- `FAILED` / 状态 `REJECTED`（令牌未知、过期、已用过、与这具身体或这条命令不匹配）；`NO_PERMISSION` / 操作员拒绝了这次申请 → 换一条命令试，或者让操作员自己跑。

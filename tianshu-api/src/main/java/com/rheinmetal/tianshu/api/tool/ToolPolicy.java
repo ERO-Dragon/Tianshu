@@ -26,8 +26,10 @@ public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, lo
         return switch (category) {
             case LOCAL, SERVER_READ -> new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
             case SERVER_WRITE -> new ToolPolicy(false, ToolPermission.OPERATOR, DEFAULT_TIMEOUT_MILLIS);
-            // A body's own action: off by default like any world change, but no operator — ownership decides.
-            case BODY_WRITE -> new ToolPolicy(false, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
+            // A module's own entity, doing what that module declared it can do. Offering the tool is not a policy
+            // question: refusing an entity its own abilities because a server has not turned a switch on would make
+            // the base the owner of someone else's mod. Who may drive it is decided by ownership, at call time.
+            case BODY_WRITE -> new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS);
         };
     }
 

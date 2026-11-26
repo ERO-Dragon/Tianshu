@@ -136,9 +136,6 @@ public final class TianshuTools {
             if (!allowed.permits(tool.requiredAutonomy())) {
                 continue;
             }
-            if (!bodyWorkAllowed(tool, allowed)) {
-                continue;
-            }
             if (!CapabilityAccess.visibleToolTo(
                     CapabilityCatalog.find(CapabilityId.parse(tool.id().toString())).orElse(null), caller)) {
                 continue;
@@ -422,12 +419,6 @@ public final class TianshuTools {
                     "tool " + id + " needs " + tool.requiredAutonomy() + " autonomy; "
                             + (side == ToolSide.SERVER ? "this server allows " : "this caller allows ") + allowed);
         }
-        if (!bodyWorkAllowed(tool, allowed)) {
-            throw new ToolException(ToolError.NO_PERMISSION,
-                    "tool " + id + " needs " + tool.requiredBodyAutonomy() + " body autonomy; "
-                            + (side == ToolSide.SERVER ? "this server lets bodies do " : "this caller lets bodies do ")
-                            + BodyAutonomy.allowedBy(allowed));
-        }
         requireWithinRateLimit(tool, caller);
         if (tool.category().isServerSide() && side == ToolSide.CLIENT && !serverAvailable()) {
             throw new ToolException(ToolError.UNSUPPORTED_SIDE,
@@ -538,21 +529,6 @@ public final class TianshuTools {
      * {@link ServerAutonomyCeiling} instead, because the server cannot see which module asked and must not accept a
      * claim it cannot verify.</p>
      */
-    /**
-     * Whether the body scale allows this tool at all.
-     *
-     * <p>A tool that declares no body requirement is not a body action — reads and player-only tools pass. A tool that
-     * declares one is refused when the server lets bodies do nothing ({@link BodyAutonomy#allowedBy} returning null),
-     * which is what makes a {@code READ_ONLY} server stop letting a carrier mine.</p>
-     */
-    private static boolean bodyWorkAllowed(TianshuTool<?, ?> tool, ToolAutonomy ceiling) {
-        BodyAutonomy required = tool.requiredBodyAutonomy();
-        if (required == null) {
-            return true;
-        }
-        BodyAutonomy allowed = BodyAutonomy.allowedBy(ceiling);
-        return allowed != null && allowed.permits(required);
-    }
     public static ToolAutonomy autonomyFor(ToolSide side, ToolCaller caller) {
         return side == ToolSide.SERVER ? serverAutonomyCeiling() : caller.autonomy();
     }

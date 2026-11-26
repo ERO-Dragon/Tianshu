@@ -14,7 +14,6 @@ import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
-import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
@@ -107,19 +106,6 @@ public final class BodyMoveTool implements TianshuTool<BodyMoveTool.Args, MoveRe
         } catch (IllegalArgumentException unknownMode) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "unknown movement mode: " + args.mode()));
-        }
-        // Walking is survival work; flying and teleporting are not something a body can do by itself. The tool is one
-        // thing, so the sub-mode is checked against the level this call was given rather than declared statically.
-        // ANY is left to the server: it means "however you can get there", and the server picks a mode it can honour.
-        BodyAutonomy needed = switch (mode) {
-            case FLY, TELEPORT -> BodyAutonomy.PRIVILEGED;
-            default -> BodyAutonomy.SURVIVAL;
-        };
-        Optional<com.rheinmetal.tianshu.api.tool.BodyAutonomy> allowed = context.allowedBodyAutonomy();
-        if (allowed.isEmpty() || !allowed.get().permits(needed)) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.NO_PERMISSION,
-                    "moving by " + mode.name().toLowerCase(Locale.ROOT) + " needs " + needed
-                            + " body autonomy; this call allows " + allowed.orElse(null)));
         }
         ActorPosition target = BodyTargets.position(BodyTargets.dimension(args.dimension(), body.position().dimension()), args.x(), args.y(), args.z());
         return ActorScope.guarded(scope.actor(), context,
