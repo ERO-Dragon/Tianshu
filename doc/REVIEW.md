@@ -28,7 +28,8 @@
 - **工具总体**：`ACC-ALL-1` 扫到 56 个工具行，全部给出信封，没有抛异常、没有超时。**注意这条只证明"接线通"**：空参被 schema 拒的占多数（48 refused），所以扫到的 56 与档位无关，缺的 9 个是注册问题（`ENT-1`），不是档位问题；
 - **一个进程三个会话**：世界 A → 标题 → 世界 B → 标题 → 回 A 全部在同一进程，世界 B 与回到 A 之后各调一次工具控制台，`tool.console` 都是 `ok=true`（`durationMs` 9 和 0）；`ClientTools` 的一次性注册守卫生效，第二次登录没有注册冲突报错；
 - **基座的网络通道是可选的**：`TianshuNetwork` 用 `event.registrar(...).optional()` 注册，四个 payload 都是 optional——"服务端装、客户端不装"在基座侧是按这个前提写的，卡住单侧安装的是 lab（`NET-2`），不是舟楫本身；
-- **无舟楫客户端单侧安装**：服务端 `runServer -PfeatureMods=`（`tianshu dev run: … installing the kernel alone`，模组列表里只有 `tianshu_ferry` 与 `tianshu_foundry`），客户端用 `D:\Minecraft\.minecraft\versions\Tianshu`（NeoForge 1.21.1、`mods/` 为空、手搓启动命令进服）。结果：服务端 `VanillaTest logged in … / joined the game`，两端日志里 payload / ERROR / 断连都是 0 条，客户端暂停菜单里没有「天枢控制台」——确实没装舟楫，也确实进得去。
+- **无舟楫客户端单侧安装**：服务端 `runServer -PfeatureMods=`（`tianshu dev run: … installing the kernel alone`，模组列表里只有 `tianshu_ferry` 与 `tianshu_foundry`），客户端用 `D:\Minecraft\.minecraft\versions\Tianshu`（NeoForge 1.21.1、`mods/` 为空、手搓启动命令进服）。结果：服务端 `VanillaTest logged in … / joined the game`，两端日志里 payload / ERROR / 断连都是 0 条，客户端暂停菜单里没有「天枢控制台」——确实没装舟楫，也确实进得去；
+- **身体存档重载**：`ACC-BDY-8` 两轮验证——第一轮生成身体并把 id 写进 `tianshu-lab/persisted-body.txt`（SKIP，提示去保存），用「保存并退回到标题屏幕」把 `region/*.mca` 与 `level.dat` 落盘，重开同一世界第二轮 PASS：`body 0bee68f0-… came back from the save`。这条只有在身体真的进了存档、且重启后能被列出来时才通过。
 
 ## 3. 证据
 
