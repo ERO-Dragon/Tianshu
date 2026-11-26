@@ -1,5 +1,11 @@
 package com.rheinmetal.tianshu.dubhe;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
 import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.rheinmetal.tianshu.dubhe.DubheModule;
@@ -666,9 +672,22 @@ public final class DubheModule implements TianshuManagedModule {
         }
     }
 
+    static CapabilitySubscription playerToolSubscription() {
+        try (var stream = DubheModule.class.getResourceAsStream("/tianshu_dubhe/player-tool-subscriptions.txt")) {
+            if (stream == null) {
+                throw new IllegalStateException("Missing player tool subscriptions");
+            }
+            var reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+            return CapabilitySubscription.only(reader.lines().filter(line -> !line.isBlank())
+                    .map(CapabilityId::parse).toArray(CapabilityId[]::new));
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        }
+    }
+
     @Override
     public void start(ModuleRuntimeContext context) {
-        CapabilitySubscriptions.declare(MOD_ID, CapabilitySubscription.openedAtomic());
+        CapabilitySubscriptions.declare(MOD_ID, playerToolSubscription());
         if (llmClient != null) {
             llmClient.sweepExpired();
         }
