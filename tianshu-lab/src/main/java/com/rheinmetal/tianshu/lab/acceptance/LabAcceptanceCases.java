@@ -2165,16 +2165,27 @@ public final class LabAcceptanceCases {
             java.nio.file.Path marker = java.nio.file.Path.of("tianshu-lab", "persisted-body.txt");
             try {
                 if (java.nio.file.Files.isRegularFile(marker)) {
-                    String bodyId = java.nio.file.Files.readString(marker).trim();
-                    boolean present = EntityActors.list().stream().anyMatch(body -> body.id().equals(bodyId));
+                    // "<dimension>|<body id>": a body spawned in the single-player save does not exist in the world a
+                    // later network run joins, and that is not a persistence failure.
+                    String[] recorded = java.nio.file.Files.readString(marker).trim().split("\\|", 2);
                     java.nio.file.Files.deleteIfExists(marker);
-                    if (present) {
-                        TianshuRuntimePorts.find(EntitySpawnPort.class)
-                                .ifPresent(port -> releaseQuietly(port, bodyId));
-                        return AcceptanceOutcome.pass(id, title, "body " + bodyId + " came back from the save");
+                    if (recorded.length == 2) {
+                        GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+                        String here = pose == null ? "" : pose.dimensionId();
+                        if (!here.isBlank() && !here.equals(recorded[0])) {
+                            return AcceptanceOutcome.skip(id, title, "the recorded body lives in " + recorded[0]
+                                    + ", this session is in " + here);
+                        }
+                        String bodyId = recorded[1];
+                        boolean present = EntityActors.list().stream().anyMatch(body -> body.id().equals(bodyId));
+                        if (present) {
+                            TianshuRuntimePorts.find(EntitySpawnPort.class)
+                                    .ifPresent(port -> releaseQuietly(port, bodyId));
+                            return AcceptanceOutcome.pass(id, title, "body " + bodyId + " came back from the save");
+                        }
+                        return AcceptanceOutcome.fail(id, title,
+                                "body " + bodyId + " was written to the save but is gone after the reload");
                     }
-                    return AcceptanceOutcome.fail(id, title,
-                            "body " + bodyId + " was written to the save but is gone after the reload");
                 }
                 EntitySpawnPort port = TianshuRuntimePorts.find(EntitySpawnPort.class).orElse(null);
                 if (port == null) {
@@ -2189,8 +2200,8 @@ public final class LabAcceptanceCases {
                                 new ActorPosition(pose.dimensionId(), pose.x(), pose.y() + 1.0D, pose.z()), false)
                         .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 java.nio.file.Files.createDirectories(marker.getParent());
-                java.nio.file.Files.writeString(marker, actor.id());
-                return AcceptanceOutcome.skip(id, title, "spawned " + actor.id()
+                java.nio.file.Files.writeString(marker, pose.dimensionId() + "|" + actor.id());
+                return AcceptanceOutcome.skip(id, title, "spawned " + actor.id() + " in " + pose.dimensionId()
                         + "; save the world and run again to see whether it comes back");
             } catch (Exception failed) {
                 return AcceptanceOutcome.fail(id, title, reasonOf(failed));
