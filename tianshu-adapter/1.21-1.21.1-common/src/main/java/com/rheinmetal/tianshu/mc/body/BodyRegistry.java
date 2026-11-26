@@ -9,6 +9,7 @@ import com.rheinmetal.tianshu.api.ModIdentity;
 import java.util.concurrent.CompletableFuture;
 import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntityActions;
 import com.rheinmetal.tianshu.api.entity.EntityProvider;
@@ -609,6 +610,11 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
             public ActorPosition position() {
                 Vec3 at = state.position();
                 return new ActorPosition(state.level().dimension().location().toString(), at.x, at.y, at.z);
+            }
+
+            @Override
+            public Set<MoveMode> nativeMovementModes() {
+                return state.kind() == BodyKind.WALKER ? Set.of(MoveMode.WALK) : Set.of();
             }
 
             @Override

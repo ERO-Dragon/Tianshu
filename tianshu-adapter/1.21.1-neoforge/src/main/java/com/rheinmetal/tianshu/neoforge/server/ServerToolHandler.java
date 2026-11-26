@@ -24,6 +24,7 @@ import com.rheinmetal.tianshu.api.game.RecipeAvailabilityPort;
 import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.game.WorldInfoPort;
 import com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling;
+import com.rheinmetal.tianshu.api.tool.ServerBodyAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -155,6 +156,7 @@ public final class ServerToolHandler {
             registrations.port(PlayerAuthority.class, new ServerPlayerAuthority(event.getServer()));
             // The operator's ceiling on server-side tools; read live from the config so a reload takes effect.
             registrations.port(ServerAutonomyCeiling.class, ServerActionConfig::autonomyCeiling);
+            registrations.port(ServerBodyAutonomyCeiling.class, ServerActionConfig::bodyCeiling);
             // The cheat-grade tools are server tools: the server owns their implementation and executes them here.
             registrations.port(ServerActionExecutionPort.class,
                     new NeoForgeActionExecution(event.getServer()));
@@ -250,10 +252,16 @@ public final class ServerToolHandler {
 
         @net.neoforged.bus.api.SubscribeEvent
         public void onReload(net.neoforged.fml.event.config.ModConfigEvent.Reloading event) {
+            if (event.getConfig().getSpec() != ServerActionConfig.SPEC) {
+                return;
+            }
             com.rheinmetal.tianshu.client.tool.ServerActionTools.applySwitches(action -> {
                 var value = ServerActionConfig.switchFor(action);
                 return value != null && value.get();
             });
+            TianshuTools.setEnabled(com.rheinmetal.tianshu.client.tool.CommandRunTool.ID,
+                    ServerActionConfig.COMMAND_RUN.get());
+            ToolCatalogPushRegistry.refresh();
         }
     }
 

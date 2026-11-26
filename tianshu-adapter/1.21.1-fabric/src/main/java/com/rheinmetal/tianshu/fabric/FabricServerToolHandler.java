@@ -31,6 +31,7 @@ import com.rheinmetal.tianshu.api.game.RecipeAvailabilityPort;
 import com.rheinmetal.tianshu.api.game.RecipeQueryPort;
 import com.rheinmetal.tianshu.api.game.WorldInfoPort;
 import com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling;
+import com.rheinmetal.tianshu.api.tool.ServerBodyAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -126,6 +127,7 @@ public final class FabricServerToolHandler {
             FabricToolConfig.load(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
             // The operator's ceiling on server-side tools, read from the same server config as the action switches.
             registrations.port(ServerAutonomyCeiling.class, FabricServerActionConfig::autonomyCeiling);
+            registrations.port(ServerBodyAutonomyCeiling.class, FabricServerActionConfig::bodyCeiling);
             // The cheat-grade tools are server tools: the server owns their implementation and executes them here.
             registrations.port(ServerActionExecutionPort.class, new FabricActionExecution(server));
             for (var actionTool : com.rheinmetal.tianshu.client.tool.ServerActionTools.tools()) {

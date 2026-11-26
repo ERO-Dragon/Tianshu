@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.neoforge.config;
 
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
@@ -31,6 +32,8 @@ public final class ServerActionConfig {
     public static final ModConfigSpec.BooleanValue COMMAND_RUN;
     public static final ModConfigSpec.IntValue COMMAND_PERMISSION_LEVEL;
     public static final ModConfigSpec.ConfigValue<String> AUTONOMY_CEILING;
+
+    public static final ModConfigSpec.ConfigValue<String> NPC_CEILING;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -72,6 +75,10 @@ public final class ServerActionConfig {
                         "A client cannot go above this, whatever it set for itself. Raise it only if you mean to")
                 .define("ceiling", "conservative");
         builder.pop();
+        builder.push("npc");
+        NPC_CEILING = builder.comment("Maximum NPC action tier: survival (native abilities) or cheat.")
+                .define("ceiling", "survival");
+        builder.pop();
         SPEC = builder.build();
     }
 
@@ -96,6 +103,10 @@ public final class ServerActionConfig {
         };
     }
 
+    public static BodyAutonomy bodyCeiling() {
+        return BodyAutonomy.parse(NPC_CEILING.get());
+    }
+
     /** The ceiling as the tool layer understands it; unreadable text falls back to the safe middle tier. */
     public static ToolAutonomy autonomyCeiling() {
         return ToolAutonomy.parse(AUTONOMY_CEILING.get(), ToolAutonomy.CONSERVATIVE);
@@ -109,7 +120,7 @@ public final class ServerActionConfig {
      * force.</p>
      */
     public static String describe() {
-        return "ceiling=" + AUTONOMY_CEILING.get()
+        return "ceiling=" + AUTONOMY_CEILING.get() + " npc.ceiling=" + bodyCeiling()
                 + " actions[teleport=" + TELEPORT.get() + " weather=" + SET_WEATHER.get() + " time=" + SET_TIME.get()
                 + " give=" + GIVE_ITEM.get() + " spawn=" + SPAWN_ENTITY.get() + " broadcast=" + BROADCAST.get()
                 + " gamemode=" + GAMEMODE.get() + " effect=" + EFFECT.get() + " xp=" + XP.get()

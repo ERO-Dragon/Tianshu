@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.fabric;
 
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 
 import java.io.IOException;
@@ -36,6 +37,9 @@ public final class FabricServerActionConfig {
     /** Key of the operator's ceiling; read_only, conservative (default) or full. */
     private static final String AUTONOMY_CEILING_KEY = "autonomy.ceiling";
 
+    private static final String NPC_CEILING_KEY = "npc.ceiling";
+    private static volatile BodyAutonomy npcCeiling = BodyAutonomy.SURVIVAL;
+
     /** The operator's ceiling on server-side tools; loaded as text so a typo cannot fail startup. */
     private static volatile String ceiling = "conservative";
 
@@ -55,9 +59,9 @@ public final class FabricServerActionConfig {
         if (Files.isRegularFile(file)) {
             try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                 values.load(reader);
-            } catch (IOException unreadable) {
+            } catch (IOException | IllegalArgumentException unreadable) {
                 // The defaults are the safe answer: a file that cannot be read enables nothing.
-                return;
+                values.clear();
             }
         } else {
             writeDefaults(file, values);
@@ -65,6 +69,7 @@ public final class FabricServerActionConfig {
         for (String action : ACTIONS) {
             SWITCHES.put(action, Boolean.parseBoolean(values.getProperty(key(action), "false").trim()));
         }
+        npcCeiling = BodyAutonomy.parse(values.getProperty(NPC_CEILING_KEY));
         ceiling = values.getProperty(AUTONOMY_CEILING_KEY, "conservative");
     }
 
@@ -77,6 +82,10 @@ public final class FabricServerActionConfig {
         return ToolAutonomy.parse(ceiling, ToolAutonomy.CONSERVATIVE);
     }
 
+    public static BodyAutonomy bodyCeiling() {
+        return npcCeiling;
+    }
+
     public static boolean enabled(String action) {
         return Boolean.TRUE.equals(SWITCHES.get(action));
     }
@@ -85,6 +94,7 @@ public final class FabricServerActionConfig {
         for (String action : ACTIONS) {
             values.setProperty(key(action), "false");
         }
+        values.setProperty(NPC_CEILING_KEY, "survival");
         values.setProperty(AUTONOMY_CEILING_KEY, "conservative");
         try {
             Files.createDirectories(file.getParent());
