@@ -14,7 +14,7 @@
 
 | 文档 | 与映迹的关系 |
 |---|---|
-| [协议中心](../../protocol/TianshuProtocolCenter.md) | `PRESENCE.*` topic、载荷与投递策略的注册表 |
+| `Tianshu-ferry/doc/协议中心.md` | `PRESENCE.*` topic、载荷与投递策略的注册表（跨仓库，写路径） |
 | [模块架构](../../architecture/模块架构.md) | 映迹在依赖矩阵中的位置与职责 |
 | [模块拆分实施记录](../../history/模块拆分实施记录.md) | §7–§9：拆分阶段、等价性核对、HUD 预览工具 |
 | [模块架构](../../architecture/模块架构.md) §9 | 语言分片、shader 资源与模块清单文件的归属 |

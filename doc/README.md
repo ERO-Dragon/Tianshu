@@ -17,11 +17,10 @@
 
 ## 二、平台参考
 
+> 协议中心与 CoreManager 的文档随舟楫仓库走：`Tianshu-ferry/doc/协议中心.md`、`Tianshu-ferry/doc/CoreManager.md`。
+
 | 文档 | 内容 |
 |---|---|
-| [协议中心](protocol/TianshuProtocolCenter.md) | 信封、broker、topic、生命周期 |
-| [协议适配指南](protocol/TianshuProtocolAdapterGuide.md) | 模块如何接协议中心 |
-| [CoreManager 说明书](core/CoreManager_说明书.md) | 宿主生命周期与能力的参考手册 |
 | [弃用清单](api-deprecations.md) | 处于弃用期的条目与移除计划 |
 | [外部接入指南](../EXTERNAL_INTEGRATION_GUIDE.md) | 第三方模组如何依赖天枢与应用接入 API |
 
