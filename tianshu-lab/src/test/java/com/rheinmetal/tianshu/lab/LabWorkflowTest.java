@@ -57,6 +57,8 @@ class LabWorkflowTest {
         try {
             var row = CapabilityCatalog.find(LabWorkflow.gather().id()).orElseThrow();
             assertEquals(CapabilityKind.WORKFLOW, row.kind());
+            assertFalse(row.attributes().has("autonomy"));
+            assertEquals("SURVIVAL", row.attributes().get("bodyAutonomy").getAsString());
             assertEquals(LabModuleRegistration.MOD_ID, row.provider(), "a shared workflow stays attributable to its module");
             assertEquals(4, row.attributes().get("steps").getAsInt());
             assertEquals("minecraft:entity.scan", row.attributes().getAsJsonArray("stepList").get(0).getAsString(),

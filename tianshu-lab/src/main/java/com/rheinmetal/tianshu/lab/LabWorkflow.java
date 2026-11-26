@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.lab;
 
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.WorkflowDeclaration;
 import com.rheinmetal.tianshu.api.capability.WorkflowInstaller;
@@ -51,7 +52,7 @@ public final class LabWorkflow {
                         step(MINE),
                         step(PICKUP)),
                 40,
-                true);
+                true, ActorRef.Kind.BODY);
     }
 
     /** Publishes the reference workflow; the returned action removes it again. */
