@@ -1,8 +1,10 @@
 package com.rheinmetal.tianshu.api.capability;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPermission;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import org.junit.jupiter.api.AfterEach;
@@ -30,9 +32,12 @@ class CapabilityVisibilityTest {
     private static final ToolCaller BASE = ToolCaller.agent("tianshu", false, ToolAutonomy.CONSERVATIVE);
 
     private final List<CapabilityId> registered = new ArrayList<>();
+    private final List<CapabilityId> registeredTools = new ArrayList<>();
 
     @AfterEach
     void cleanUp() {
+        registeredTools.forEach(id -> TianshuTools.unregister(ToolId.parse(id.toString())));
+        registeredTools.clear();
         registered.forEach(CapabilityCatalog::unregister);
         registered.clear();
         CapabilitySubscriptions.clear();
@@ -100,9 +105,59 @@ class CapabilityVisibilityTest {
         assertFalse(visibleTo(CONSUMER, workflow));
 
         CapabilitySubscriptions.declare("changsui",
-                new CapabilitySubscription(false, java.util.Set.of("modA"), false, true, false));
+                new CapabilitySubscription(false, java.util.Set.of("modA"), java.util.Set.of(), false, true, false));
         assertFalse(visibleTo(CONSUMER, atomic));
         assertTrue(visibleTo(CONSUMER, workflow));
+    }
+
+    @Test
+    void namingToolsNarrowsTheSubscriptionToThem() {
+        CapabilityDescriptor mine = registerTool("named.mine");
+        CapabilityDescriptor move = registerTool("named.move");
+        CapabilityDescriptor other = registerTool("named.other");
+
+        CapabilitySubscriptions.declare("changsui", CapabilitySubscription.only(mine.id(), move.id()));
+
+        assertTrue(visibleTo(CONSUMER, mine));
+        assertTrue(visibleTo(CONSUMER, move));
+        assertFalse(visibleTo(CONSUMER, other), "a named list is a whitelist, not a hint");
+    }
+
+    @Test
+    void namingToolsKeepsTheManualThatTeachesThem() {
+        CapabilityDescriptor tool = registerTool("named.documented");
+        CapabilityDescriptor skill = register("test:player-tools", CapabilityKind.SKILL, "tianshu", null);
+
+        CapabilitySubscriptions.declare("changsui", CapabilitySubscription.only(tool.id()));
+
+        assertTrue(visibleTo(CONSUMER, tool));
+        assertTrue(visibleTo(CONSUMER, skill),
+                "the manual is how a model learns to call the tools it was given; naming tools must not hide it");
+    }
+
+    @Test
+    void namingARowTheProviderKeptPrivateYieldsNothing() {
+        JsonObject closed = new JsonObject();
+        closed.addProperty("share", "none");
+        CapabilityDescriptor named = register("test:named-private", CapabilityKind.WORKFLOW, "modA", closed);
+
+        // A composition is a callable row too, so it can be named; composite is on to let the rule get that far.
+        CapabilitySubscriptions.declare("changsui", new CapabilitySubscription(false, java.util.Set.of(),
+                java.util.Set.of(named.id()), false, true, true));
+
+        assertFalse(visibleTo(CONSUMER, named), "naming is not a grant: the provider's half still decides");
+    }
+
+    @Test
+    void theAuditCatchesANameNobodyPublishes() {
+        CapabilityId ghost = CapabilityId.parse("test:ghost.tool");
+        CapabilitySubscriptions.declare("changsui", CapabilitySubscription.only(ghost));
+
+        List<String> problems = CapabilitySubscriptions.audit();
+
+        assertTrue(problems.stream()
+                        .anyMatch(line -> line.contains("test:ghost.tool") && line.contains("nothing publishes it")),
+                problems.toString());
     }
 
     @Test
@@ -146,6 +201,17 @@ class CapabilityVisibilityTest {
                 .anyMatch(exposed -> exposed.id().equals(row.id()));
     }
 
+    /**
+     * Registers a real tool, because a tool row is mirrored from {@link TianshuTools} and cannot be put in the table
+     * directly. Its provider is the kernel, so it is open — which is what a base tool is.
+     */
+    private CapabilityDescriptor registerTool(String name) {
+        CapabilityId id = CapabilityId.of("test", name);
+        TianshuTools.register(new NamedTool(id));
+        registeredTools.add(id);
+        return CapabilityCatalog.find(id).orElseThrow();
+    }
+
     private CapabilityDescriptor register(String id, CapabilityKind kind, String provider, JsonObject attributes) {
         CapabilityId capability = CapabilityId.parse(id);
         registered.add(capability);
@@ -166,5 +232,45 @@ class CapabilityVisibilityTest {
         // Same answer as "no such capability": a caller that cannot see it must not learn that it exists, and a
         // "forbidden" would be exactly that.
         assertEquals("UNKNOWN_CAPABILITY", answer.get("code").getAsString(), answer.toString());
+    }
+
+    /** The smallest tool that can be named in a subscription. */
+    private static final class NamedTool implements com.rheinmetal.tianshu.api.tool.TianshuTool<Object, Object> {
+
+        private final ToolId id;
+
+        private NamedTool(CapabilityId id) {
+            this.id = ToolId.parse(id.toString());
+        }
+
+        @Override
+        public ToolId id() {
+            return id;
+        }
+
+        @Override
+        public com.rheinmetal.tianshu.api.tool.ToolCategory category() {
+            return com.rheinmetal.tianshu.api.tool.ToolCategory.LOCAL;
+        }
+
+        @Override
+        public String description() {
+            return "a tool that exists to be named";
+        }
+
+        @Override
+        public java.lang.reflect.Type argsType() {
+            return Object.class;
+        }
+
+        @Override
+        public java.lang.reflect.Type resultType() {
+            return Object.class;
+        }
+
+        @Override
+        public CompletableFuture<Object> invoke(com.rheinmetal.tianshu.api.tool.ToolContext context, Object args) {
+            return CompletableFuture.completedFuture(new Object());
+        }
     }
 }

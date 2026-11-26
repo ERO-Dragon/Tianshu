@@ -2,9 +2,12 @@ package com.rheinmetal.tianshu.client.capability;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.CapabilityId;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.rheinmetal.tianshu.api.capability.skill.SkillFileProvider;
 import com.rheinmetal.tianshu.api.capability.skill.SkillReferences;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 import com.rheinmetal.tianshu.client.tool.BodyMineTool;
@@ -43,6 +46,7 @@ class SkillReferencesTest {
     void clean() {
         TianshuTools.unregister(BodyMineTool.ID);
         TianshuTools.unregister(CapabilityReadTool.ID);
+        CapabilitySubscriptions.clear();
         skills.unload();
     }
 
@@ -76,6 +80,28 @@ class SkillReferencesTest {
                 }).get(5, TimeUnit.SECONDS);
 
         assertTrue(answer.get("text").getAsString().contains("entity.mine"), answer.toString());
+    }
+
+    @Test
+    void aDocumentIsOnlyReachableWhileItsToolIs() throws Exception {
+        TianshuTools.register(new BodyMineTool());
+        TianshuTools.register(readTool);
+        // This consumer asked for the reader and nothing else.
+        CapabilitySubscriptions.declare("changsui",
+                CapabilitySubscription.only(CapabilityId.parse(CapabilityReadTool.ID.toString())));
+
+        assertTrue(SkillReferences.of(CapabilityId.parse("minecraft:entity.mine")).isPresent(),
+                "the document exists on disk");
+
+        JsonObject refused = TianshuTools.callJson(CapabilityReadTool.ID,
+                        com.google.gson.JsonParser.parseString("{\"id\":\"minecraft:entity.mine\"}"),
+                        ToolCaller.agent("changsui", false, ToolAutonomy.READ_ONLY), ToolSide.CLIENT)
+                .get(2, TimeUnit.SECONDS);
+
+        // Naming tools is a whitelist: the document follows its row, so an unsubscribed tool has no document either —
+        // and the refusal is the same one an unknown tool gets, because saying "you are not subscribed" would confirm
+        // that the tool exists.
+        assertEquals("UNKNOWN_TOOL", refused.get("code").getAsString(), refused.toString());
     }
 
     private static JsonObject request(String id) {

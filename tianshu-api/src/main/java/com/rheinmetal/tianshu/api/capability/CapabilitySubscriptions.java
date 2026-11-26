@@ -12,9 +12,9 @@ import java.util.Objects;
  * <p>A module that declares nothing gets {@link CapabilitySubscription#DEFAULT}: the base's atomic capabilities and
  * nothing else. That default is what keeps "install two mods" from meaning "each can drive the other".</p>
  *
- * <p>{@link #audit()} exists because a subscription that names a provider the provider never opened is an easy mistake
- * and a silent one: the consumer simply sees nothing and nobody learns why. The audit turns that into a sentence, and a
- * startup hook can log it.</p>
+ * <p>{@link #audit()} exists because a subscription that names a provider the provider never opened — or a capability
+ * nobody publishes — is an easy mistake and a silent one: the consumer simply sees nothing and nobody learns why. The
+ * audit turns that into a sentence, and a startup hook can log it.</p>
  */
 public final class CapabilitySubscriptions {
 
@@ -55,15 +55,22 @@ public final class CapabilitySubscriptions {
     /**
      * Sentences describing declarations that cannot work.
      *
-     * <p>Two distinct failures, told apart on purpose: a provider that shares nothing at all, and a provider that has no
-     * rows (usually "not installed") — the first is a mistake in the declaration, the second is usually a mistake in the
-     * mod list, and the fix is different.</p>
+     * <p>Three distinct failures, told apart on purpose: a provider that shares nothing at all, a provider that has no
+     * rows (usually "not installed"), and a named capability that nobody publishes (usually a typo) — the first is a
+     * mistake in the declaration, the second is usually a mistake in the mod list, and the third is usually a mistake in
+     * the id, so the fixes differ.</p>
      */
     public static synchronized List<String> audit() {
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, CapabilitySubscription> entry : RULES.entrySet()) {
             String consumer = entry.getKey();
             CapabilitySubscription rule = entry.getValue();
+            for (CapabilityId id : rule.ids()) {
+                if (CapabilityCatalog.find(id).isEmpty()) {
+                    problems.add(consumer + " subscribes to " + id
+                            + ", but nothing publishes it (not installed or misspelled)");
+                }
+            }
             if (rule.allProviders()) {
                 continue;
             }
