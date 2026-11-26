@@ -2,14 +2,15 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.entity.BlockFace;
-import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.BlockFace;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
+import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.game.BlockPlaceResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
-import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
@@ -21,24 +22,23 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
-/** Places one item from the actor's inventory into the world. */
+/**
+ * Places one item from the calling player's inventory into the world.
+ *
+ * <p>Player side of the split pair; {@link BodyPlaceTool} is the body side. The operation itself lives in
+ * {@link #place(ActorRef, Args)} so the two tools differ only in who they act as.</p>
+ */
 public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, BlockPlaceResult> {
 
     public static final ToolId ID = ToolId.of("minecraft", "block.place");
 
-    /** {@code body} is optional; {@code face} is optional and lets the carrier aim from its own position. */
-    public record Args(String body, String item, int x, int y, int z, String face) {
+    /** {@code face} is optional and lets the actor aim from its own position. */
+    public record Args(String item, int x, int y, int z, String face) {
     }
 
     @Override
     public ToolId id() {
         return ID;
-    }
-
-    @Override
-    public com.rheinmetal.tianshu.api.tool.BodyAutonomy requiredBodyAutonomy() {
-        // Survival work either way: a player placing a block and a carrier placing one are the same act.
-        return com.rheinmetal.tianshu.api.tool.BodyAutonomy.SURVIVAL;
     }
 
     @Override
@@ -49,7 +49,6 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
     @Override
     public com.rheinmetal.tianshu.api.tool.ToolPolicy policy() {
         // Any survival player may do this by hand; the server switch and their own rights still bound it.
-        // On by default: this is a player's own crafting or container work, and their real rights still apply.
         return com.rheinmetal.tianshu.api.tool.ToolPolicy.forCategory(ToolCategory.SERVER_WRITE)
                 .withPermission(com.rheinmetal.tianshu.api.tool.ToolPermission.EVERYONE)
                 .withEnabledByDefault(true);
@@ -57,7 +56,7 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
 
     @Override
     public String description() {
-        return "Places one item from the actor's inventory at a position, with vanilla orientation and consumption.";
+        return "Places one item from your inventory at a position, with vanilla orientation and consumption.";
     }
 
     @Override
@@ -73,7 +72,6 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
     @Override
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
-        properties.add("body", BodyToolSchemas.body());
         properties.add("item", BodyToolSchemas.text("Item id, for example minecraft:torch"));
         properties.add("x", BodyToolSchemas.coordinate("Block x"));
         properties.add("y", BodyToolSchemas.coordinate("Block y"));
@@ -82,7 +80,7 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
         for (BlockFace face : BlockFace.values()) {
             faces.add(face.name().toLowerCase(Locale.ROOT));
         }
-        JsonObject face = BodyToolSchemas.text("Side of the target block to place against; omit to aim from the body");
+        JsonObject face = BodyToolSchemas.text("Side of the target block to place against; omit to aim from where you stand");
         face.add("enum", faces);
         properties.add("face", face);
         return BodyToolSchemas.object(properties, "item", "x", "y", "z");
@@ -90,14 +88,18 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
 
     @Override
     public CompletableFuture<BlockPlaceResult> invoke(ToolContext context, Args args) {
-        ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
+        ActorScope scope = ActorScope.player(context.caller());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
+        return place(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides whether rights, reach and orientation follow a player or a body. */
+    static CompletableFuture<BlockPlaceResult> place(ActorRef actor, Args args) {
         if (args == null || args.item() == null || args.item().isBlank()) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "block.place needs an item id"));
+                    "block placement needs an item id"));
         }
         BlockFace face;
         try {
@@ -108,13 +110,13 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "unknown block face: " + args.face()));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.PLACE);
+        Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.PLACE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         BlockPlaceRequest request = new BlockPlaceRequest(args.x(), args.y(), args.z(), args.item().trim(), face);
         return TianshuRuntimePorts.find(BlockPlacePort.class)
-                .map(port -> port.place(scope.actor(), request).thenCompose(result ->
+                .map(port -> port.place(actor, request).thenCompose(result ->
                         result.placed()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.message()))))

@@ -6,6 +6,7 @@ import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
+import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 
 import java.util.Optional;
@@ -34,7 +35,7 @@ final class ActorScope {
         this.refusal = refusal;
     }
 
-    static ActorScope of(ToolCaller caller, String bodyId) {
+    private static ActorScope resolve(ToolCaller caller, String bodyId) {
         boolean module = caller.kind() == ToolCaller.Kind.AGENT || caller.kind() == ToolCaller.Kind.MOD;
         if (caller.kind() == ToolCaller.Kind.BODY) {
             // A body always runs as itself. Naming a different body used to be ignored silently, which meant a call
@@ -56,6 +57,36 @@ final class ActorScope {
             return new ActorScope(null, BodyFailure.BODY_REQUIRED.exception());
         }
         return new ActorScope(ActorRef.of(caller), null);
+    }
+
+    /**
+     * The player-side tool of a split pair: it always runs as the calling player.
+     *
+     * <p>Every world-facing action exists twice, once per executor. A body calling the player-side tool would act as
+     * itself and make the pair pointless, and a module has no player to act as, so both are refused here with a
+     * pointer at the tool they do want.</p>
+     */
+    static ActorScope player(ToolCaller caller) {
+        if (caller.kind() != ToolCaller.Kind.PLAYER) {
+            return new ActorScope(null, new ToolException(ToolError.UNSUPPORTED_ACTOR,
+                    "this is the player-side tool; a " + caller.kind().name().toLowerCase(java.util.Locale.ROOT)
+                            + " drives a body, so it uses the entity-side tool"));
+        }
+        return new ActorScope(ActorRef.player(caller.id(), caller.operator()), null);
+    }
+
+    /**
+     * The entity-side tool of a split pair: it always runs as a body.
+     *
+     * <p>A body may only name itself; a player or module must name a body it owns, and gets {@code body.target.required}
+     * when it names none — resolving to the caller would act as a player that the tool does not serve.</p>
+     */
+    static ActorScope body(ToolCaller caller, String bodyId) {
+        ActorScope scope = resolve(caller, bodyId);
+        if (scope.refusal().isPresent() || scope.actor().kind() == ActorRef.Kind.BODY) {
+            return scope;
+        }
+        return new ActorScope(null, BodyFailure.BODY_REQUIRED.exception());
     }
 
     Optional<ToolException> refusal() {

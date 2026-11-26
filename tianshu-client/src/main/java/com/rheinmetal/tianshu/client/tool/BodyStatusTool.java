@@ -72,7 +72,7 @@ public final class BodyStatusTool implements TianshuTool<BodyStatusTool.Args, Ac
 
     @Override
     public CompletableFuture<ActorStatus> invoke(ToolContext context, Args args) {
-        ActorScope scope = ActorScope.of(context.caller(), args == null ? null : args.body());
+        ActorScope scope = ActorScope.body(context.caller(), args == null ? null : args.body());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }

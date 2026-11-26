@@ -3,17 +3,20 @@ package com.rheinmetal.tianshu.client.tool;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.game.BlockPlacePort;
 import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.game.BlockPlaceResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
-import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
+import com.rheinmetal.tianshu.api.tool.ToolPermission;
+import com.rheinmetal.tianshu.api.tool.ToolPolicy;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -29,6 +32,9 @@ import java.util.concurrent.CompletableFuture;
  * line answers with how far it got. Folding both into one result type would have made the single case carry a list it
  * never uses.</p>
  *
+ * <p>Player side of the split pair; {@link BodyPlaceLineTool} is the body side. The operation itself lives in
+ * {@link #placeLine(ActorRef, Args)} so the two tools differ only in who they act as.</p>
+ *
  * <p>The line stops at the first refusal — no item left, a block in the way, the carrier's own limits — and reports
  * what landed plus why it stopped, rather than failing everything because the last step failed.</p>
  */
@@ -39,7 +45,7 @@ public final class BlockPlaceLineTool implements TianshuTool<BlockPlaceLineTool.
     /** A player-placed staircase is longer than this; anything bigger is a build job, not a tool call. */
     private static final int MAX_COUNT = 16;
 
-    public record Args(String body, String item, int x, int y, int z, String direction, Integer count) {
+    public record Args(String item, int x, int y, int z, String direction, Integer count) {
     }
 
     /** What landed, and why the line stopped short of {@code requested}. */
@@ -54,6 +60,14 @@ public final class BlockPlaceLineTool implements TianshuTool<BlockPlaceLineTool.
     @Override
     public ToolCategory category() {
         return ToolCategory.SERVER_WRITE;
+    }
+
+    @Override
+    public ToolPolicy policy() {
+        // Any survival player may do this by hand; the server switch and their own rights still bound it.
+        return ToolPolicy.forCategory(ToolCategory.SERVER_WRITE)
+                .withPermission(ToolPermission.EVERYONE)
+                .withEnabledByDefault(true);
     }
 
     @Override
@@ -75,7 +89,6 @@ public final class BlockPlaceLineTool implements TianshuTool<BlockPlaceLineTool.
     @Override
     public JsonObject argsSchema() {
         JsonObject properties = new JsonObject();
-        properties.add("body", BodyToolSchemas.body());
         properties.add("item", BodyToolSchemas.text("Item id, for example minecraft:stone"));
         properties.add("x", BodyToolSchemas.coordinate("First block x"));
         properties.add("y", BodyToolSchemas.coordinate("First block y"));
@@ -93,11 +106,15 @@ public final class BlockPlaceLineTool implements TianshuTool<BlockPlaceLineTool.
 
     @Override
     public CompletableFuture<Placed> invoke(ToolContext context, Args args) {
-        ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
+        ActorScope scope = ActorScope.player(context.caller());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
+        return placeLine(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides whether rights, reach and drops follow a player or a body. */
+    static CompletableFuture<Placed> placeLine(ActorRef actor, Args args) {
         if (args == null || args.item() == null || args.item().isBlank()) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "block.placeLine needs an item id"));
@@ -112,7 +129,7 @@ public final class BlockPlaceLineTool implements TianshuTool<BlockPlaceLineTool.
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "count must be 1.." + MAX_COUNT));
         }
-        Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.PLACE);
+        Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.PLACE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
@@ -121,12 +138,11 @@ public final class BlockPlaceLineTool implements TianshuTool<BlockPlaceLineTool.
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                     "block placement is only available on the server"));
         }
-        return placeFrom(port, scope.actor(), args.item().trim(), args.x(), args.y(), args.z(),
+        return placeFrom(port, actor, args.item().trim(), args.x(), args.y(), args.z(),
                 step[0], step[1], step[2], requested, new ArrayList<>());
     }
 
-    private static CompletableFuture<Placed> placeFrom(BlockPlacePort port,
-                                                        com.rheinmetal.tianshu.api.entity.ActorRef actor,
+    private static CompletableFuture<Placed> placeFrom(BlockPlacePort port, ActorRef actor,
                                                         String item, int x, int y, int z,
                                                         int dx, int dy, int dz, int requested,
                                                         List<BlockPlaceResult> done) {

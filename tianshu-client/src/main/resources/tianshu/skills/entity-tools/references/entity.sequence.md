@@ -21,7 +21,7 @@
 | `radius` | `pickup` 的半径，默认 3 |
 | `slot` `target` | `equip` 用：背包槽位（-1 = 卸下）与身体槽（`main` / `offhand` / `head` / `chest` / `legs` / `feet`） |
 
-`body` 可选，规则同单个工具。
+`body` 省略时由调用者指定的那具身体执行；身体自己调用时可以省略。
 
 ## 返回
 

@@ -80,7 +80,7 @@ class BodyScanToolTest {
     }
 
     @Test
-    void aPlayerWithoutABodyScansAroundThePlayer() throws Exception {
+    void aPlayerWhoNamesNoBodyIsRefused() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
         TianshuRuntimePorts.register(EntityQueryPort.class, new EntityQueryPort() {
             @Override
@@ -96,10 +96,11 @@ class BodyScanToolTest {
         });
         enable();
 
-        JsonObject result = envelope("{\"entities\":\"minecraft:zombie\"}", ToolCaller.player("p", true));
+        JsonObject refused = envelope("{\"entities\":\"minecraft:zombie\"}", ToolCaller.player("p", true));
 
-        assertTrue(result.get("ok").getAsBoolean());
-        assertEquals(ActorRef.Kind.PLAYER, seen.get().kind());
+        assertFalse(refused.get("ok").getAsBoolean());
+        assertEquals("INVALID_ARGS", refused.get("code").getAsString());
+        assertEquals("body.target.required", refused.get("message").getAsString());
     }
 
     @Test

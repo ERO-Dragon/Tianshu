@@ -11,7 +11,7 @@ class BodyToolTimeoutsTest {
     void longOperationsCarryTheirOwnTimeout() {
         assertEquals(35_000L, new BodyMoveTool().policy().timeoutMillis());
         assertEquals(70_000L, new BodyMineTool().policy().timeoutMillis());
-        assertEquals(25_000L, new ItemUseTool().policy().timeoutMillis());
+        assertEquals(25_000L, new BodyItemUseTool().policy().timeoutMillis());
     }
 
     @Test

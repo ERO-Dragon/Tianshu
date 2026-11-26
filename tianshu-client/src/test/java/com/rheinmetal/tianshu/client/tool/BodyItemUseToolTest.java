@@ -27,7 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ItemUseToolTest {
+/**
+ * Item use is body-only: what a player does with the item in their own hand is not the platform's call.
+ */
+class BodyItemUseToolTest {
 
     @BeforeEach
     void clearThrottle() {
@@ -41,24 +44,24 @@ class ItemUseToolTest {
 
     @AfterEach
     void clean() {
-        TianshuTools.unregister(ItemUseTool.ID);
+        TianshuTools.unregister(BodyItemUseTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
         EntityActors.clearForTests();
     }
 
     private static JsonObject envelope(String json, ToolCaller caller) throws Exception {
-        return TianshuTools.callJson(ItemUseTool.ID, JsonParser.parseString(json), caller, ToolSide.SERVER)
+        return TianshuTools.callJson(BodyItemUseTool.ID, JsonParser.parseString(json), caller, ToolSide.SERVER)
                 .get(2, TimeUnit.SECONDS);
     }
 
     private void enable() {
-        TianshuTools.register(new ItemUseTool());
-        TianshuTools.setEnabled(ItemUseTool.ID, true);
+        TianshuTools.register(new BodyItemUseTool());
+        TianshuTools.setEnabled(BodyItemUseTool.ID, true);
     }
 
     @Test
-    void usingAnItemOnTheAirReachesThePortAsTheBody() throws Exception {
+    void aBodyUsesTheItemInTheAir() throws Exception {
         AtomicBoolean reached = new AtomicBoolean();
         AtomicReference<ActorRef> seen = new AtomicReference<>();
         AtomicInteger holdSeen = new AtomicInteger(-1);
@@ -98,12 +101,13 @@ class ItemUseToolTest {
     }
 
     @Test
-    void aPlayerWithoutABodyCannotUseItemsThroughTheTool() throws Exception {
+    void aPlayerMustNameABody() throws Exception {
         enable();
 
         JsonObject refused = envelope("{}", ToolCaller.player("p", true));
 
         assertFalse(refused.get("ok").getAsBoolean());
         assertEquals("INVALID_ARGS", refused.get("code").getAsString());
+        assertEquals("body.target.required", refused.get("message").getAsString());
     }
 }

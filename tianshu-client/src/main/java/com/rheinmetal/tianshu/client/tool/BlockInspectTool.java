@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.game.BlockInspectPort;
 import com.rheinmetal.tianshu.api.game.BlockInspectRequest;
 import com.rheinmetal.tianshu.api.game.BlockInspectResult;
@@ -19,6 +20,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Reads one block: what it is, its state, and every storage it exposes.
  *
+ * <p>Player side of the split pair; {@link BodyBlockInspectTool} is the body side and owns the shared call in
+ * {@link #inspect(ActorRef, Args)}.</p>
+ *
  * <p>Read-only and on by default: knowing what is in a chest or a machine is perception, not a world change. It does
  * not need the player to have anything open — that is the difference from {@code container.inspect}, which reads the
  * menu the player already has, and the reason this one works for machines whose screen the platform cannot render.</p>
@@ -28,8 +32,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class BlockInspectTool implements TianshuTool<BlockInspectTool.Args, BlockInspectResult> {
 
-    /** {@code body} is optional: when present the block is read as that body, within its reach. */
-    public record Args(int x, int y, int z, String body) {
+    public record Args(int x, int y, int z) {
     }
 
     public static final ToolId ID = ToolId.of("minecraft", "block.inspect");
@@ -70,7 +73,6 @@ public final class BlockInspectTool implements TianshuTool<BlockInspectTool.Args
         properties.add("x", BodyToolSchemas.integer("Block x coordinate"));
         properties.add("y", BodyToolSchemas.integer("Block y coordinate"));
         properties.add("z", BodyToolSchemas.integer("Block z coordinate"));
-        properties.add("body", BodyToolSchemas.body());
         return BodyToolSchemas.object(properties);
     }
 
@@ -80,13 +82,18 @@ public final class BlockInspectTool implements TianshuTool<BlockInspectTool.Args
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "block.inspect needs a position"));
         }
-        ActorScope scope = ActorScope.of(context.caller(), args.body());
+        ActorScope scope = ActorScope.player(context.caller());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
+        return inspect(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides whether the block is within reach and who reads it. */
+    static CompletableFuture<BlockInspectResult> inspect(ActorRef actor, Args args) {
         BlockInspectRequest request = new BlockInspectRequest(args.x(), args.y(), args.z());
         return TianshuRuntimePorts.find(BlockInspectPort.class)
-                .map(port -> port.inspect(scope.actor(), request)
+                .map(port -> port.inspect(actor, request)
                         .thenCompose(result -> result.inspected()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

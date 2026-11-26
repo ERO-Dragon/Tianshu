@@ -38,6 +38,7 @@ class CraftRecipeToolTest {
     @AfterEach
     void clean() {
         TianshuTools.unregister(CraftRecipeTool.ID);
+        TianshuTools.unregister(BodyCraftTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
         EntityActors.clearForTests();
@@ -61,12 +62,12 @@ class CraftRecipeToolTest {
     }
 
     @Test
-    void aBodyCallerReachesTheActorAwarePort() throws Exception {
+    void aBodyCraftsThroughTheEntitySide() throws Exception {
         java.util.concurrent.atomic.AtomicReference<ActorRef> seen = new java.util.concurrent.atomic.AtomicReference<>();
         TianshuRuntimePorts.register(CraftPort.class, new CraftPort() {
             @Override
             public CompletableFuture<CraftResult> craft(String playerId, CraftRequest request) {
-                throw new AssertionError("body call must not fall back to the player path");
+                throw new AssertionError("a body call must not fall back to the player path");
             }
 
             @Override
@@ -75,11 +76,14 @@ class CraftRecipeToolTest {
                 return CompletableFuture.completedFuture(new CraftResult("minecraft:stick", 4, true, "crafted"));
             }
         });
-        TianshuTools.register(new CraftRecipeTool());
-        TianshuTools.setEnabled(CraftRecipeTool.ID, true);
+        TianshuTools.register(new BodyCraftTool());
+        TianshuTools.setEnabled(BodyCraftTool.ID, true);
         TestBodies.register("body-1", EntityCapability.INVENTORY);
 
-        JsonObject envelope = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.body("body-1", true));
+        JsonObject envelope = TianshuTools
+                .callJson(BodyCraftTool.ID, JsonParser.parseString("{\"recipeId\":\"minecraft:stick\"}"),
+                        ToolCaller.body("body-1", true), ToolSide.SERVER)
+                .get(2, java.util.concurrent.TimeUnit.SECONDS);
         assertTrue(envelope.get("ok").getAsBoolean());
         assertEquals(ActorRef.Kind.BODY, seen.get().kind());
         assertEquals("body-1", seen.get().id());
@@ -98,10 +102,13 @@ class CraftRecipeToolTest {
 
     @Test
     void anUnknownBodyIsUnavailable() throws Exception {
-        TianshuTools.register(new CraftRecipeTool());
-        TianshuTools.setEnabled(CraftRecipeTool.ID, true);
+        TianshuTools.register(new BodyCraftTool());
+        TianshuTools.setEnabled(BodyCraftTool.ID, true);
 
-        JsonObject refused = envelope("{\"recipeId\":\"minecraft:stick\"}", ToolCaller.body("gone", true));
+        JsonObject refused = TianshuTools
+                .callJson(BodyCraftTool.ID, JsonParser.parseString("{\"body\":\"gone\",\"recipeId\":\"minecraft:stick\"}"),
+                        ToolCaller.player("p", true), ToolSide.SERVER)
+                .get(2, java.util.concurrent.TimeUnit.SECONDS);
         assertFalse(refused.get("ok").getAsBoolean());
         assertEquals("UNAVAILABLE", refused.get("code").getAsString());
     }
@@ -120,14 +127,14 @@ class CraftRecipeToolTest {
     }
 
     @Test
-    void onlyAPlayerMayCraft() throws Exception {
+    void anAgentIsSentToTheEntitySide() throws Exception {
         TianshuTools.register(new CraftRecipeTool());
         TianshuTools.setEnabled(CraftRecipeTool.ID, true);
 
         JsonObject denied = envelope("{\"recipeId\":\"minecraft:iron_pickaxe\"}", ToolCaller.agent(false));
         assertFalse(denied.get("ok").getAsBoolean());
-        // An agent has no actor to act as; that is a parameter problem, not a missing permission.
-        assertEquals("INVALID_ARGS", denied.get("code").getAsString());
+        // The player side serves the player; a module drives a body and uses entity.craft instead.
+        assertEquals("UNSUPPORTED_ACTOR", denied.get("code").getAsString());
     }
 
     @Test

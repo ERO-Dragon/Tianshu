@@ -69,7 +69,7 @@ public final class BodyEquipTool implements TianshuTool<BodyEquipTool.Args, Equi
     @Override
     public CompletableFuture<EquipResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
+        ActorScope scope = ActorScope.body(caller, args == null ? null : args.body());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }

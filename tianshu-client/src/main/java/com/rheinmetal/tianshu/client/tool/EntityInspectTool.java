@@ -76,7 +76,7 @@ public final class EntityInspectTool implements TianshuTool<EntityInspectTool.Ar
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "entity.inspect needs an entity id"));
         }
-        ActorScope scope = ActorScope.of(context.caller(), args.body());
+        ActorScope scope = ActorScope.body(context.caller(), args.body());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }

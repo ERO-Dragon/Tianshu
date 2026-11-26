@@ -62,13 +62,13 @@ class ContainerTransferToolTest {
     }
 
     @Test
-    void anAgentMayNotTransfer() throws Exception {
+    void anAgentIsSentToTheEntitySide() throws Exception {
         TianshuTools.register(new ContainerTransferTool());
         TianshuTools.setEnabled(ContainerTransferTool.ID, true);
         JsonObject denied = envelope(REQUEST, ToolCaller.agent(false));
         assertFalse(denied.get("ok").getAsBoolean());
-        // An agent has no actor to act as; that is a parameter problem, not a missing permission.
-        assertEquals("INVALID_ARGS", denied.get("code").getAsString());
+        // The player side serves the player; a module drives a body and uses entity.transfer instead.
+        assertEquals("UNSUPPORTED_ACTOR", denied.get("code").getAsString());
     }
 
     @Test

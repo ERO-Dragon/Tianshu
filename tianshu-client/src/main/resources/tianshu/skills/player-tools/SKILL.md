@@ -11,9 +11,10 @@ description: Minecraft 玩家侧工具：以玩家本人身份的读写调用（
 
 通过**身体**（实体化身）行动的那一套是 `minecraft:entity-tools`。两者**互斥**：
 
+- 本组每个工具都以**你（玩家）**的身份执行，参数里没有 `body`；
+- 同一个动作在那边有另一个 id：`block.place` ↔ `entity.place`、`container.transfer` ↔ `entity.transfer`、
+  `craft.recipe` ↔ `entity.craft`、`block.break` ↔ `entity.mine`……让身体去做，就用那边的 id，别在这里想办法；
 - 一个模组要么以玩家身份行事，要么派身体行事，不会同时需要两套；
-- 不要在一轮任务里混用：`entity.mine` 与 `minecraft:block.break` 都是"挖一个方块"，但执行者不同、
-  掉落的归属不同、失败原因也不同；
 - 你拿不到的那一套工具不会出现在工具表里——不是坏了，是不适用。
 
 ## 一次调用长什么样

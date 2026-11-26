@@ -124,7 +124,7 @@ class BodyPickupToolTest {
     }
 
     @Test
-    void aPlayerWithoutABodyPicksUpAroundThePlayer() throws Exception {
+    void aPlayerWhoNamesNoBodyIsRefused() throws Exception {
         AtomicReference<ActorRef> seen = new AtomicReference<>();
         TianshuRuntimePorts.register(EntityItemPort.class, new EntityItemPort() {
             @Override
@@ -145,10 +145,11 @@ class BodyPickupToolTest {
         });
         enable();
 
-        JsonObject result = envelope("{}", ToolCaller.player("p", true));
+        JsonObject refused = envelope("{}", ToolCaller.player("p", true));
 
-        assertTrue(result.get("ok").getAsBoolean());
-        assertEquals(ActorRef.Kind.PLAYER, seen.get().kind());
+        assertFalse(refused.get("ok").getAsBoolean());
+        assertEquals("INVALID_ARGS", refused.get("code").getAsString());
+        assertEquals("body.target.required", refused.get("message").getAsString());
     }
 
     @Test

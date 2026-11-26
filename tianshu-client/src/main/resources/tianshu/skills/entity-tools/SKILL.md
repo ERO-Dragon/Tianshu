@@ -11,9 +11,9 @@ description: Minecraft 实体侧工具：让身体（实体化身）代替玩家
 
 以**玩家本人**身份行动的那一套是 `minecraft:player-tools`。两者**互斥**：
 
-- 一个模组要么派身体行事，要么以玩家身份行事，不会同时需要两套；
-- 不要混用：`minecraft:entity.mine` 与 `minecraft:block.break` 都挖一个方块，但执行者不同、
-  掉落归属不同、失败原因也不同；
+- 本组每个工具都由**身体**执行，`body` 参数必填（你自己就是那具身体时可以省略）；
+- 同一个动作在那边有另一个 id：`entity.place` ↔ `block.place`、`entity.transfer` ↔ `container.transfer`、
+  `entity.craft` ↔ `craft.recipe`、`entity.mine` ↔ `block.break`……那一边以玩家身份执行，用的不是这具身体的背包与权限；
 - 你看不到的那一套不会出现在工具表里——不是坏了，是不适用。
 
 ## 动手之前
@@ -39,11 +39,13 @@ description: Minecraft 实体侧工具：让身体（实体化身）代替玩家
 
 ## 需要一条命令时，走审批出口
 
-`minecraft:command.run` 是本组唯一的"任意命令"入口，也是全权档在实体侧的**唯一载体**：
-第一次调用只返回一次性令牌，操作员批准后才真正执行，且一条令牌只跑一次（详见 `references/command.run.md`）。
+`minecraft:entity.command.run` 是本组唯一的"任意命令"入口，也是全权档在实体侧的**唯一载体**：
+第一次调用只返回一次性令牌，操作员批准后才真正执行，且一条令牌只跑一次
+（详见 `references/entity.command.run.md`）。命令以**那具身体**的身份与权限执行。
 
 玩家侧不走这里：那边有 14 个结构化的 `minecraft:server.*` 工具（`gamemode`、`time`、`weather`…），
-参数有枚举校验、开关也分项——两边是两套，不要交叉使用。
+参数有枚举校验、开关也分项；需要一条任意命令时玩家侧有 `minecraft:command.run`。
+两边各有一套，不要交叉使用。
 
 ## 参考资料
 

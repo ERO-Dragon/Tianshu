@@ -41,20 +41,32 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new RecipeQueryTool());
         ServerToolDeclarations.declare(new LootQueryTool());
         ServerToolDeclarations.declare(new BlockInteractTool());
+        ServerToolDeclarations.declare(new BodyInteractTool());
         ServerToolDeclarations.declare(new CraftRecipeTool());
+        ServerToolDeclarations.declare(new BodyCraftTool());
         ServerToolDeclarations.declare(new ContainerTransferTool());
+        ServerToolDeclarations.declare(new BodyTransferTool());
         ServerToolDeclarations.declare(new BlockMachineTool());
+        ServerToolDeclarations.declare(new BodyMachineTool());
         ServerToolDeclarations.declare(new BlockInspectTool());
+        ServerToolDeclarations.declare(new BodyBlockInspectTool());
         ServerToolDeclarations.declare(new BlockBreakTool());
         ServerToolDeclarations.declare(new CommandRunTool());
+        ServerToolDeclarations.declare(new BodyCommandRunTool());
         ServerToolDeclarations.declare(new EntityInspectTool());
         ServerToolDeclarations.declare(new ItemInspectTool());
+        ServerToolDeclarations.declare(new BodyItemInspectTool());
         ServerToolDeclarations.declare(new BodyStatusTool());
         ServerToolDeclarations.declare(new WorldInfoTool());
+        ServerToolDeclarations.declare(new BodyWorldInfoTool());
         ServerToolDeclarations.declare(new WorldLocateTool());
+        ServerToolDeclarations.declare(new BodyWorldLocateTool());
         ServerToolDeclarations.declare(new CraftAvailableTool());
+        ServerToolDeclarations.declare(new BodyCraftAvailableTool());
         ServerToolDeclarations.declare(new BlockPlaceTool());
+        ServerToolDeclarations.declare(new BodyPlaceTool());
         ServerToolDeclarations.declare(new BlockPlaceLineTool());
+        ServerToolDeclarations.declare(new BodyPlaceLineTool());
         ServerToolDeclarations.declare(new BodyListTool());
         ServerToolDeclarations.declare(new BodyMoveTool());
         ServerToolDeclarations.declare(new BodyLookTool());
@@ -67,7 +79,7 @@ public final class ClientTools {
         ServerToolDeclarations.declare(new BodyDropTool());
         ServerToolDeclarations.declare(new BodyGiveTool());
         ServerToolDeclarations.declare(new EntityUseTool());
-        ServerToolDeclarations.declare(new ItemUseTool());
+        ServerToolDeclarations.declare(new BodyItemUseTool());
         ServerToolDeclarations.declare(new BodySequenceTool());
     }
 

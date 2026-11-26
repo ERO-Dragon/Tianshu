@@ -4,7 +4,6 @@ public enum FailurePolicy {
     PROPAGATE_CANCEL,
     FALLBACK,
     IGNORE,
-    RETRY,
     REPORT_ONLY
 }
 

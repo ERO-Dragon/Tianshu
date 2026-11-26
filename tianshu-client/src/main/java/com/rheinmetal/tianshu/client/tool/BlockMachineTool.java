@@ -2,13 +2,14 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockMachinePort;
 import com.rheinmetal.tianshu.api.game.MachineOpRequest;
 import com.rheinmetal.tianshu.api.game.MachineOpResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
-import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
@@ -23,15 +24,17 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Works a machine at a position: put fuel in, put input in, take the result out.
  *
- * <p>A write tool, off by default, for a player or an agent body. It requires {@link EntityCapability#INVENTORY}, not
- * {@code USE}: every operation moves items into or out of a container, so a body that can only use blocks cannot work
- * the machine. The platform decides which machines are understood (for now the furnace family); an unknown block is a
- * refusal with a reason, never a generic "run this block" escape hatch.</p>
+ * <p>Player side of the split pair; {@link BodyMachineTool} is the body side and owns the shared call in
+ * {@link #operate(ActorRef, Args)}.</p>
+ *
+ * <p>A write tool, off by default. It requires {@link EntityCapability#INVENTORY}, not {@code USE}: every operation
+ * moves items into or out of a container, so an actor that can only use blocks cannot work the machine. The platform
+ * decides which machines are understood (for now the furnace family); an unknown block is a refusal with a reason,
+ * never a generic "run this block" escape hatch.</p>
  */
 public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args, MachineOpResult> {
 
-    /** {@code body} is optional: when present the machine works on that body's inventory. */
-    public record Args(int x, int y, int z, String operation, Integer playerSlot, String body) {
+    public record Args(int x, int y, int z, String operation, Integer playerSlot) {
     }
 
     public static final ToolId ID = ToolId.of("minecraft", "block.machine");
@@ -89,7 +92,6 @@ public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args
 
         JsonObject playerSlot = integer("Player inventory slot used by insert_fuel and insert_input, 0..35");
         properties.add("playerSlot", playerSlot);
-        properties.add("body", BodyToolSchemas.body());
 
         JsonArray required = new JsonArray();
         required.add("x");
@@ -106,11 +108,15 @@ public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args
 
     @Override
     public CompletableFuture<MachineOpResult> invoke(ToolContext context, Args args) {
-        ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
+        ActorScope scope = ActorScope.player(context.caller());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
+        return operate(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides whose inventory the items move out of and into. */
+    static CompletableFuture<MachineOpResult> operate(ActorRef actor, Args args) {
         String operation = args == null || args.operation() == null
                 ? "" : args.operation().trim().toLowerCase(Locale.ROOT);
         if (!OPERATIONS.contains(operation)) {
@@ -124,12 +130,12 @@ public final class BlockMachineTool implements TianshuTool<BlockMachineTool.Args
         }
         MachineOpRequest normalised = new MachineOpRequest(args.x(), args.y(), args.z(), operation,
                 operation.equals("take_output") ? -1 : slot);
-        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
+        java.util.Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         return TianshuRuntimePorts.find(BlockMachinePort.class)
-                .map(port -> port.operate(scope.actor(), normalised)
+                .map(port -> port.operate(actor, normalised)
                         .thenCompose(result -> result.moved() > 0
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

@@ -1,13 +1,14 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.BlockInteractPort;
 import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.BlockInteractResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
-import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
@@ -18,15 +19,17 @@ import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Operates a harmless block as the requesting actor: a player, or an agent body that declares {@code USE}.
+ * Operates a harmless block as the calling player: a button, a lever, a door.
+ *
+ * <p>Player side of the split pair; {@link BodyInteractTool} is the body side and owns the shared call in
+ * {@link #interact(ActorRef, Args)}.</p>
  *
  * <p>This is a write tool, so it is off by default and needs an operator. Breaking, placing and igniting are
  * deliberately not part of it; if they are ever offered, they get their own tool with their own switch.</p>
  */
 public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Args, BlockInteractResult> {
 
-    /** {@code body} is optional: when present the interaction runs as that body. */
-    public record Args(int x, int y, int z, String body) {
+    public record Args(int x, int y, int z) {
     }
 
     public static final ToolId ID = ToolId.of("minecraft", "block.interact");
@@ -71,7 +74,6 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
         properties.add("x", integer("Block x coordinate"));
         properties.add("y", integer("Block y coordinate"));
         properties.add("z", integer("Block z coordinate"));
-        properties.add("body", BodyToolSchemas.body());
 
         com.google.gson.JsonArray required = new com.google.gson.JsonArray();
         required.add("x");
@@ -87,12 +89,16 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
 
     @Override
     public CompletableFuture<BlockInteractResult> invoke(ToolContext context, Args args) {
-        ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
+        ActorScope scope = ActorScope.player(context.caller());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.USE);
+        return interact(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides whether rights and reach follow a player or a body. */
+    static CompletableFuture<BlockInteractResult> interact(ActorRef actor, Args args) {
+        java.util.Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.USE);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
@@ -102,7 +108,7 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
         }
         BlockInteractRequest request = new BlockInteractRequest(args.x(), args.y(), args.z());
         return TianshuRuntimePorts.find(BlockInteractPort.class)
-                .map(port -> port.interact(scope.actor(), request))
+                .map(port -> port.interact(actor, request))
                 .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                         "block interaction is only available on the server")));
     }

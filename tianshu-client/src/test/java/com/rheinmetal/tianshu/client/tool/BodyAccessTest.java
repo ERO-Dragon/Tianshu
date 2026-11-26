@@ -175,7 +175,7 @@ class BodyAccessTest {
     void anAgentThatNamesNoBodyIsRefusedInsteadOfActingAsItself() {
         installGuardedBody();
 
-        ToolException refusal = ActorScope.of(ToolCaller.agent("module.test", true, ToolAutonomy.CONSERVATIVE),
+        ToolException refusal = ActorScope.body(ToolCaller.agent("module.test", true, ToolAutonomy.CONSERVATIVE),
                 null).refusal().orElseThrow();
 
         assertEquals(ToolError.INVALID_ARGS, refusal.code());
@@ -186,7 +186,7 @@ class BodyAccessTest {
     void aBodyNamingAnotherBodyIsRefusedInsteadOfIgnoringIt() {
         installGuardedBody();
 
-        ToolException refusal = ActorScope.of(ToolCaller.body("body-1", true), "body-2")
+        ToolException refusal = ActorScope.body(ToolCaller.body("body-1", true), "body-2")
                 .refusal().orElseThrow();
 
         assertEquals(ToolError.INVALID_ARGS, refusal.code());

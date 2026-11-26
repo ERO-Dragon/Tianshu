@@ -2,13 +2,14 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.game.CraftPort;
 import com.rheinmetal.tianshu.api.game.CraftRequest;
 import com.rheinmetal.tianshu.api.game.CraftResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
-import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
 import com.rheinmetal.tianshu.api.tool.ToolError;
@@ -19,15 +20,17 @@ import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Crafts one named recipe once, as the requesting player or agent body with an inventory.
+ * Crafts one named recipe once, as the calling player.
+ *
+ * <p>Player side of the split pair; {@link BodyCraftTool} is the body side and owns the shared call in
+ * {@link #craft(ActorRef, Args)}.</p>
  *
  * <p>A write tool: off by default, operator-only, and it only ever crafts the recipe it was given — choosing the
  * recipe is the caller's job, so a wrong assumption becomes a visible refusal instead of a surprise item.</p>
  */
 public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, CraftResult> {
 
-    /** {@code body} is optional: when present the craft runs on that body's inventory. */
-    public record Args(String recipeId, String body) {
+    public record Args(String recipeId) {
     }
 
     public static final ToolId ID = ToolId.of("minecraft", "craft.recipe");
@@ -35,12 +38,6 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
     @Override
     public ToolId id() {
         return ID;
-    }
-
-    @Override
-    public com.rheinmetal.tianshu.api.tool.BodyAutonomy requiredBodyAutonomy() {
-        // Survival work either way: a player placing a block and a carrier placing one are the same act.
-        return com.rheinmetal.tianshu.api.tool.BodyAutonomy.SURVIVAL;
     }
 
     @Override
@@ -80,7 +77,6 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
 
         JsonObject properties = new JsonObject();
         properties.add("recipeId", recipe);
-        properties.add("body", BodyToolSchemas.body());
 
         JsonArray required = new JsonArray();
         required.add("recipeId");
@@ -94,21 +90,25 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
 
     @Override
     public CompletableFuture<CraftResult> invoke(ToolContext context, Args args) {
-        ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
+        ActorScope scope = ActorScope.player(context.caller());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
+        return craft(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides whose ingredients are consumed. */
+    static CompletableFuture<CraftResult> craft(ActorRef actor, Args args) {
         if (args == null || args.recipeId() == null || args.recipeId().isBlank()) {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
         }
-        java.util.Optional<ToolException> refusal = scope.capabilityRefusal(EntityCapability.INVENTORY);
+        java.util.Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.INVENTORY);
         if (refusal.isPresent()) {
             return CompletableFuture.failedFuture(refusal.get());
         }
         return TianshuRuntimePorts.find(CraftPort.class)
-                .map(port -> port.craft(scope.actor(), new CraftRequest(args.recipeId().trim()))
+                .map(port -> port.craft(actor, new CraftRequest(args.recipeId().trim()))
                         .thenCompose(result -> result.crafted()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,

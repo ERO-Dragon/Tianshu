@@ -66,7 +66,7 @@ public final class BodyAttackTool implements TianshuTool<BodyAttackTool.Args, Ac
     @Override
     public CompletableFuture<ActionResult> invoke(ToolContext context, Args args) {
         ToolCaller caller = context.caller();
-        ActorScope scope = ActorScope.of(caller, args == null ? null : args.body());
+        ActorScope scope = ActorScope.body(caller, args == null ? null : args.body());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }

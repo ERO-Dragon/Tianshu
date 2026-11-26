@@ -39,13 +39,16 @@ class BlockPlaceLineToolTest {
     void setUp() {
         unregister = TestBodies.register(BODY, com.rheinmetal.tianshu.api.entity.EntityCapability.PLACE);
         TianshuTools.register(new BlockPlaceLineTool());
+        TianshuTools.register(new BodyPlaceLineTool());
         TianshuTools.setEnabled(BlockPlaceLineTool.ID, true);
+        TianshuTools.setEnabled(BodyPlaceLineTool.ID, true);
     }
 
     @AfterEach
     void clean() {
         TianshuTools.clearEnabledOverride(BlockPlaceLineTool.ID);
         TianshuTools.unregister(BlockPlaceLineTool.ID);
+        TianshuTools.unregister(BodyPlaceLineTool.ID);
         unregister.run();
         TianshuRuntimePorts.clear();
     }
@@ -96,7 +99,7 @@ class BlockPlaceLineToolTest {
         args.addProperty("direction", direction);
         args.addProperty("count", count);
         return TianshuTools
-                .callJson(BlockPlaceLineTool.ID, args, ToolCaller.agent(true), ToolSide.SERVER)
+                .callJson(BodyPlaceLineTool.ID, args, ToolCaller.agent(true), ToolSide.SERVER)
                 .thenApply(envelope -> {
                     var value = envelope.getAsJsonObject("result");
                     var blocks = new ArrayList<BlockPlaceResult>();

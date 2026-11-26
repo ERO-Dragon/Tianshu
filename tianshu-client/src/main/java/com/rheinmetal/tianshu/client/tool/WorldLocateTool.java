@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.game.LocateRequest;
 import com.rheinmetal.tianshu.api.game.LocateResult;
 import com.rheinmetal.tianshu.api.game.WorldLocatePort;
@@ -17,7 +18,10 @@ import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Finds the nearest structure or biome of a given id.
+ * Finds the nearest structure or biome of a given id, from where you are.
+ *
+ * <p>Player side of the split pair; {@link BodyWorldLocateTool} is the body side and owns the shared call in
+ * {@link #locate(ActorRef, Args)}.</p>
  *
  * <p>Atomic: it answers "where is it", not "go there" — {@code body.move} does the walking and the caller decides whether
  * going is worth it.</p>
@@ -28,8 +32,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, LocateResult> {
 
-    /** {@code body} is optional: without it the caller's own position is the origin. */
-    public record Args(String structure, String biome, Integer radius, String body) {
+    public record Args(String structure, String biome, Integer radius) {
     }
 
     public static final ToolId ID = ToolId.of("minecraft", "world.locate");
@@ -75,7 +78,6 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
                 "Biome id to find, for example minecraft:desert"));
         properties.add("radius", BodyToolSchemas.integer(
                 "Search radius in blocks; defaults to 256, biomes sample at most 4096 positions"));
-        properties.add("body", BodyToolSchemas.body());
         return BodyToolSchemas.object(properties);
     }
 
@@ -85,18 +87,23 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "world.locate needs a structure id or a biome id"));
         }
+        ActorScope scope = ActorScope.player(context.caller());
+        if (scope.refusal().isPresent()) {
+            return CompletableFuture.failedFuture(scope.refusal().get());
+        }
+        return locate(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides which position is the origin of the search. */
+    static CompletableFuture<LocateResult> locate(ActorRef actor, Args args) {
         LocateRequest request = new LocateRequest(args.structure(), args.biome(),
                 args.radius() == null ? 0 : args.radius());
         if (!request.singleTarget()) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "world.locate needs exactly one of: a structure id or a biome id"));
         }
-        ActorScope scope = ActorScope.of(context.caller(), args.body());
-        if (scope.refusal().isPresent()) {
-            return CompletableFuture.failedFuture(scope.refusal().get());
-        }
         return TianshuRuntimePorts.find(WorldLocatePort.class)
-                .map(port -> port.locate(scope.actor(), request)
+                .map(port -> port.locate(actor, request)
                         .thenCompose(result -> result.searched()
                                 ? CompletableFuture.completedFuture(result)
                                 : CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,

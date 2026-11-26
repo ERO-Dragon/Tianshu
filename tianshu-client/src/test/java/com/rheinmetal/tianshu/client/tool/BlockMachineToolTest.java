@@ -61,12 +61,12 @@ class BlockMachineToolTest {
     }
 
     @Test
-    void onlyAPlayerOrABodyMayOperateAMachine() throws Exception {
+    void anAgentIsSentToTheEntitySide() throws Exception {
         TianshuTools.register(new BlockMachineTool());
         TianshuTools.setEnabled(BlockMachineTool.ID, true);
         JsonObject denied = envelope(FUEL, ToolCaller.agent(false));
-        // An agent has no actor to act as; that is a parameter problem, not a missing permission.
-        assertEquals("INVALID_ARGS", denied.get("code").getAsString());
+        // The player side serves the player; a module drives a body and uses entity.machine instead.
+        assertEquals("UNSUPPORTED_ACTOR", denied.get("code").getAsString());
     }
 
     @Test

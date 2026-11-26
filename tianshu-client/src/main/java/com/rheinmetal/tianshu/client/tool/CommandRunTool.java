@@ -6,7 +6,6 @@ import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.game.CommandExecutionPort;
 import com.rheinmetal.tianshu.api.game.CommandRequest;
 import com.rheinmetal.tianshu.api.game.CommandResult;
-import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -19,20 +18,23 @@ import java.lang.reflect.Type;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Asks to run one command; nothing runs until a human approves that exact line.
+ * Asks to run one command as you; nothing runs until a human approves that exact line.
+ *
+ * <p>Player side of the split pair; {@link BodyCommandRunTool} is the body side and owns the shared call in
+ * {@link #run(ActorRef, Args)}.</p>
  *
  * <p>The first call comes back pending with a token an operator approves with {@code /tianshu approve <token>}; the retry
  * carries the token and runs once. That is the whole design: a switch could be flipped by the caller, an approval
  * cannot.</p>
  *
- * <p>It is off by default and sits at the top of both scales — {@code FULL} on the player axis and {@code PRIVILEGED} on
- * the body axis — because running commands is what a body cannot do by itself. Requesting is allowed to anyone; executing
- * needs an operator, which is the split this tool exists to express.</p>
+ * <p>It is off by default and needs {@code FULL} player autonomy, because running commands is not something a survival
+ * player does by hand. Requesting is allowed to anyone; executing needs an operator, which is the split this tool
+ * exists to express.</p>
  */
 public final class CommandRunTool implements TianshuTool<CommandRunTool.Args, CommandResult> {
 
     /** {@code approval} is empty on the first call and carries the token on the retry. */
-    public record Args(String line, String approval, String body) {
+    public record Args(String line, String approval) {
     }
 
     public static final ToolId ID = ToolId.of("minecraft", "command.run");
@@ -62,13 +64,8 @@ public final class CommandRunTool implements TianshuTool<CommandRunTool.Args, Co
     }
 
     @Override
-    public BodyAutonomy requiredBodyAutonomy() {
-        return BodyAutonomy.PRIVILEGED;
-    }
-
-    @Override
     public String description() {
-        return "Asks to run one Minecraft command as the acting body or player. Nothing runs on the first call: it returns "
+        return "Asks to run one Minecraft command as you. Nothing runs on the first call: it returns "
                 + "an approval token that a server operator confirms with /tianshu approve <token>, and only then does "
                 + "the retry execute it. One token runs one command once.";
     }
@@ -88,7 +85,6 @@ public final class CommandRunTool implements TianshuTool<CommandRunTool.Args, Co
         JsonObject properties = new JsonObject();
         properties.add("line", BodyToolSchemas.text("The command line, without the leading slash"));
         properties.add("approval", BodyToolSchemas.text("The token an operator approved; omit on the first call"));
-        properties.add("body", BodyToolSchemas.body());
         return BodyToolSchemas.object(properties);
     }
 
@@ -98,12 +94,16 @@ public final class CommandRunTool implements TianshuTool<CommandRunTool.Args, Co
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "command.run needs a command line"));
         }
-        ActorScope scope = ActorScope.of(context.caller(), args.body());
+        ActorScope scope = ActorScope.player(context.caller());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
+        return run(scope.actor(), args);
+    }
+
+    /** Shared by both sides of the pair: the actor decides who the command runs as, after the same approval. */
+    static CompletableFuture<CommandResult> run(ActorRef actor, Args args) {
         CommandRequest request = new CommandRequest(args.line(), args.approval());
-        ActorRef actor = scope.actor();
         return TianshuRuntimePorts.find(CommandExecutionPort.class)
                 .map(port -> port.run(actor, request).thenCompose(result -> switch (result.status()) {
                     case EXECUTED, PENDING_APPROVAL -> CompletableFuture.completedFuture(result);

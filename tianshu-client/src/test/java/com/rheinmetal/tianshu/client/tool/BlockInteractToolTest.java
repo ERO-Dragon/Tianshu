@@ -38,6 +38,7 @@ class BlockInteractToolTest {
     @AfterEach
     void clean() {
         TianshuTools.unregister(BlockInteractTool.ID);
+        TianshuTools.unregister(BodyInteractTool.ID);
         ClientTools.unregisterForTests();
         TianshuRuntimePorts.clear();
         EntityActors.clearForTests();
@@ -68,17 +69,17 @@ class BlockInteractToolTest {
 
         JsonObject denied = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.agent(false));
         assertFalse(denied.get("ok").getAsBoolean());
-        // An agent has no actor to act as; that is a parameter problem, not a missing permission.
-        assertEquals("INVALID_ARGS", denied.get("code").getAsString());
+        // The player side serves the player; a module drives a body and uses entity.interact instead.
+        assertEquals("UNSUPPORTED_ACTOR", denied.get("code").getAsString());
     }
 
     @Test
-    void aBodyWithUseReachesTheActorAwarePort() throws Exception {
+    void aBodyInteractsThroughTheEntitySide() throws Exception {
         java.util.concurrent.atomic.AtomicReference<ActorRef> seen = new java.util.concurrent.atomic.AtomicReference<>();
         TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractPort() {
             @Override
             public CompletableFuture<BlockInteractResult> interact(String playerId, BlockInteractRequest request) {
-                throw new AssertionError("body call must not fall back to the player path");
+                throw new AssertionError("a body call must not fall back to the player path");
             }
 
             @Override
@@ -88,11 +89,14 @@ class BlockInteractToolTest {
                         new BlockInteractResult("minecraft:oak_door", true, "operated"));
             }
         });
-        TianshuTools.register(new BlockInteractTool());
-        TianshuTools.setEnabled(BlockInteractTool.ID, true);
+        TianshuTools.register(new BodyInteractTool());
+        TianshuTools.setEnabled(BodyInteractTool.ID, true);
         TestBodies.register("body-1", EntityCapability.USE);
 
-        JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3}", ToolCaller.body("body-1", true));
+        JsonObject allowed = TianshuTools
+                .callJson(BodyInteractTool.ID, JsonParser.parseString("{\"x\":1,\"y\":2,\"z\":3}"),
+                        ToolCaller.body("body-1", true), ToolSide.SERVER)
+                .get(2, java.util.concurrent.TimeUnit.SECONDS);
         assertTrue(allowed.get("ok").getAsBoolean());
         assertEquals("body-1", seen.get().id());
         assertEquals(ActorRef.Kind.BODY, seen.get().kind());
@@ -127,12 +131,12 @@ class BlockInteractToolTest {
     }
 
     @Test
-    void aPlayerMayDriveABodyInteraction() throws Exception {
+    void aPlayerMayDriveABodyThroughTheEntitySide() throws Exception {
         java.util.concurrent.atomic.AtomicReference<ActorRef> seen = new java.util.concurrent.atomic.AtomicReference<>();
         TianshuRuntimePorts.register(BlockInteractPort.class, new BlockInteractPort() {
             @Override
             public CompletableFuture<BlockInteractResult> interact(String playerId, BlockInteractRequest request) {
-                throw new AssertionError("body call must not fall back to the player path");
+                throw new AssertionError("a named body must not fall back to the player path");
             }
 
             @Override
@@ -142,12 +146,15 @@ class BlockInteractToolTest {
                         new BlockInteractResult("minecraft:oak_door", true, "operated"));
             }
         });
-        TianshuTools.register(new BlockInteractTool());
-        TianshuTools.setEnabled(BlockInteractTool.ID, true);
+        TianshuTools.register(new BodyInteractTool());
+        TianshuTools.setEnabled(BodyInteractTool.ID, true);
         TestBodies.register("body-1", EntityCapability.USE);
 
-        JsonObject allowed = envelope("{\"x\":1,\"y\":2,\"z\":3,\"body\":\"body-1\"}",
-                ToolCaller.player("p", true));
+        JsonObject allowed = TianshuTools
+                .callJson(BodyInteractTool.ID,
+                        JsonParser.parseString("{\"x\":1,\"y\":2,\"z\":3,\"body\":\"body-1\"}"),
+                        ToolCaller.player("p", true), ToolSide.SERVER)
+                .get(2, java.util.concurrent.TimeUnit.SECONDS);
 
         assertTrue(allowed.get("ok").getAsBoolean());
         assertEquals(ActorRef.Kind.BODY, seen.get().kind());
