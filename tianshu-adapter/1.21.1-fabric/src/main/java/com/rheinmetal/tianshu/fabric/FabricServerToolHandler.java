@@ -91,6 +91,9 @@ public final class FabricServerToolHandler {
     /** What the current server start installed, so the stop can take exactly that back. */
     private static final ServerToolSession SESSION = new ServerToolSession();
 
+    /** Where the session puts catalogues once a peer's channel is usable. */
+    private static final com.rheinmetal.tianshu.mc.tool.ServerCatalogueChannel CATALOGUE = new FabricCatalogueChannel();
+
     private FabricServerToolHandler() {
     }
 
@@ -102,7 +105,7 @@ public final class FabricServerToolHandler {
         // Declarations that cannot work are reported once modules have published; an empty audit logs nothing.
         ServerLifecycleEvents.SERVER_STARTED.register(server -> com.rheinmetal.tianshu.api.capability.CapabilityDiagnostics
                 .report(problem -> org.slf4j.LoggerFactory.getLogger("tianshu").warn("tianshu: {}", problem)));
-        ServerLifecycleEvents.SERVER_STARTING.register(server -> SESSION.start(server, registrations -> {
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> SESSION.start(server, CATALOGUE, registrations -> {
             ActionPlayerFactory actionPlayers = new FabricActionPlayers();
             // One probe for the whole session: the block side of inspect and transfer must resolve the same store.
             com.rheinmetal.tianshu.mc.tool.BlockStorageProbe blockProbe = new FabricBlockStorageProbe();
@@ -183,39 +186,15 @@ public final class FabricServerToolHandler {
 
 
     private static void onPlayerLogin(ServerPlayer player) {
-        if (player == null || player.connection == null) {
-            return;
-        }
-        if (!ServerPlayNetworking.canSend(player, ToolCatalogPacket.TYPE)) {
-            return;
-        }
-        String playerId = player.getUUID().toString();
-        boolean operator = player.hasPermissions(OPERATOR_PERMISSION_LEVEL);
-        ToolCatalogPushRegistry.register(playerId, operator, (ignored, tools) -> sendCatalog(player, tools));
+        // The peer may announce its channels after JOIN; the session keeps asking and sends the catalogue once the
+        // channel is usable, so joining early no longer means never getting one.
+        SESSION.onPlayerJoin(player);
     }
 
     private static void onPlayerLogout(ServerPlayer player) {
-        if (player != null) {
-            String playerId = player.getUUID().toString();
-            ToolCatalogPushRegistry.unregister(playerId);
-            // The throttle is keyed by (tool, caller); without this every player who ever called a tool keeps a
-            // bucket for the life of the process.
-            TianshuTools.clearRateLimits(playerId);
-        }
+        SESSION.onPlayerLogout(player);
     }
 
-    private static void sendCatalog(ServerPlayer player,
-                                    List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> tools) {
-        var server = player.level().getServer();
-        if (server == null) {
-            return;
-        }
-        server.execute(() -> {
-            if (player.connection != null && ServerPlayNetworking.canSend(player, ToolCatalogPacket.TYPE)) {
-                ServerPlayNetworking.send(player, new ToolCatalogPacket(tools));
-            }
-        });
-    }
     private static void respond(ServerPlayer player, ToolCallRequestPacket packet) {
         if (player == null) {
             return;

@@ -32,8 +32,10 @@ public final class TianshuNetwork {
 
     public static void register(RegisterPayloadHandlersEvent event,
                                 ToolCallClient tools) {
-        // Unchanged payloads keep their negotiated version. All Ferry channels are optional.
-        PayloadRegistrar registrar = event.registrar(ProtocolWireVersion.LEGACY_VERSION).optional();
+        // One registrar for every channel: a connection negotiates a single version, so splitting the catalogue onto
+        // a newer one than the rest gave the server a channel it was allowed to name (hasChannel said yes) and a
+        // payload it could never actually put on that connection. All Ferry channels are optional.
+        PayloadRegistrar registrar = event.registrar(ProtocolWireVersion.VERSION).optional();
         // One enqueue keeps a batch atomic with respect to other client work: consumers see the facts in the
         // order the server produced them, not interleaved with another packet.
         registrar.playToClient(GameFactBatchPacket.TYPE, GameFactBatchPacket.STREAM_CODEC, (packet, context) -> {
@@ -45,7 +47,7 @@ public final class TianshuNetwork {
         });
         registrar.playToClient(ToolCallResultPacket.TYPE, ToolCallResultPacket.STREAM_CODEC,
                 (packet, context) -> context.enqueueWork(() -> tools.receiveResult(packet.requestId(), packet.ok(), packet.valueJson(), packet.errorCode(), packet.message())));
-        event.registrar(ProtocolWireVersion.VERSION).optional().playToClient(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC,
+        registrar.playToClient(ToolCatalogPacket.TYPE, ToolCatalogPacket.STREAM_CODEC,
                 (packet, context) -> context.enqueueWork(() -> tools.receiveCatalog(packet.tools())));
         registrar.playToServer(ToolCallRequestPacket.TYPE, ToolCallRequestPacket.STREAM_CODEC,
                 com.rheinmetal.tianshu.neoforge.server.ServerToolHandler::handle);

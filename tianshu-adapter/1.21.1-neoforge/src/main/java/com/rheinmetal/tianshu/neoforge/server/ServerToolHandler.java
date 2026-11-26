@@ -131,7 +131,8 @@ public final class ServerToolHandler {
     }
 
     private static void onServerStarting(ServerStartingEvent event) {
-        SESSION.start(event.getServer(), registrations -> {
+        SESSION.start(event.getServer(), new com.rheinmetal.tianshu.neoforge.network.NeoForgeCatalogueChannel(),
+                registrations -> {
             ActionPlayerFactory actionPlayers = new NeoForgeActionPlayers();
             // One probe for the whole session: the block side of inspect and transfer must resolve the same store.
             com.rheinmetal.tianshu.mc.tool.BlockStorageProbe blockProbe =
@@ -253,41 +254,20 @@ public final class ServerToolHandler {
     }
 
     private static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.connection == null
-                || !player.connection.hasChannel(ToolCatalogPacket.TYPE)) {
-            return;
+        if (event.getEntity() instanceof ServerPlayer player) {
+            // The client may still be announcing its channels; the session keeps asking and sends the catalogue the
+            // moment the channel is usable, instead of dropping the player for joining "too early".
+            SESSION.onPlayerJoin(player);
         }
-        String playerId = player.getUUID().toString();
-        boolean operator = player.hasPermissions(OPERATOR_PERMISSION_LEVEL);
-        // Registering pushes the current catalogue immediately; later changes arrive without the 60s poll.
-        ToolCatalogPushRegistry.register(playerId, operator,
-                (ignored, tools) -> sendCatalog(player, tools));
     }
 
     private static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            String playerId = player.getUUID().toString();
-            ToolCatalogPushRegistry.unregister(playerId);
-            // The throttle is keyed by (tool, caller); without this the buckets of every player who ever called a
-            // tool stay for the life of the process.
-            TianshuTools.clearRateLimits(playerId);
+            SESSION.onPlayerLogout(player);
         }
     }
 
-    private static void sendCatalog(ServerPlayer player,
-                                    List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> tools) {
-        MinecraftServer server = player.level().getServer();
-        if (server == null) {
-            return;
-        }
-        server.execute(() -> {
-            if (player.connection != null && player.connection.hasChannel(ToolCatalogPacket.TYPE)) {
-                PacketDistributor.sendToPlayer(player, new ToolCatalogPacket(tools));
-            }
-        });
-    }
-
-    /** Called on the network thread for one request; the work is moved to the server thread. */
+/** Called on the network thread for one request; the work is moved to the server thread. */
     public static void handle(ToolCallRequestPacket packet, IPayloadContext context) {
         if (!(context.player() instanceof ServerPlayer player)) {
             return;
