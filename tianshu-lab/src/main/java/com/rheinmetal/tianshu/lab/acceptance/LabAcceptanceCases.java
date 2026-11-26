@@ -143,6 +143,7 @@ public final class LabAcceptanceCases {
         cases.add(anActionWithBadArgumentsIsRefusedByTheServerSideValidation());
         cases.add(everyToolAnswersAnEnvelope());
         cases.add(eachActionAnswersToItsOwnSwitch());
+        cases.add(aBodyComesBackAfterTheWorldReloads());
         cases.add(everyServerActionAnswersForItself());
         cases.add(theOpenContainerComesBackAsAValue());
         cases.add(handingItemsOverNeedsAReceiver());
@@ -2117,6 +2118,53 @@ public final class LabAcceptanceCases {
                 return AcceptanceOutcome.fail(id, title, wrong.toString());
             }
             return AcceptanceOutcome.pass(id, title, actions.size() + " switches, each open only its own action");
+        });
+    }
+
+    /**
+     * A module's body is still there after the world has been saved and loaded again.
+     *
+     * <p>Two runs, because the thing under test is the file on disk: the first one spawns a body and writes its id to
+     * {@code tianshu-lab/persisted-body.txt}, the second one finds that id at session start or fails. A body that only
+     * lives as long as the process would pass every other case and fail this one.</p>
+     */
+    private static AcceptanceCase aBodyComesBackAfterTheWorldReloads() {
+        final String id = "ACC-BDY-8";
+        final String title = "a module's body is still there after the world is saved and reloaded";
+        return AcceptanceCase.of(id, title, () -> {
+            java.nio.file.Path marker = java.nio.file.Path.of("tianshu-lab", "persisted-body.txt");
+            try {
+                if (java.nio.file.Files.isRegularFile(marker)) {
+                    String bodyId = java.nio.file.Files.readString(marker).trim();
+                    boolean present = EntityActors.list().stream().anyMatch(body -> body.id().equals(bodyId));
+                    java.nio.file.Files.deleteIfExists(marker);
+                    if (present) {
+                        TianshuRuntimePorts.find(EntitySpawnPort.class)
+                                .ifPresent(port -> releaseQuietly(port, bodyId));
+                        return AcceptanceOutcome.pass(id, title, "body " + bodyId + " came back from the save");
+                    }
+                    return AcceptanceOutcome.fail(id, title,
+                            "body " + bodyId + " was written to the save but is gone after the reload");
+                }
+                EntitySpawnPort port = TianshuRuntimePorts.find(EntitySpawnPort.class).orElse(null);
+                if (port == null) {
+                    return AcceptanceOutcome.skip(id, title,
+                            "no spawn port on this side: the port belongs to the authoritative side of a session");
+                }
+                GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+                if (pose == null || pose.dimensionId().isBlank()) {
+                    return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is nowhere to put a body");
+                }
+                EntityActor actor = port.spawn(LabModuleRegistration.MOD_ID, DECLARED_BODY_TYPE,
+                                new ActorPosition(pose.dimensionId(), pose.x(), pose.y() + 1.0D, pose.z()), false)
+                        .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                java.nio.file.Files.createDirectories(marker.getParent());
+                java.nio.file.Files.writeString(marker, actor.id());
+                return AcceptanceOutcome.skip(id, title, "spawned " + actor.id()
+                        + "; save the world and run again to see whether it comes back");
+            } catch (Exception failed) {
+                return AcceptanceOutcome.fail(id, title, reasonOf(failed));
+            }
         });
     }
 
