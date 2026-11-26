@@ -41,49 +41,7 @@ public final class ClientTools {
         local.accept(new CapabilityReadTool());
         // Speaking is a local act; the server actions are declarations the server owns the implementations for.
         local.accept(new SayTool());
-        for (var actionTool : ServerActionTools.tools()) {
-            server.accept(actionTool);
-        }
-        // Server-side tools are declared here but appear only after the server's catalog names them.
-        server.accept(new RecipeQueryTool());
-        server.accept(new LootQueryTool());
-        server.accept(new BlockInteractTool());
-        server.accept(new BodyInteractTool());
-        server.accept(new CraftRecipeTool());
-        server.accept(new BodyCraftTool());
-        server.accept(new ContainerTransferTool());
-        server.accept(new BodyTransferTool());
-        server.accept(new BlockMachineTool());
-        server.accept(new BodyMachineTool());
-        server.accept(new BlockInspectTool());
-        server.accept(new BodyBlockInspectTool());
-        server.accept(new CommandRunTool());
-        server.accept(new BodyCommandRunTool());
-        server.accept(new EntityInspectTool());
-        server.accept(new ItemInspectTool());
-        server.accept(new BodyItemInspectTool());
-        server.accept(new BodyStatusTool());
-        server.accept(new WorldInfoTool());
-        server.accept(new BodyWorldInfoTool());
-        WorldLocateTool.tools().forEach(server);
-        server.accept(new CraftAvailableTool());
-        server.accept(new BodyCraftAvailableTool());
-        server.accept(new BodyPlaceTool());
-        server.accept(new BodyPlaceLineTool());
-        server.accept(new BodyListTool());
-        server.accept(new BodyMoveTool());
-        server.accept(new BodyLookTool());
-        server.accept(new BodyMineTool());
-        server.accept(new BodyAttackTool());
-        server.accept(new BodyScanTool());
-        server.accept(new BodyInventoryTool());
-        server.accept(new BodyPickupTool());
-        server.accept(new BodyEquipTool());
-        server.accept(new BodyDropTool());
-        server.accept(new BodyGiveTool());
-        server.accept(new EntityUseTool());
-        server.accept(new BodyItemUseTool());
-        server.accept(new BodySequenceTool());
+        BuiltinServerTools.forEach(server);
     }
 
     /** Drops the kernel tools and lets a later {@link #register()} run again. Tests only. */

@@ -52,6 +52,26 @@ class ServerToolDeclarationsTest {
     }
 
     @Test
+    void anEarlyCatalogueActivatesALateDeclarationOnlyForItsOwnConnection() {
+        ServerToolDeclarations.synchronize(List.of(entry(DECLARED), entry(LootQueryTool.ID)));
+        var tool = new StubTool();
+        ServerToolDeclarations.declare(tool);
+        assertEquals(tool, TianshuTools.find(DECLARED));
+        ServerToolDeclarations.deactivateAll();
+        ServerToolDeclarations.declare(new LootQueryTool());
+        assertNull(TianshuTools.find(LootQueryTool.ID));
+        assertNull(TianshuTools.find(DECLARED));
+    }
+
+    @Test
+    void aWithdrawnOfferCannotActivateALaterDeclaration() {
+        ServerToolDeclarations.synchronize(List.of(entry(DECLARED)));
+        ServerToolDeclarations.synchronize(List.of());
+        ServerToolDeclarations.declare(new StubTool());
+        assertNull(TianshuTools.find(DECLARED));
+    }
+
+    @Test
     void refreshingAfterACollisionRecoversWithoutTakingOwnershipOfAReplacement() {
         var id = CapabilityId.parse(DECLARED.toString());
         var declaration = new StubTool();

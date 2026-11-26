@@ -8,12 +8,10 @@ import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Declarations of tools that only the server can run.
@@ -28,7 +26,8 @@ public final class ServerToolDeclarations {
     private record Declaration(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
     }
 
-    private static final Map<ToolId, Declaration> DECLARED = new ConcurrentHashMap<>();
+    private static final Map<ToolId, Declaration> DECLARED = new HashMap<>();
+    private static final Map<ToolId, ToolCatalogEntry> OFFERED = new HashMap<>();
     private static final Map<ToolId, TianshuTool<?, ?>> REGISTERED = new HashMap<>();
 
     private ServerToolDeclarations() {
@@ -43,21 +42,25 @@ public final class ServerToolDeclarations {
         declare(tool, CapabilitySharing.BASE_PROVIDER, CapabilitySharing.ALL);
     }
 
-    public static void declare(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
+    public static synchronized void declare(TianshuTool<?, ?> tool, String provider, CapabilitySharing sharing) {
         var declaration = new Declaration(tool, Objects.requireNonNull(provider), Objects.requireNonNull(sharing));
         var existing = DECLARED.putIfAbsent(tool.id(), declaration);
         if (existing != null && !existing.equals(declaration)) {
             throw new IllegalArgumentException("server tool " + tool.id() + " is already declared");
         }
+        var entry = OFFERED.get(tool.id());
+        if (entry != null) {
+            register(declaration, entry);
+        }
     }
 
     /** Epoch 3 originally sent IDs alone. Use the switch the client declaration supplied before servers reported it. */
-    public static ToolCatalogEntry legacyEntry(String id) {
+    public static synchronized ToolCatalogEntry legacyEntry(String id) {
         var declaration = DECLARED.get(ToolId.parse(id));
         return new ToolCatalogEntry(id, declaration != null && declaration.tool().policy().enabledByDefault());
     }
 
-    /** Registers the declarations the server named. Unknown ids are skipped; repeats are idempotent. */
+    /** Registers the declarations the server named. Offers are retained until the matching declaration arrives or the server withdraws them. */
     public static synchronized void activate(List<ToolCatalogEntry> tools) {
         if (tools == null) {
             return;
@@ -72,25 +75,30 @@ public final class ServerToolDeclarations {
             } catch (IllegalArgumentException malformed) {
                 continue;
             }
+            OFFERED.put(id, entry);
             Declaration declaration = DECLARED.get(id);
-            if (declaration == null) {
-                continue;
+            if (declaration != null) {
+                register(declaration, entry);
             }
-            var existing = TianshuTools.find(id);
-            if (existing == null) {
-                try {
-                    TianshuTools.register(declaration.tool(), declaration.provider(), declaration.sharing());
-                } catch (CapabilityCatalog.DuplicateCapabilityException conflict) {
-                    REGISTERED.remove(id);
-                    continue;
-                }
-                REGISTERED.put(id, declaration.tool());
-            } else if (existing != REGISTERED.get(id)) {
-                REGISTERED.remove(id);
-                continue;
-            }
-            CapabilityCatalog.setToolEnabled(declaration.tool(), entry.enabled());
         }
+    }
+
+    private static void register(Declaration declaration, ToolCatalogEntry entry) {
+        ToolId id = declaration.tool().id();
+        var existing = TianshuTools.find(id);
+        if (existing == null) {
+            try {
+                TianshuTools.register(declaration.tool(), declaration.provider(), declaration.sharing());
+            } catch (CapabilityCatalog.DuplicateCapabilityException conflict) {
+                REGISTERED.remove(id);
+                return;
+            }
+            REGISTERED.put(id, declaration.tool());
+        } else if (existing != REGISTERED.get(id)) {
+            REGISTERED.remove(id);
+            return;
+        }
+        CapabilityCatalog.setToolEnabled(declaration.tool(), entry.enabled());
     }
 
     /**
@@ -101,30 +109,21 @@ public final class ServerToolDeclarations {
         if (tools == null) {
             return;
         }
-        Set<ToolId> desired = new HashSet<>();
-        for (ToolCatalogEntry entry : tools) {
-            if (entry == null) {
-                continue;
-            }
-            try {
-                desired.add(ToolId.parse(entry.toolId()));
-            } catch (IllegalArgumentException malformed) {
-                // Ignore malformed ids; the server will correct them on the next catalogue.
-            }
-        }
+        OFFERED.clear();
+        activate(tools);
         for (ToolId id : List.copyOf(REGISTERED.keySet())) {
-            if (desired.contains(id)) {
+            if (OFFERED.containsKey(id)) {
                 continue;
             }
             TianshuTools.unregister(REGISTERED.remove(id));
         }
-        activate(tools);
     }
 
     /** Withdraws everything the catalog had activated; declarations stay, so the next server can re-activate. */
     public static synchronized void deactivateAll() {
         List.copyOf(REGISTERED.values()).forEach(TianshuTools::unregister);
         REGISTERED.clear();
+        OFFERED.clear();
     }
 
     public static synchronized Set<ToolId> activated() {
