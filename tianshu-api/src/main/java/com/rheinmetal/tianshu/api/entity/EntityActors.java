@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.entity;
 
+import com.rheinmetal.tianshu.api.tool.ServerBodyAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
@@ -109,6 +110,9 @@ public final class EntityActors {
         if (!body.capabilities().contains(capability)) {
             return Optional.of(new ToolException(ToolError.UNSUPPORTED_ACTOR,
                     "agent body " + actor.id() + " cannot " + capability.name().toLowerCase(Locale.ROOT)));
+        }
+        if (!ServerBodyAutonomyCeiling.current().permits(body.requiredAutonomy(capability))) {
+            return Optional.of(BodyFailure.AUTONOMY_DENIED.exception());
         }
         return Optional.empty();
     }

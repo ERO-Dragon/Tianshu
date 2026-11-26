@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.api.capability;
 
+import com.rheinmetal.tianshu.api.entity.ActorRef;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -20,10 +22,17 @@ public record WorkflowDeclaration(
         String description,
         List<WorkflowStep> steps,
         int expectedSeconds,
-        boolean changesWorld
+        boolean changesWorld,
+        ActorRef.Kind actorKind
 ) {
 
+    public WorkflowDeclaration(CapabilityId id, String description, List<WorkflowStep> steps,
+                               int expectedSeconds, boolean changesWorld) {
+        this(id, description, steps, expectedSeconds, changesWorld, ActorRef.Kind.PLAYER);
+    }
+
     public WorkflowDeclaration {
+        Objects.requireNonNull(actorKind, "actorKind");
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(description, "description");
         steps = steps == null ? List.of() : List.copyOf(steps);

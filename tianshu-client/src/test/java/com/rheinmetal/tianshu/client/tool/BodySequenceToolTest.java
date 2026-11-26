@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.client.tool.routing.MotionRouter;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.entity.ActionOutcome;
@@ -19,7 +21,10 @@ import com.rheinmetal.tianshu.api.entity.EntityTarget;
 import com.rheinmetal.tianshu.api.entity.DropResult;
 import com.rheinmetal.tianshu.api.entity.EquipRequest;
 import com.rheinmetal.tianshu.api.entity.EquipResult;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
 import com.rheinmetal.tianshu.api.entity.MoveOptions;
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
+import com.rheinmetal.tianshu.api.tool.ServerBodyAutonomyCeiling;
 import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.entity.PickupResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
@@ -43,6 +48,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BodySequenceToolTest {
 
     private final List<String> order = new ArrayList<>();
+    private Set<MoveMode> nativeModes = Set.of(MoveMode.WALK);
+    private MoveMode executedMode;
     private boolean mineFails;
 
     @BeforeEach
@@ -59,6 +66,7 @@ class BodySequenceToolTest {
     void clean() {
         TianshuTools.unregister(BodySequenceTool.ID);
         ClientTools.unregisterForTests();
+        TianshuRuntimePorts.clear();
         EntityActors.clearForTests();
         BodyOperations.release("body-1");
     }
@@ -97,6 +105,11 @@ class BodySequenceToolTest {
                     }
 
                     @Override
+                    public Set<MoveMode> nativeMovementModes() {
+                        return nativeModes;
+                    }
+
+                    @Override
                     public Set<EntityCapability> capabilities() {
                         return Set.of(EntityCapability.MOVE, EntityCapability.MINE, EntityCapability.INVENTORY);
                     }
@@ -108,6 +121,7 @@ class BodySequenceToolTest {
                 return "body-1".equals(bodyId) ? Optional.of(handlers()) : Optional.empty();
             }
         });
+        TianshuRuntimePorts.register(EntityMotionPort.class, new MotionRouter());
         enable();
     }
 
@@ -119,6 +133,7 @@ class BodySequenceToolTest {
                     @Override
                     public CompletableFuture<MoveResult> move(ActorRef actor, ActorPosition target,
                                                              MoveOptions options) {
+                        executedMode = options.mode();
                         order.add("move");
                         return CompletableFuture.completedFuture(new MoveResult(ActionOutcome.DONE, target, "moved"));
                     }
@@ -190,6 +205,35 @@ class BodySequenceToolTest {
         JsonObject sequence = result.getAsJsonObject("result");
         assertEquals(-1, sequence.get("failedIndex").getAsInt());
         assertEquals(3, sequence.getAsJsonArray("steps").size());
+    }
+
+    @Test
+    void survivalSelectsNativeMovementAndRejectsExtraTeleportBeforeTheNextStep() throws Exception {
+        installBody();
+        nativeModes = Set.of(MoveMode.FLY);
+        JsonObject refused = envelope("""
+                {"body":"body-1","steps":[{"kind":"move","x":1,"y":64,"z":1},
+                {"kind":"move","mode":"teleport","x":2,"y":64,"z":2},{"kind":"pickup","radius":1}]}
+                """, ToolCaller.player("p", true));
+        assertEquals(MoveMode.FLY, executedMode);
+        assertEquals(List.of("move"), order);
+        assertEquals("NO_PERMISSION", refused.get("code").getAsString());
+        assertEquals("body.autonomy.denied", refused.get("message").getAsString());
+    }
+
+    @Test
+    void nativeTeleportIsSurvivalAndGrantedTeleportRequiresCheat() throws Exception {
+        installBody();
+        String steps = """
+                {"body":"body-1","steps":[{"kind":"move","mode":"teleport","x":1,"y":64,"z":1}]}
+                """;
+        nativeModes = Set.of(MoveMode.TELEPORT);
+        assertTrue(envelope(steps, ToolCaller.player("p", true)).get("ok").getAsBoolean());
+        nativeModes = Set.of(MoveMode.WALK);
+        TianshuRuntimePorts.register(ServerBodyAutonomyCeiling.class, () -> BodyAutonomy.CHEAT);
+        assertTrue(envelope(steps, ToolCaller.player("p", true)).get("ok").getAsBoolean());
+        assertEquals(MoveMode.TELEPORT, executedMode);
+        assertEquals(List.of("move", "move"), order);
     }
 
     @Test

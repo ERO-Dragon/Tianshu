@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.api.entity;
 
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
+
 import java.util.Set;
 
 /**
@@ -34,4 +36,14 @@ public interface EntityActor {
     ActorPosition position();
 
     Set<EntityCapability> capabilities();
+
+    /** Tier for using a declared capability. Providers mark extra powers on this body as CHEAT. */
+    default BodyAutonomy requiredAutonomy(EntityCapability capability) {
+        return BodyAutonomy.SURVIVAL;
+    }
+
+    /** Concrete survival movement modes. Providers of flying or teleporting bodies override this declaration. */
+    default Set<MoveMode> nativeMovementModes() {
+        return capabilities().contains(EntityCapability.MOVE) ? Set.of(MoveMode.WALK) : Set.of();
+    }
 }

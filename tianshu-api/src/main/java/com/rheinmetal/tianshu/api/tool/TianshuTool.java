@@ -48,12 +48,17 @@ public interface TianshuTool<A, R> {
         return category().defaultAutonomy();
     }
 
+    /** Minimum NPC tier for a BODY_WRITE tool. A body or a particular argument may require more. */
+    default BodyAutonomy requiredBodyAutonomy() {
+        return BodyAutonomy.SURVIVAL;
+    }
+
     /**
      * The policy this tool runs under; by default it follows {@link #requiredAutonomy()}, so a tool that stays inside
      * survival needs no switch and a tool that needs {@link ToolAutonomy#FULL} is off until an operator opens it.
      */
     default ToolPolicy policy() {
-        return ToolPolicy.forTier(requiredAutonomy());
+        return category().isBody() ? ToolPolicy.forCategory(category()) : ToolPolicy.forTier(requiredAutonomy());
     }
 
     /**

@@ -1,4 +1,5 @@
 {
+  "tianshu.body.autonomy.denied": "服务器设置的 NPC 档位不允许此动作。",
   "tianshu.body.controller.required": "需要指定身体和控制者。",
   "tianshu.body.controller.mismatch": "该 NPC 属于其他模组。",
   "tianshu.body.controller.unverified": "服务器无法验证这个 NPC 的控制者。",

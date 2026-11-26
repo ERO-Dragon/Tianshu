@@ -39,7 +39,7 @@ public final class BodyWorldLocateTool implements TianshuTool<BodyWorldLocateToo
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
     @Override

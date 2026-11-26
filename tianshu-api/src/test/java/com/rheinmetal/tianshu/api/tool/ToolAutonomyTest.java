@@ -1,5 +1,7 @@
 package com.rheinmetal.tianshu.api.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilityCatalog;
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
 import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
@@ -171,6 +173,41 @@ class ToolAutonomyTest {
         assertFalse(TianshuTools.catalog(full, ToolSide.SERVER).stream()
                         .anyMatch(spec -> spec.id().equals(FULL_ONLY)),
                 "a ceiling the server enforces must also keep the tool out of the catalogue it pushes");
+    }
+
+    @Test
+    void serverCatalogueAndExecutionRespectIndependentCeilings() {
+        ToolId npc = ToolId.of("test", "npc.cheat");
+        TianshuTools.registerBuiltin(new WriteTool() {
+            @Override public ToolId id() { return npc; }
+            @Override public ToolCategory category() { return ToolCategory.BODY_WRITE; }
+            @Override public BodyAutonomy requiredBodyAutonomy() { return BodyAutonomy.CHEAT; }
+        });
+        try {
+            var caller = ToolCaller.player("owner", true);
+            var attrs = CapabilityCatalog.find(CapabilityId.parse(npc.toString())).orElseThrow().attributes();
+            assertFalse(attrs.has("autonomy"));
+            assertEquals("CHEAT", attrs.get("bodyAutonomy").getAsString());
+
+            var player = new java.util.concurrent.atomic.AtomicReference<>(ToolAutonomy.READ_ONLY);
+            var body = new java.util.concurrent.atomic.AtomicReference<>(BodyAutonomy.CHEAT);
+            TianshuRuntimePorts.register(ServerAutonomyCeiling.class, player::get);
+            TianshuRuntimePorts.register(ServerBodyAutonomyCeiling.class, body::get);
+            var handle = TianshuTools.handle(npc, Args.class, Reply.class);
+            assertTrue(CapabilityCatalog.serverTools(caller).stream().anyMatch(e -> e.toolId().equals(npc.toString())));
+            assertTrue(TianshuTools.callJson(npc, new JsonObject(), caller, ToolSide.SERVER).join().get("ok").getAsBoolean());
+            assertFalse(TianshuTools.callJson(FULL_ONLY, new JsonObject(), caller, ToolSide.SERVER).join().get("ok").getAsBoolean());
+
+            player.set(ToolAutonomy.FULL);
+            body.set(BodyAutonomy.SURVIVAL);
+            assertTrue(TianshuTools.callJson(FULL_ONLY, new JsonObject(), caller, ToolSide.SERVER).join().get("ok").getAsBoolean());
+            assertFalse(CapabilityCatalog.serverTools(caller).stream().anyMatch(e -> e.toolId().equals(npc.toString())));
+            var denied = org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.CompletionException.class,
+                    () -> handle.call(new Args(), caller, ToolSide.SERVER).join());
+            assertEquals("body.autonomy.denied", denied.getCause().getMessage());
+        } finally {
+            TianshuTools.unregister(npc);
+        }
     }
 
     @Test

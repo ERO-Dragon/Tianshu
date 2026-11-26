@@ -31,7 +31,7 @@ public final class BodyCraftAvailableTool implements TianshuTool<BodyCraftAvaila
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
     @Override

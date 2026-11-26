@@ -3,6 +3,9 @@ package com.rheinmetal.tianshu.client.tool;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
+import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
 import com.rheinmetal.tianshu.api.entity.ActionOutcome;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
 import com.rheinmetal.tianshu.api.entity.ActorRef;
@@ -239,10 +242,17 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
         SequenceStep current_step = steps.get(index);
         Optional<ToolException> refusal = capabilityRefusal(actor, current_step);
         if (refusal.isPresent()) {
+            if (BodyFailure.fromId(refusal.get().getMessage()).isPresent()) {
+                return CompletableFuture.failedFuture(refusal.get());
+            }
             reports.add(new SequenceResult.StepReport(current_step.kind(), false, refusal.get().getMessage()));
             return CompletableFuture.completedFuture(stop(reports, index, refusal.get().getMessage()));
         }
         return dispatch(actor, current_step).handle((outcome, failure) -> {
+            Throwable cause = failure instanceof java.util.concurrent.CompletionException ? failure.getCause() : failure;
+            if (cause instanceof ToolException denied && BodyFailure.fromId(denied.getMessage()).isPresent()) {
+                throw denied;
+            }
             boolean ok = failure == null && outcome != null && outcome.ok();
             String detail = failure != null
                     ? (failure.getMessage() == null ? "the step failed" : failure.getMessage())
@@ -296,18 +306,18 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
     }
 
     private CompletableFuture<StepOutcome> dispatch(ActorRef actor, SequenceStep step) {
+        if (step instanceof SequenceStep.Move move) {
+            return TianshuRuntimePorts.find(EntityMotionPort.class)
+                    .map(handler -> handler.move(actor, move.target(), new MoveOptions(move.mode(), MoveOptions.DEFAULT.arriveRadius()))
+                            .thenApply(result -> outcome(result.outcome(), result.detail())))
+                    .orElseGet(() -> missing("motion"));
+        }
         Optional<EntityActions> actions = EntityActors.actions(actor.id());
         if (actions.isEmpty()) {
             return CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
                     "this body has no action handlers"));
         }
         EntityActions handlers = actions.get();
-        if (step instanceof SequenceStep.Move move) {
-            return handlers.motion()
-                    .map(handler -> handler.move(actor, move.target(), new MoveOptions(move.mode(), 0.5D))
-                            .thenApply(result -> outcome(result.outcome(), result.detail())))
-                    .orElseGet(() -> missing("motion"));
-        }
         if (step instanceof SequenceStep.Look look) {
             return handlers.motion()
                     .map(handler -> handler.look(actor, look.target())

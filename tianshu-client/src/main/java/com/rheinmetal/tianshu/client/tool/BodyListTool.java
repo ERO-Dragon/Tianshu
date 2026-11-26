@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.MoveMode;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -24,7 +25,7 @@ public final class BodyListTool implements TianshuTool<JsonObject, BodyListTool.
 
     /** One row per body; the capability names are the platform's, not the carrier's. */
     public record Row(String id, boolean operator, String dimension, double x, double y, double z,
-                      List<String> capabilities) {
+                      List<String> capabilities, List<String> nativeMovementModes) {
     }
 
     public record Result(List<Row> bodies) {
@@ -37,7 +38,7 @@ public final class BodyListTool implements TianshuTool<JsonObject, BodyListTool.
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
     @Override
@@ -75,7 +76,9 @@ public final class BodyListTool implements TianshuTool<JsonObject, BodyListTool.
         for (EntityActor body : EntityActors.list()) {
             rows.add(new Row(body.id(), body.operator(), body.position().dimension(),
                     body.position().x(), body.position().y(), body.position().z(),
-                    body.capabilities().stream().map(EntityCapability::name).sorted().toList()));
+                    body.capabilities().stream().map(EntityCapability::name).sorted().toList(),
+                    body.nativeMovementModes().stream().filter(mode -> mode != MoveMode.ANY)
+                            .map(MoveMode::name).sorted().toList()));
         }
         return CompletableFuture.completedFuture(new Result(List.copyOf(rows)));
     }

@@ -414,7 +414,7 @@ public final class CapabilityCatalog {
         }
         attributes.addProperty("category", tool.category().name().toLowerCase(java.util.Locale.ROOT));
         attributes.addProperty("enabled", tool.policy().enabledByDefault());
-        attributes.addProperty("autonomy", tool.requiredAutonomy().name());
+        describeAutonomy(tool, attributes);
         CapabilityDescriptor descriptor = new CapabilityDescriptor(
                 CapabilityId.parse(tool.id().toString()),
                 CapabilityKind.TOOL,
@@ -426,6 +426,14 @@ public final class CapabilityCatalog {
                 attributes
         );
         add(new Entry(descriptor, null, tool));
+    }
+
+    static void describeAutonomy(TianshuTool<?, ?> tool, JsonObject attributes) {
+        switch (tool.category()) {
+            case BODY_READ -> { /* Queries have no action tier. */ }
+            case BODY_WRITE -> attributes.addProperty("bodyAutonomy", tool.requiredBodyAutonomy().name());
+            default -> attributes.addProperty("autonomy", tool.requiredAutonomy().name());
+        }
     }
 
     static void publishWorkflow(CapabilityDescriptor descriptor, TianshuTool<?, ?> tool) {

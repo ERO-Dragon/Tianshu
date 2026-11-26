@@ -31,7 +31,7 @@ public final class BodyWorldInfoTool implements TianshuTool<BodyWorldInfoTool.Ar
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
     @Override

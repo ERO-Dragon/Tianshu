@@ -4,6 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
+import com.rheinmetal.tianshu.api.tool.ServerBodyAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
@@ -62,7 +65,7 @@ public final class CapabilityExposure {
     static boolean exposed(CapabilityDescriptor row, ToolCaller caller, ToolSide side,
                            ToolAutonomy allowed, CapabilitySubscription rule) {
         return !CapabilityKind.CONNECTOR.equals(row.kind()) && reachable(row, side)
-                && permitted(row, caller) && autonomyAllows(row, allowed)
+                && permitted(row, caller) && autonomyAllows(row, side, allowed)
                 && CapabilityAccess.visibleTo(row, caller, rule);
     }
 
@@ -80,21 +83,27 @@ public final class CapabilityExposure {
      * <p>An unreadable tier hides the row: failing closed keeps a typo in someone else's metadata from widening
      * what the model is offered.</p>
      */
-    private static boolean autonomyAllows(CapabilityDescriptor descriptor, ToolAutonomy allowed) {
+    private static boolean autonomyAllows(CapabilityDescriptor descriptor, ToolSide side, ToolAutonomy allowed) {
         if (!descriptor.kind().isTool() && !CapabilityKind.WORKFLOW.equals(descriptor.kind())) {
             return true;
         }
-        JsonElement declared = descriptor.attributes().get("autonomy");
-        if (declared == null || !declared.isJsonPrimitive()) {
-            return true;
-        }
-        ToolAutonomy required;
+        var attributes = descriptor.attributes();
         try {
-            required = ToolAutonomy.valueOf(declared.getAsString().trim().toUpperCase(Locale.ROOT));
+            if (attributes.has("bodyAutonomy")) {
+                BodyAutonomy required = BodyAutonomy.valueOf(attributes.get("bodyAutonomy").getAsString());
+                if (side == ToolSide.SERVER) {
+                    return ServerBodyAutonomyCeiling.current().permits(required);
+                }
+                // Remote catalogues arrive filtered. An integrated server shares its registrations with the client.
+                return TianshuRuntimePorts.find(ServerBodyAutonomyCeiling.class)
+                        .map(host -> host.max().permits(required)).orElse(true);
+            }
+            JsonElement declared = attributes.get("autonomy");
+            return declared == null || allowed.permits(ToolAutonomy.valueOf(
+                    declared.getAsString().trim().toUpperCase(Locale.ROOT)));
         } catch (RuntimeException unreadable) {
             return false;
         }
-        return allowed.permits(required);
     }
 
     /**

@@ -34,7 +34,7 @@ public final class ToolCatalogPushRegistry {
     private static final CapabilityChange.Listener LISTENER = change -> {
         var row = change.descriptor();
         if (row.side() == ToolSide.SERVER && (row.kind().isTool() || CapabilityKind.WORKFLOW.equals(row.kind()))) {
-            broadcast();
+            refresh();
         }
     };
     private static final AtomicBoolean SCHEDULED = new AtomicBoolean();
@@ -78,7 +78,7 @@ public final class ToolCatalogPushRegistry {
         return SUBSCRIBERS.size();
     }
 
-    private static void broadcast() {
+    public static void refresh() {
         PENDING.set(true);
         scheduleDrain();
     }

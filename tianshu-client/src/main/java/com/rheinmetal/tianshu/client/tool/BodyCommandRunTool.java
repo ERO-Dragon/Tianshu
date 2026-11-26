@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.game.CommandResult;
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -17,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
  * {@link CommandRunOps}: this tool only adapts its arguments and calls in. The approval flow is the same on both sides:
  * a request comes back pending, an operator approves the token, and only the retry runs.</p>
  *
- * <p>It is {@code PRIVILEGED} on the body scale because running commands is what a body cannot do by itself, so a
+ * <p>It is {@code CHEAT} on the body scale because running commands is what a body cannot do by itself, so a
  * server that only lets bodies do survival work does not offer this tool at all.</p>
  */
 public final class BodyCommandRunTool implements TianshuTool<BodyCommandRunTool.Args, CommandResult> {
@@ -36,6 +37,11 @@ public final class BodyCommandRunTool implements TianshuTool<BodyCommandRunTool.
     @Override
     public ToolCategory category() {
         return ToolCategory.BODY_WRITE;
+    }
+
+    @Override
+    public BodyAutonomy requiredBodyAutonomy() {
+        return BodyAutonomy.CHEAT;
     }
 
     @Override

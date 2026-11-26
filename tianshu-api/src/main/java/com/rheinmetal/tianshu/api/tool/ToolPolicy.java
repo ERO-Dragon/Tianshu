@@ -32,7 +32,8 @@ public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, lo
     /** The policy a tool of this category gets; the category only supplies its default tier. */
     public static ToolPolicy forCategory(ToolCategory category) {
         Objects.requireNonNull(category, "category");
-        return forTier(category.defaultAutonomy());
+        return category.isBody() ? new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS)
+                : forTier(category.defaultAutonomy());
     }
 
     public ToolPolicy withTimeout(long millis) {

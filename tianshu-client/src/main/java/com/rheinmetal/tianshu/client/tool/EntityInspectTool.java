@@ -38,7 +38,7 @@ public final class EntityInspectTool implements TianshuTool<EntityInspectTool.Ar
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
 

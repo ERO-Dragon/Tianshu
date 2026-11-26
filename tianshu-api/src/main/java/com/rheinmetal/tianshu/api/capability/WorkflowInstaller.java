@@ -39,7 +39,7 @@ public final class WorkflowInstaller {
         WorkflowTool tool = new WorkflowTool(plan, effective, side == null ? ToolSide.SERVER : side);
         JsonObject attributes = new JsonObject();
         attributes.addProperty("enabled", tool.policy().enabledByDefault());
-        attributes.addProperty("autonomy", tool.requiredAutonomy().name());
+        CapabilityCatalog.describeAutonomy(tool, attributes);
         attributes.addProperty("steps", plan.stepCount());
         // The step list travels with the row so the composition can be read without running it: "what does this
         // workflow actually do" must be answerable from data, or the only way to find out is to execute it.

@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.api.capability;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -49,7 +50,9 @@ final class WorkflowTool implements TianshuTool<JsonObject, JsonObject> {
 
     @Override
     public ToolCategory category() {
-        // A plan that touches the world is a write wherever it came from; a read-only plan stays a read.
+        if (plan.actorKind() == ActorRef.Kind.BODY) {
+            return plan.changesWorld() ? ToolCategory.BODY_WRITE : ToolCategory.BODY_READ;
+        }
         return plan.changesWorld() ? ToolCategory.SERVER_WRITE : ToolCategory.SERVER_READ;
     }
 
@@ -57,7 +60,7 @@ final class WorkflowTool implements TianshuTool<JsonObject, JsonObject> {
     public ToolPolicy policy() {
         // The tier decides the switch here too: a plan that stays inside survival is on, one that reaches for FULL
         // is off until an operator opens it. The declarer may still tighten the permission.
-        return ToolPolicy.forTier(requiredAutonomy()).withPermission(permission);
+        return TianshuTool.super.policy().withPermission(permission);
     }
 
     @Override

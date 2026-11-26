@@ -40,7 +40,7 @@ public final class BodyStatusTool implements TianshuTool<BodyStatusTool.Args, Ac
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
 

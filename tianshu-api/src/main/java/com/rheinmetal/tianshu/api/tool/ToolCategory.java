@@ -18,14 +18,15 @@ public enum ToolCategory {
     /** A world change, executed by the server component. Survival-tier unless the tool says it needs more. */
     SERVER_WRITE,
 
-    /**
-     * A body's own action: the entity moves, mines or places on its own behalf.
-     *
-     * <p>No operator and no switch: who may command the body is decided by ownership, and what it may do is what the
-     * module that registered it declared. When the body is player-like, the server's own permission system bounds it
-     * further, because that entity is a player.</p>
-     */
+    /** A server-side query made through the entity tools. */
+    BODY_READ,
+
+    /** An NPC action governed by ownership, body capabilities and the server's NPC ceiling. */
     BODY_WRITE;
+
+    public boolean isBody() {
+        return this == BODY_READ || this == BODY_WRITE;
+    }
 
     /**
      * The tier a tool of this category needs when it acts as a player.
@@ -34,7 +35,11 @@ public enum ToolCategory {
      * teleports or runs a command says so itself by overriding {@link TianshuTool#requiredAutonomy()}.</p>
      */
     public ToolAutonomy defaultAutonomy() {
-        return this == SERVER_WRITE ? ToolAutonomy.CONSERVATIVE : ToolAutonomy.READ_ONLY;
+        return switch (this) {
+            case SERVER_WRITE -> ToolAutonomy.CONSERVATIVE;
+            case LOCAL, SERVER_READ -> ToolAutonomy.READ_ONLY;
+            case BODY_READ, BODY_WRITE -> throw new IllegalStateException("body tools have no player tier");
+        };
     }
 
     public boolean isServerSide() {

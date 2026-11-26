@@ -40,7 +40,7 @@ public final class BodyScanTool implements TianshuTool<BodyScanTool.Args, ScanRe
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
     @Override

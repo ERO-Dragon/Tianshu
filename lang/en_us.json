@@ -1,4 +1,5 @@
 {
+  "tianshu.body.autonomy.denied": "The server NPC tier does not allow this action.",
   "tianshu.body.controller.required": "A body and controller are required.",
   "tianshu.body.controller.mismatch": "This NPC belongs to another mod.",
   "tianshu.body.controller.unverified": "The server cannot verify the controller of this NPC.",

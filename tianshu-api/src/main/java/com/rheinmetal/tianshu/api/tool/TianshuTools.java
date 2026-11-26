@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.tool;
 
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.google.gson.Gson;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.capability.CapabilityAccess;
@@ -378,11 +379,18 @@ public final class TianshuTools {
         if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
             throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " needs an operator");
         }
-        ToolAutonomy allowed = autonomyFor(side, caller);
-        if (!allowed.permits(tool.requiredAutonomy())) {
-            throw new ToolException(ToolError.NO_PERMISSION,
-                    "tool " + id + " needs " + tool.requiredAutonomy() + " autonomy; "
-                            + (side == ToolSide.SERVER ? "this server allows " : "this caller allows ") + allowed);
+        if (tool.category().isBody()) {
+            if (tool.category() == ToolCategory.BODY_WRITE && side == ToolSide.SERVER
+                    && !ServerBodyAutonomyCeiling.current().permits(tool.requiredBodyAutonomy())) {
+                throw BodyFailure.AUTONOMY_DENIED.exception();
+            }
+        } else {
+            ToolAutonomy allowed = autonomyFor(side, caller);
+            if (!allowed.permits(tool.requiredAutonomy())) {
+                throw new ToolException(ToolError.NO_PERMISSION,
+                        "tool " + id + " needs " + tool.requiredAutonomy() + " autonomy; "
+                                + (side == ToolSide.SERVER ? "this server allows " : "this caller allows ") + allowed);
+            }
         }
         requireWithinRateLimit(tool, caller);
         if (tool.executionSide() == ToolSide.SERVER && side == ToolSide.CLIENT && !serverAvailable()) {

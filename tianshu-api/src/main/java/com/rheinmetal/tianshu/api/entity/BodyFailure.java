@@ -7,6 +7,7 @@ import java.util.Optional;
 
 /** Stable NPC failure identifiers shared by tool replies and localized player-facing views. */
 public enum BodyFailure {
+    AUTONOMY_DENIED("body.autonomy.denied", ToolError.NO_PERMISSION),
     CONTROLLER_REQUIRED("body.controller.required", ToolError.NO_PERMISSION),
     CONTROLLER_MISMATCH("body.controller.mismatch", ToolError.NO_PERMISSION),
     CONTROLLER_UNVERIFIED("body.controller.unverified", ToolError.NO_PERMISSION),

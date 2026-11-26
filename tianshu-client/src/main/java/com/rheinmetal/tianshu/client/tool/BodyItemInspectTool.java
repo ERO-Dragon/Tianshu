@@ -32,7 +32,7 @@ public final class BodyItemInspectTool implements TianshuTool<BodyItemInspectToo
 
     @Override
     public ToolCategory category() {
-        return ToolCategory.SERVER_READ;
+        return ToolCategory.BODY_READ;
     }
 
     @Override
