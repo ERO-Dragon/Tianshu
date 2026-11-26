@@ -1963,6 +1963,16 @@ public final class LabAcceptanceCases {
             if (localPlayerId() == null) {
                 return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no server component");
             }
+            // Below the full tier no cheat-grade action may even be attempted, so there is nothing to observe here:
+            // every action would answer the same NO_PERMISSION before its own switch or validator saw it.
+            ToolAutonomy ceiling = TianshuRuntimePorts
+                    .find(com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling.class)
+                    .map(com.rheinmetal.tianshu.api.tool.ServerAutonomyCeiling::max)
+                    .orElse(ToolAutonomy.FULL);
+            if (!ceiling.permits(ToolAutonomy.FULL)) {
+                return AcceptanceOutcome.skip(id, title,
+                        "the server ceiling is " + ceiling + ", so no cheat-grade action can be attempted");
+            }
             java.util.LinkedHashMap<String, JsonObject> samples = new java.util.LinkedHashMap<>();
             samples.put("server.teleport", args("x", 0, "y", 70, "z", 0));
             samples.put("server.weather", args("weather", "clear"));
