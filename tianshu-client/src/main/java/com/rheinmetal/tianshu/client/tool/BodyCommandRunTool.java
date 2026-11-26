@@ -40,7 +40,7 @@ public final class BodyCommandRunTool implements TianshuTool<BodyCommandRunTool.
     }
 
     @Override
-    public BodyAutonomy requiredBodyAutonomy() {
+    public BodyAutonomy requiredAutonomy() {
         return BodyAutonomy.CHEAT;
     }
 

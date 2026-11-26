@@ -418,7 +418,7 @@ class TianshuToolsTest {
         }
 
         @Override
-        public ToolAutonomy requiredAutonomy() {
+        public AutonomyRequirement requiredAutonomy() {
             return autonomy == null ? category.defaultAutonomy() : autonomy;
         }
 

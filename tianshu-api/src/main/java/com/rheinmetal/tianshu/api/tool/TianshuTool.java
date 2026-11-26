@@ -39,18 +39,9 @@ public interface TianshuTool<A, R> {
         return null;
     }
 
-    /**
-     * The risk tier this tool needs when it acts <strong>as a player</strong>. Writes are survival-tier unless a tool
-     * says otherwise; a tool that can give items, run commands or teleport should override this with
-     * {@link ToolAutonomy#FULL}.
-     */
-    default ToolAutonomy requiredAutonomy() {
+    /** Minimum tier on this category's axis. Entity queries have no action tier. */
+    default AutonomyRequirement requiredAutonomy() {
         return category().defaultAutonomy();
-    }
-
-    /** Minimum NPC tier for a BODY_WRITE tool. A body or a particular argument may require more. */
-    default BodyAutonomy requiredBodyAutonomy() {
-        return BodyAutonomy.SURVIVAL;
     }
 
     /**
@@ -58,7 +49,7 @@ public interface TianshuTool<A, R> {
      * survival needs no switch and a tool that needs {@link ToolAutonomy#FULL} is off until an operator opens it.
      */
     default ToolPolicy policy() {
-        return category().isBody() ? ToolPolicy.forCategory(category()) : ToolPolicy.forTier(requiredAutonomy());
+        return ToolPolicy.forTier(requiredAutonomy());
     }
 
     /**

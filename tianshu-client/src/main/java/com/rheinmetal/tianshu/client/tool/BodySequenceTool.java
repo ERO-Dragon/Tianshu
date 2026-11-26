@@ -4,7 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.entity.BodyFailure;
+import com.rheinmetal.tianshu.api.entity.BodyToolException;
 import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
 import com.rheinmetal.tianshu.api.entity.ActionOutcome;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -239,25 +240,25 @@ public final class BodySequenceTool implements TianshuTool<BodySequenceTool.Args
                     : "the body moved to " + current + " after step " + (index - 1)
                             + "; the remaining steps were planned in " + dimension));
         }
-        SequenceStep current_step = steps.get(index);
-        Optional<ToolException> refusal = capabilityRefusal(actor, current_step);
-        if (refusal.isPresent()) {
-            if (BodyFailure.fromId(refusal.get().getMessage()).isPresent()) {
-                return CompletableFuture.failedFuture(refusal.get());
-            }
-            reports.add(new SequenceResult.StepReport(current_step.kind(), false, refusal.get().getMessage()));
-            return CompletableFuture.completedFuture(stop(reports, index, refusal.get().getMessage()));
+        SequenceStep step = steps.get(index);
+        CompletableFuture<StepOutcome> execution;
+        try {
+            execution = capabilityRefusal(actor, step)
+                    .map(CompletableFuture::<StepOutcome>failedFuture)
+                    .orElseGet(() -> dispatch(actor, step));
+        } catch (RuntimeException failure) {
+            execution = CompletableFuture.failedFuture(failure);
         }
-        return dispatch(actor, current_step).handle((outcome, failure) -> {
-            Throwable cause = failure instanceof java.util.concurrent.CompletionException ? failure.getCause() : failure;
-            if (cause instanceof ToolException denied && BodyFailure.fromId(denied.getMessage()).isPresent()) {
+        return execution.handle((outcome, failure) -> {
+            Throwable cause = failure instanceof CompletionException ? failure.getCause() : failure;
+            if (cause instanceof BodyToolException denied) {
                 throw denied;
             }
             boolean ok = failure == null && outcome != null && outcome.ok();
-            String detail = failure != null
-                    ? (failure.getMessage() == null ? "the step failed" : failure.getMessage())
+            String detail = cause != null
+                    ? (cause.getMessage() == null ? "the step failed" : cause.getMessage())
                     : (outcome == null ? "the step produced no answer" : outcome.detail());
-            reports.add(new SequenceResult.StepReport(current_step.kind(), ok, detail));
+            reports.add(new SequenceResult.StepReport(step.kind(), ok, detail));
             if (!ok) {
                 return CompletableFuture.completedFuture(stop(reports, index, detail));
             }

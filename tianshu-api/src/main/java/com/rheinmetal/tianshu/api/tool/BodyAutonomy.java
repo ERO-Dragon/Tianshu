@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.api.tool;
 
 /** The two action tiers for a module-controlled NPC. */
-public enum BodyAutonomy {
+public enum BodyAutonomy implements AutonomyRequirement {
     SURVIVAL, CHEAT;
 
     public boolean permits(BodyAutonomy required) {

@@ -16,6 +16,7 @@ import com.rheinmetal.tianshu.api.entity.EntityProvider;
 import com.rheinmetal.tianshu.api.entity.EntityItemPort;
 import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
 import com.rheinmetal.tianshu.api.entity.BlockTarget;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 import com.rheinmetal.tianshu.api.entity.EntityTarget;
 import com.rheinmetal.tianshu.api.entity.DropResult;
@@ -51,6 +52,7 @@ class BodySequenceToolTest {
     private Set<MoveMode> nativeModes = Set.of(MoveMode.WALK);
     private MoveMode executedMode;
     private boolean mineFails;
+    private boolean denyMine;
 
     @BeforeEach
     void clearThrottle() {
@@ -151,6 +153,9 @@ class BodySequenceToolTest {
                     @Override
                     public CompletableFuture<ActionResult> mine(ActorRef actor, BlockTarget target) {
                         order.add("mine");
+                        if (denyMine) {
+                            throw BodyFailure.AUTONOMY_DENIED.exception("provider diagnostic for this body");
+                        }
                         return CompletableFuture.completedFuture(mineFails
                                 ? ActionResult.rejected("blocked")
                                 : ActionResult.done("mined"));
@@ -234,6 +239,19 @@ class BodySequenceToolTest {
         assertTrue(envelope(steps, ToolCaller.player("p", true)).get("ok").getAsBoolean());
         assertEquals(MoveMode.TELEPORT, executedMode);
         assertEquals(List.of("move", "move"), order);
+    }
+
+    @Test
+    void synchronousProviderRefusalKeepsItsReasonWhenItsDiagnosticChanges() throws Exception {
+        denyMine = true;
+        installBody();
+        JsonObject refused = envelope("""
+                {"body":"body-1","steps":[{"kind":"mine","x":1,"y":64,"z":1},{"kind":"pickup","radius":1}]}
+                """, ToolCaller.player("p", true));
+
+        assertEquals("NO_PERMISSION", refused.get("code").getAsString());
+        assertEquals("body.autonomy.denied", refused.get("message").getAsString());
+        assertEquals(List.of("mine"), order);
     }
 
     @Test

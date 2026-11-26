@@ -176,12 +176,24 @@ class ToolAutonomyTest {
     }
 
     @Test
+    void aBodyQueryHasNoActionTierAndCannotDeclareAPlayerTier() {
+        assertEquals(AutonomyRequirement.None.INSTANCE, ToolCategory.BODY_READ.defaultAutonomy());
+        var invalid = new WriteTool() {
+            @Override public ToolCategory category() { return ToolCategory.BODY_READ; }
+            @Override public ToolId id() { return ToolId.of("test", "invalid.body"); }
+        };
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> TianshuTools.registerBuiltin(invalid));
+        assertTrue(CapabilityCatalog.find(CapabilityId.parse(invalid.id().toString())).isEmpty());
+    }
+
+    @Test
     void serverCatalogueAndExecutionRespectIndependentCeilings() {
         ToolId npc = ToolId.of("test", "npc.cheat");
         TianshuTools.registerBuiltin(new WriteTool() {
             @Override public ToolId id() { return npc; }
             @Override public ToolCategory category() { return ToolCategory.BODY_WRITE; }
-            @Override public BodyAutonomy requiredBodyAutonomy() { return BodyAutonomy.CHEAT; }
+            @Override public BodyAutonomy requiredAutonomy() { return BodyAutonomy.CHEAT; }
         });
         try {
             var caller = ToolCaller.player("owner", true);
@@ -263,7 +275,7 @@ class ToolAutonomyTest {
         }
 
         @Override
-        public ToolAutonomy requiredAutonomy() {
+        public AutonomyRequirement requiredAutonomy() {
             return autonomy;
         }
 

@@ -3,7 +3,7 @@ package com.rheinmetal.tianshu.api.tool;
 import java.util.Objects;
 
 /** A typed failure of a tool call; {@link #code()} is the stable, wire-level reason. */
-public final class ToolException extends RuntimeException {
+public class ToolException extends RuntimeException {
 
     private final ToolError code;
 
@@ -15,6 +15,11 @@ public final class ToolException extends RuntimeException {
     public ToolException(ToolError code, String message, Throwable cause) {
         super(message, cause);
         this.code = Objects.requireNonNull(code, "code");
+    }
+
+    /** Message carried by the tool protocol. Domain errors can supply a stable reason identifier. */
+    public String wireMessage() {
+        return getMessage();
     }
 
     public ToolError code() {

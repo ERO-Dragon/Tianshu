@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.api.entity;
 
 import com.rheinmetal.tianshu.api.tool.ToolError;
-import com.rheinmetal.tianshu.api.tool.ToolException;
 
 import java.util.Optional;
 
@@ -29,8 +28,16 @@ public enum BodyFailure {
         this.code = code;
     }
 
-    public ToolException exception() {
-        return new ToolException(code, id);
+    public ToolError code() {
+        return code;
+    }
+
+    public BodyToolException exception() {
+        return exception(id);
+    }
+
+    public BodyToolException exception(String detail) {
+        return new BodyToolException(this, detail);
     }
 
     /** The stable id a caller can compare against — the same one {@link #fromId} parses and the wire carries. */

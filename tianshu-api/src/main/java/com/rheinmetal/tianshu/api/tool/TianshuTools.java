@@ -379,16 +379,16 @@ public final class TianshuTools {
         if (tool.policy().permission() == ToolPermission.OPERATOR && !caller.operator()) {
             throw new ToolException(ToolError.NO_PERMISSION, "tool " + id + " needs an operator");
         }
-        if (tool.category().isBody()) {
-            if (tool.category() == ToolCategory.BODY_WRITE && side == ToolSide.SERVER
-                    && !ServerBodyAutonomyCeiling.current().permits(tool.requiredBodyAutonomy())) {
-                throw BodyFailure.AUTONOMY_DENIED.exception();
-            }
-        } else {
+        var required = tool.requiredAutonomy();
+        if (required instanceof BodyAutonomy body && side == ToolSide.SERVER
+                && !ServerBodyAutonomyCeiling.current().permits(body)) {
+            throw BodyFailure.AUTONOMY_DENIED.exception();
+        }
+        if (required instanceof ToolAutonomy player) {
             ToolAutonomy allowed = autonomyFor(side, caller);
-            if (!allowed.permits(tool.requiredAutonomy())) {
+            if (!allowed.permits(player)) {
                 throw new ToolException(ToolError.NO_PERMISSION,
-                        "tool " + id + " needs " + tool.requiredAutonomy() + " autonomy; "
+                        "tool " + id + " needs " + player + " autonomy; "
                                 + (side == ToolSide.SERVER ? "this server allows " : "this caller allows ") + allowed);
             }
         }
@@ -492,9 +492,11 @@ public final class TianshuTools {
     private static JsonObject failureEnvelope(Throwable failure) {
         Throwable cause = failure instanceof CompletionException && failure.getCause() != null
                 ? failure.getCause() : failure;
-        ToolError code = cause instanceof ToolException toolFailure ? toolFailure.code() : ToolError.FAILED;
+        if (cause instanceof ToolException typed) {
+            return errorEnvelope(typed.code(), Objects.requireNonNullElse(typed.wireMessage(), typed.toString()));
+        }
         String message = cause.getMessage() == null ? cause.toString() : cause.getMessage();
-        return errorEnvelope(code, message);
+        return errorEnvelope(ToolError.FAILED, message);
     }
 
     private static JsonObject errorEnvelope(ToolError code, String message) {

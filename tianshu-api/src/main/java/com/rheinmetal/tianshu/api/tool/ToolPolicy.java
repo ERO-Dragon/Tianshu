@@ -22,7 +22,7 @@ public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, lo
     }
 
     /** The policy a tool needing this tier gets unless it overrides one. */
-    public static ToolPolicy forTier(ToolAutonomy tier) {
+    public static ToolPolicy forTier(AutonomyRequirement tier) {
         Objects.requireNonNull(tier, "tier");
         return tier == ToolAutonomy.FULL
                 ? new ToolPolicy(false, ToolPermission.OPERATOR, DEFAULT_TIMEOUT_MILLIS)
@@ -32,8 +32,7 @@ public record ToolPolicy(boolean enabledByDefault, ToolPermission permission, lo
     /** The policy a tool of this category gets; the category only supplies its default tier. */
     public static ToolPolicy forCategory(ToolCategory category) {
         Objects.requireNonNull(category, "category");
-        return category.isBody() ? new ToolPolicy(true, ToolPermission.EVERYONE, DEFAULT_TIMEOUT_MILLIS)
-                : forTier(category.defaultAutonomy());
+        return forTier(category.defaultAutonomy());
     }
 
     public ToolPolicy withTimeout(long millis) {

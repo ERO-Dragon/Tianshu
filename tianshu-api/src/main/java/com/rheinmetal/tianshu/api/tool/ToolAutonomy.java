@@ -13,7 +13,7 @@ package com.rheinmetal.tianshu.api.tool;
  *       effects. It still requires {@link ToolPermission#OPERATOR} and the per-tool switch.</li>
  * </ul>
  */
-public enum ToolAutonomy {
+public enum ToolAutonomy implements AutonomyRequirement {
 
     READ_ONLY(0),
     CONSERVATIVE(1),

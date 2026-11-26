@@ -3,6 +3,8 @@ package com.rheinmetal.tianshu.api.capability;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rheinmetal.tianshu.api.capability.skill.SkillReferences;
+import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -429,10 +431,14 @@ public final class CapabilityCatalog {
     }
 
     static void describeAutonomy(TianshuTool<?, ?> tool, JsonObject attributes) {
-        switch (tool.category()) {
-            case BODY_READ -> { /* Queries have no action tier. */ }
-            case BODY_WRITE -> attributes.addProperty("bodyAutonomy", tool.requiredBodyAutonomy().name());
-            default -> attributes.addProperty("autonomy", tool.requiredAutonomy().name());
+        var required = Objects.requireNonNull(tool.requiredAutonomy(), "requiredAutonomy");
+        if (required.getClass() != tool.category().defaultAutonomy().getClass()) {
+            throw new IllegalArgumentException(tool.id() + " declares an autonomy tier incompatible with " + tool.category());
+        }
+        if (required instanceof ToolAutonomy player) {
+            attributes.addProperty("autonomy", player.name());
+        } else if (required instanceof BodyAutonomy body) {
+            attributes.addProperty("bodyAutonomy", body.name());
         }
     }
 

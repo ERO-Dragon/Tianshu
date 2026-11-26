@@ -24,21 +24,13 @@ public enum ToolCategory {
     /** An NPC action governed by ownership, body capabilities and the server's NPC ceiling. */
     BODY_WRITE;
 
-    public boolean isBody() {
-        return this == BODY_READ || this == BODY_WRITE;
-    }
-
-    /**
-     * The tier a tool of this category needs when it acts as a player.
-     *
-     * <p>A world change is survival-tier — a player could do the same by hand. Anything that hands out items,
-     * teleports or runs a command says so itself by overriding {@link TianshuTool#requiredAutonomy()}.</p>
-     */
-    public ToolAutonomy defaultAutonomy() {
+    /** The minimum requirement unless a tool declares another tier on the same axis. */
+    public AutonomyRequirement defaultAutonomy() {
         return switch (this) {
             case SERVER_WRITE -> ToolAutonomy.CONSERVATIVE;
             case LOCAL, SERVER_READ -> ToolAutonomy.READ_ONLY;
-            case BODY_READ, BODY_WRITE -> throw new IllegalStateException("body tools have no player tier");
+            case BODY_READ -> AutonomyRequirement.None.INSTANCE;
+            case BODY_WRITE -> BodyAutonomy.SURVIVAL;
         };
     }
 

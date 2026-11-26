@@ -8,6 +8,7 @@ import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.ServerToolChannel;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
@@ -229,7 +230,10 @@ public final class ConnectionToolChannel implements ServerToolChannel {
     private void failPending(String requestId, ToolError code, String message) {
         CompletableFuture<JsonElement> future = requestId == null ? null : pending.remove(requestId);
         if (future != null) {
-            future.completeExceptionally(new ToolException(code, message == null ? code.name() : message));
+            future.completeExceptionally(BodyFailure.fromId(message)
+                    .filter(reason -> reason.code() == code)
+                    .<ToolException>map(BodyFailure::exception)
+                    .orElseGet(() -> new ToolException(code, message == null ? code.name() : message)));
         }
     }
 

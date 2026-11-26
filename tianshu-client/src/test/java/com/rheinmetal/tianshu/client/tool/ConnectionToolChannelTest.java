@@ -12,6 +12,7 @@ import com.rheinmetal.tianshu.api.tool.ReservedToolCalls;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
+import com.rheinmetal.tianshu.api.tool.ToolCatalogEntry;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPolicy;
@@ -129,6 +130,20 @@ class ConnectionToolChannelTest {
 
         refresh.get(2, TimeUnit.SECONDS);
         assertEquals(DECLARED, TianshuTools.find(DECLARED).id());
+    }
+
+    @Test
+    void remoteNpcCommandFollowsTheServerCatalogue() {
+        var id = BodyCommandRunTool.ID;
+        ServerToolDeclarations.declareBuiltin(new BodyCommandRunTool());
+        var caller = ToolCaller.player("p", true);
+        java.util.function.BooleanSupplier listed = () -> TianshuTools.catalog(caller, ToolSide.CLIENT)
+                .stream().anyMatch(tool -> tool.id().equals(id));
+        assertFalse(listed.getAsBoolean());
+        ServerToolDeclarations.synchronize(java.util.List.of(new ToolCatalogEntry(id.toString(), true)));
+        assertTrue(listed.getAsBoolean());
+        ServerToolDeclarations.synchronize(java.util.List.of());
+        assertFalse(listed.getAsBoolean());
     }
 
     @Test
