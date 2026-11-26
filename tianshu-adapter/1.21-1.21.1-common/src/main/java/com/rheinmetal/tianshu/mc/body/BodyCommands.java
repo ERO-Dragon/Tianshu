@@ -2,6 +2,7 @@ package com.rheinmetal.tianshu.mc.body;
 
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.entity.BodyFailure;
+import com.rheinmetal.tianshu.api.entity.BodyToolException;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -204,7 +205,8 @@ public final class BodyCommands {
         try {
             body = BodyRuntime.require().spawn(player, kind, playerIdentity);
         } catch (ToolException failure) {
-            source.sendFailure(spawnFailure(BodyFailure.fromId(failure.getMessage()).orElse(BodyFailure.SPAWN_FAILED)));
+            source.sendFailure(spawnFailure(failure instanceof BodyToolException bodyFailure
+                    ? bodyFailure.reason() : BodyFailure.SPAWN_FAILED));
             return 0;
         }
         String identity = playerIdentity ? " (player identity)" : "";

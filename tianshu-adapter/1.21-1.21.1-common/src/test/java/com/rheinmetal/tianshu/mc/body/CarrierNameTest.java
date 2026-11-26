@@ -1,7 +1,7 @@
 package com.rheinmetal.tianshu.mc.body;
 
 import com.rheinmetal.tianshu.api.entity.BodyFailure;
-import com.rheinmetal.tianshu.api.tool.ToolException;
+import com.rheinmetal.tianshu.api.entity.BodyToolException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
@@ -45,8 +45,8 @@ class CarrierNameTest {
     }
 
     private static void assertRefused(BodyFailure expected, Executable call) {
-        ToolException refused = assertThrows(ToolException.class, call);
-        assertEquals(expected, BodyFailure.fromId(refused.getMessage()).orElseThrow(),
+        BodyToolException refused = assertThrows(BodyToolException.class, call);
+        assertEquals(expected, refused.reason(),
                 "the reply has to name the rule that refused");
     }
 }
