@@ -1,16 +1,10 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.game.CraftableRecipe;
 import com.rheinmetal.tianshu.api.game.CraftableRecipeList;
-import com.rheinmetal.tianshu.api.game.RecipeAvailabilityPort;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
-import com.rheinmetal.tianshu.api.tool.ToolError;
-import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolPolicy;
 
@@ -20,8 +14,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * What you could craft right now, from what you are carrying.
  *
- * <p>Player side of the split pair; {@link BodyCraftAvailableTool} is the body side and owns the shared call in
- * {@link #available(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyCraftAvailableTool} is the body side. The world operation itself lives
+ * in {@link CraftAvailableOps}: this tool only adapts its arguments and calls in.</p>
  *
  * <p>The reverse of {@code recipe.query}. A caller that does not know an item id cannot use a forward recipe lookup at
  * all, and guessing ids is the failure mode this exists for.</p>
@@ -80,15 +74,6 @@ public final class CraftAvailableTool implements TianshuTool<CraftAvailableTool.
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return available(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides whose inventory is read. */
-    static CompletableFuture<CraftableRecipeList> available(ActorRef actor, Args args) {
-        int limit = args == null || args.limit() == null ? 0 : args.limit();
-        return TianshuRuntimePorts.find(RecipeAvailabilityPort.class)
-                .map(port -> port.available(actor, limit))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "recipe availability is only available on the server")));
+        return CraftAvailableOps.available(scope.actor(), args == null ? null : args.limit());
     }
 }

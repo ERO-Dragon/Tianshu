@@ -14,9 +14,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Asks to run one command as an agent body; nothing runs until a human approves that exact line.
  *
- * <p>Body side of the split pair; {@link CommandRunTool} is the player side and owns the shared call in
- * {@link CommandRunTool#run}. The approval flow is the same on both sides: a request comes back pending, an operator
- * approves the token, and only the retry runs.</p>
+ * <p>Body side of the split pair; {@link CommandRunTool} is the player side. The world operation itself lives in
+ * {@link CommandRunOps}: this tool only adapts its arguments and calls in. The approval flow is the same on both sides:
+ * a request comes back pending, an operator approves the token, and only the retry runs.</p>
  *
  * <p>It is {@code PRIVILEGED} on the body scale because running commands is what a body cannot do by itself, so a
  * server that only lets bodies do survival work does not offer this tool at all.</p>
@@ -76,7 +76,6 @@ public final class BodyCommandRunTool implements TianshuTool<BodyCommandRunTool.
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        CommandRunTool.Args run = args == null ? null : new CommandRunTool.Args(args.line(), args.approval());
-        return CommandRunTool.run(scope.actor(), run);
+        return CommandRunOps.run(scope.actor(), args.line(), args.approval());
     }
 }

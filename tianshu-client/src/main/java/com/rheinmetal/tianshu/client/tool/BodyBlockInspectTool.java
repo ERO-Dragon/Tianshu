@@ -13,8 +13,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Reads one block as an agent body: what it is, its state, and every storage it exposes.
  *
- * <p>Body side of the split pair; {@link BlockInspectTool} is the player side and owns the shared call in
- * {@link BlockInspectTool#inspect}. A body reads a block within its own reach, so the actor is not optional here.</p>
+ * <p>Body side of the split pair; {@link BlockInspectTool} is the player side. The world operation itself lives in
+ * {@link BlockInspectOps}: this tool only adapts its arguments and calls in. A body reads a block within its own reach,
+ * so the actor is not optional here.</p>
  */
 public final class BodyBlockInspectTool implements TianshuTool<BodyBlockInspectTool.Args, BlockInspectResult> {
 
@@ -65,9 +66,6 @@ public final class BodyBlockInspectTool implements TianshuTool<BodyBlockInspectT
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        BlockInspectTool.Args inspect = args == null
-                ? null
-                : new BlockInspectTool.Args(args.x(), args.y(), args.z());
-        return BlockInspectTool.inspect(scope.actor(), inspect);
+        return BlockInspectOps.inspect(scope.actor(), args.x(), args.y(), args.z());
     }
 }

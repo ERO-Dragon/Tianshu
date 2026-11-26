@@ -13,9 +13,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * What an agent body could craft right now, from what it is carrying.
  *
- * <p>Body side of the split pair; {@link CraftAvailableTool} is the player side and owns the shared call in
- * {@link CraftAvailableTool#available}. The body's own inventory decides the answer, so the actor is not optional
- * here.</p>
+ * <p>Body side of the split pair; {@link CraftAvailableTool} is the player side. The world operation itself lives in
+ * {@link CraftAvailableOps}: this tool only adapts its arguments and calls in. The body's own inventory decides the
+ * answer, so the actor is not optional here.</p>
  */
 public final class BodyCraftAvailableTool implements TianshuTool<BodyCraftAvailableTool.Args, CraftableRecipeList> {
 
@@ -65,7 +65,6 @@ public final class BodyCraftAvailableTool implements TianshuTool<BodyCraftAvaila
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        CraftAvailableTool.Args available = args == null ? null : new CraftAvailableTool.Args(args.limit());
-        return CraftAvailableTool.available(scope.actor(), available);
+        return CraftAvailableOps.available(scope.actor(), args == null ? null : args.limit());
     }
 }

@@ -13,9 +13,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Reads one stack in a body's inventory: durability, components, custom name.
  *
- * <p>Body side of the split pair; {@link ItemInspectTool} is the player side and owns the shared call in
- * {@link ItemInspectTool#inspect}. The slot index means the body's own inventory, so the actor is not optional
- * here.</p>
+ * <p>Body side of the split pair; {@link ItemInspectTool} is the player side. The world operation itself lives in
+ * {@link ItemInspectOps}: this tool only adapts its arguments and calls in. The slot index means the body's own
+ * inventory, so the actor is not optional here.</p>
  */
 public final class BodyItemInspectTool implements TianshuTool<BodyItemInspectTool.Args, ItemInspectResult> {
 
@@ -65,7 +65,6 @@ public final class BodyItemInspectTool implements TianshuTool<BodyItemInspectToo
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        ItemInspectTool.Args inspect = args == null ? null : new ItemInspectTool.Args(args.slot());
-        return ItemInspectTool.inspect(scope.actor(), inspect);
+        return ItemInspectOps.inspect(scope.actor(), args.slot());
     }
 }

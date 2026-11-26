@@ -2,31 +2,23 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.entity.BlockFace;
-import com.rheinmetal.tianshu.api.entity.EntityActors;
-import com.rheinmetal.tianshu.api.entity.EntityCapability;
-import com.rheinmetal.tianshu.api.game.BlockPlacePort;
-import com.rheinmetal.tianshu.api.game.BlockPlaceRequest;
 import com.rheinmetal.tianshu.api.game.BlockPlaceResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
-import com.rheinmetal.tianshu.api.tool.ToolError;
-import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.lang.reflect.Type;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * Places one item from the calling player's inventory into the world.
  *
- * <p>Player side of the split pair; {@link BodyPlaceTool} is the body side. The operation itself lives in
- * {@link #place(ActorRef, Args)} so the two tools differ only in who they act as.</p>
+ * <p>Player side of the split pair; {@link BodyPlaceTool} is the body side. The world operation itself lives in
+ * {@link PlaceOps}: this tool only adapts its arguments and calls in, so the two sides differ only in who they act
+ * as.</p>
  */
 public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, BlockPlaceResult> {
 
@@ -92,35 +84,6 @@ public final class BlockPlaceTool implements TianshuTool<BlockPlaceTool.Args, Bl
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return place(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides whether rights, reach and orientation follow a player or a body. */
-    static CompletableFuture<BlockPlaceResult> place(ActorRef actor, Args args) {
-        if (args == null || args.item() == null || args.item().isBlank()) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "block placement needs an item id"));
-        }
-        BlockFace face;
-        try {
-            face = args.face() == null || args.face().isBlank()
-                    ? null
-                    : BlockFace.valueOf(args.face().trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException unknownFace) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "unknown block face: " + args.face()));
-        }
-        Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.PLACE);
-        if (refusal.isPresent()) {
-            return CompletableFuture.failedFuture(refusal.get());
-        }
-        BlockPlaceRequest request = new BlockPlaceRequest(args.x(), args.y(), args.z(), args.item().trim(), face);
-        return TianshuRuntimePorts.find(BlockPlacePort.class)
-                .map(port -> port.place(actor, request).thenCompose(result ->
-                        result.placed()
-                                ? CompletableFuture.completedFuture(result)
-                                : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED, result.message()))))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "block placement is only available on the server")));
+        return PlaceOps.place(scope.actor(), args.item(), args.x(), args.y(), args.z(), args.face());
     }
 }

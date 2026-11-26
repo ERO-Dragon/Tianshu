@@ -13,9 +13,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Finds the nearest structure or biome of a given id, from where an agent body is.
  *
- * <p>Body side of the split pair; {@link WorldLocateTool} is the player side and owns the shared call in
- * {@link WorldLocateTool#locate}. The body's own position is the origin of the search, so the actor is not optional
- * here.</p>
+ * <p>Body side of the split pair; {@link WorldLocateTool} is the player side. The world operation itself lives in
+ * {@link WorldLocateOps}: this tool only adapts its arguments and calls in. The body's own position is the origin of the
+ * search, so the actor is not optional here.</p>
  */
 public final class BodyWorldLocateTool implements TianshuTool<BodyWorldLocateTool.Args, LocateResult> {
 
@@ -69,9 +69,6 @@ public final class BodyWorldLocateTool implements TianshuTool<BodyWorldLocateToo
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        WorldLocateTool.Args locate = args == null
-                ? null
-                : new WorldLocateTool.Args(args.structure(), args.biome(), args.radius());
-        return WorldLocateTool.locate(scope.actor(), locate);
+        return WorldLocateOps.locate(scope.actor(), args.structure(), args.biome(), args.radius());
     }
 }

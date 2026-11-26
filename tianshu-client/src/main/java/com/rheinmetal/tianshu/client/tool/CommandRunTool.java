@@ -1,10 +1,6 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.game.CommandExecutionPort;
-import com.rheinmetal.tianshu.api.game.CommandRequest;
 import com.rheinmetal.tianshu.api.game.CommandResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
@@ -20,8 +16,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Asks to run one command as you; nothing runs until a human approves that exact line.
  *
- * <p>Player side of the split pair; {@link BodyCommandRunTool} is the body side and owns the shared call in
- * {@link #run(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyCommandRunTool} is the body side. The world operation itself lives in
+ * {@link CommandRunOps}: this tool only adapts its arguments and calls in.</p>
  *
  * <p>The first call comes back pending with a token an operator approves with {@code /tianshu approve <token>}; the retry
  * carries the token and runs once. That is the whole design: a switch could be flipped by the caller, an approval
@@ -98,19 +94,6 @@ public final class CommandRunTool implements TianshuTool<CommandRunTool.Args, Co
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return run(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides who the command runs as, after the same approval. */
-    static CompletableFuture<CommandResult> run(ActorRef actor, Args args) {
-        CommandRequest request = new CommandRequest(args.line(), args.approval());
-        return TianshuRuntimePorts.find(CommandExecutionPort.class)
-                .map(port -> port.run(actor, request).thenCompose(result -> switch (result.status()) {
-                    case EXECUTED, PENDING_APPROVAL -> CompletableFuture.completedFuture(result);
-                    case REJECTED -> CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,
-                            result.message().isBlank() ? "the command was not run" : result.message()));
-                }))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "running commands is only available on the server")));
+        return CommandRunOps.run(scope.actor(), args.line(), args.approval());
     }
 }

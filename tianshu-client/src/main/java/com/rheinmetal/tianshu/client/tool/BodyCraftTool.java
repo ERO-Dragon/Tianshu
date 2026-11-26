@@ -13,9 +13,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Crafts one named recipe once, on a body's inventory.
  *
- * <p>Body side of the split pair; {@link CraftRecipeTool} is the player side and owns the shared call in
- * {@link CraftRecipeTool#craft}. The ingredients come out of the body's own inventory, so the actor is not optional
- * here.</p>
+ * <p>Body side of the split pair; {@link CraftRecipeTool} is the player side. The world operation itself lives in
+ * {@link CraftOps}: this tool only adapts its arguments and calls in. The ingredients come out of the body's own
+ * inventory, so the actor is not optional here.</p>
  */
 public final class BodyCraftTool implements TianshuTool<BodyCraftTool.Args, CraftResult> {
 
@@ -64,7 +64,6 @@ public final class BodyCraftTool implements TianshuTool<BodyCraftTool.Args, Craf
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        CraftRecipeTool.Args craft = args == null ? null : new CraftRecipeTool.Args(args.recipeId());
-        return CraftRecipeTool.craft(scope.actor(), craft);
+        return CraftOps.craft(scope.actor(), args.recipeId());
     }
 }

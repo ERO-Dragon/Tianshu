@@ -1,18 +1,11 @@
 package com.rheinmetal.tianshu.client.tool;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.entity.EntityActors;
-import com.rheinmetal.tianshu.api.entity.EntityCapability;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.game.BlockInteractPort;
-import com.rheinmetal.tianshu.api.game.BlockInteractRequest;
 import com.rheinmetal.tianshu.api.game.BlockInteractResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
-import com.rheinmetal.tianshu.api.tool.ToolError;
-import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.lang.reflect.Type;
@@ -21,8 +14,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Operates a harmless block as the calling player: a button, a lever, a door.
  *
- * <p>Player side of the split pair; {@link BodyInteractTool} is the body side and owns the shared call in
- * {@link #interact(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyInteractTool} is the body side. The world operation itself lives in
+ * {@link InteractOps}: this tool only adapts its arguments and calls in.</p>
  *
  * <p>This is a write tool, so it is off by default and needs an operator. Breaking, placing and igniting are
  * deliberately not part of it; if they are ever offered, they get their own tool with their own switch.</p>
@@ -93,24 +86,7 @@ public final class BlockInteractTool implements TianshuTool<BlockInteractTool.Ar
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return interact(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides whether rights and reach follow a player or a body. */
-    static CompletableFuture<BlockInteractResult> interact(ActorRef actor, Args args) {
-        java.util.Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.USE);
-        if (refusal.isPresent()) {
-            return CompletableFuture.failedFuture(refusal.get());
-        }
-        if (args == null) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "block.interact needs x, y and z"));
-        }
-        BlockInteractRequest request = new BlockInteractRequest(args.x(), args.y(), args.z());
-        return TianshuRuntimePorts.find(BlockInteractPort.class)
-                .map(port -> port.interact(actor, request))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "block interaction is only available on the server")));
+        return InteractOps.interact(scope.actor(), args.x(), args.y(), args.z());
     }
 
     private static JsonObject integer(String description) {

@@ -1,10 +1,6 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.game.ItemInspectPort;
-import com.rheinmetal.tianshu.api.game.ItemInspectRequest;
 import com.rheinmetal.tianshu.api.game.ItemInspectResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
@@ -20,8 +16,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Reads one stack in your inventory: durability, components, custom name.
  *
- * <p>Player side of the split pair; {@link BodyItemInspectTool} is the body side and owns the shared call in
- * {@link #inspect(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyItemInspectTool} is the body side. The world operation itself lives in
+ * {@link ItemInspectOps}: this tool only adapts its arguments and calls in.</p>
  *
  * <p>{@code body.inventory} says "slot 0 holds minecraft:iron_pickaxe, 1"; this says whether that pickaxe is about to
  * break and what is attached to it. A caller choosing what to equip needs the second half, and without it the first
@@ -83,19 +79,6 @@ public final class ItemInspectTool implements TianshuTool<ItemInspectTool.Args, 
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return inspect(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides whose inventory slot is read. */
-    static CompletableFuture<ItemInspectResult> inspect(ActorRef actor, Args args) {
-        ItemInspectRequest request = new ItemInspectRequest(args.slot());
-        return TianshuRuntimePorts.find(ItemInspectPort.class)
-                .map(port -> port.inspect(actor, request)
-                        .thenCompose(result -> result.read()
-                                ? CompletableFuture.completedFuture(result)
-                                : CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                                        result.message().isBlank() ? "the slot could not be read" : result.message()))))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "item inspection is only available on the server")));
+        return ItemInspectOps.inspect(scope.actor(), args.slot());
     }
 }

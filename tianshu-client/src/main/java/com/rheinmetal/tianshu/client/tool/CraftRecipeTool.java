@@ -2,18 +2,10 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.entity.EntityActors;
-import com.rheinmetal.tianshu.api.entity.EntityCapability;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.game.CraftPort;
-import com.rheinmetal.tianshu.api.game.CraftRequest;
 import com.rheinmetal.tianshu.api.game.CraftResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
-import com.rheinmetal.tianshu.api.tool.ToolError;
-import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.lang.reflect.Type;
@@ -22,8 +14,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Crafts one named recipe once, as the calling player.
  *
- * <p>Player side of the split pair; {@link BodyCraftTool} is the body side and owns the shared call in
- * {@link #craft(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyCraftTool} is the body side. The world operation itself lives in
+ * {@link CraftOps}: this tool only adapts its arguments and calls in.</p>
  *
  * <p>A write tool: off by default, operator-only, and it only ever crafts the recipe it was given — choosing the
  * recipe is the caller's job, so a wrong assumption becomes a visible refusal instead of a surprise item.</p>
@@ -94,26 +86,6 @@ public final class CraftRecipeTool implements TianshuTool<CraftRecipeTool.Args, 
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return craft(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides whose ingredients are consumed. */
-    static CompletableFuture<CraftResult> craft(ActorRef actor, Args args) {
-        if (args == null || args.recipeId() == null || args.recipeId().isBlank()) {
-            return CompletableFuture.failedFuture(
-                    new ToolException(ToolError.INVALID_ARGS, "craft.recipe needs a recipe id"));
-        }
-        java.util.Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.INVENTORY);
-        if (refusal.isPresent()) {
-            return CompletableFuture.failedFuture(refusal.get());
-        }
-        return TianshuRuntimePorts.find(CraftPort.class)
-                .map(port -> port.craft(actor, new CraftRequest(args.recipeId().trim()))
-                        .thenCompose(result -> result.crafted()
-                                ? CompletableFuture.completedFuture(result)
-                                : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,
-                                        result.message().isBlank() ? "crafting failed" : result.message()))))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "crafting is only available on the server")));
+        return CraftOps.craft(scope.actor(), args.recipeId());
     }
 }

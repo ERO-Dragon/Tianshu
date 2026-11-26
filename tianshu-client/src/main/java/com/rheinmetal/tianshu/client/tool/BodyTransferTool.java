@@ -13,9 +13,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Moves items between a container and a body's inventory.
  *
- * <p>Body side of the split pair; {@link ContainerTransferTool} is the player side and owns the shared call in
- * {@link ContainerTransferTool#transfer}. Both slots belong to the body, which is why the actor is not optional
- * here.</p>
+ * <p>Body side of the split pair; {@link ContainerTransferTool} is the player side. The world operation itself lives in
+ * {@link TransferOps}: this tool only adapts its arguments and calls in. Both slots belong to the body, which is why
+ * the actor is not optional here.</p>
  */
 public final class BodyTransferTool implements TianshuTool<BodyTransferTool.Args, ContainerTransferResult> {
 
@@ -74,10 +74,7 @@ public final class BodyTransferTool implements TianshuTool<BodyTransferTool.Args
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        ContainerTransferTool.Args transfer = args == null
-                ? null
-                : new ContainerTransferTool.Args(args.x(), args.y(), args.z(), args.containerSlot(),
-                        args.playerSlot(), args.count(), args.toPlayer());
-        return ContainerTransferTool.transfer(scope.actor(), transfer);
+        return TransferOps.transfer(scope.actor(), args.x(), args.y(), args.z(), args.containerSlot(),
+                args.playerSlot(), args.count(), args.toPlayer());
     }
 }

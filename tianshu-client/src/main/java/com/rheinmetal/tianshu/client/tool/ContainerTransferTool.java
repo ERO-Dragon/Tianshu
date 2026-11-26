@@ -2,18 +2,10 @@ package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.entity.EntityActors;
-import com.rheinmetal.tianshu.api.entity.EntityCapability;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.game.ContainerTransferPort;
-import com.rheinmetal.tianshu.api.game.ContainerTransferRequest;
 import com.rheinmetal.tianshu.api.game.ContainerTransferResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
-import com.rheinmetal.tianshu.api.tool.ToolError;
-import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 
 import java.lang.reflect.Type;
@@ -22,11 +14,11 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Moves items between a container and the calling player's inventory.
  *
- * <p>Player side of the split pair; {@link BodyTransferTool} is the body side and owns the shared call in
- * {@link #transfer(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyTransferTool} is the body side. The world operation itself lives in
+ * {@link TransferOps}: this tool only adapts its arguments and calls in.</p>
  *
- * <p>A write tool: off by default, operator-only, one slot pair per call. It refuses negative slots and counts
- * outside 1..64 before anything reaches the game, so a malformed call never becomes a partial move.</p>
+ * <p>A write tool: off by default, operator-only, one slot pair per call. The operation refuses negative slots and
+ * counts outside 1..64 before anything reaches the game, so a malformed call never becomes a partial move.</p>
  */
 public final class ContainerTransferTool implements
         TianshuTool<ContainerTransferTool.Args, ContainerTransferResult> {
@@ -107,26 +99,8 @@ public final class ContainerTransferTool implements
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return transfer(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides whose inventory the slots belong to. */
-    static CompletableFuture<ContainerTransferResult> transfer(ActorRef actor, Args args) {
-        if (args == null || args.containerSlot() < 0 || args.playerSlot() < 0
-                || args.playerSlot() >= 36 || args.count() < 1 || args.count() > 64) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "container.transfer needs non-negative slots and a count between 1 and 64"));
-        }
-        java.util.Optional<ToolException> refusal = EntityActors.checkCapability(actor, EntityCapability.INVENTORY);
-        if (refusal.isPresent()) {
-            return CompletableFuture.failedFuture(refusal.get());
-        }
-        ContainerTransferRequest request = new ContainerTransferRequest(args.x(), args.y(), args.z(),
-                args.containerSlot(), args.playerSlot(), args.count(), args.toPlayer());
-        return TianshuRuntimePorts.find(ContainerTransferPort.class)
-                .map(port -> port.transfer(actor, request))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "container access is only available on the server")));
+        return TransferOps.transfer(scope.actor(), args.x(), args.y(), args.z(), args.containerSlot(),
+                args.playerSlot(), args.count(), args.toPlayer());
     }
 
     private static JsonObject integer(String description) {

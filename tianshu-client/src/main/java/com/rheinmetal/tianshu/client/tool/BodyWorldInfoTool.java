@@ -13,8 +13,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * The world as it is around an agent body: dimension, biome, time, weather, difficulty, light.
  *
- * <p>Body side of the split pair; {@link WorldInfoTool} is the player side and owns the shared call in
- * {@link WorldInfoTool#info}. The body's own position is the origin, so the actor is not optional here.</p>
+ * <p>Body side of the split pair; {@link WorldInfoTool} is the player side. The world operation itself lives in
+ * {@link WorldInfoOps}: this tool only adapts its arguments and calls in. The body's own position is the origin, so the
+ * actor is not optional here.</p>
  */
 public final class BodyWorldInfoTool implements TianshuTool<BodyWorldInfoTool.Args, WorldInfo> {
 
@@ -61,6 +62,6 @@ public final class BodyWorldInfoTool implements TianshuTool<BodyWorldInfoTool.Ar
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return WorldInfoTool.info(scope.actor(), new EmptyArgs());
+        return WorldInfoOps.info(scope.actor());
     }
 }

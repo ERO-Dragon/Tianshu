@@ -14,12 +14,12 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Places a line of the same item from a body's inventory into the world.
  *
- * <p>Body side of the split pair; {@link BlockPlaceLineTool} is the player side and owns the shared call in
- * {@link BlockPlaceLineTool#placeLine}. A body places with its own reach, its own drops and its own holding rules,
- * which is why the actor is not optional here.</p>
+ * <p>Body side of the split pair; {@link BlockPlaceLineTool} is the player side. The world operation itself lives in
+ * {@link PlaceLineOps}: this tool only adapts its arguments and calls in. A body places with its own reach, its own
+ * drops and its own holding rules, which is why the actor is not optional here.</p>
  */
 public final class BodyPlaceLineTool implements
-        TianshuTool<BodyPlaceLineTool.Args, BlockPlaceLineTool.Placed> {
+        TianshuTool<BodyPlaceLineTool.Args, PlaceLineOps.Placed> {
 
     public static final ToolId ID = ToolId.of("minecraft", "entity.place.line");
 
@@ -49,7 +49,7 @@ public final class BodyPlaceLineTool implements
 
     @Override
     public Type resultType() {
-        return BlockPlaceLineTool.Placed.class;
+        return PlaceLineOps.Placed.class;
     }
 
     @Override
@@ -72,15 +72,12 @@ public final class BodyPlaceLineTool implements
     }
 
     @Override
-    public CompletableFuture<BlockPlaceLineTool.Placed> invoke(ToolContext context, Args args) {
+    public CompletableFuture<PlaceLineOps.Placed> invoke(ToolContext context, Args args) {
         ActorScope scope = ActorScope.body(context.caller(), args == null ? null : args.body());
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        BlockPlaceLineTool.Args placed = args == null
-                ? null
-                : new BlockPlaceLineTool.Args(args.item(), args.x(), args.y(), args.z(), args.direction(),
-                        args.count());
-        return BlockPlaceLineTool.placeLine(scope.actor(), placed);
+        return PlaceLineOps.placeLine(scope.actor(), args.item(), args.x(), args.y(), args.z(), args.direction(),
+                args.count());
     }
 }

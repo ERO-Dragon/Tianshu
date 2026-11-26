@@ -1,11 +1,7 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.game.LocateRequest;
 import com.rheinmetal.tianshu.api.game.LocateResult;
-import com.rheinmetal.tianshu.api.game.WorldLocatePort;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
 import com.rheinmetal.tianshu.api.tool.ToolContext;
@@ -20,8 +16,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Finds the nearest structure or biome of a given id, from where you are.
  *
- * <p>Player side of the split pair; {@link BodyWorldLocateTool} is the body side and owns the shared call in
- * {@link #locate(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyWorldLocateTool} is the body side. The world operation itself lives in
+ * {@link WorldLocateOps}: this tool only adapts its arguments and calls in.</p>
  *
  * <p>Atomic: it answers "where is it", not "go there" — {@code body.move} does the walking and the caller decides whether
  * going is worth it.</p>
@@ -91,24 +87,6 @@ public final class WorldLocateTool implements TianshuTool<WorldLocateTool.Args, 
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return locate(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides which position is the origin of the search. */
-    static CompletableFuture<LocateResult> locate(ActorRef actor, Args args) {
-        LocateRequest request = new LocateRequest(args.structure(), args.biome(),
-                args.radius() == null ? 0 : args.radius());
-        if (!request.singleTarget()) {
-            return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                    "world.locate needs exactly one of: a structure id or a biome id"));
-        }
-        return TianshuRuntimePorts.find(WorldLocatePort.class)
-                .map(port -> port.locate(actor, request)
-                        .thenCompose(result -> result.searched()
-                                ? CompletableFuture.completedFuture(result)
-                                : CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
-                                        result.message().isBlank() ? "the search could not run" : result.message()))))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "locating is only available on the server")));
+        return WorldLocateOps.locate(scope.actor(), args.structure(), args.biome(), args.radius());
     }
 }

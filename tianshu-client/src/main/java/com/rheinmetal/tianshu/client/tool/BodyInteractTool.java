@@ -13,8 +13,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Operates a harmless block as an agent body that declares {@code USE}.
  *
- * <p>Body side of the split pair; {@link BlockInteractTool} is the player side and owns the shared call in
- * {@link BlockInteractTool#interact}.</p>
+ * <p>Body side of the split pair; {@link BlockInteractTool} is the player side. The world operation itself lives in
+ * {@link InteractOps}: this tool only adapts its arguments and calls in.</p>
  */
 public final class BodyInteractTool implements TianshuTool<BodyInteractTool.Args, BlockInteractResult> {
 
@@ -65,9 +65,6 @@ public final class BodyInteractTool implements TianshuTool<BodyInteractTool.Args
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        BlockInteractTool.Args interact = args == null
-                ? null
-                : new BlockInteractTool.Args(args.x(), args.y(), args.z());
-        return BlockInteractTool.interact(scope.actor(), interact);
+        return InteractOps.interact(scope.actor(), args.x(), args.y(), args.z());
     }
 }

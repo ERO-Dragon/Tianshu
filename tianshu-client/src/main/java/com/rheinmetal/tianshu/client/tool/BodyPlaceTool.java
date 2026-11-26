@@ -16,9 +16,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Places one item from a body's inventory into the world.
  *
- * <p>Body side of the split pair; {@link BlockPlaceTool} is the player side and owns
- * {@link BlockPlaceTool#place}. A carrier places with its own reach, its own drops and its own holding rules, which is
- * why the actor is not optional here.</p>
+ * <p>Body side of the split pair; {@link BlockPlaceTool} is the player side. The world operation itself lives in
+ * {@link PlaceOps}: this tool only adapts its arguments and calls in. A carrier places with its own reach, its own
+ * drops and its own holding rules, which is why the actor is not optional here.</p>
  */
 public final class BodyPlaceTool implements TianshuTool<BodyPlaceTool.Args, BlockPlaceResult> {
 
@@ -77,9 +77,6 @@ public final class BodyPlaceTool implements TianshuTool<BodyPlaceTool.Args, Bloc
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        BlockPlaceTool.Args placed = args == null
-                ? null
-                : new BlockPlaceTool.Args(args.item(), args.x(), args.y(), args.z(), args.face());
-        return BlockPlaceTool.place(scope.actor(), placed);
+        return PlaceOps.place(scope.actor(), args.item(), args.x(), args.y(), args.z(), args.face());
     }
 }

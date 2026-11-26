@@ -57,7 +57,7 @@ class BlockPlaceLineToolTest {
     void aLineStopsWhereTheWorldStopsItAndSaysSo() throws Exception {
         install(true);
 
-        BlockPlaceLineTool.Placed result = call(5, "east");
+        PlaceLineOps.Placed result = call(5, "east");
 
         assertEquals(LIMIT, result.placed().size(), "only the blocks that landed may be reported");
         assertEquals(5, result.requested());
@@ -69,7 +69,7 @@ class BlockPlaceLineToolTest {
     void aCompleteLinePlacesEveryStep() throws Exception {
         install(false);
 
-        BlockPlaceLineTool.Placed result = call(3, "up");
+        PlaceLineOps.Placed result = call(3, "up");
 
         assertEquals(3, result.placed().size());
         assertEquals("", result.stoppedBecause());
@@ -89,7 +89,7 @@ class BlockPlaceLineToolTest {
         });
     }
 
-    private BlockPlaceLineTool.Placed call(int count, String direction) throws Exception {
+    private PlaceLineOps.Placed call(int count, String direction) throws Exception {
         JsonObject args = new JsonObject();
         args.addProperty("body", BODY);
         args.addProperty("item", "minecraft:stone");
@@ -109,7 +109,7 @@ class BlockPlaceLineToolTest {
                                 block.get("x").getAsInt(), block.get("y").getAsInt(), block.get("z").getAsInt(),
                                 block.get("placed").getAsBoolean(), block.get("message").getAsString()));
                     }
-                    return new BlockPlaceLineTool.Placed(blocks, value.get("requested").getAsInt(),
+                    return new PlaceLineOps.Placed(blocks, value.get("requested").getAsInt(),
                             value.get("stoppedBecause").getAsString());
                 })
                 .get(2, TimeUnit.SECONDS);

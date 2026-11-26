@@ -1,10 +1,6 @@
 package com.rheinmetal.tianshu.client.tool;
 
 import com.google.gson.JsonObject;
-import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
-import com.rheinmetal.tianshu.api.entity.ActorRef;
-import com.rheinmetal.tianshu.api.game.BlockInspectPort;
-import com.rheinmetal.tianshu.api.game.BlockInspectRequest;
 import com.rheinmetal.tianshu.api.game.BlockInspectResult;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.ToolCategory;
@@ -20,8 +16,8 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Reads one block: what it is, its state, and every storage it exposes.
  *
- * <p>Player side of the split pair; {@link BodyBlockInspectTool} is the body side and owns the shared call in
- * {@link #inspect(ActorRef, Args)}.</p>
+ * <p>Player side of the split pair; {@link BodyBlockInspectTool} is the body side. The world operation itself lives in
+ * {@link BlockInspectOps}: this tool only adapts its arguments and calls in.</p>
  *
  * <p>Read-only and on by default: knowing what is in a chest or a machine is perception, not a world change. It does
  * not need the player to have anything open — that is the difference from {@code container.inspect}, which reads the
@@ -86,19 +82,6 @@ public final class BlockInspectTool implements TianshuTool<BlockInspectTool.Args
         if (scope.refusal().isPresent()) {
             return CompletableFuture.failedFuture(scope.refusal().get());
         }
-        return inspect(scope.actor(), args);
-    }
-
-    /** Shared by both sides of the pair: the actor decides whether the block is within reach and who reads it. */
-    static CompletableFuture<BlockInspectResult> inspect(ActorRef actor, Args args) {
-        BlockInspectRequest request = new BlockInspectRequest(args.x(), args.y(), args.z());
-        return TianshuRuntimePorts.find(BlockInspectPort.class)
-                .map(port -> port.inspect(actor, request)
-                        .thenCompose(result -> result.inspected()
-                                ? CompletableFuture.completedFuture(result)
-                                : CompletableFuture.failedFuture(new ToolException(ToolError.FAILED,
-                                        result.message().isBlank() ? "nothing could be read there" : result.message()))))
-                .orElseGet(() -> CompletableFuture.failedFuture(new ToolException(ToolError.UNAVAILABLE,
-                        "block inspection is only available on the server")));
+        return BlockInspectOps.inspect(scope.actor(), args.x(), args.y(), args.z());
     }
 }
