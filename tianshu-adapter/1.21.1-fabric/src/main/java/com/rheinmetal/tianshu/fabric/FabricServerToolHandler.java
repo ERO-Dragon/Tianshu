@@ -35,6 +35,7 @@ import com.rheinmetal.tianshu.api.tool.ServerBodyAutonomyCeiling;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ServerToolDispatch;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.mc.tool.ToolRequestCaller;
 import com.rheinmetal.tianshu.api.server.ServerActionExecutionPort;
 import com.rheinmetal.tianshu.api.tool.ToolCatalogPushRegistry;
 import com.rheinmetal.tianshu.mc.network.ToolCallRequestPacket;
@@ -199,7 +200,7 @@ public final class FabricServerToolHandler {
         if (player == null) {
             return;
         }
-        ToolCaller caller = ToolCaller.player(player.getUUID().toString(), player.hasPermissions(OPERATOR_PERMISSION_LEVEL));
+        ToolCaller caller = ToolRequestCaller.of(packet, player, OPERATOR_PERMISSION_LEVEL);
         ServerToolDispatch.respond(caller, packet.requestId(), packet.toolId(), packet.argsJson())
                 .whenComplete((reply, failure) -> {
                     if (reply != null) {

@@ -133,9 +133,9 @@ public final class TianshuNeoForge {
 
         // The tool channel's client half. It is registered once; "available" turns on only after the server's
         // catalog arrives, so a server without the component never advertises server tools.
-        ToolCallClient toolCalls = new ToolCallClient((requestId, toolId, argsJson) ->
+        ToolCallClient toolCalls = new ToolCallClient((requestId, toolId, argsJson, callerModule) ->
                 net.neoforged.neoforge.network.PacketDistributor.sendToServer(
-                        new ToolCallRequestPacket(requestId, toolId, argsJson)));
+                        new ToolCallRequestPacket(requestId, toolId, argsJson, callerModule)));
         TianshuRuntimePorts.register(ToolTransport.class, toolCalls);
         modEventBus.addListener((net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent registerPayloads) ->
                 TianshuNetwork.register(registerPayloads, toolCalls));

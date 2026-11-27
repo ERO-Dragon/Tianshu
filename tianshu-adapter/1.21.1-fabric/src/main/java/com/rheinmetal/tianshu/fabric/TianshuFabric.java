@@ -106,8 +106,8 @@ public final class TianshuFabric implements ModInitializer {
         // A dedicated server has no client classes to touch: everything that names one lives in the client branch.
         if (net.fabricmc.loader.api.FabricLoader.getInstance().getEnvironmentType()
                 == net.fabricmc.api.EnvType.CLIENT) {
-            toolClient = new ToolCallClient((requestId, toolId, argsJson) -> ClientPlayNetworking.send(
-                new ToolCallRequestPacket(requestId, toolId, argsJson)));
+            toolClient = new ToolCallClient((requestId, toolId, argsJson, callerModule) -> ClientPlayNetworking.send(
+                new ToolCallRequestPacket(requestId, toolId, argsJson, callerModule)));
             TianshuRuntimePorts.register(ToolTransport.class, toolClient);
             registerClientReceivers();
         }
