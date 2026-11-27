@@ -37,4 +37,15 @@ public interface EntitySpawnPort {
      * @param bodyId   the body to remove
      */
     CompletableFuture<Void> release(String moduleId, String bodyId);
+
+    /**
+     * Removes every body this module owns.
+     *
+     * <p>The platform calls this when the module stops: a body is the module's logic walking around, and logic that is
+     * gone should not leave anything behind. Adapters run it on their own thread, so a caller never blocks on the world.
+     * Bodies another module owns are left alone — that is the whole point of ownership.</p>
+     *
+     * @param moduleId the module that is stopping, and the only owner whose bodies are removed
+     */
+    void withdrawAll(String moduleId);
 }

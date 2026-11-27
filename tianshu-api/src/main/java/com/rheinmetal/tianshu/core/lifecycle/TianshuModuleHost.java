@@ -128,11 +128,25 @@ public class TianshuModuleHost {
         for (int i = startedAttempts.size() - 1; i >= 0; i--) {
             TianshuModuleInstallation installation = startedAttempts.get(i);
             firstFailure = invokeCleanup(firstFailure, installation, ModuleLifecyclePhase.STOP, installation.module()::stop);
+            // After its own cleanup, so the module can still see its bodies while it stops; its bodies go with it.
+            withdrawBodies(installation.module().moduleId());
         }
         attempted.removeIf(attempt -> attempt.phase() == ModuleLifecyclePhase.START);
         if (firstFailure != null) {
             throw firstFailure;
         }
+    }
+
+    /** Bodies belong to the module that asked for them; a stopped module takes them with it. */
+    private static void withdrawBodies(String moduleId) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        // No port means nothing ever spawned a body (a client without an authoritative side), so there is nothing to
+        // withdraw and no reason to require one.
+        java.util.Optional.ofNullable(com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts
+                        .find(com.rheinmetal.tianshu.api.entity.EntitySpawnPort.class).orElse(null))
+                .ifPresent(port -> port.withdrawAll(moduleId));
     }
 
     public void destroyAll() {
