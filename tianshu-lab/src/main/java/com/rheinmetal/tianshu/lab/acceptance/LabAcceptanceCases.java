@@ -147,6 +147,7 @@ public final class LabAcceptanceCases {
         cases.add(everyToolAnswersAnEnvelope());
         cases.add(eachActionAnswersToItsOwnSwitch());
         cases.add(aBodyComesBackAfterTheWorldReloads());
+        cases.add(aBodyCreatedOnTheServerIsVisibleToTheClient());
         cases.add(everyServerActionAnswersForItself());
         cases.add(theOpenContainerComesBackAsAValue());
         cases.add(handingItemsOverNeedsAReceiver());
@@ -2193,34 +2194,42 @@ public final class LabAcceptanceCases {
      * {@code tianshu-lab/persisted-body.txt}, the second one finds that id at session start or fails. A body that only
      * lives as long as the process would pass every other case and fail this one.</p>
      */
+    /**
+     * A module's body is still there after the world has been saved and loaded again.
+     *
+     * <p>A save and reload cannot happen inside one run, so this is a procedure the operator drives:
+     * {@code =persist} spawns a body and records it, the world is saved, {@code =persist-check} opens the same world
+     * and looks for it. Nothing else runs the procedure, because the record would otherwise be read by an unrelated
+     * later run — a body in one world is not evidence about another, and a marker that outlives its run turns that
+     * mismatch into a false failure.</p>
+     */
     private static AcceptanceCase aBodyComesBackAfterTheWorldReloads() {
         final String id = "ACC-BDY-8";
         final String title = "a module's body is still there after the world is saved and reloaded";
         return AcceptanceCase.of(id, title, () -> {
+            String mode = String.valueOf(System.getProperty("tianshu.lab.acceptance", "")).trim().toLowerCase(
+                    java.util.Locale.ROOT);
             java.nio.file.Path marker = java.nio.file.Path.of("tianshu-lab", "persisted-body.txt");
             try {
-                if (java.nio.file.Files.isRegularFile(marker)) {
-                    // "<dimension>|<body id>": a body spawned in the single-player save does not exist in the world a
-                    // later network run joins, and that is not a persistence failure.
-                    String[] recorded = java.nio.file.Files.readString(marker).trim().split("\\|", 2);
+                if (mode.equals("persist-check")) {
+                    if (!java.nio.file.Files.isRegularFile(marker)) {
+                        return AcceptanceOutcome.skip(id, title,
+                                "no body was recorded: run with =persist and save the world first");
+                    }
+                    String bodyId = java.nio.file.Files.readString(marker).trim();
                     java.nio.file.Files.deleteIfExists(marker);
-                    if (recorded.length == 2) {
-                        GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
-                        String here = pose == null ? "" : pose.dimensionId();
-                        if (!here.isBlank() && !here.equals(recorded[0])) {
-                            return AcceptanceOutcome.skip(id, title, "the recorded body lives in " + recorded[0]
-                                    + ", this session is in " + here);
-                        }
-                        String bodyId = recorded[1];
-                        boolean present = EntityActors.list().stream().anyMatch(body -> body.id().equals(bodyId));
-                        if (present) {
-                            TianshuRuntimePorts.find(EntitySpawnPort.class)
-                                    .ifPresent(port -> releaseQuietly(port, bodyId));
-                            return AcceptanceOutcome.pass(id, title, "body " + bodyId + " came back from the save");
-                        }
+                    boolean present = EntityActors.list().stream().anyMatch(body -> body.id().equals(bodyId));
+                    if (!present) {
                         return AcceptanceOutcome.fail(id, title,
                                 "body " + bodyId + " was written to the save but is gone after the reload");
                     }
+                    TianshuRuntimePorts.find(EntitySpawnPort.class).ifPresent(port -> releaseQuietly(port, bodyId));
+                    return AcceptanceOutcome.pass(id, title, "body " + bodyId + " came back from the save");
+                }
+                if (!mode.equals("persist")) {
+                    return AcceptanceOutcome.skip(id, title,
+                            "a save and reload is a two-run procedure: run with =persist, save the world, then"
+                                    + " run with =persist-check");
                 }
                 EntitySpawnPort port = TianshuRuntimePorts.find(EntitySpawnPort.class).orElse(null);
                 if (port == null) {
@@ -2235,9 +2244,9 @@ public final class LabAcceptanceCases {
                                 new ActorPosition(pose.dimensionId(), pose.x(), pose.y() + 1.0D, pose.z()), false)
                         .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 java.nio.file.Files.createDirectories(marker.getParent());
-                java.nio.file.Files.writeString(marker, pose.dimensionId() + "|" + actor.id());
+                java.nio.file.Files.writeString(marker, actor.id());
                 return AcceptanceOutcome.skip(id, title, "spawned " + actor.id() + " in " + pose.dimensionId()
-                        + "; save the world and run again to see whether it comes back");
+                        + "; save the world, then run again with =persist-check");
             } catch (Exception failed) {
                 return AcceptanceOutcome.fail(id, title, reasonOf(failed));
             }
@@ -2251,11 +2260,97 @@ public final class LabAcceptanceCases {
      * tier the cheat-grade actions do not exist here — no row, no switch, nothing to call. That is a skip, not a
      * failure, and it has to be asked before touching a switch: {@code setEnabled} on an unregistered tool throws.</p>
      */
+    /**
+     * A body the server creates is visible to the client through the tool channel.
+     *
+     * <p>This is the crossing a real entity mod makes: the mod is on both sides, the entity belongs to the server, and
+     * the client asks for it — it never spawns one itself. The bench's own capability does the asking
+     * ({@code tianshu_lab:summon_body}), the server's registry creates the body, and everything the client then learns
+     * about it comes from the ordinary {@code entity.*} tools over the same connection.</p>
+     */
+    private static AcceptanceCase aBodyCreatedOnTheServerIsVisibleToTheClient() {
+        final String id = "ACC-XEN-1";
+        final String title = "a body the server creates is visible to the client through the tool channel";
+        return AcceptanceCase.of(id, title, () -> {
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is nowhere to put a body");
+            }
+            ToolCaller caller = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
+            JsonObject args = new JsonObject();
+            args.addProperty("dimension", pose.dimensionId());
+            args.addProperty("x", pose.x());
+            args.addProperty("y", pose.y() + 1.0D);
+            args.addProperty("z", pose.z());
+            JsonObject summoned = call(ToolId.of(LabModuleRegistration.MOD_ID, "summon_body"), args, caller);
+            if (!okOf(summoned)) {
+                String code = codeOf(summoned);
+                if ("UNAVAILABLE".equals(code) || "UNKNOWN_TOOL".equals(code)) {
+                    return AcceptanceOutcome.skip(id, title,
+                            "this session has no authoritative body registry: " + detail(summoned));
+                }
+                return AcceptanceOutcome.fail(id, title, "the summon was refused: " + code + " " + detail(summoned));
+            }
+            String bodyId;
+            try {
+                bodyId = summoned.getAsJsonObject("result").get("bodyId").getAsString();
+            } catch (RuntimeException malformed) {
+                return AcceptanceOutcome.fail(id, title, "the summon answered without a body id: "
+                        + shortEnvelope(summoned));
+            }
+            try {
+                JsonObject listed = call(ToolId.of("minecraft", "entity.list"), new JsonObject(), caller);
+                if (!okOf(listed)) {
+                    return AcceptanceOutcome.fail(id, title, "entity.list refused the caller: " + codeOf(listed)
+                            + " " + detail(listed));
+                }
+                if (!listContains(listed, bodyId)) {
+                    return AcceptanceOutcome.fail(id, title, "the server created " + bodyId
+                            + " but the client's entity.list does not show it");
+                }
+                JsonObject released = call(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"),
+                        args("bodyId", bodyId), caller);
+                if (!okOf(released)) {
+                    return AcceptanceOutcome.fail(id, title, "the release was refused: " + codeOf(released)
+                            + " " + detail(released));
+                }
+                JsonObject after = call(ToolId.of("minecraft", "entity.list"), new JsonObject(), caller);
+                if (okOf(after) && listContains(after, bodyId)) {
+                    return AcceptanceOutcome.fail(id, title, "the release answered ok but " + bodyId
+                            + " is still listed");
+                }
+                return AcceptanceOutcome.pass(id, title, "created " + bodyId + " on the authoritative side, saw it"
+                        + " through entity.list, and it was gone again after the release");
+            } finally {
+                // Never leave a bench body behind when an assertion above failed.
+                try {
+                    call(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"), args("bodyId", bodyId), caller);
+                } catch (Exception alreadyGone) {
+                    // The body is either released already or the server is gone; nothing to clean up.
+                }
+            }
+        });
+    }
+
+    /** Whether {@code entity.list}'s answer names this body. */
+    private static boolean listContains(JsonObject envelope, String bodyId) {
+        try {
+            for (JsonElement row : envelope.getAsJsonObject("result").getAsJsonArray("bodies")) {
+                if (row.getAsJsonObject().get("id").getAsString().equals(bodyId)) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException malformed) {
+            return false;
+        }
+        return false;
+    }
+
     private static boolean offered(ToolId tool) {
         return TianshuTools.find(tool) != null;
     }
 
-    /** The skip an action case returns when the server never named its tool. */
+    /** The skip a case returns when the server never named its tool. */
     private static AcceptanceOutcome notOfferedHere(String id, String title, ToolId tool) {
         return AcceptanceOutcome.skip(id, title, tool + " was not offered on this side: a server below the FULL tier"
                 + " does not name cheat-grade actions, so there is no switch to observe");
@@ -2466,6 +2561,11 @@ public final class LabAcceptanceCases {
                 unregister.run();
             }
         });
+    }
+
+    /** Whether an envelope says the call succeeded; a missing flag is not a success. */
+    private static boolean okOf(JsonObject envelope) {
+        return envelope != null && envelope.has("ok") && envelope.get("ok").getAsBoolean();
     }
 
     private static String codeOf(JsonObject envelope) {

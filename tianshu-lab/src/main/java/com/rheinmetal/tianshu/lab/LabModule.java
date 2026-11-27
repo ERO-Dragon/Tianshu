@@ -301,7 +301,10 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
             return;
         }
         boolean needsCatalogue = requiresServerCatalogue();
-        boolean needsWorld = needsCatalogue || "world".equalsIgnoreCase(requested.trim());
+        // `world` opens a world for the run; `persist` and `persist-check` are the save-and-reload procedure, which
+        // needs one just as much (it has to spawn into a world and find the body again in the same one).
+        String mode = requested.trim().toLowerCase(java.util.Locale.ROOT);
+        boolean needsWorld = needsCatalogue || mode.equals("world") || mode.startsWith("persist");
         Thread worker = new Thread(() -> {
             long deadline = System.currentTimeMillis() + AUTO_RUN_REGISTRY_WAIT_MILLIS;
             while (System.currentTimeMillis() < deadline && isRegistryEmpty()) {

@@ -24,6 +24,9 @@ public final class LabNeoForgeMod {
         modBus.addListener((RegisterPayloadHandlersEvent event) ->
                 event.registrar("1").configurationBidirectional(Presence.TYPE,
                         StreamCodec.unit(new Presence()), (payload, context) -> {}));
+        // The bench's capabilities exist in every process that loads the bench, including a dedicated server: the
+        // tools run on the authoritative side, and a client only ever asks for them over the tool channel.
+        com.rheinmetal.tianshu.lab.tool.LabTools.register();
         if (FMLEnvironment.dist == Dist.CLIENT) {
             LabModuleRegistration.announce();
         }
