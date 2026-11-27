@@ -1,6 +1,8 @@
 package com.rheinmetal.tianshu.lab.tool;
 
 import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.lab.LabModuleRegistration;
@@ -27,11 +29,19 @@ public final class LabTools {
         return List.of(new SummonBodyTool(), new ReleaseBodyTool());
     }
 
-    /** Publishes them under the bench's module id, so a client sees them as that module's capability. */
+    /**
+     * Publishes them under the bench's module id, and declares what the bench consumes.
+     *
+     * <p>Both halves belong here rather than in the module's start: a dedicated server loads this mod but does not run
+     * the client module, and the server is exactly where a call from the bench's agent is judged — it has to know what
+     * that caller subscribes to, or the platform's own tools are invisible to it.</p>
+     */
     public static void register() {
         if (!REGISTERED.compareAndSet(false, true)) {
             return;
         }
+        CapabilitySubscriptions.declare(LabModuleRegistration.MOD_ID,
+                CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
         for (TianshuTool<?, ?> tool : tools()) {
             TianshuTools.register(tool, LabModuleRegistration.MOD_ID, CapabilitySharing.ALL);
         }

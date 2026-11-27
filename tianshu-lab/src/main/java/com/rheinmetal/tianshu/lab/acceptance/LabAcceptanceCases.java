@@ -37,6 +37,8 @@ import com.rheinmetal.tianshu.api.entity.MoveOptions;
 import com.rheinmetal.tianshu.api.entity.MoveResult;
 import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
+import java.util.Optional;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
@@ -58,6 +60,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -136,7 +139,7 @@ public final class LabAcceptanceCases {
         cases.add(theGameContextDescribesALoadedWorld());
         cases.add(theGameContextCapturesDoNotThrow());
         cases.add(aPlayerCommandsTheBodyItOwns());
-        cases.add(aClientModuleCannotDriveAnNpc());
+        cases.add(anotherModuleCannotDriveABodyItDoesNotOwn());
         cases.add(aModuleSpawnsAndReleasesTheTypeItDeclared());
         cases.add(aModuleDrivesTheBodyTypeItDeclared());
         cases.add(aBodyRefusesAnUnregisteredBody());
@@ -148,6 +151,14 @@ public final class LabAcceptanceCases {
         cases.add(eachActionAnswersToItsOwnSwitch());
         cases.add(aBodyComesBackAfterTheWorldReloads());
         cases.add(aBodyCreatedOnTheServerIsVisibleToTheClient());
+        cases.add(theQueryToolsAnswerARealId());
+        cases.add(aPlayerAndABodyReadTheSameBlock());
+        cases.add(theSessionDescribesItself());
+        cases.add(anItemCanBeReadBySlot());
+        cases.add(theBodyReadsAnswerForAnOwnedBody());
+        cases.add(theClientListsItsPacksAndSounds());
+        cases.add(severalBodiesAtOnceAreAllReachable());
+        cases.add(anAgentInAPlayersSessionDrivesABody());
         cases.add(everyServerActionAnswersForItself());
         cases.add(theOpenContainerComesBackAsAValue());
         cases.add(handingItemsOverNeedsAReceiver());
@@ -1683,49 +1694,62 @@ public final class LabAcceptanceCases {
     }
 
     /**
-     * A client-side module cannot drive an NPC: the wire authenticates players only.
+     * Another module cannot drive a body it does not own.
      *
-     * <p>The rule is the whole reason a body argument is not a way to reach someone else's NPC. A module that owns
-     * bodies drives them on the authoritative side, in-process; here what has to hold is the refusal, taken before any
-     * port runs.</p>
+     * <p>Ownership is the rule that keeps one module's NPC out of another's hands: the caller runtime may drive bodies,
+     * but only the ones it asked for, or the ones belonging to a player it is acting for. This case states both halves
+     * — the owner can drive, an unrelated module is refused — so a regression in either direction shows up here.</p>
      */
-    private static AcceptanceCase aClientModuleCannotDriveAnNpc() {
+    private static AcceptanceCase anotherModuleCannotDriveABodyItDoesNotOwn() {
         final String id = "ACC-BDY-7";
-        final String title = "a client-side module's body call is refused before any port runs";
+        final String title = "another module cannot drive a body it does not own";
         return AcceptanceCase.of(id, title, () -> {
-            String owner = localPlayerId();
-            if (owner == null) {
-                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no body to drive");
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no body to place");
             }
-            if (!offered(ToolId.of("minecraft", "entity.look"))) {
-                return notOfferedHere(id, title, ToolId.of("minecraft", "entity.look"));
-            }
-            AcceptanceBodies bodies = new AcceptanceBodies(owner);
-            Runnable unregister = EntityActors.register(bodies);
-            try {
-                JsonObject args = new JsonObject();
-                args.addProperty("body", AcceptanceBodies.BODY_ID);
-                args.addProperty("x", 10);
-                args.addProperty("y", 64);
-                args.addProperty("z", 10);
-                JsonObject envelope = callEnabled(ToolId.of("minecraft", "entity.look"), args,
-                        ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolAutonomy.FULL));
-                boolean refused = envelope.has("ok") && !envelope.get("ok").getAsBoolean();
-                String text = String.valueOf(envelope);
-                // Two refusals are correct here and which one arrives depends on whether the server has body tools
-                // switched on: the switch is checked first, and the wire's rule is what stops the call when it is on.
-                // What the case locks is that neither reaches the port on a module's word.
-                boolean named = text.contains("body.controller.unverified") || text.contains("is switched off");
-                boolean nothingHappened = bodies.looks().isEmpty();
-                if (refused && named && nothingHappened) {
-                    return AcceptanceOutcome.pass(id, title, "refused before the port: "
-                            + codeOf(envelope) + " " + (text.contains("body.controller.unverified")
-                                    ? "body.controller.unverified" : "tool switched off"));
+            ToolCaller owner = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
+            JsonObject summonArgs = new JsonObject();
+            summonArgs.addProperty("dimension", pose.dimensionId());
+            summonArgs.addProperty("x", pose.x());
+            summonArgs.addProperty("y", pose.y() + 1.0D);
+            summonArgs.addProperty("z", pose.z());
+            JsonObject summoned = callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "summon_body"),
+                    summonArgs, owner);
+            if (!okOf(summoned)) {
+                if ("UNAVAILABLE".equals(codeOf(summoned)) || "UNKNOWN_TOOL".equals(codeOf(summoned))) {
+                    return AcceptanceOutcome.skip(id, title, "a module drives its NPC on the authoritative side"
+                            + " and this session has none: " + detail(summoned));
                 }
-                return AcceptanceOutcome.fail(id, title, "refused=" + refused + " named=" + named
-                        + " portRan=" + !nothingHappened + " envelope=" + shortEnvelope(envelope));
+                return AcceptanceOutcome.fail(id, title, "the summon was refused: " + codeOf(summoned)
+                        + " " + detail(summoned));
+            }
+            String bodyId = summoned.getAsJsonObject("result").get("bodyId").getAsString();
+            try {
+                // The ownership rule itself, asked directly: a tool call would first have to pass visibility, which is
+                // a different rule, and testing one rule through another is how a case starts asserting the wrong thing.
+                Optional<ToolException> stranger = EntityActors.checkAccess(
+                        ToolCaller.agent("unrelated.module", false, ToolAutonomy.CONSERVATIVE), bodyId);
+                if (stranger.isEmpty()) {
+                    return AcceptanceOutcome.fail(id, title, "an unrelated module was allowed to drive " + bodyId);
+                }
+                if (!stranger.get().getMessage().startsWith(BodyFailure.CONTROLLER_MISMATCH.id())) {
+                    return AcceptanceOutcome.fail(id, title, "the refusal named something else: "
+                            + stranger.get().getMessage());
+                }
+                Optional<ToolException> own = EntityActors.checkAccess(owner, bodyId);
+                if (own.isPresent()) {
+                    return AcceptanceOutcome.fail(id, title, "the owner was refused its own body: "
+                            + own.get().getMessage());
+                }
+                return AcceptanceOutcome.pass(id, title, "the owner drives " + bodyId
+                        + " and an unrelated module gets body.controller.mismatch");
             } finally {
-                unregister.run();
+                try {
+                    callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"), args("bodyId", bodyId), owner);
+                } catch (Exception alreadyGone) {
+                    // Released or gone with the session.
+                }
             }
         });
     }
@@ -2261,6 +2285,471 @@ public final class LabAcceptanceCases {
      * failure, and it has to be asked before touching a switch: {@code setEnabled} on an unregistered tool throws.</p>
      */
     /**
+     * An agent in a player's session drives a body across the wire.
+     *
+     * <p>The model runs on the client; the body belongs to the server. This case is the crossing the platform has to
+     * support for that: the call goes over the tool channel with the agent's module id, the server pairs it with the
+     * player on the connection, and the ownership rule decides — no model and no key ever reach the server.</p>
+     */
+    private static AcceptanceCase anAgentInAPlayersSessionDrivesABody() {
+        final String id = "ACC-XEN-2";
+        final String title = "an agent in a player's session drives a body across the wire";
+        return AcceptanceCase.of(id, title, () -> {
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is nowhere to put a body");
+            }
+            ToolCaller caller = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
+            JsonObject summonArgs = new JsonObject();
+            summonArgs.addProperty("dimension", pose.dimensionId());
+            summonArgs.addProperty("x", pose.x());
+            summonArgs.addProperty("y", pose.y() + 1.0D);
+            summonArgs.addProperty("z", pose.z());
+            JsonObject summoned = call(ToolId.of(LabModuleRegistration.MOD_ID, "summon_body"), summonArgs, caller);
+            if (!okOf(summoned)) {
+                if ("UNAVAILABLE".equals(codeOf(summoned)) || "UNKNOWN_TOOL".equals(codeOf(summoned))) {
+                    return AcceptanceOutcome.skip(id, title, "no server component to ask: " + detail(summoned));
+                }
+                return AcceptanceOutcome.fail(id, title, "the summon was refused: " + codeOf(summoned)
+                        + " " + detail(summoned));
+            }
+            String bodyId = summoned.getAsJsonObject("result").get("bodyId").getAsString();
+            try {
+                JsonObject status = call(ToolId.of("minecraft", "entity.status"), args("body", bodyId), caller);
+                if (!okOf(status)) {
+                    return AcceptanceOutcome.fail(id, title, "the agent could not read its own body's status: "
+                            + codeOf(status) + " " + detail(status));
+                }
+                int x = (int) Math.floor(pose.x());
+                int y = (int) Math.floor(pose.y()) - 1;
+                int z = (int) Math.floor(pose.z());
+                JsonObject blockArgs = new JsonObject();
+                blockArgs.addProperty("x", x);
+                blockArgs.addProperty("y", y);
+                blockArgs.addProperty("z", z);
+                JsonObject playerBlock = call(ToolId.of("minecraft", "block.inspect"), blockArgs, caller);
+                if (!okOf(playerBlock)) {
+                    return AcceptanceOutcome.fail(id, title, "block.inspect refused the position: "
+                            + codeOf(playerBlock) + " " + detail(playerBlock));
+                }
+                JsonObject bodyBlockArgs = new JsonObject();
+                bodyBlockArgs.addProperty("body", bodyId);
+                bodyBlockArgs.addProperty("x", x);
+                bodyBlockArgs.addProperty("y", y);
+                bodyBlockArgs.addProperty("z", z);
+                JsonObject bodyBlock = call(ToolId.of("minecraft", "entity.block.inspect"), bodyBlockArgs, caller);
+                if (!okOf(bodyBlock)) {
+                    return AcceptanceOutcome.fail(id, title, "the agent could not drive its own body: "
+                            + codeOf(bodyBlock) + " " + detail(bodyBlock));
+                }
+                String seen = blockIdOf(bodyBlock);
+                if (!seen.equals(blockIdOf(playerBlock))) {
+                    return AcceptanceOutcome.fail(id, title, "the body read a different block than the player: "
+                            + seen + " vs " + blockIdOf(playerBlock));
+                }
+                JsonObject released = call(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"),
+                        args("bodyId", bodyId), caller);
+                if (!okOf(released)) {
+                    return AcceptanceOutcome.fail(id, title, "the agent could not release its own body: "
+                            + codeOf(released) + " " + detail(released));
+                }
+                return AcceptanceOutcome.pass(id, title, "the agent drove body " + bodyId + " over the wire and both"
+                        + " sides read " + seen);
+            } finally {
+                try {
+                    call(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"), args("bodyId", bodyId), caller);
+                } catch (Exception alreadyGone) {
+                    // Released or the session is gone; nothing to clean up.
+                }
+            }
+        });
+    }
+
+    /** The world and the player's inventory answer with the values the session actually has. */
+    private static AcceptanceCase theSessionDescribesItself() {
+        final String id = "ACC-INS-2";
+        final String title = "world.info and inventory.inspect describe the live session";
+        return AcceptanceCase.of(id, title, () -> {
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded");
+            }
+            ToolCaller caller = ToolCaller.player(localPlayerId() == null ? "lab" : localPlayerId(), true);
+            JsonObject world = call(ToolId.of("minecraft", "world.info"), new JsonObject(), caller);
+            if (!okOf(world)) {
+                return AcceptanceOutcome.fail(id, title, "world.info was refused: " + codeOf(world)
+                        + " " + detail(world));
+            }
+            JsonObject info = world.getAsJsonObject("result");
+            String dimension = info.has("dimension") ? info.get("dimension").getAsString() : "";
+            if (!dimension.equals(pose.dimensionId())) {
+                return AcceptanceOutcome.fail(id, title, "world.info named " + dimension + " but the player is in "
+                        + pose.dimensionId());
+            }
+            if (!info.has("weather") || info.get("weather").getAsString().isBlank()) {
+                return AcceptanceOutcome.fail(id, title, "world.info answered without weather: " + shortEnvelope(world));
+            }
+            JsonObject inventory = call(ToolId.of("minecraft", "inventory.inspect"), new JsonObject(), caller);
+            if (!okOf(inventory)) {
+                return AcceptanceOutcome.fail(id, title, "inventory.inspect was refused: " + codeOf(inventory)
+                        + " " + detail(inventory));
+            }
+            if (!inventory.getAsJsonObject("result").has("slots")) {
+                return AcceptanceOutcome.fail(id, title, "inventory.inspect answered without slots: "
+                        + shortEnvelope(inventory));
+            }
+            return AcceptanceOutcome.pass(id, title, "world " + dimension + " (" + info.get("weather").getAsString()
+                    + "), inventory with " + inventory.getAsJsonObject("result").getAsJsonArray("slots").size()
+                    + " reported slots");
+        });
+    }
+
+    /** An item is read by its slot, and the reading names the same item the inventory reported there. */
+    private static AcceptanceCase anItemCanBeReadBySlot() {
+        final String id = "ACC-INS-3";
+        final String title = "an item is read by the slot it sits in";
+        return AcceptanceCase.of(id, title, () -> {
+            ToolCaller caller = ToolCaller.player(localPlayerId() == null ? "lab" : localPlayerId(), true);
+            JsonObject inventory = call(ToolId.of("minecraft", "inventory.inspect"), new JsonObject(), caller);
+            if (!okOf(inventory)) {
+                return AcceptanceOutcome.fail(id, title, "inventory.inspect was refused: " + codeOf(inventory)
+                        + " " + detail(inventory));
+            }
+            var slots = inventory.getAsJsonObject("result").getAsJsonArray("slots");
+            if (slots == null || slots.isEmpty()) {
+                return AcceptanceOutcome.skip(id, title, "the player carries nothing, so there is no slot to read");
+            }
+            JsonObject first = slots.get(0).getAsJsonObject();
+            int slot = first.get("slot").getAsInt();
+            String expected = first.get("itemId").getAsString();
+            JsonObject item = call(ToolId.of("minecraft", "item.inspect"), args("slot", slot), caller);
+            if (!okOf(item)) {
+                return AcceptanceOutcome.fail(id, title, "item.inspect refused slot " + slot + ": "
+                        + codeOf(item) + " " + detail(item));
+            }
+            String itemId = String.valueOf(item.getAsJsonObject("result").get("itemId").getAsString());
+            if (!itemId.equals(expected)) {
+                return AcceptanceOutcome.fail(id, title, "slot " + slot + " holds " + expected
+                        + " but item.inspect reported " + itemId);
+            }
+            return AcceptanceOutcome.pass(id, title, "slot " + slot + " reads back as " + itemId);
+        });
+    }
+
+    /** The body-side reads answer for a body the module owns, and they agree with the spawn. */
+    private static AcceptanceCase theBodyReadsAnswerForAnOwnedBody() {
+        final String id = "ACC-ENT-4";
+        final String title = "status, inventory and scan answer for a body the module owns";
+        return AcceptanceCase.of(id, title, () -> {
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is nowhere to put a body");
+            }
+            ToolCaller owner = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
+            JsonObject summonArgs = new JsonObject();
+            summonArgs.addProperty("dimension", pose.dimensionId());
+            summonArgs.addProperty("x", pose.x());
+            summonArgs.addProperty("y", pose.y() + 1.0D);
+            summonArgs.addProperty("z", pose.z());
+            JsonObject summoned = callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "summon_body"),
+                    summonArgs, owner);
+            if (!okOf(summoned)) {
+                if ("UNAVAILABLE".equals(codeOf(summoned)) || "UNKNOWN_TOOL".equals(codeOf(summoned))) {
+                    return AcceptanceOutcome.skip(id, title, "a module drives its NPC on the authoritative side"
+                            + " and this session has none: " + detail(summoned));
+                }
+                return AcceptanceOutcome.fail(id, title, "the summon was refused: " + codeOf(summoned)
+                        + " " + detail(summoned));
+            }
+            String bodyId = summoned.getAsJsonObject("result").get("bodyId").getAsString();
+            try {
+                JsonObject status = callOnServer(ToolId.of("minecraft", "entity.status"), args("body", bodyId), owner);
+                if (!okOf(status)) {
+                    return AcceptanceOutcome.fail(id, title, "entity.status was refused: " + codeOf(status)
+                            + " " + detail(status));
+                }
+                JsonObject row = status.getAsJsonObject("result");
+                if (!bodyId.equals(String.valueOf(row.get("id").getAsString()))) {
+                    return AcceptanceOutcome.fail(id, title, "entity.status answered for a different body: "
+                            + shortEnvelope(status));
+                }
+                if (!pose.dimensionId().equals(String.valueOf(row.get("dimension").getAsString()))) {
+                    return AcceptanceOutcome.fail(id, title, "the body reports dimension "
+                            + row.get("dimension").getAsString() + ", not " + pose.dimensionId());
+                }
+                JsonObject inventory = callOnServer(ToolId.of("minecraft", "entity.inventory"),
+                        args("body", bodyId), owner);
+                if (!okOf(inventory)) {
+                    return AcceptanceOutcome.fail(id, title, "entity.inventory was refused: " + codeOf(inventory)
+                            + " " + detail(inventory));
+                }
+                JsonObject scanArgs = args("body", bodyId);
+                scanArgs.addProperty("radius", 8);
+                scanArgs.addProperty("blocks", "minecraft:stone");
+                scanArgs.addProperty("entities", "minecraft:player");
+                JsonObject scan = callOnServer(ToolId.of("minecraft", "entity.scan"), scanArgs, owner);
+                if (!okOf(scan)) {
+                    return AcceptanceOutcome.fail(id, title, "entity.scan was refused: " + codeOf(scan)
+                            + " " + detail(scan));
+                }
+                return AcceptanceOutcome.pass(id, title, "status names " + bodyId + " in " + pose.dimensionId()
+                        + ", inventory and scan both answered");
+            } finally {
+                try {
+                    callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"), args("bodyId", bodyId), owner);
+                } catch (Exception alreadyGone) {
+                    // Released or gone with the session.
+                }
+            }
+        });
+    }
+
+    /** The client's own lists answer with what this installation has. */
+    private static AcceptanceCase theClientListsItsPacksAndSounds() {
+        final String id = "ACC-LOC-1";
+        final String title = "the client lists the packs and sounds it loaded";
+        return AcceptanceCase.of(id, title, () -> {
+            ToolCaller caller = ToolCaller.player(localPlayerId() == null ? "lab" : localPlayerId(), true);
+            JsonObject packs = call(ToolId.of("minecraft", "client.pack.list"), new JsonObject(), caller);
+            if (!okOf(packs)) {
+                return AcceptanceOutcome.fail(id, title, "client.pack.list was refused: " + codeOf(packs)
+                        + " " + detail(packs));
+            }
+            var packList = packs.getAsJsonArray("result");
+            if (packList == null || packList.isEmpty()) {
+                return AcceptanceOutcome.fail(id, title, "the client reported no resource packs at all: "
+                        + shortEnvelope(packs));
+            }
+            JsonObject audio = call(ToolId.of("minecraft", "client.audio.list"), new JsonObject(), caller);
+            if (!okOf(audio)) {
+                return AcceptanceOutcome.fail(id, title, "client.audio.list was refused: " + codeOf(audio)
+                        + " " + detail(audio));
+            }
+            return AcceptanceOutcome.pass(id, title, packList.size() + " packs listed, audio list answered");
+        });
+    }
+
+    /**
+     * Several bodies at once: every one is reachable by id and every one can be released.
+     *
+     * <p>An AI-driven world does not hold hundreds of NPCs, so the size checked here is the size that will really be
+     * used. What it rules out is the cheap mistake: an id that only works for the first body, or a release that leaves
+     * the others behind.</p>
+     */
+    private static AcceptanceCase severalBodiesAtOnceAreAllReachable() {
+        final String id = "ACC-XEN-4";
+        final String title = "several bodies at once are all reachable and all released";
+        final int count = 8;
+        return AcceptanceCase.of(id, title, () -> {
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is nowhere to put a body");
+            }
+            ToolCaller owner = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
+            java.util.List<String> ids = new java.util.ArrayList<>();
+            try {
+                for (int i = 0; i < count; i++) {
+                    JsonObject args = new JsonObject();
+                    args.addProperty("dimension", pose.dimensionId());
+                    args.addProperty("x", pose.x() + i);
+                    args.addProperty("y", pose.y() + 1.0D);
+                    args.addProperty("z", pose.z());
+                    JsonObject summoned = callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "summon_body"),
+                            args, owner);
+                    if (!okOf(summoned)) {
+                        if (ids.isEmpty() && ("UNAVAILABLE".equals(codeOf(summoned))
+                                || "UNKNOWN_TOOL".equals(codeOf(summoned)))) {
+                            return AcceptanceOutcome.skip(id, title, "a module drives its NPC on the authoritative"
+                                    + " side and this session has none: " + detail(summoned));
+                        }
+                        return AcceptanceOutcome.fail(id, title, "body " + i + " was refused: "
+                                + codeOf(summoned) + " " + detail(summoned));
+                    }
+                    ids.add(summoned.getAsJsonObject("result").get("bodyId").getAsString());
+                }
+                JsonObject listed = callOnServer(ToolId.of("minecraft", "entity.list"), new JsonObject(), owner);
+                if (!okOf(listed)) {
+                    return AcceptanceOutcome.fail(id, title, "entity.list was refused: " + codeOf(listed)
+                            + " " + detail(listed));
+                }
+                for (String bodyId : ids) {
+                    if (!listContains(listed, bodyId)) {
+                        return AcceptanceOutcome.fail(id, title, "body " + bodyId + " was created but is not listed");
+                    }
+                }
+                for (String bodyId : ids) {
+                    JsonObject released = callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"),
+                            args("bodyId", bodyId), owner);
+                    if (!okOf(released)) {
+                        return AcceptanceOutcome.fail(id, title, "body " + bodyId + " could not be released: "
+                                + codeOf(released) + " " + detail(released));
+                    }
+                }
+                JsonObject after = callOnServer(ToolId.of("minecraft", "entity.list"), new JsonObject(), owner);
+                for (String bodyId : ids) {
+                    if (okOf(after) && listContains(after, bodyId)) {
+                        return AcceptanceOutcome.fail(id, title, "body " + bodyId + " is still listed after release");
+                    }
+                }
+                return AcceptanceOutcome.pass(id, title, count + " bodies created, all listed, all released");
+            } finally {
+                for (String bodyId : ids) {
+                    try {
+                        callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"), args("bodyId", bodyId), owner);
+                    } catch (Exception alreadyGone) {
+                        // Released or gone with the session.
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * The three id-driven query tools answer a real id with a real answer.
+     *
+     * <p>They are the cheap half of "knowing what exists": a recipe, a loot table and a tag are all looked up by id and
+     * answered from the game's own data. A tool that silently returns an empty payload is indistinguishable from a
+     * missing tool, so each answer has to carry more than its envelope.</p>
+     */
+    private static AcceptanceCase theQueryToolsAnswerARealId() {
+        final String id = "ACC-QRY-1";
+        final String title = "recipe, loot and tag lookups answer a real id";
+        return AcceptanceCase.of(id, title, () -> {
+            ToolCaller caller = ToolCaller.player(localPlayerId() == null ? "lab" : localPlayerId(), true);
+            JsonObject recipeArgs = new JsonObject();
+            recipeArgs.addProperty("outputItemId", "minecraft:stick");
+            JsonObject lootArgs = new JsonObject();
+            lootArgs.addProperty("blockId", "minecraft:stone");
+            JsonObject tagArgs = new JsonObject();
+            tagArgs.addProperty("tagId", "minecraft:logs");
+            Map<ToolId, JsonObject> checks = new LinkedHashMap<>();
+            checks.put(ToolId.of("minecraft", "recipe.query"), recipeArgs);
+            checks.put(ToolId.of("minecraft", "loot.query"), lootArgs);
+            checks.put(ToolId.of("minecraft", "tag.query"), tagArgs);
+            for (Map.Entry<ToolId, JsonObject> check : checks.entrySet()) {
+                JsonObject envelope = call(check.getKey(), check.getValue(), caller);
+                String code = codeOf(envelope);
+                if (!okOf(envelope)) {
+                    if ("DISABLED".equals(code)) {
+                        return AcceptanceOutcome.skip(id, title, check.getKey() + " is switched off in this instance");
+                    }
+                    return AcceptanceOutcome.fail(id, title, check.getKey() + " refused a real id: " + code
+                            + " " + detail(envelope));
+                }
+                if (payloadSize(envelope) < 16) {
+                    return AcceptanceOutcome.fail(id, title, check.getKey()
+                            + " answered an empty payload for a real id: " + shortEnvelope(envelope));
+                }
+            }
+            return AcceptanceOutcome.pass(id, title, "recipe, loot and tag each resolved a real id");
+        });
+    }
+
+    /**
+     * The player and a body read the same block identically.
+     *
+     * <p>The split pair (player side and body side) shares one world operation, so the only way this can go wrong is a
+     * wiring mistake on the way in. Both readings name the same block, which is a much stronger statement than "two
+     * envelopes came back".</p>
+     */
+    private static AcceptanceCase aPlayerAndABodyReadTheSameBlock() {
+        final String id = "ACC-INS-1";
+        final String title = "the player and a body read the same block identically";
+        return AcceptanceCase.of(id, title, () -> {
+            GamePlayerPose pose = AcceptanceEnvironment.readGame(ClientGameContextPort::capturePlayerPose);
+            if (pose == null || pose.dimensionId().isBlank()) {
+                return AcceptanceOutcome.skip(id, title, "no world is loaded, so there is no block under the player");
+            }
+            int x = (int) Math.floor(pose.x());
+            int y = (int) Math.floor(pose.y()) - 1;
+            int z = (int) Math.floor(pose.z());
+            ToolCaller caller = ToolCaller.agent(LabModuleRegistration.MOD_ID, true, ToolAutonomy.CONSERVATIVE);
+            JsonObject args = new JsonObject();
+            args.addProperty("x", x);
+            args.addProperty("y", y);
+            args.addProperty("z", z);
+            JsonObject playerReading = call(ToolId.of("minecraft", "block.inspect"), args, caller);
+            if (!okOf(playerReading)) {
+                return AcceptanceOutcome.fail(id, title, "block.inspect refused the position: "
+                        + codeOf(playerReading) + " " + detail(playerReading));
+            }
+            String playerBlock = blockIdOf(playerReading);
+            if (playerBlock.isBlank()) {
+                return AcceptanceOutcome.fail(id, title, "block.inspect answered without a block id: "
+                        + shortEnvelope(playerReading));
+            }
+            JsonObject summonArgs = new JsonObject();
+            summonArgs.addProperty("dimension", pose.dimensionId());
+            summonArgs.addProperty("x", x + 0.5D);
+            summonArgs.addProperty("y", y + 1.0D);
+            summonArgs.addProperty("z", z + 0.5D);
+            // The whole case belongs to the authoritative side: a module that is not there has no registry to ask,
+            // and asking over the wire would leave a body this side cannot release.
+            JsonObject summoned = callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "summon_body"), summonArgs, caller);
+            if (!okOf(summoned)) {
+                if ("UNAVAILABLE".equals(codeOf(summoned)) || "UNKNOWN_TOOL".equals(codeOf(summoned))) {
+                    return AcceptanceOutcome.skip(id, title,
+                            "a module drives its NPC on the authoritative side and this session has none: "
+                                    + detail(summoned));
+                }
+                return AcceptanceOutcome.fail(id, title, "the summon was refused: " + codeOf(summoned)
+                        + " " + detail(summoned));
+            }
+            String bodyId = summoned.getAsJsonObject("result").get("bodyId").getAsString();
+            try {
+                JsonObject bodyArgs = new JsonObject();
+                bodyArgs.addProperty("body", bodyId);
+                bodyArgs.addProperty("x", x);
+                bodyArgs.addProperty("y", y);
+                bodyArgs.addProperty("z", z);
+                // A module drives its own NPC where the ownership rule can be checked: on the authoritative side.
+                // Over the wire the server would judge this agent as the connection's player, which is a different
+                // question from "does this module own that body".
+                JsonObject bodyReading = callOnServer(ToolId.of("minecraft", "entity.block.inspect"), bodyArgs, caller);
+                if (!okOf(bodyReading)) {
+                    String code = codeOf(bodyReading);
+                    if ("NO_PERMISSION".equals(code) || "UNSUPPORTED_SIDE".equals(code)
+                            || "UNAVAILABLE".equals(code)) {
+                        return AcceptanceOutcome.skip(id, title, "a module drives its NPC on the authoritative side"
+                                + " and this session has none: " + detail(bodyReading));
+                    }
+                    return AcceptanceOutcome.fail(id, title, "entity.block.inspect was refused for the body it owns: "
+                            + code + " " + detail(bodyReading));
+                }
+                String bodyBlock = blockIdOf(bodyReading);
+                if (!playerBlock.equals(bodyBlock)) {
+                    return AcceptanceOutcome.fail(id, title, "the two sides disagree about the same block: player "
+                            + playerBlock + ", body " + bodyBlock);
+                }
+                return AcceptanceOutcome.pass(id, title, "both sides read " + playerBlock + " at " + x + "," + y + "," + z);
+            } finally {
+                try {
+                    callOnServer(ToolId.of(LabModuleRegistration.MOD_ID, "release_body"), args("bodyId", bodyId), caller);
+                } catch (Exception alreadyGone) {
+                    // Nothing left to clean up.
+                }
+            }
+        });
+    }
+
+    /** The block id inside a reading, or an empty string when the answer has none. */
+    private static String blockIdOf(JsonObject envelope) {
+        try {
+            return String.valueOf(envelope.getAsJsonObject("result").get("blockId").getAsString()).trim();
+        } catch (RuntimeException malformed) {
+            return "";
+        }
+    }
+
+    /** How many characters of payload came back; zero when there is no result at all. */
+    private static int payloadSize(JsonObject envelope) {
+        if (envelope == null || !envelope.has("result") || envelope.get("result").isJsonNull()) {
+            return 0;
+        }
+        return envelope.get("result").toString().trim().length();
+    }
+
+    /**
      * A body the server creates is visible to the client through the tool channel.
      *
      * <p>This is the crossing a real entity mod makes: the mod is on both sides, the entity belongs to the server, and
@@ -2457,6 +2946,12 @@ public final class LabAcceptanceCases {
             }
         }
         return false;
+    }
+
+    /** A call the authoritative side makes itself; the only way a module may drive its own body. */
+    private static JsonObject callOnServer(ToolId tool, JsonObject args, ToolCaller caller) throws Exception {
+        return TianshuTools.callJson(tool, args, caller, ToolSide.SERVER)
+                .get(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
     private static JsonObject call(ToolId tool, JsonObject args, ToolCaller caller) throws Exception {

@@ -156,7 +156,6 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
 
     @Override
     public void start(ModuleRuntimeContext context) {
-        CapabilitySubscriptions.declare(LabModuleRegistration.MOD_ID, CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
         registerBeforeStart = registerCalls > 0;
         startCalls++;
         if (context != null) {
