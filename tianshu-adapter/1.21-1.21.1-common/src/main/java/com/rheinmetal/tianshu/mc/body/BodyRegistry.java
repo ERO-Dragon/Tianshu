@@ -214,6 +214,38 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
         }, server);
     }
 
+    /**
+     * Takes every body this module owns out of the world, on the server thread.
+     *
+     * <p>Called while a module stops, which may happen off the server thread (a client disconnect tears the runtime
+     * down), so the work is handed to the server instead of blocking the caller. The bodies are discarded rather than
+     * killed, for the same reason a module's own release discards them: withdrawing one's NPC is not a player death.</p>
+     */
+    @Override
+    public void withdrawAll(String moduleId) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        Runnable withdraw = () -> {
+            for (BodyState state : List.copyOf(bodies.values())) {
+                if (!moduleId.equals(state.ownerModule())) {
+                    continue;
+                }
+                if (state.loaded()) {
+                    state.entity().discard();
+                }
+                forget(state.id());
+                accessPolicies.remove(state.id());
+                trusted.remove(state.id());
+            }
+        };
+        if (server.isSameThread()) {
+            withdraw.run();
+        } else {
+            server.execute(withdraw);
+        }
+    }
+
     @Override
     public CompletableFuture<Void> release(String moduleId, String bodyId) {
         return CompletableFuture.supplyAsync(() -> {
