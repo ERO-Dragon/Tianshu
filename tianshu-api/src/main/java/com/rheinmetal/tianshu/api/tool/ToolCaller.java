@@ -67,10 +67,7 @@ public record ToolCaller(Kind kind, String id, boolean operator, ToolAutonomy au
         return new ToolCaller(Kind.AGENT, moduleId, operator, autonomy, null);
     }
 
-    /**
-     * An agent acting for a player: the request came from that player's session, so the server may judge it by what that
-     * player owns without trusting any claim about who the agent is.
-     */
+    /** An agent whose request is scoped to the authenticated player on its connection. */
     public static ToolCaller agentFor(String moduleId, String playerId, boolean operator, ToolAutonomy autonomy) {
         return new ToolCaller(Kind.AGENT, moduleId, operator, autonomy, playerId);
     }

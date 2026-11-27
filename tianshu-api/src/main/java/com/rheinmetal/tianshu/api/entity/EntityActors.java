@@ -77,16 +77,16 @@ public final class EntityActors {
             return Optional.of(BodyFailure.CONTROLLER_REQUIRED.exception());
         }
         if (caller.kind() == ToolCaller.Kind.AGENT || caller.kind() == ToolCaller.Kind.MOD) {
-            if (!caller.id().isBlank() && resolve(bodyId).map(EntityActor::ownerModule).filter(caller.id()::equals).isPresent()) {
-                return Optional.empty();
+            EntityActor body = resolve(bodyId).orElse(null);
+            if (body == null) {
+                return Optional.of(BodyFailure.CONTROLLER_MISMATCH.exception());
             }
-            // Acting for a player is judged as that player's own call: the transport only sets the proxy to the player
-            // on the connection, so nobody else can claim it.
-            if (caller.actsForAPlayer()) {
-                return owner(bodyId).flatMap(provider -> provider.checkAccess(
-                        ToolCaller.player(caller.actingFor(), caller.operator()), bodyId));
+            try {
+                return BodyController.forRequest(caller.id(), caller)
+                        .refusal(body.ownerModule(), body.ownerPlayer());
+            } catch (BodyToolException invalidCaller) {
+                return Optional.of(invalidCaller);
             }
-            return Optional.of(BodyFailure.CONTROLLER_MISMATCH.exception());
         }
         if (caller.kind() == ToolCaller.Kind.BODY) {
             return bodyId.equals(caller.id()) ? Optional.empty()

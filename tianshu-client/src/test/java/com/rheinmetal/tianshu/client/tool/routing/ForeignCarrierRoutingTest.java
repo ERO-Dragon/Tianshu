@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.client.tool.routing;
 
+import com.rheinmetal.tianshu.client.tool.TestBodies;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.rheinmetal.tianshu.api.entity.ActionOutcome;
@@ -8,7 +9,6 @@ import com.rheinmetal.tianshu.api.entity.ActorRef;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntityActions;
-import com.rheinmetal.tianshu.api.entity.EntityProvider;
 import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
 import com.rheinmetal.tianshu.api.entity.EntityQueryPort;
 import com.rheinmetal.tianshu.api.entity.BlockHit;
@@ -54,7 +54,7 @@ class ForeignCarrierRoutingTest {
     void setUp() {
         TianshuTools.clearRateLimits();
         ClientTools.register();
-        EntityActors.register(new EntityProvider() {
+        EntityActors.register(new TestBodies.PlayerFixture() {
             @Override
             public Optional<EntityActor> resolve(String bodyId) {
                 if (!"foreign-1".equals(bodyId)) {

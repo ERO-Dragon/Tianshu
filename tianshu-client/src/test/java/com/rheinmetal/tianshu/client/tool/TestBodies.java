@@ -3,15 +3,28 @@ package com.rheinmetal.tianshu.client.tool;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
+import com.rheinmetal.tianshu.api.entity.EntityProvider;
+import com.rheinmetal.tianshu.api.entity.BodyFailure;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolException;
 import com.rheinmetal.tianshu.api.entity.EntityCapability;
 
 import java.util.Optional;
 import java.util.Set;
 
 /** Test-only agent bodies, so a tool test can state what a body can do without a game side. */
-final class TestBodies {
+public final class TestBodies {
 
     private TestBodies() {
+    }
+
+    /** Action fixtures grant their test player direct access to the body under test. */
+    public interface PlayerFixture extends EntityProvider {
+        @Override
+        default Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
+            return caller.kind() == ToolCaller.Kind.PLAYER && caller.id().equals("p")
+                    ? Optional.empty() : Optional.of(BodyFailure.PLAYER_DENIED.exception());
+        }
     }
 
     /** Registers a body that declares exactly {@code capabilities}; the returned runnable unregisters it. */
@@ -43,8 +56,9 @@ final class TestBodies {
                 return declared;
             }
         };
-        return EntityActors.register(resolved -> id.equals(resolved)
+        PlayerFixture provider = resolved -> id.equals(resolved)
                 ? Optional.of(body)
-                : Optional.empty());
+                : Optional.empty();
+        return EntityActors.register(provider);
     }
 }

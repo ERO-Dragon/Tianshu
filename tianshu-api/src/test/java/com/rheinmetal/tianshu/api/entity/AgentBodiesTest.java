@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.api.entity;
 
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
 import com.rheinmetal.tianshu.api.tool.ToolError;
 import com.rheinmetal.tianshu.api.tool.ToolException;
 import org.junit.jupiter.api.AfterEach;
@@ -7,9 +8,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AgentBodiesTest {
 
@@ -28,6 +31,26 @@ class AgentBodiesTest {
 
         unregister.run();
         assertTrue(EntityActors.resolve("body-1").isEmpty());
+    }
+
+    @Test
+    void aServerEntryPointBindsTheRequestToItsOwnModuleAndCreatingPlayer() {
+        UUID player = UUID.randomUUID();
+        var request = ToolCaller.mod("maid").actingFor(player.toString());
+        var controller = BodyController.forRequest("maid", request);
+        assertEquals(player, controller.playerId());
+        assertTrue(controller.refusal("maid", player).isEmpty());
+        assertEquals(BodyFailure.PLAYER_DENIED.id(), controller.refusal("maid", null).orElseThrow().wireMessage());
+        assertEquals(BodyFailure.CONTROLLER_MISMATCH,
+                assertThrows(BodyToolException.class, () -> BodyController.forRequest("other", request)).reason());
+        assertTrue(BodyController.forRequest("maid", ToolCaller.mod("maid")).refusal("maid", null).isEmpty());
+    }
+
+    @Test
+    void anExternalBodyWithoutAPlayerOwnerDoesNotGrantDirectPlayerAccessByDefault() {
+        EntityActors.register(id -> Optional.of(body(id, Set.of())));
+        var caller = ToolCaller.player(UUID.randomUUID().toString(), true);
+        assertEquals(BodyFailure.PLAYER_DENIED.id(), EntityActors.checkAccess(caller, "body-1").orElseThrow().wireMessage());
     }
 
     @Test

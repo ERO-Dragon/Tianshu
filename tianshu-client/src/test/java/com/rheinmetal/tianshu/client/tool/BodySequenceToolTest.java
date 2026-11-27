@@ -12,7 +12,6 @@ import com.rheinmetal.tianshu.api.entity.EntityActionPort;
 import com.rheinmetal.tianshu.api.entity.EntityActors;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntityActions;
-import com.rheinmetal.tianshu.api.entity.EntityProvider;
 import com.rheinmetal.tianshu.api.entity.EntityItemPort;
 import com.rheinmetal.tianshu.api.entity.EntityMotionPort;
 import com.rheinmetal.tianshu.api.entity.BlockTarget;
@@ -84,7 +83,7 @@ class BodySequenceToolTest {
     }
 
     private void installBody() {
-        EntityActors.register(new EntityProvider() {
+        EntityActors.register(new TestBodies.PlayerFixture() {
             @Override
             public Optional<EntityActor> resolve(String bodyId) {
                 if (!"body-1".equals(bodyId)) {

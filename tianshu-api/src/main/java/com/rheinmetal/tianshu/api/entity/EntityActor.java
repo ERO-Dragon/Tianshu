@@ -3,6 +3,7 @@ package com.rheinmetal.tianshu.api.entity;
 import com.rheinmetal.tianshu.api.tool.BodyAutonomy;
 
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * A server-side entity that can act as the agent's body. The platform only knows its identity, permission,
@@ -20,6 +21,11 @@ public interface EntityActor {
     /** ID of the module that requested this NPC. An unassigned body has no module controller. */
     default String ownerModule() {
         return "";
+    }
+
+    /** UUID of the player who requested this body, or null for a server-only body. */
+    default UUID ownerPlayer() {
+        return null;
     }
 
     /**

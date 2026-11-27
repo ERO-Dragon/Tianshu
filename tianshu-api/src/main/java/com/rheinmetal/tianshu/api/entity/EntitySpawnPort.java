@@ -25,6 +25,14 @@ public interface EntitySpawnPort {
      */
     CompletableFuture<EntityActor> spawn(String moduleId, String kind, ActorPosition position, boolean playerLike);
 
+    /** Scoped requests require an adapter that enforces player ownership. */
+    default CompletableFuture<EntityActor> spawn(BodyController controller, String kind, ActorPosition position, boolean playerLike) {
+        if (controller.playerId() != null) {
+            return CompletableFuture.failedFuture(BodyFailure.PLAYER_DENIED.exception());
+        }
+        return spawn(controller.moduleId(), kind, position, playerLike);
+    }
+
     /**
      * Removes a body this module spawned, and drops its record with it.
      *
@@ -37,6 +45,14 @@ public interface EntitySpawnPort {
      * @param bodyId   the body to remove
      */
     CompletableFuture<Void> release(String moduleId, String bodyId);
+
+    /** Scoped requests require an adapter that enforces player ownership. */
+    default CompletableFuture<Void> release(BodyController controller, String bodyId) {
+        if (controller.playerId() != null) {
+            return CompletableFuture.failedFuture(BodyFailure.PLAYER_DENIED.exception());
+        }
+        return release(controller.moduleId(), bodyId);
+    }
 
     /**
      * Removes every body this module owns.

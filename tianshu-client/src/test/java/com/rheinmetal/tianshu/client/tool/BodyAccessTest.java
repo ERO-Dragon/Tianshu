@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,6 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BodyAccessTest {
+
+    private static final UUID CREATOR = UUID.randomUUID();
 
     @BeforeEach
     void subscribeToFixtures() {
@@ -81,48 +84,7 @@ class BodyAccessTest {
 
     /** Owner {@code p} only; anyone else is refused by the provider itself. */
     private void installGuardedBody() {
-        EntityActors.register(new EntityProvider() {
-            @Override
-            public Optional<EntityActor> resolve(String bodyId) {
-                if (!"body-1".equals(bodyId)) {
-                    return Optional.empty();
-                }
-                return Optional.of(new EntityActor() {
-                    @Override
-                    public String id() {
-                        return "body-1";
-                    }
-
-                    @Override
-                    public String ownerModule() {
-                        return "module.test";
-                    }
-
-                    @Override
-                    public boolean operator() {
-                        return true;
-                    }
-
-                    @Override
-                    public ActorPosition position() {
-                        return new ActorPosition("minecraft:overworld", 0, 64, 0);
-                    }
-
-                    @Override
-                    public Set<EntityCapability> capabilities() {
-                        return Set.of(EntityCapability.MOVE);
-                    }
-                });
-            }
-
-
-            @Override
-            public Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
-                return "p".equals(caller.id())
-                        ? Optional.empty()
-                        : Optional.of(new ToolException(ToolError.NO_PERMISSION, "not your body"));
-            }
-        });
+        installBody("body-1", "module.test");
         enable();
         TianshuRuntimePorts.register(EntityMotionPort.class, new EntityMotionPort() {
             @Override
@@ -142,6 +104,80 @@ class BodyAccessTest {
         });
     }
 
+    private void installBody(String id, String module) {
+        EntityActors.register(new EntityProvider() {
+            @Override
+            public Optional<EntityActor> resolve(String bodyId) {
+                if (!id.equals(bodyId)) {
+                    return Optional.empty();
+                }
+                return Optional.of(new EntityActor() {
+                    @Override
+                    public String id() {
+                        return id;
+                    }
+
+                    @Override
+                    public String ownerModule() {
+                        return module;
+                    }
+
+                    @Override
+                    public UUID ownerPlayer() {
+                        return CREATOR;
+                    }
+
+                    @Override
+                    public boolean operator() {
+                        return true;
+                    }
+
+                    @Override
+                    public ActorPosition position() {
+                        return new ActorPosition("minecraft:overworld", 0, 64, 0);
+                    }
+
+                    @Override
+                    public Set<EntityCapability> capabilities() {
+                        return Set.of(EntityCapability.MOVE);
+                    }
+                });
+            }
+
+            @Override
+            public Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
+                return CREATOR.toString().equals(caller.id())
+                        ? Optional.empty()
+                        : Optional.of(new ToolException(ToolError.NO_PERMISSION, "not your body"));
+            }
+        });
+    }
+
+    @Test
+    void twoAgentsInTheSamePlayerSessionCanOnlyMoveTheirOwnBodies() throws Exception {
+        installGuardedBody();
+        installBody("body-2", "module.other");
+        var first = ToolCaller.agentFor("module.test", CREATOR.toString(), false, ToolAutonomy.CONSERVATIVE);
+        var second = ToolCaller.agentFor("module.other", CREATOR.toString(), false, ToolAutonomy.CONSERVATIVE);
+        String moveFirst = "{\"body\":\"body-1\",\"x\":1,\"y\":64,\"z\":1}";
+        String moveSecond = "{\"body\":\"body-2\",\"x\":1,\"y\":64,\"z\":1}";
+
+        assertEquals("body.controller.mismatch", envelope(moveSecond, first).get("message").getAsString());
+        assertEquals("body.controller.mismatch", envelope(moveFirst, second).get("message").getAsString());
+        assertFalse(motionReached.get());
+        assertTrue(envelope(moveFirst, first).get("ok").getAsBoolean());
+        assertTrue(envelope(moveSecond, second).get("ok").getAsBoolean());
+    }
+
+    @Test
+    void anotherPlayerUsingTheSameModuleCannotMoveThisBody() throws Exception {
+        installGuardedBody();
+        var visitor = ToolCaller.agentFor("module.test", UUID.randomUUID().toString(), false, ToolAutonomy.CONSERVATIVE);
+        var result = envelope("{\"body\":\"body-1\",\"x\":1,\"y\":64,\"z\":1}", visitor);
+        assertEquals("body.access.denied", result.get("message").getAsString());
+        assertFalse(motionReached.get());
+    }
+
     @Test
     void aPlayerWhoIsNotTheOwnerIsRefusedBeforeThePortIsTouched() throws Exception {
         installGuardedBody();
@@ -159,7 +195,7 @@ class BodyAccessTest {
         installGuardedBody();
 
         JsonObject result = envelope("{\"body\":\"body-1\",\"x\":1,\"y\":64,\"z\":1}",
-                ToolCaller.player("p", true));
+                ToolCaller.player(CREATOR.toString(), true));
 
         assertTrue(result.get("ok").getAsBoolean());
         assertTrue(motionReached.get());

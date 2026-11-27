@@ -30,9 +30,13 @@ public interface EntityProvider {
      * Empty when {@code caller} may command this body; otherwise the refusal to surface.
      *
      * <p>The platform checks module ownership through the resolved body's {@link EntityActor#ownerModule()}.
-     * Providers use this hook for their player access policy.</p>
+     * The default permits the creating player. Providers can implement their own direct-player policy.</p>
      */
     default Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
-        return Optional.empty();
+        if (caller.kind() == ToolCaller.Kind.PLAYER && resolve(bodyId).map(EntityActor::ownerPlayer)
+                .filter(player -> player.toString().equals(caller.id())).isPresent()) {
+            return Optional.empty();
+        }
+        return Optional.of(BodyFailure.PLAYER_DENIED.exception());
     }
 }
