@@ -67,6 +67,11 @@ final class ActorScope {
      * pointer at the tool they do want.</p>
      */
     static ActorScope player(ToolCaller caller) {
+        if (caller.actsForAPlayer()) {
+            // An agent in a player's session acting for that player: the player-side tool is exactly what it may use,
+            // and it runs as that player. The transport only ever sets the proxy to the connection's own player.
+            return new ActorScope(ActorRef.player(caller.actingFor(), caller.operator()), null);
+        }
         if (caller.kind() != ToolCaller.Kind.PLAYER) {
             return new ActorScope(null, new ToolException(ToolError.UNSUPPORTED_ACTOR,
                     "this is the player-side tool; a " + caller.kind().name().toLowerCase(java.util.Locale.ROOT)

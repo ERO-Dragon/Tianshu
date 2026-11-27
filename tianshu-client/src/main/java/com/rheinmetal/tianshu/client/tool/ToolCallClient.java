@@ -24,7 +24,7 @@ public final class ToolCallClient implements ToolTransport {
     /** Sends one encoded call through the loader's channel. */
     @FunctionalInterface
     public interface RequestSender {
-        void send(String requestId, String toolId, String argsJson);
+        void send(String requestId, String toolId, String argsJson, String callerModule);
     }
 
     private final RequestSender sender;
@@ -41,7 +41,10 @@ public final class ToolCallClient implements ToolTransport {
 
     @Override
     public void send(String requestId, ToolId id, JsonElement args, ToolCaller caller, long timeoutMillis) {
-        sender.send(requestId, id.toString(), args == null ? "{}" : args.toString());
+        // The module half of the identity: the player half is the connection itself, so this is the only thing the
+        // packet has to say about who is asking.
+        boolean module = caller.kind() == ToolCaller.Kind.AGENT || caller.kind() == ToolCaller.Kind.MOD;
+        sender.send(requestId, id.toString(), args == null ? "{}" : args.toString(), module ? caller.id() : "");
     }
 
     public void receiveCatalog(List<com.rheinmetal.tianshu.api.tool.ToolCatalogEntry> tools) {

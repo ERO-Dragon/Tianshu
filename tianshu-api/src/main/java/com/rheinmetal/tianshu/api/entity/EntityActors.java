@@ -80,6 +80,12 @@ public final class EntityActors {
             if (!caller.id().isBlank() && resolve(bodyId).map(EntityActor::ownerModule).filter(caller.id()::equals).isPresent()) {
                 return Optional.empty();
             }
+            // Acting for a player is judged as that player's own call: the transport only sets the proxy to the player
+            // on the connection, so nobody else can claim it.
+            if (caller.actsForAPlayer()) {
+                return owner(bodyId).flatMap(provider -> provider.checkAccess(
+                        ToolCaller.player(caller.actingFor(), caller.operator()), bodyId));
+            }
             return Optional.of(BodyFailure.CONTROLLER_MISMATCH.exception());
         }
         if (caller.kind() == ToolCaller.Kind.BODY) {

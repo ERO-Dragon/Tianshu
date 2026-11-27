@@ -9,7 +9,6 @@ public enum BodyFailure {
     AUTONOMY_DENIED("body.autonomy.denied", ToolError.NO_PERMISSION),
     CONTROLLER_REQUIRED("body.controller.required", ToolError.NO_PERMISSION),
     CONTROLLER_MISMATCH("body.controller.mismatch", ToolError.NO_PERMISSION),
-    CONTROLLER_UNVERIFIED("body.controller.unverified", ToolError.NO_PERMISSION),
     SELF_ONLY("body.controller.self_only", ToolError.NO_PERMISSION),
     PLAYER_DENIED("body.access.denied", ToolError.NO_PERMISSION),
     KIND_INVALID("body.kind.invalid", ToolError.INVALID_ARGS),

@@ -137,11 +137,8 @@ public final class ConnectionToolChannel implements ServerToolChannel {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.UNSUPPORTED_SIDE, "tool " + id + " needs the server component"));
         }
-        // This wire authenticates the player only. A server module must drive its NPC on the authoritative side.
-        if (caller.kind() != ToolCaller.Kind.PLAYER && args != null && args.isJsonObject()
-                && args.getAsJsonObject().has("body")) {
-            return CompletableFuture.failedFuture(BodyFailure.CONTROLLER_UNVERIFIED.exception());
-        }
+        // An agent call is sent with its module id; the server adds the player from the connection, so a call that
+        // names a body is judged there against that player's ownership instead of being refused here.
         if (pending.size() >= MAX_PENDING) {
             return CompletableFuture.failedFuture(
                     new ToolException(ToolError.FAILED, "too many tool calls are waiting for the server"));

@@ -19,7 +19,7 @@ import java.util.Objects;
  * {@link ServerAutonomyCeiling}, {@link ToolPermission} and each tool's own switch; a caller can only narrow what it
  * is offered, never widen what the server allows.</p>
  */
-public record ToolCaller(Kind kind, String id, boolean operator, ToolAutonomy autonomy) {
+public record ToolCaller(Kind kind, String id, boolean operator, ToolAutonomy autonomy, String actingFor) {
 
     public enum Kind {
         /** An AI module driving a conversation. */
@@ -45,16 +45,39 @@ public record ToolCaller(Kind kind, String id, boolean operator, ToolAutonomy au
             }
         }
         autonomy = autonomy == null ? DEFAULT_AUTONOMY : autonomy;
+        actingFor = actingFor == null || actingFor.isBlank() ? null : actingFor.strip();
+        if (actingFor != null && (kind == Kind.PLAYER || kind == Kind.BODY)) {
+            // A player or a body already is who it is; a proxy on either would be a second, unverifiable identity.
+            throw new IllegalArgumentException("only an agent or a module call can act for a player");
+        }
+    }
+
+    /** Whether this call is being made on a player's behalf rather than by the player itself. */
+    public boolean actsForAPlayer() {
+        return actingFor != null;
     }
 
     /** The conversation agent, at the default tier. */
     public static ToolCaller agent(boolean operator) {
-        return new ToolCaller(Kind.AGENT, "tianshu", operator, DEFAULT_AUTONOMY);
+        return new ToolCaller(Kind.AGENT, "tianshu", operator, DEFAULT_AUTONOMY, null);
     }
 
     /** An agent module that manages its own tier; {@code moduleId} is the id it publishes as. */
     public static ToolCaller agent(String moduleId, boolean operator, ToolAutonomy autonomy) {
-        return new ToolCaller(Kind.AGENT, moduleId, operator, autonomy);
+        return new ToolCaller(Kind.AGENT, moduleId, operator, autonomy, null);
+    }
+
+    /**
+     * An agent acting for a player: the request came from that player's session, so the server may judge it by what that
+     * player owns without trusting any claim about who the agent is.
+     */
+    public static ToolCaller agentFor(String moduleId, String playerId, boolean operator, ToolAutonomy autonomy) {
+        return new ToolCaller(Kind.AGENT, moduleId, operator, autonomy, playerId);
+    }
+
+    /** The same agent, now acting for {@code playerId}. */
+    public ToolCaller actingFor(String playerId) {
+        return new ToolCaller(kind, id, operator, autonomy, playerId);
     }
 
     /**
@@ -65,7 +88,7 @@ public record ToolCaller(Kind kind, String id, boolean operator, ToolAutonomy au
      * permission and each tool's switch — this only removes the self-restriction axis.</p>
      */
     public static ToolCaller mod(String modId) {
-        return new ToolCaller(Kind.MOD, modId, false, ToolAutonomy.FULL);
+        return new ToolCaller(Kind.MOD, modId, false, ToolAutonomy.FULL, null);
     }
 
     /**
@@ -76,15 +99,15 @@ public record ToolCaller(Kind kind, String id, boolean operator, ToolAutonomy au
      * a module set to read-only would be bypassed on every turn that has a player.</p>
      */
     public static ToolCaller player(String playerId, boolean operator) {
-        return new ToolCaller(Kind.PLAYER, playerId, operator, DEFAULT_AUTONOMY);
+        return new ToolCaller(Kind.PLAYER, playerId, operator, DEFAULT_AUTONOMY, null);
     }
 
     public static ToolCaller body(String bodyId, boolean operator) {
-        return new ToolCaller(Kind.BODY, bodyId, operator, DEFAULT_AUTONOMY);
+        return new ToolCaller(Kind.BODY, bodyId, operator, DEFAULT_AUTONOMY, null);
     }
 
     /** A body acting for a module that decides how far it may go. */
     public static ToolCaller body(String bodyId, boolean operator, ToolAutonomy autonomy) {
-        return new ToolCaller(Kind.BODY, bodyId, operator, autonomy);
+        return new ToolCaller(Kind.BODY, bodyId, operator, autonomy, null);
     }
 }
