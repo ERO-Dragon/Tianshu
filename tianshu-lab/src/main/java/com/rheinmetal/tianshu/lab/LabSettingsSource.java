@@ -61,6 +61,9 @@ public final class LabSettingsSource implements TianshuSettingsRegistrySource {
                         .toggle("lab.auto_release", lab("option.auto_release"),
                                 module::autoRelease, module::setAutoRelease, module::debugEnabled))
                 .options("lab.tool", lab("section.tool"), module::debugEnabled, module::debugEnabled, options -> options
+                        .select("lab.tool.caller", lab("option.tool_caller"), List.of(LabToolConsole.Caller.values()),
+                                tools::caller, caller -> lab("tool_caller." + caller.name().toLowerCase(Locale.ROOT)),
+                                tools::setCaller, module::debugEnabled)
                         .text("lab.tool.id", lab("option.tool_id"), tools::toolId, tools::setToolId, module::debugEnabled)
                         .text("lab.tool.args", lab("option.tool_args"), tools::argsJson, tools::setArgsJson, module::debugEnabled))
                 .actions("lab.actions", lab("section.actions"), module::debugEnabled, module::debugEnabled, actions -> actions

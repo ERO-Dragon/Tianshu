@@ -10,6 +10,8 @@ import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSeverity;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticSink;
 import com.rheinmetal.tianshu.api.tool.TianshuTools;
 import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.tool.ToolAutonomy;
+import com.rheinmetal.tianshu.lab.tool.LabTools;
 import com.rheinmetal.tianshu.api.tool.ToolId;
 import com.rheinmetal.tianshu.api.tool.ToolSide;
 
@@ -17,11 +19,24 @@ import com.rheinmetal.tianshu.api.tool.ToolSide;
  * The bench's tool console: type a tool id and a JSON argument object, run it, see the envelope.
  *
  * <p>It is the one place a write tool can be exercised without the agent. Calls travel the normal path — the
- * caller is a player identity, the server still decides permission and the per-tool switch — so what the console
+ * server receives the selected bench caller through the active player connection — so what the console
  * shows is what production would do.</p>
  */
 public final class LabToolConsole {
 
+    enum Caller {
+        PLAYER(ToolCaller.player("lab", true)),
+        LAB(ToolCaller.agent(LabModuleRegistration.MOD_ID, false, ToolAutonomy.CONSERVATIVE)),
+        PEER(ToolCaller.agent(LabTools.PEER_MODULE, false, ToolAutonomy.CONSERVATIVE));
+
+        final ToolCaller identity;
+
+        Caller(ToolCaller identity) {
+            this.identity = identity;
+        }
+    }
+
+    private volatile Caller caller = Caller.PLAYER;
     private volatile String toolId = "minecraft:inventory.inspect";
     private volatile String argsJson = "{}";
     private final DiagnosticSink diagnostics;
@@ -31,6 +46,14 @@ public final class LabToolConsole {
 
     public LabToolConsole(DiagnosticSink diagnostics) {
         this.diagnostics = diagnostics == null ? DiagnosticSink.NOOP : diagnostics;
+    }
+
+    Caller caller() {
+        return caller;
+    }
+
+    void setCaller(Caller caller) {
+        this.caller = java.util.Objects.requireNonNull(caller);
     }
 
     public String toolId() {
@@ -62,8 +85,10 @@ public final class LabToolConsole {
         return running;
     }
 
-    private void publish(ToolId id, JsonElement envelope, Throwable failure) {
+    private void publish(ToolCaller caller, ToolId id, JsonElement envelope, Throwable failure) {
         var attributes = new java.util.LinkedHashMap<String, String>();
+        attributes.put("callerKind", caller.kind().name());
+        attributes.put("callerId", caller.id());
         attributes.put("tool", id.toString());
         if (failure != null) {
             attributes.put("ok", "false");
@@ -115,14 +140,15 @@ public final class LabToolConsole {
         }
         running = true;
         result = "running " + id + "…";
-        TianshuTools.callJson(id, args, ToolCaller.player("lab", true), ToolSide.CLIENT)
+        ToolCaller selected = caller.identity;
+        TianshuTools.callJson(id, args, selected, ToolSide.CLIENT)
                 .whenComplete((envelope, failure) -> {
                     result = failure == null ? envelope.toString() : String.valueOf(failure);
                     if (failure == null && envelope.has("message") && envelope.has("ok") && !envelope.get("ok").getAsBoolean()) {
                         bodyFailure = BodyFailure.fromId(envelope.get("message").getAsString()).orElse(null);
                     }
+                    publish(selected, id, envelope, failure);
                     running = false;
-                    publish(id, envelope, failure);
                 });
     }
 }

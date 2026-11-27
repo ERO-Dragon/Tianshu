@@ -1,6 +1,11 @@
 package com.rheinmetal.tianshu.lab;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.tool.ToolCaller;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
+import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
+import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
+import com.rheinmetal.tianshu.lab.tool.LabTools;
 import com.rheinmetal.tianshu.api.entity.BodyFailure;
 import com.rheinmetal.tianshu.api.diagnostics.DiagnosticEvent;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -43,6 +48,34 @@ class LabToolConsoleTest {
             assertEquals(TOOL.toString(), events.get(0).attributes().get("tool"));
             assertEquals("true", events.get(0).attributes().get("ok"));
         } finally {
+            TianshuTools.unregister(TOOL);
+        }
+    }
+
+    @Test
+    void consoleForwardsTheSelectedBenchIdentityAndLogsTheCallerThatRan() throws Exception {
+        TianshuTools.registerBuiltin(new EchoTool());
+        try {
+            for (var role : List.of(LabToolConsole.Caller.LAB, LabToolConsole.Caller.PEER)) {
+                String expected = role == LabToolConsole.Caller.LAB ? LabModuleRegistration.MOD_ID : LabTools.PEER_MODULE;
+                CapabilitySubscriptions.declare(expected, CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+                var events = new ArrayList<DiagnosticEvent>();
+                var console = new LabToolConsole(events::add);
+                console.setCaller(role);
+                console.setToolId(TOOL.toString());
+                console.run();
+                for (int attempt = 0; attempt < 100 && console.running(); attempt++) {
+                    Thread.sleep(10);
+                }
+                assertFalse(console.running());
+                assertEquals(expected, com.google.gson.JsonParser.parseString(console.result())
+                        .getAsJsonObject().getAsJsonObject("result").get("caller").getAsString());
+                assertEquals(ToolCaller.Kind.AGENT.name(), events.get(0).attributes().get("callerKind"));
+                assertEquals(expected, events.get(0).attributes().get("callerId"));
+            }
+        } finally {
+            CapabilitySubscriptions.withdraw(LabModuleRegistration.MOD_ID);
+            CapabilitySubscriptions.withdraw(LabTools.PEER_MODULE);
             TianshuTools.unregister(TOOL);
         }
     }
@@ -99,7 +132,9 @@ class LabToolConsoleTest {
             if (args.has("deny")) {
                 return CompletableFuture.failedFuture(BodyFailure.CONTROLLER_MISMATCH.exception());
             }
-            return CompletableFuture.completedFuture(new JsonObject());
+            JsonObject result = new JsonObject();
+            result.addProperty("caller", context.caller().id());
+            return CompletableFuture.completedFuture(result);
         }
     }
 }

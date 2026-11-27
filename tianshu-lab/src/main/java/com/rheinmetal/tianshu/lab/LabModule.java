@@ -1,7 +1,6 @@
 package com.rheinmetal.tianshu.lab;
 
 import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
-import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
 import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.rheinmetal.tianshu.api.assembly.ClientPorts;
 import com.rheinmetal.tianshu.api.assembly.InstalledMods;
@@ -366,7 +365,6 @@ public final class LabModule implements TianshuManagedModule, LabModuleControl, 
             acceptanceWorker.interrupt();
             acceptanceWorker = null;
         }
-        CapabilitySubscriptions.withdraw(LabModuleRegistration.MOD_ID);
         if (participantsRegistered) {
             unregisterParticipants();
         }

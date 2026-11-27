@@ -1,5 +1,6 @@
 package com.rheinmetal.tianshu.lab.tool;
 
+import com.rheinmetal.tianshu.api.capability.CapabilityId;
 import com.rheinmetal.tianshu.api.capability.CapabilitySharing;
 import com.rheinmetal.tianshu.api.capability.CapabilitySubscription;
 import com.rheinmetal.tianshu.api.capability.CapabilitySubscriptions;
@@ -18,6 +19,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * body. Nothing here is shipped — the lab is a development module.</p>
  */
 public final class LabTools {
+
+    /** Second consumer for the cross-module movement acceptance case. */
+    public static final String PEER_MODULE = LabModuleRegistration.MOD_ID + ".peer";
 
     private static final AtomicBoolean REGISTERED = new AtomicBoolean();
 
@@ -42,6 +46,7 @@ public final class LabTools {
         }
         CapabilitySubscriptions.declare(LabModuleRegistration.MOD_ID,
                 CapabilitySubscription.atomicFrom(CapabilitySharing.BASE_PROVIDER));
+        CapabilitySubscriptions.declare(PEER_MODULE, CapabilitySubscription.only(CapabilityId.of("minecraft", "entity.move")));
         for (TianshuTool<?, ?> tool : tools()) {
             TianshuTools.register(tool, LabModuleRegistration.MOD_ID, CapabilitySharing.ALL);
         }
@@ -54,6 +59,8 @@ public final class LabTools {
     /** Drops them again; tests only. */
     public static void unregisterForTests() {
         tools().forEach(tool -> TianshuTools.unregister(tool.id()));
+        CapabilitySubscriptions.withdraw(PEER_MODULE);
+        CapabilitySubscriptions.withdraw(LabModuleRegistration.MOD_ID);
         REGISTERED.set(false);
     }
 }
