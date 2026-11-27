@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.lab.tool;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.entity.BodyController;
 import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
 import com.rheinmetal.tianshu.api.assembly.TianshuRuntimePorts;
 import com.rheinmetal.tianshu.api.tool.TianshuTool;
@@ -87,7 +88,8 @@ public final class ReleaseBodyTool implements TianshuTool<JsonObject, ReleaseBod
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "bodyId is required"));
         }
-        return port.release(LabModuleRegistration.MOD_ID, bodyId)
+        var controller = BodyController.forRequest(LabModuleRegistration.MOD_ID, context.caller());
+        return port.release(controller, bodyId)
                 .thenApply(ignored -> new Result(bodyId, true))
                 .orTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }

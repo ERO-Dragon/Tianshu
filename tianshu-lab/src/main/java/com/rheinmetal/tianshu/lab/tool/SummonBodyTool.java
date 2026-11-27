@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.lab.tool;
 
 import com.google.gson.JsonObject;
+import com.rheinmetal.tianshu.api.entity.BodyController;
 import com.rheinmetal.tianshu.api.entity.ActorPosition;
 import com.rheinmetal.tianshu.api.entity.EntityActor;
 import com.rheinmetal.tianshu.api.entity.EntitySpawnPort;
@@ -103,7 +104,8 @@ public final class SummonBodyTool implements TianshuTool<JsonObject, SummonBodyT
             return CompletableFuture.failedFuture(new ToolException(ToolError.INVALID_ARGS,
                     "dimension, x, y and z are required: " + malformed.getMessage()));
         }
-        return port.spawn(LabModuleRegistration.MOD_ID, kind, at, false)
+        var controller = BodyController.forRequest(LabModuleRegistration.MOD_ID, context.caller());
+        return port.spawn(controller, kind, at, false)
                 .thenApply(actor -> new Result(actor.id(), at.dimension()))
                 .orTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
