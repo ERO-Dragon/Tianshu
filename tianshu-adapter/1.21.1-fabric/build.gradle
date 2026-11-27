@@ -164,16 +164,28 @@ tasks.register('prepareDevMods', Copy) {
     from(devModuleJars)
     into layout.projectDirectory.dir('run/mods')
 }
+// The dedicated server keeps its own run directory, so it needs its own shelf: `run-server/mods` used to be filled by
+// hand, and the six jars sitting there were months old — the server ran a published assembly while the client ran the
+// code under edit, and the acceptance numbers came from two different builds.
+tasks.register('prepareDevModsServer', Copy) {
+    from(devModuleJars)
+    into layout.projectDirectory.dir('run-server/mods')
+}
 // A run has to start from a clean shelf, or a jar copied by an earlier run decides this run's composition. Every jar
 // in `run/mods` is placed there by `prepareDevMods`, so the shelf is emptied wholesale: matching names by hand got
 // this wrong once already (a module's jar is named after its mod id, not after its project).
 tasks.register('clearDevMods', Delete) {
     delete fileTree(layout.projectDirectory.dir('run/mods')) { include '*.jar' }
 }
+tasks.register('clearDevModsServer', Delete) {
+    delete fileTree(layout.projectDirectory.dir('run-server/mods')) { include '*.jar' }
+}
 ['runClient', 'runServer'].each { name ->
     tasks.named(name) { dependsOn 'clearDevMods', 'prepareDevMods' }
 }
 tasks.named('prepareDevMods') { mustRunAfter 'clearDevMods' }
+tasks.named('runServer') { dependsOn 'clearDevModsServer', 'prepareDevModsServer' }
+tasks.named('prepareDevModsServer') { mustRunAfter 'clearDevModsServer' }
 
 // Unattended verification. The dedicated server keeps its own run directory (Fabric's processedMods cache is
 // exclusive), and the dev client joins with a fixed name so the server's offline profile matches ops.json.
