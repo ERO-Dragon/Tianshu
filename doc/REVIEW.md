@@ -55,6 +55,52 @@
 **决定（用户）**：先只记录，等其他验收完成再讨论；做的时候走“数值断言 + 实机目视”两条腿（坐标真的变了、
 方块真的没了，同时用户在游戏里看它动）。
 
+### 2.3 `OWN-2` 身体归属要拆成三重身份：载体、申请人、驯养者
+
+**已经定的规则（用户批注）**：身体的**申请人**是发起申请的模块——助手生成的 NPC 归 `tianshu_dubhe`，不归平台；
+**玩家是驯养者**，不是申请人。别家模组的智能体不能驱动它。载体由谁注册（`BodyCarriers`）只决定解析与收回，不决定驱动权。
+
+**三重身份现在混在一个字段里**：
+
+| 身份 | 该是谁 | 用途 | 现在存在哪 |
+|---|---|---|---|
+| 载体模块 | 注册该 body type 的模组（内建 walker 是 `tianshu_ferry`） | 解析载体、`withdrawAll` 收回 | `EntityActor.ownerModule()` |
+| 申请人模块 | 发起申请的模块（助手 = `tianshu_dubhe`） | 驱动权：`refusal()` 第一个条件 | 也是 `ownerModule()`，与上一行是两件事 |
+| 驯养者（玩家） | 申请时为谁建的玩家 | 玩家侧访问策略（`EntityAccess` OWNER/TRUSTED/OPEN） | `EntityActor.ownerPlayer()`（新加） |
+
+**冲突的具体形态**：
+
+- `BodyController.forRequest(本模组 ID, caller)` 要求 `caller.id()` 等于工具所属模块（`BodyController.java:20-26`）。
+  这挡住了“别家智能体调你的申请工具”，符合规则；但它同时把“申请人 = 发起模块”写死成“申请人 = 载体模块”。
+- `BodyRegistry.spawn(ServerPlayer, …)` 硬编码 `ModIdentity.MOD_ID`（`BodyRegistry.java:193-194`），命令生成的身体归平台模块——按上面的规则，这**是错的实现**，不是规则。
+- `refusal()` 在身体没有申请人时把带玩家的调用判 `PLAYER_DENIED`（`BodyController.java:42`），本模组在服务端自建的 NPC，连本模组客户端智能体都开不了。
+
+**目标规则**：申请人模块必须匹配；身体登记了驯养者时，再按 `EntityAccess` 判连接玩家（主人本人、信任名单、开放）。
+
+**待改（方向已定，未实施）**：
+
+1. 拆字段：`carrierModule`（解析、收回）+ `requesterModule`（驱动权）+ `ownerPlayer`（驯养者），`EntityActor` 两个来源都要暴露。
+2. `forRequest` 不再要求 caller 模块等于工具模块，改为取“发起模块 + 连接玩家”；载体解析仍按工具所属模块。
+3. `EntitySpawnPort` 的申请入口带上载体模块，删掉 `spawn(String moduleId, …)` / `release(String moduleId, …)` 两个绕过申请人的旧重载（验收台三处跟着改）。
+4. `refusal()` 只在身体登记了驯养者时才比玩家 UUID。
+5. `withdrawAll` 与模组停止收回仍按载体模块，不动。
+
+**还没定**：`/tianshu body spawn` 这类纯命令入口没有“发起模块”。是继续记平台模块（助手驱动不了）、给命令加“为哪个模块申请”，
+还是等智能体自己的申请工具上线后把它降成调试出口。
+
+### 2.4 `OWN-3` 联机侧缺“跨模块必须被拒”的用例
+
+`ACC-XEN-2` 的调用方模块和申请工具是同一个（`LabAcceptanceCases.java:2302`），证明的是**同模块**跨线驱动；
+`ACC-BDY-7` 的跨模块拒绝只有单机版。所以“别家智能体不能操作我们的实体”这条规则在联机侧没有任何证据。
+
+要补两条：跨模块驱动 → `body.controller.mismatch`；同模块另一名玩家 → `body.access.denied`。两者都要在动作前后确认实体状态未变。
+[验收](验收.md) §4 里“跨侧驱动”的措辞也要改成“同模块跨线驱动”。
+
+### 2.5 `OWN-4` 载体契约收窄要写进对外文档
+
+`EntityProvider.checkAccess` 现在只对 `PLAYER` 调用生效（模块调用在 `EntityActors.checkAccess` 里就判完，不再问载体），
+默认实现也从“放行”改成“只放行创建者”。第三方载体要按新语义接入，否则会以为还能自定义“哪个模块可以驱动我”。
+
 ## 3. 已记录、暂不处理
 
 - **`entity.command.run` 需要操作员逐次批准**：用户明确“可以不考虑差异性”，不作为缺口。女仆类“让她去做某事”
