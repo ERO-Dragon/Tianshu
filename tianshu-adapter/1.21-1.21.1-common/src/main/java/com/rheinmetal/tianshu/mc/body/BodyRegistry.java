@@ -1,6 +1,7 @@
 package com.rheinmetal.tianshu.mc.body;
 
 import com.rheinmetal.tianshu.api.entity.BodyFailure;
+import com.rheinmetal.tianshu.api.entity.BodyController;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
@@ -157,21 +158,19 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
         return true;
     }
 
-    /**
-     * Player-driven calls must pass the body's policy; the caller runtime and the server are trusted by
-     * construction, because they carry the operator permission that gates write tools in the first place.
-     */
+    /** Direct player calls use the world's access settings. Module calls check their controller in EntityActors. */
     @Override
     public Optional<ToolException> checkAccess(ToolCaller caller, String bodyId) {
         if (caller == null || caller.kind() != ToolCaller.Kind.PLAYER) {
             return Optional.empty();
         }
         UUID id = parse(bodyId);
-        if (id == null || !bodies.containsKey(id)) {
-            return Optional.empty();
+        BodyState state = id == null ? null : bodies.get(id);
+        if (state == null) {
+            return Optional.of(BodyFailure.BODY_REQUIRED.exception());
         }
         UUID callerId = parse(caller.id());
-        if (callerId != null && callerId.equals(bodies.get(id).owner())) {
+        if (callerId != null && callerId.equals(state.owner())) {
             return Optional.empty();
         }
         EntityAccess policy = accessPolicies.getOrDefault(id, EntityAccess.OWNER);
@@ -198,9 +197,15 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
     }
 
     @Override
-    public CompletableFuture<EntityActor> spawn(String moduleId, String kind,
+    public CompletableFuture<EntityActor> spawn(String moduleId, String kind, ActorPosition position, boolean playerLike) {
+        return spawn(new BodyController(moduleId, null), kind, position, playerLike);
+    }
+
+    @Override
+    public CompletableFuture<EntityActor> spawn(BodyController controller, String kind,
             ActorPosition position, boolean playerLike) {
         return CompletableFuture.supplyAsync(() -> {
+            String moduleId = controller.moduleId();
             IdSegments.require(moduleId, "body", "owner module");
             BodyCarriers.Carrier carrier = BodyCarriers.resolve(moduleId, kind);
             var dimension = ResourceLocation.tryParse(position.dimension());
@@ -209,7 +214,7 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
             if (level == null) {
                 throw BodyFailure.DIMENSION_UNAVAILABLE.exception();
             }
-            return spawn(moduleId, null, false, carrier, playerLike, level,
+            return spawn(moduleId, controller.playerId(), false, carrier, playerLike, level,
                     new Vec3(position.x(), position.y(), position.z()), 0, 0);
         }, server);
     }
@@ -248,18 +253,20 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
 
     @Override
     public CompletableFuture<Void> release(String moduleId, String bodyId) {
+        return release(new BodyController(moduleId, null), bodyId);
+    }
+
+    @Override
+    public CompletableFuture<Void> release(BodyController controller, String bodyId) {
         return CompletableFuture.supplyAsync(() -> {
-            IdSegments.require(moduleId, "body", "owner module");
             UUID id = parse(bodyId);
             BodyState state = id == null ? null : bodies.get(id);
             if (state == null) {
                 throw BodyFailure.BODY_REQUIRED.exception();
             }
-            String owner = state.ownerModule();
-            if (owner == null || !owner.equals(moduleId)) {
-                // A module may withdraw what it asked for, and nothing else. The operator command is the way out for a
-                // body whose module is gone.
-                throw BodyFailure.CONTROLLER_MISMATCH.exception();
+            var refusal = controller.refusal(state.ownerModule(), state.owner());
+            if (refusal.isPresent()) {
+                throw refusal.get();
             }
             if (state.loaded()) {
                 state.entity().discard();
@@ -631,6 +638,11 @@ public final class BodyRegistry implements EntityProvider, EntitySpawnPort {
             @Override
             public String ownerModule() {
                 return state.ownerModule();
+            }
+
+            @Override
+            public UUID ownerPlayer() {
+                return state.owner();
             }
 
             @Override
