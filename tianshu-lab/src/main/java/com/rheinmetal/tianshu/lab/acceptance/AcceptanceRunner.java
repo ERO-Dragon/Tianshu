@@ -43,6 +43,7 @@ public final class AcceptanceRunner {
      * gets two runs, which is worse than slow: the probes would collide.</p>
      */
     public AcceptanceReport runAll(java.util.function.Consumer<AcceptanceOutcome> progress) {
+        BenchBodies.sweep();
         List<AcceptanceOutcome> outcomes = new ArrayList<>(cases.size());
         boolean selfCheckSeen = false;
         boolean selfCheckHeld = false;
